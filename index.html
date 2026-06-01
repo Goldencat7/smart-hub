@@ -5,7 +5,7 @@
     <title>Remax Smart Hub</title>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>
+  <body class="hub-body">
     <header class="topbar">
       <div class="brand">
         <span class="brand-mark">RE/MAX</span>
@@ -18,55 +18,44 @@
       </div>
     </header>
 
-    <main class="container">
-      <section class="hub-buttons-grid" id="appsGrid">
-        <button class="hub-card" data-app="checkvisto">
-          <span class="card-icon">SV</span>
-          <span class="card-title">Smart Vistorias</span>
-          <span class="card-desc">Controle de visitas</span>
-        </button>
+    <div class="hub-layout">
+      <!-- ──── Sidebar ──── -->
+      <aside class="sidebar">
+        <nav id="navCategorias" class="sidebar-nav">
+          <!-- itens injetados via JS -->
+        </nav>
+      </aside>
 
-        <button class="hub-card" data-app="motiva">
-          <span class="card-icon">MS</span>
-          <span class="card-title">Motiva Smart</span>
-          <span class="card-desc">Motivação & metas</span>
-        </button>
+      <!-- ──── Área central ──── -->
+      <main class="hub-main">
+        <div class="hub-main-head">
+          <h2 id="tituloCategoria">Captação</h2>
+          <div class="search-wrap">
+            <input id="inputBusca" type="search" placeholder="Buscar nesta categoria..." autocomplete="off">
+          </div>
+        </div>
 
-        <button class="hub-card" data-app="alude">
-          <span class="card-icon">AL</span>
-          <span class="card-title">Alude</span>
-          <span class="card-desc">Análise de crédito</span>
-        </button>
+        <section id="appsGrid" class="hub-buttons-grid">
+          <!-- cards injetados via JS -->
+        </section>
 
-        <button class="hub-card" data-app="cadastro_imobiliario">
-          <span class="card-icon">CC</span>
-          <span class="card-title">Central de Cadastro</span>
-          <span class="card-desc">centraldecadastroimobiliario.com</span>
-        </button>
+        <div id="estadoVazio" class="estado-vazio" hidden>
+          <p>Nenhum resultado.</p>
+        </div>
 
-        <button class="hub-card" data-app="imovelp">
-          <span class="card-icon">IP</span>
-          <span class="card-title">Imóvel do Proprietário</span>
-          <span class="card-desc">Gestão de imóveis</span>
-        </button>
-
-        <button class="hub-card" data-app="sp_imovel">
-          <span class="card-icon">SP</span>
-          <span class="card-title">SP Imóvel</span>
-          <span class="card-desc">Captação SP</span>
-        </button>
-
-        <button class="hub-card" data-app="forsale">
-          <span class="card-icon">CI</span>
-          <span class="card-title">Jr Captações</span>
-          <span class="card-desc">Sigavi360</span>
-        </button>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <span>Remax Smart &middot; Hub interno</span>
-    </footer>
+        <!-- ──── Aba Documentos (placeholder) ──── -->
+        <section id="secaoDocumentos" class="docs-placeholder" hidden>
+          <div class="docs-card">
+            <h3>📄 Documentos da empresa</h3>
+            <p class="muted">
+              Em breve: PDFs sincronizados com o Google Drive da Remax Smart.
+              Aqui você vai poder consultar contratos modelo, manuais, fichas etc.
+            </p>
+            <span class="badge falta">Em desenvolvimento</span>
+          </div>
+        </section>
+      </main>
+    </div>
 
     <script type="module" src="hub-app.js"></script>
   </body>

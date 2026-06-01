@@ -40,10 +40,14 @@ body {
 }
 
 .topbar {
-  padding: 32px 40px 8px;
+  padding: 20px 32px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(15, 18, 24, 0.4);
 }
 
 .brand {
@@ -522,4 +526,158 @@ body {
   letter-spacing: 1.5px;
   color: var(--accent);
   user-select: all;
+}
+
+/* ── Ajuste do container na página Admin (sobrescreve o flex centralizado) ── */
+.admin-container {
+  flex-direction: column;
+  width: 100%;
+  max-width: 1180px;
+  align-items: stretch;
+  gap: 0;
+}
+.admin-section {
+  width: 100%;
+}
+/* Cabeçalho da seção: título + (descrição abaixo) + botão à direita */
+.admin-section-head {
+  align-items: center;
+}
+.admin-section-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Layout principal do Hub com sidebar ───────────────────────────────── */
+.hub-body { display: block; }
+.hub-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 0;
+  min-height: calc(100vh - 110px);
+}
+
+/* Sidebar */
+.sidebar {
+  padding: 18px 14px 30px;
+  border-right: 1px solid var(--border);
+  background: rgba(15, 18, 24, 0.5);
+}
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  font: 600 13px/1 inherit;
+  text-align: left;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.nav-item:hover {
+  background: var(--bg-card);
+  color: var(--text-1);
+}
+.nav-item.ativo {
+  background: var(--bg-card);
+  color: var(--text-1);
+  border-color: var(--border-hover);
+}
+.nav-icone {
+  font-size: 17px;
+  width: 22px;
+  text-align: center;
+}
+.nav-label { flex: 1; }
+
+/* Área central */
+.hub-main {
+  padding: 22px 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.hub-main-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.hub-main-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.search-wrap {
+  flex: 1;
+  max-width: 360px;
+}
+.search-wrap input {
+  width: 100%;
+  padding: 10px 14px;
+  background: #0f1218;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-1);
+  font: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+.search-wrap input:focus { border-color: var(--accent); }
+.search-wrap input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Hub grid dentro do main (override do antigo centralizado) */
+.hub-main .hub-buttons-grid {
+  max-width: none;
+  width: 100%;
+}
+
+/* Estado vazio */
+.estado-vazio {
+  padding: 50px 20px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+}
+
+/* Placeholder de Documentos */
+.docs-placeholder { padding: 30px 0; }
+.docs-card {
+  max-width: 540px;
+  padding: 30px 28px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.docs-card h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.docs-card .badge { align-self: flex-start; }
+
+/* Responsive: sidebar vira topo em telas estreitas */
+@media (max-width: 720px) {
+  .hub-layout { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); padding: 12px 16px; }
+  .sidebar-nav { flex-direction: row; overflow-x: auto; gap: 6px; }
+  .nav-item { white-space: nowrap; }
+  .hub-main { padding: 18px 18px 30px; }
 }
