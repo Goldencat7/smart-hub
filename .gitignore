@@ -1,5 +1,56 @@
+# Dependencies
 node_modules/
 **/node_modules/
+jspm_packages/
+bower_components/
+
+# Build output
+dist/
+out/
+release/
+build/Release
+*.exe
+*.msi
+*.dmg
+*.AppImage
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+lib-cov
+coverage
+*.lcov
+.nyc_output
+
+# Caches
+.npm
+.eslintcache
+.stylelintcache
+.cache
+.parcel-cache
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
 
 # Firebase
 .firebase/
@@ -9,21 +60,6 @@ firestore-debug.log
 firestore-debug.*.log
 .runtimeconfig.json
 
-# Electron build output
-dist/
-out/
-release/
-*.exe
-*.msi
-*.dmg
-*.AppImage
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
 # Editor / OS
 .DS_Store
 Thumbs.db
@@ -31,6 +67,6 @@ Thumbs.db
 .idea/
 *.swp
 
-# Temp
+# Temp / scratch files
 _*.html
 _*.tmp
