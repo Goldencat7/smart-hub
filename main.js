@@ -1,10 +1,34 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const { autoUpdater } = require('electron-updater');
 
 // Permite sites HTTP antigos e ignora cert errors
 app.commandLine.appendSwitch('ignore-certificate-errors');
 app.commandLine.appendSwitch('allow-running-insecure-content');
 app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
+
+// ─── Auto-update via GitHub Releases ────────────────────────────────────────
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Atualização disponível:', info.version);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Atualização pronta',
+    message: `Versão ${info.version} foi baixada.`,
+    detail: 'Reinicie o Hub para aplicar a atualização.',
+    buttons: ['Reiniciar agora', 'Depois'],
+    defaultId: 0
+  }).then(r => { if (r.response === 0) autoUpdater.quitAndInstall(); });
+});
+
+autoUpdater.on('error', (err) => {
+  console.warn('Erro no auto-updater:', err.message);
+});
 
 let janelaPrincipal = null;
 
@@ -24,6 +48,12 @@ function criarJanelaPrincipal() {
 
 app.whenReady().then(() => {
   criarJanelaPrincipal();
+  // Verifica updates 3s após abrir (não bloqueia o login)
+  if (app.isPackaged) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdatesAndNotify().catch(e => console.warn('Update check:', e.message));
+    }, 3000);
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) criarJanelaPrincipal();
   });

@@ -1,16 +1,63 @@
 {
-  "name": "hub",
+  "name": "remax-smart-hub",
+  "productName": "Remax Smart Hub",
   "version": "1.0.0",
-  "description": "",
+  "description": "Hub interno da Remax Smart — acesso rápido às plataformas com autologin via Firebase.",
   "main": "main.js",
- "scripts": {
-  "start": "electron ."
-},
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs",
+  "author": {
+    "name": "Remax Smart"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "publish": "electron-builder --publish always"
+  },
   "devDependencies": {
-    "electron": "^42.2.0"
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
+  },
+  "build": {
+    "appId": "com.remaxsmart.hub",
+    "productName": "Remax Smart Hub",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "firebase-config.js",
+      "*.html",
+      "*.js",
+      "styles.css",
+      "!functions/**",
+      "!release/**",
+      "!.firebase/**",
+      "!firestore.rules",
+      "!firebase.json",
+      "!.firebaserc"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "Remax-Smart-Hub-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Remax Smart Hub"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Goldencat7",
+      "repo": "remax-smart-hub"
+    }
   }
 }
