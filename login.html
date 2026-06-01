@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <title>Remax Smart Hub — Login</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body class="auth-body">
+    <main class="auth-card">
+      <header class="auth-header">
+        <span class="brand-mark">RE/MAX</span>
+        <span class="brand-sub">SMART HUB</span>
+      </header>
+
+      <h1 class="auth-title">Faça login</h1>
+      <p class="auth-sub">Entre com sua conta corporativa pra acessar o Hub.</p>
+
+      <button id="btnGoogle" class="auth-btn auth-btn-google" type="button">
+        <span class="g-logo">G</span>
+        Entrar com Google
+      </button>
+
+      <div class="auth-divider"><span>ou com email</span></div>
+
+      <form id="formLogin" class="auth-form">
+        <label class="auth-label">
+          Email
+          <input id="inputEmail" type="email" autocomplete="username" required>
+        </label>
+        <label class="auth-label">
+          Senha
+          <input id="inputPass" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit" class="auth-btn auth-btn-primary" id="btnEntrar">Entrar</button>
+      </form>
+
+      <p id="msgErro" class="auth-erro" hidden></p>
+    </main>
+
+    <script type="module" src="auth-login.js"></script>
+  </body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <title>Remax Smart Hub</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">RE/MAX</span>
+        <span class="brand-sub">SMART HUB</span>
+      </div>
+      <div class="topbar-right">
+        <span id="usuarioInfo" class="user-pill"></span>
+        <button id="btnAdmin" class="topbar-btn" hidden>Admin</button>
+        <button id="btnSair" class="topbar-btn">Sair</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hub-buttons-grid" id="appsGrid">
+        <button class="hub-card" data-app="checkvisto">
+          <span class="card-icon">SV</span>
+          <span class="card-title">Smart Vistorias</span>
+          <span class="card-desc">Controle de visitas</span>
+        </button>
+
+        <button class="hub-card" data-app="motiva">
+          <span class="card-icon">MS</span>
+          <span class="card-title">Motiva Smart</span>
+          <span class="card-desc">Motivação & metas</span>
+        </button>
+
+        <button class="hub-card" data-app="alude">
+          <span class="card-icon">AL</span>
+          <span class="card-title">Alude</span>
+          <span class="card-desc">Análise de crédito</span>
+        </button>
+
+        <button class="hub-card" data-app="cadastro_imobiliario">
+          <span class="card-icon">CC</span>
+          <span class="card-title">Central de Cadastro</span>
+          <span class="card-desc">centraldecadastroimobiliario.com</span>
+        </button>
+
+        <button class="hub-card" data-app="imovelp">
+          <span class="card-icon">IP</span>
+          <span class="card-title">Imóvel do Proprietário</span>
+          <span class="card-desc">Gestão de imóveis</span>
+        </button>
+
+        <button class="hub-card" data-app="sp_imovel">
+          <span class="card-icon">SP</span>
+          <span class="card-title">SP Imóvel</span>
+          <span class="card-desc">Captação SP</span>
+        </button>
+
+        <button class="hub-card" data-app="forsale">
+          <span class="card-icon">CI</span>
+          <span class="card-title">Jr Captações</span>
+          <span class="card-desc">Sigavi360</span>
+        </button>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Remax Smart &middot; Hub interno</span>
+    </footer>
+
+    <script type="module" src="hub-app.js"></script>
+  </body>
+</html>
