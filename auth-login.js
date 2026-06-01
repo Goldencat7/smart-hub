@@ -1,9 +1,12 @@
-// Tela de login do Hub — Firebase Auth (Email/Senha + Google)
+// Tela de login do Hub — Firebase Auth (Email/Senha + Google) + cadastro via código
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
   getAuth, signInWithEmailAndPassword, GoogleAuthProvider,
-  signInWithPopup, signInWithCredential, onAuthStateChanged
+  signInWithPopup, onAuthStateChanged, updateProfile
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+import {
+  getFunctions, httpsCallable
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -16,27 +19,36 @@ const firebaseConfig = {
 
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const fns  = getFunctions(app, 'southamerica-east1');
+const criarContaComCodigo = httpsCallable(fns, 'criarContaComCodigo');
 
-const form     = document.getElementById('formLogin');
-const inputEmail = document.getElementById('inputEmail');
-const inputPass  = document.getElementById('inputPass');
-const btnGoogle  = document.getElementById('btnGoogle');
-const btnEntrar  = document.getElementById('btnEntrar');
-const msgErro    = document.getElementById('msgErro');
+// Refs
+const viewLogin    = document.getElementById('viewLogin');
+const viewCadastro = document.getElementById('viewCadastro');
+const formLogin    = document.getElementById('formLogin');
+const formCadastro = document.getElementById('formCadastro');
+const inputEmail   = document.getElementById('inputEmail');
+const inputPass    = document.getElementById('inputPass');
+const btnGoogle    = document.getElementById('btnGoogle');
+const btnEntrar    = document.getElementById('btnEntrar');
+const btnCriar     = document.getElementById('btnCriar');
+const msgErro      = document.getElementById('msgErro');
+const msgErroCad   = document.getElementById('msgErroCad');
+const msgOkCad     = document.getElementById('msgOkCad');
+const linkCriarConta  = document.getElementById('linkCriarConta');
+const linkVoltarLogin = document.getElementById('linkVoltarLogin');
 
-function mostrarErro(texto) {
-  msgErro.textContent = texto;
-  msgErro.hidden = false;
-}
-function limparErro() {
-  msgErro.hidden = true;
-  msgErro.textContent = '';
-}
+function mostrar(el, t) { el.textContent = t; el.hidden = false; }
+function esconder(el)   { el.hidden = true; el.textContent = ''; }
 
 function travarBotoes(travar) {
   btnEntrar.disabled = travar;
   btnGoogle.disabled = travar;
   btnEntrar.textContent = travar ? 'Entrando...' : 'Entrar';
+}
+function travarCadastro(travar) {
+  btnCriar.disabled = travar;
+  btnCriar.textContent = travar ? 'Criando...' : 'Criar conta';
 }
 
 function traduzErroFirebase(code) {
@@ -47,41 +59,77 @@ function traduzErroFirebase(code) {
     'auth/wrong-password': 'Senha incorreta.',
     'auth/too-many-requests': 'Muitas tentativas. Aguarde um pouco.',
     'auth/popup-closed-by-user': 'Login com Google cancelado.',
-    'auth/network-request-failed': 'Sem conexão com a internet.'
+    'auth/network-request-failed': 'Sem conexão com a internet.',
+    'auth/email-already-in-use': 'Esse email já tem conta.',
+    'auth/weak-password': 'Senha muito fraca (mínimo 6 caracteres).'
   };
   return map[code] || `Erro: ${code}`;
 }
 
-// Email + Senha
-form.addEventListener('submit', async (e) => {
+// ─── Trocar entre login e cadastro ───────────────────────────────────────────
+linkCriarConta.addEventListener('click', (e) => {
   e.preventDefault();
-  limparErro();
+  esconder(msgErro); esconder(msgErroCad); esconder(msgOkCad);
+  viewLogin.hidden = true;
+  viewCadastro.hidden = false;
+});
+linkVoltarLogin.addEventListener('click', (e) => {
+  e.preventDefault();
+  esconder(msgErro); esconder(msgErroCad); esconder(msgOkCad);
+  viewCadastro.hidden = true;
+  viewLogin.hidden = false;
+});
+
+// ─── Login: Email + Senha ────────────────────────────────────────────────────
+formLogin.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  esconder(msgErro);
   travarBotoes(true);
   try {
     await signInWithEmailAndPassword(auth, inputEmail.value.trim(), inputPass.value);
   } catch (err) {
-    mostrarErro(traduzErroFirebase(err.code));
+    mostrar(msgErro, traduzErroFirebase(err.code));
     travarBotoes(false);
   }
 });
 
-// Google — em Electron, o popup OAuth tem limitações com origin file://.
-// Por enquanto tentamos signInWithPopup; se não funcionar, usa email/senha.
+// ─── Login: Google ───────────────────────────────────────────────────────────
 btnGoogle.addEventListener('click', async () => {
-  limparErro();
+  esconder(msgErro);
   travarBotoes(true);
   try {
     const provider = new GoogleAuthProvider();
     await signInWithPopup(auth, provider);
   } catch (err) {
-    mostrarErro('Login com Google não funciona no Hub ainda. Use email/senha.');
+    mostrar(msgErro, 'Login com Google não funciona no Hub ainda. Use email/senha.');
     travarBotoes(false);
   }
 });
 
-// Quando o login der certo, avisa o main pra carregar o index.
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    window.hubAuth.loginConcluido();
+// ─── Cadastro com código de convite ──────────────────────────────────────────
+formCadastro.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  esconder(msgErroCad); esconder(msgOkCad);
+  travarCadastro(true);
+
+  const nome   = document.getElementById('cadNome').value.trim();
+  const email  = document.getElementById('cadEmail').value.trim();
+  const senha  = document.getElementById('cadSenha').value;
+  const codigo = document.getElementById('cadCodigo').value.trim().toUpperCase();
+
+  try {
+    await criarContaComCodigo({ email, senha, codigo, displayName: nome });
+    mostrar(msgOkCad, 'Conta criada! Entrando...');
+    // Faz login automaticamente com as credenciais novas
+    await signInWithEmailAndPassword(auth, email, senha);
+  } catch (err) {
+    const msg = err.message || 'Erro ao criar conta.';
+    mostrar(msgErroCad, msg);
+    travarCadastro(false);
   }
+});
+
+// Quando o login der certo, manda o main pra index.html
+onAuthStateChanged(auth, (user) => {
+  if (user) window.hubAuth.loginConcluido();
 });

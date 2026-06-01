@@ -480,3 +480,46 @@ body {
   gap: 10px;
   margin-top: 6px;
 }
+
+/* ── Link de trocar entre login e cadastro ─────────────────── */
+.auth-toggle {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.auth-toggle a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.auth-toggle a:hover { text-decoration: underline; }
+.auth-ok {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(10, 122, 58, 0.18);
+  border: 1px solid rgba(10, 122, 58, 0.5);
+  color: #8ddca8;
+  font-size: 13px;
+}
+
+/* ── Caixa de código gerado ────────────────────────────────── */
+.codigo-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #0f1218;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 4px 0 8px;
+}
+.codigo-box code {
+  flex: 1;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  user-select: all;
+}

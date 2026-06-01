@@ -12,29 +12,69 @@
         <span class="brand-sub">SMART HUB</span>
       </header>
 
-      <h1 class="auth-title">Faça login</h1>
-      <p class="auth-sub">Entre com sua conta corporativa pra acessar o Hub.</p>
+      <!-- ──── View: Login ──── -->
+      <div id="viewLogin">
+        <h1 class="auth-title">Faça login</h1>
+        <p class="auth-sub">Entre com sua conta do Hub.</p>
 
-      <button id="btnGoogle" class="auth-btn auth-btn-google" type="button">
-        <span class="g-logo">G</span>
-        Entrar com Google
-      </button>
+        <button id="btnGoogle" class="auth-btn auth-btn-google" type="button">
+          <span class="g-logo">G</span>
+          Entrar com Google
+        </button>
 
-      <div class="auth-divider"><span>ou com email</span></div>
+        <div class="auth-divider"><span>ou com email</span></div>
 
-      <form id="formLogin" class="auth-form">
-        <label class="auth-label">
-          Email
-          <input id="inputEmail" type="email" autocomplete="username" required>
-        </label>
-        <label class="auth-label">
-          Senha
-          <input id="inputPass" type="password" autocomplete="current-password" required>
-        </label>
-        <button type="submit" class="auth-btn auth-btn-primary" id="btnEntrar">Entrar</button>
-      </form>
+        <form id="formLogin" class="auth-form">
+          <label class="auth-label">
+            Email
+            <input id="inputEmail" type="email" autocomplete="username" required>
+          </label>
+          <label class="auth-label">
+            Senha
+            <input id="inputPass" type="password" autocomplete="current-password" required>
+          </label>
+          <button type="submit" class="auth-btn auth-btn-primary" id="btnEntrar">Entrar</button>
+        </form>
 
-      <p id="msgErro" class="auth-erro" hidden></p>
+        <p class="auth-toggle">
+          Não tem conta? <a href="#" id="linkCriarConta">Criar conta</a>
+        </p>
+
+        <p id="msgErro" class="auth-erro" hidden></p>
+      </div>
+
+      <!-- ──── View: Cadastro ──── -->
+      <div id="viewCadastro" hidden>
+        <h1 class="auth-title">Criar conta</h1>
+        <p class="auth-sub">Use o código de convite que o admin te passou.</p>
+
+        <form id="formCadastro" class="auth-form">
+          <label class="auth-label">
+            Nome
+            <input id="cadNome" type="text" autocomplete="name" required>
+          </label>
+          <label class="auth-label">
+            Email
+            <input id="cadEmail" type="email" autocomplete="email" required>
+          </label>
+          <label class="auth-label">
+            Senha (mín. 6)
+            <input id="cadSenha" type="password" autocomplete="new-password" minlength="6" required>
+          </label>
+          <label class="auth-label">
+            Código de convite
+            <input id="cadCodigo" type="text" placeholder="REMAX-XXXXXXXX" required>
+          </label>
+          <button type="submit" class="auth-btn auth-btn-primary" id="btnCriar">Criar conta</button>
+        </form>
+
+        <p class="auth-toggle">
+          Já tem conta? <a href="#" id="linkVoltarLogin">Voltar pro login</a>
+        </p>
+
+        <p id="msgErroCad" class="auth-erro" hidden></p>
+        <p id="msgOkCad" class="auth-ok" hidden></p>
+      </div>
     </main>
 
     <script type="module" src="auth-login.js"></script>

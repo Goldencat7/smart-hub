@@ -27,6 +27,17 @@
 
       <section class="admin-section">
         <div class="admin-section-head">
+          <div>
+            <h2>Códigos de Convite</h2>
+            <p class="admin-sub">Pessoas usam pra criar conta no Hub. Cada código pode ter validade e número de usos.</p>
+          </div>
+          <button id="btnNovoCodigo" class="topbar-btn primario">+ Gerar código</button>
+        </div>
+        <div id="listaCodigos" class="admin-table"></div>
+      </section>
+
+      <section class="admin-section">
+        <div class="admin-section-head">
           <h2>Usuários do Hub</h2>
           <button id="btnNovoUsuario" class="topbar-btn primario">+ Novo usuário</button>
         </div>
@@ -75,6 +86,44 @@
           <button type="submit" class="topbar-btn primario">Criar</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Modal: novo código de convite -->
+    <dialog id="modalCodigo" class="modal">
+      <form method="dialog" id="formCodigo" class="modal-form">
+        <h3>Gerar código de convite</h3>
+        <label class="auth-label">
+          Quantos podem usar?
+          <input id="codigoMaxUsos" type="number" min="1" max="100" value="1" required>
+        </label>
+        <label class="auth-label">
+          Validade (dias)
+          <input id="codigoValidade" type="number" min="1" max="365" value="7" placeholder="vazio = sem validade">
+        </label>
+        <label class="auth-label-inline">
+          <input id="codigoFazAdmin" type="checkbox">
+          Quem usar vira admin
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="cancelarCodigo" class="topbar-btn">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Gerar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Modal: mostrar código gerado -->
+    <dialog id="modalCodigoGerado" class="modal">
+      <div class="modal-form">
+        <h3>Código gerado</h3>
+        <p class="muted">Manda esse código pra pessoa que vai criar conta:</p>
+        <div class="codigo-box">
+          <code id="codigoTexto">REMAX-XXXXXXXX</code>
+          <button type="button" id="btnCopiarCodigo" class="topbar-btn">Copiar</button>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="fecharCodigoGerado" class="topbar-btn primario">OK</button>
+        </div>
+      </div>
     </dialog>
 
     <script type="module" src="admin-app.js"></script>

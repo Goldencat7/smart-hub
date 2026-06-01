@@ -24,6 +24,9 @@ const listUsers         = httpsCallable(fns, 'listUsers');
 const setUserAdmin      = httpsCallable(fns, 'setUserAdmin');
 const createUser        = httpsCallable(fns, 'createUser');
 const deleteUserAccount = httpsCallable(fns, 'deleteUserAccount');
+const criarCodigoConvite    = httpsCallable(fns, 'criarCodigoConvite');
+const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
+const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 
 // Mesma lista do hub-app.js — sites que têm autologin (são os únicos com credenciais)
 const SITES = [
@@ -36,8 +39,11 @@ const SITES = [
 
 const elListaCred  = document.getElementById('listaCredenciais');
 const elListaUser  = document.getElementById('listaUsuarios');
+const elListaCodigos = document.getElementById('listaCodigos');
 const modalCred    = document.getElementById('modalCred');
 const modalUser    = document.getElementById('modalUser');
+const modalCodigo  = document.getElementById('modalCodigo');
+const modalCodigoGerado = document.getElementById('modalCodigoGerado');
 
 // Verifica auth + admin
 onAuthStateChanged(auth, async (user) => {
@@ -58,6 +64,35 @@ document.getElementById('btnNovoUsuario').addEventListener('click', () => {
   document.getElementById('userSenha').value = '';
   document.getElementById('userAdmin').checked = false;
   modalUser.showModal();
+});
+
+document.getElementById('btnNovoCodigo').addEventListener('click', () => {
+  document.getElementById('codigoMaxUsos').value = '1';
+  document.getElementById('codigoValidade').value = '7';
+  document.getElementById('codigoFazAdmin').checked = false;
+  modalCodigo.showModal();
+});
+document.getElementById('cancelarCodigo').addEventListener('click', () => modalCodigo.close());
+document.getElementById('fecharCodigoGerado').addEventListener('click', () => modalCodigoGerado.close());
+document.getElementById('btnCopiarCodigo').addEventListener('click', async () => {
+  const txt = document.getElementById('codigoTexto').textContent;
+  try { await navigator.clipboard.writeText(txt); alert('Copiado!'); }
+  catch(e) { alert('Não copiou. Selecione e Ctrl+C manualmente.'); }
+});
+
+document.getElementById('formCodigo').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const maxUsos = parseInt(document.getElementById('codigoMaxUsos').value, 10);
+  const diasRaw = document.getElementById('codigoValidade').value.trim();
+  const diasValidade = diasRaw ? parseInt(diasRaw, 10) : null;
+  const fazAdmin = document.getElementById('codigoFazAdmin').checked;
+  try {
+    const r = await criarCodigoConvite({ maxUsos, diasValidade, fazAdmin });
+    modalCodigo.close();
+    document.getElementById('codigoTexto').textContent = r.data.codigo;
+    modalCodigoGerado.showModal();
+    carregarCodigos();
+  } catch (err) { alert('Erro: ' + err.message); }
 });
 
 document.getElementById('cancelarCred').addEventListener('click', () => modalCred.close());
@@ -88,7 +123,7 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
 });
 
 async function carregarTudo() {
-  await Promise.all([carregarCredenciais(), carregarUsuarios()]);
+  await Promise.all([carregarCredenciais(), carregarUsuarios(), carregarCodigos()]);
 }
 
 async function carregarCredenciais() {
@@ -150,6 +185,54 @@ async function abrirModalCredencial(siteKey, nome) {
     document.getElementById('credPassword').value = r.data.password || '';
   } catch (e) { /* sem credenciais ainda */ }
   modalCred.showModal();
+}
+
+async function carregarCodigos() {
+  elListaCodigos.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const resp = await listarCodigosConvite();
+    const lista = resp.data;
+    if (lista.length === 0) {
+      elListaCodigos.innerHTML = '<p class="muted">Nenhum código ainda. Clique em "+ Gerar código" pra criar.</p>';
+      return;
+    }
+    elListaCodigos.innerHTML = `
+      <table class="users-table">
+        <thead>
+          <tr><th>Código</th><th>Usos</th><th>Admin?</th><th>Validade</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${lista.map(c => {
+            const status = c.expirado ? '<span class="badge falta">Expirado</span>'
+                         : c.esgotado ? '<span class="badge falta">Esgotado</span>'
+                         : '<span class="badge ok">Ativo</span>';
+            const validade = c.expiraEm ? new Date(c.expiraEm).toLocaleDateString('pt-BR') : 'Sem validade';
+            return `
+              <tr>
+                <td><code>${c.codigo}</code></td>
+                <td>${c.usos}/${c.maxUsos}</td>
+                <td>${c.fazAdmin ? 'Sim' : 'Não'}</td>
+                <td>${validade}</td>
+                <td>${status}</td>
+                <td><button class="topbar-btn perigo" data-cod="${c.codigo}">Excluir</button></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+    elListaCodigos.querySelectorAll('button[data-cod]').forEach(b => {
+      b.addEventListener('click', async () => {
+        if (!confirm(`Excluir código ${b.dataset.cod}?`)) return;
+        try {
+          await excluirCodigoConvite({ codigo: b.dataset.cod });
+          carregarCodigos();
+        } catch (e) { alert('Erro: ' + e.message); }
+      });
+    });
+  } catch (err) {
+    elListaCodigos.innerHTML = `<p class="erro">Erro: ${err.message}</p>`;
+  }
 }
 
 async function carregarUsuarios() {
