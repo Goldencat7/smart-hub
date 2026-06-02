@@ -224,43 +224,57 @@ exports.criarContaComCodigo = onCall(async (req) => {
 
   const ref = db.collection('codigos_convite').doc(codigo.trim().toUpperCase());
 
-  // Valida + consome o código numa transação (evita uso concorrente)
-  const novoUsuario = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) throw new HttpsError('not-found', 'Código de convite inválido.');
-    const x = snap.data();
+  // 1) Validação rápida ANTES de criar a conta (evita conta órfã no caso comum)
+  const snapInicial = await ref.get();
+  if (!snapInicial.exists) throw new HttpsError('not-found', 'Código de convite inválido.');
+  const dadosCodigo = snapInicial.data();
+  if (dadosCodigo.usos >= dadosCodigo.maxUsos) {
+    throw new HttpsError('failed-precondition', 'Este código já foi usado.');
+  }
+  if (dadosCodigo.expiraEm && dadosCodigo.expiraEm.toDate() < new Date()) {
+    throw new HttpsError('failed-precondition', 'Este código expirou.');
+  }
 
-    if (x.usos >= x.maxUsos) throw new HttpsError('failed-precondition', 'Este código já foi usado.');
-    if (x.expiraEm && x.expiraEm.toDate() < new Date()) {
-      throw new HttpsError('failed-precondition', 'Este código expirou.');
-    }
-
-    // Cria a conta primeiro (fora da transação, mas dentro é OK pra essa lógica)
-    let user;
-    try {
-      user = await admin.auth().createUser({
-        email,
-        password: senha,
-        displayName: displayName || undefined
-      });
-    } catch (e) {
-      if (e.code === 'auth/email-already-exists') {
-        throw new HttpsError('already-exists', 'Já existe uma conta com esse email.');
-      }
-      throw new HttpsError('internal', e.message);
-    }
-
-    if (x.fazAdmin) {
-      await admin.auth().setCustomUserClaims(user.uid, { admin: true });
-    }
-
-    tx.update(ref, {
-      usos: x.usos + 1,
-      usadosPor: admin.firestore.FieldValue.arrayUnion(user.uid)
+  // 2) Cria a conta UMA vez, fora da transação
+  let user;
+  try {
+    user = await admin.auth().createUser({
+      email,
+      password: senha,
+      displayName: displayName || undefined
     });
+  } catch (e) {
+    if (e.code === 'auth/email-already-exists') {
+      throw new HttpsError('already-exists', 'Já existe uma conta com esse email.');
+    }
+    throw new HttpsError('internal', e.message);
+  }
 
-    return user;
-  });
+  // 3) Consome o código atomicamente (a transação só lê + atualiza, então é seguro re-executar).
+  //    Se falhar (corrida: código esgotou/expirou no meio), desfaz a conta criada.
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new HttpsError('not-found', 'Código de convite inválido.');
+      const x = snap.data();
+      if (x.usos >= x.maxUsos) throw new HttpsError('failed-precondition', 'Este código já foi usado.');
+      if (x.expiraEm && x.expiraEm.toDate() < new Date()) {
+        throw new HttpsError('failed-precondition', 'Este código expirou.');
+      }
+      tx.update(ref, {
+        usos: x.usos + 1,
+        usadosPor: admin.firestore.FieldValue.arrayUnion(user.uid)
+      });
+    });
+  } catch (e) {
+    await admin.auth().deleteUser(user.uid).catch(() => {}); // rollback da conta
+    throw e;
+  }
 
-  return { ok: true, uid: novoUsuario.uid, fazAdmin: false };
+  // 4) Promove a admin se o código pedir
+  if (dadosCodigo.fazAdmin) {
+    await admin.auth().setCustomUserClaims(user.uid, { admin: true });
+  }
+
+  return { ok: true, uid: user.uid, fazAdmin: !!dadosCodigo.fazAdmin };
 });

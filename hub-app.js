@@ -71,14 +71,15 @@ const APPS = [
     url: 'https://universidaderemax.studionmx.com/', autologin: false
   },
   {
-    key: 'goiconnect', categoria: 'captacao',
-    titulo: 'GOI Connect', icone: 'GC', desc: 'goiconnect.com',
+    key: 'goiconnect', categoria: 'crm',
+    titulo: 'IConnect', icone: 'IC', desc: 'goiconnect.com',
     url: 'https://goiconnect.com/SignIn.aspx?ReturnUrl=%2f', autologin: false
   }
 ];
 
 const CATEGORIAS = [
   { id: 'captacao',    nome: 'Captação',    icone: '🏠' },
+  { id: 'crm',         nome: 'CRM',         icone: '📇' },
   { id: 'vistoria',    nome: 'Vistoria',    icone: '🔎' },
   { id: 'locacao',     nome: 'Locação',     icone: '🤝' },
   { id: 'performance', nome: 'Performance', icone: '📊' },
