@@ -4,13 +4,13 @@
   --bg-card: #1d222d;
   --bg-card-hover: #242b39;
   --border: #2a3140;
-  --border-hover: #dc1c2e;
+  --border-hover: #0043ff;
   --text-1: #f5f7fa;
   --text-2: #9aa3b2;
   --text-3: #6b7280;
-  --accent: #dc1c2e;
-  --accent-2: #003da5;
-  --accent-glow: rgba(220, 28, 46, 0.35);
+  --accent: #0043ff;
+  --accent-2: #0c2749;
+  --accent-glow: rgba(0, 67, 255, 0.35);
   --radius: 14px;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
@@ -26,7 +26,7 @@ html, body {
   font-family: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   color: var(--text-1);
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(220, 28, 46, 0.18), transparent 60%),
+    radial-gradient(1200px 600px at 10% -10%, rgba(0, 67, 255, 0.18), transparent 60%),
     radial-gradient(900px 500px at 110% 10%, rgba(0, 61, 165, 0.18), transparent 60%),
     linear-gradient(180deg, var(--bg-1), var(--bg-2));
   -webkit-font-smoothing: antialiased;
@@ -52,8 +52,24 @@ body {
 
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 12px;
+}
+
+/* Logo (imagem) */
+.brand-logo {
+  height: 40px;
+  width: auto;
+  display: block;
+}
+.brand-tag-admin {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 2px 10px;
 }
 
 .brand-mark {
@@ -115,7 +131,7 @@ body {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, transparent 60%, rgba(220, 28, 46, 0.08) 100%);
+  background: linear-gradient(135deg, transparent 60%, rgba(0, 67, 255, 0.08) 100%);
   opacity: 0;
   transition: opacity 0.2s ease;
   pointer-events: none;
@@ -142,18 +158,31 @@ body {
 }
 
 .card-icon {
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), #8a0e1c);
+  background: linear-gradient(135deg, var(--accent), #0c2749);
   color: #fff;
   font-weight: 800;
   font-size: 14px;
   letter-spacing: 0.5px;
   box-shadow: 0 4px 12px var(--accent-glow);
+}
+/* Ícone em imagem (icons/<chave>.png). Some sozinho se o arquivo não existir,
+   deixando as iniciais à mostra. */
+.card-icon-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 7px;
+  background: var(--bg-card);
 }
 
 .card-title {
@@ -204,6 +233,7 @@ body {
 }
 .auth-header .brand-mark { font-size: 24px; }
 .auth-header .brand-sub { font-size: 12px; letter-spacing: 5px; }
+.auth-header .brand-logo { height: 78px; }
 .auth-title {
   margin: 0 0 6px;
   font-size: 22px;
@@ -265,7 +295,7 @@ body {
 .auth-btn:active:not(:disabled) { transform: translateY(1px); }
 .auth-btn:disabled { opacity: .55; cursor: not-allowed; }
 .auth-btn-primary {
-  background: linear-gradient(135deg, var(--accent), #8a0e1c);
+  background: linear-gradient(135deg, var(--accent), #0c2749);
   border-color: transparent;
   margin-top: 4px;
 }
@@ -341,7 +371,7 @@ body {
 }
 .topbar-btn:hover { border-color: var(--border-hover); }
 .topbar-btn.primario {
-  background: linear-gradient(135deg, var(--accent), #8a0e1c);
+  background: linear-gradient(135deg, var(--accent), #0c2749);
   border-color: transparent;
 }
 .topbar-btn.perigo {
@@ -642,6 +672,10 @@ body {
   max-width: none;
   width: 100%;
 }
+
+/* Garante que o atributo hidden sempre esconda (CSS com display: grid/flex
+   estava sobrescrevendo o hidden e vazando cards/avisos entre abas). */
+[hidden] { display: none !important; }
 
 /* Estado vazio */
 .estado-vazio {

@@ -1,8 +1,7 @@
-// Tela de login do Hub — Firebase Auth (Email/Senha + Google) + cadastro via código
+// Tela de login do Hub — Firebase Auth (Email/Senha) + cadastro via código de convite
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, GoogleAuthProvider,
-  signInWithPopup, onAuthStateChanged, updateProfile
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   getFunctions, httpsCallable
@@ -29,7 +28,6 @@ const formLogin    = document.getElementById('formLogin');
 const formCadastro = document.getElementById('formCadastro');
 const inputEmail   = document.getElementById('inputEmail');
 const inputPass    = document.getElementById('inputPass');
-const btnGoogle    = document.getElementById('btnGoogle');
 const btnEntrar    = document.getElementById('btnEntrar');
 const btnCriar     = document.getElementById('btnCriar');
 const msgErro      = document.getElementById('msgErro');
@@ -43,7 +41,6 @@ function esconder(el)   { el.hidden = true; el.textContent = ''; }
 
 function travarBotoes(travar) {
   btnEntrar.disabled = travar;
-  btnGoogle.disabled = travar;
   btnEntrar.textContent = travar ? 'Entrando...' : 'Entrar';
 }
 function travarCadastro(travar) {
@@ -89,19 +86,6 @@ formLogin.addEventListener('submit', async (e) => {
     await signInWithEmailAndPassword(auth, inputEmail.value.trim(), inputPass.value);
   } catch (err) {
     mostrar(msgErro, traduzErroFirebase(err.code));
-    travarBotoes(false);
-  }
-});
-
-// ─── Login: Google ───────────────────────────────────────────────────────────
-btnGoogle.addEventListener('click', async () => {
-  esconder(msgErro);
-  travarBotoes(true);
-  try {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  } catch (err) {
-    mostrar(msgErro, 'Login com Google não funciona no Hub ainda. Use email/senha.');
     travarBotoes(false);
   }
 });

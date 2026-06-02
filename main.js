@@ -181,10 +181,10 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           if(!b){
             b = document.createElement('div');
             b.id = '__hub-banner';
-            b.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;max-width:280px;padding:8px 12px;border-radius:8px;font:600 12px/1.4 system-ui,Segoe UI,Arial;color:#fff;background:#dc1c2e;box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none;opacity:.95;transition:opacity .3s ease';
+            b.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;max-width:280px;padding:8px 12px;border-radius:8px;font:600 12px/1.4 system-ui,Segoe UI,Arial;color:#fff;background:#0043ff;box-shadow:0 4px 14px rgba(0,0,0,.35);pointer-events:none;opacity:.95;transition:opacity .3s ease';
             document.documentElement.appendChild(b);
           }
-          b.style.background = cor || '#dc1c2e';
+          b.style.background = cor || '#0043ff';
           b.style.opacity = '0.95';
           b.textContent = '[Hub] ' + msg;
           if(window.__hubBannerTimer) clearTimeout(window.__hubBannerTimer);

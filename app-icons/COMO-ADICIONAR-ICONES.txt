@@ -1,0 +1,28 @@
+COMO ADICIONAR OS ÍCONES DOS APPS
+==================================
+
+Coloque os ícones DENTRO desta pasta (app-icons/), em formato PNG, com fundo
+transparente de preferência. Tamanho recomendado: 128x128 ou 256x256 px
+(quadrado). O Hub redimensiona sozinho.
+
+O NOME DO ARQUIVO precisa ser EXATAMENTE a "chave" do app (em minúsculas),
+com extensão .png. Se o nome não bater, o app continua mostrando as iniciais.
+
+Lista de arquivos esperados (um por app):
+
+  app-icons/cadastro_imobiliario.png   ->  Central de Cadastro    (FALTA)
+  app-icons/imovelp.png                ->  Imóvel do Proprietário (ok)
+  app-icons/sp_imovel.png              ->  SP Imóvel              (ok)
+  app-icons/forsale.png                ->  Jr Captações (Sigavi)  (ok)
+  app-icons/checkvisto.png             ->  Smart Vistorias        (ok)
+  app-icons/alude.png                  ->  Alude                  (ok)
+  app-icons/motiva.png                 ->  Motiva Smart           (FALTA)
+  app-icons/universidade.png           ->  Universidade RE/MAX    (FALTA)
+  app-icons/goiconnect.png             ->  IConnect               (FALTA)
+
+Observações:
+- Não precisa adicionar todos de uma vez. Os que faltarem ficam com as
+  iniciais (CC, MS, UR, IC) automaticamente.
+- Para trocar/atualizar um icone depois: substitua o arquivo e publique uma
+  nova versao (sobe o numero em package.json e roda: npm run publish).
+- Pode apagar este arquivo .txt depois de ler, se quiser.

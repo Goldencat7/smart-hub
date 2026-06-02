@@ -156,7 +156,10 @@ function renderCentro() {
 
   appsGrid.innerHTML = filtrados.map(a => `
     <button class="hub-card" data-app="${a.key}">
-      <span class="card-icon">${a.icone}</span>
+      <span class="card-icon">
+        <img class="card-icon-img" src="app-icons/${a.key}.png" alt="">
+        ${a.icone}
+      </span>
       <span class="card-title">${a.titulo}</span>
       <span class="card-desc">${a.desc}</span>
     </button>
@@ -164,6 +167,10 @@ function renderCentro() {
 
   appsGrid.querySelectorAll('.hub-card').forEach(b => {
     b.addEventListener('click', () => abrirApp(b.dataset.app));
+  });
+  // Se o ícone de imagem não existir, remove a <img> e ficam as iniciais.
+  appsGrid.querySelectorAll('.card-icon-img').forEach(img => {
+    img.addEventListener('error', () => img.remove());
   });
 }
 
