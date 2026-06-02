@@ -277,6 +277,19 @@ body {
 .auth-label input:focus, .modal-form input:focus {
   border-color: var(--accent);
 }
+/* Campo de senha com olhinho */
+.senha-wrap { position: relative; display: block; }
+.senha-wrap input { width: 100%; padding-right: 42px; }
+.olho-btn {
+  position: absolute;
+  right: 4px; top: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 36px;
+  background: none; border: none; cursor: pointer;
+  font-size: 16px; line-height: 1;
+  color: var(--text-2);
+}
+.olho-btn:hover { color: var(--text-1); }
 .auth-btn {
   display: inline-flex;
   align-items: center;

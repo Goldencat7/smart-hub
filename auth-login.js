@@ -77,6 +77,16 @@ linkVoltarLogin.addEventListener('click', (e) => {
   viewLogin.hidden = false;
 });
 
+// ─── Olhinho: mostrar/ocultar a senha do cadastro ────────────────────────────
+const olhoCadSenha  = document.getElementById('olhoCadSenha');
+const inputCadSenha = document.getElementById('cadSenha');
+olhoCadSenha.addEventListener('click', () => {
+  const mostrando = inputCadSenha.type === 'text';
+  inputCadSenha.type = mostrando ? 'password' : 'text';
+  olhoCadSenha.textContent = mostrando ? '👁' : '🙈';
+  olhoCadSenha.setAttribute('aria-label', mostrando ? 'Mostrar senha' : 'Ocultar senha');
+});
+
 // ─── Login: Email + Senha ────────────────────────────────────────────────────
 formLogin.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -96,10 +106,17 @@ formCadastro.addEventListener('submit', async (e) => {
   esconder(msgErroCad); esconder(msgOkCad);
   travarCadastro(true);
 
-  const nome   = document.getElementById('cadNome').value.trim();
-  const email  = document.getElementById('cadEmail').value.trim();
-  const senha  = document.getElementById('cadSenha').value;
-  const codigo = document.getElementById('cadCodigo').value.trim().toUpperCase();
+  const nome    = document.getElementById('cadNome').value.trim();
+  const email   = document.getElementById('cadEmail').value.trim();
+  const senha   = document.getElementById('cadSenha').value;
+  const confirma = document.getElementById('cadSenhaConfirma').value;
+  const codigo  = document.getElementById('cadCodigo').value.trim().toUpperCase();
+
+  if (senha !== confirma) {
+    mostrar(msgErroCad, 'As senhas não conferem.');
+    travarCadastro(false);
+    return;
+  }
 
   try {
     await criarContaComCodigo({ email, senha, codigo, displayName: nome });

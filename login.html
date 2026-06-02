@@ -51,7 +51,14 @@
           </label>
           <label class="auth-label">
             Senha (mín. 6)
-            <input id="cadSenha" type="password" autocomplete="new-password" minlength="6" required>
+            <span class="senha-wrap">
+              <input id="cadSenha" type="password" autocomplete="new-password" minlength="6" required>
+              <button type="button" class="olho-btn" id="olhoCadSenha" aria-label="Mostrar senha">👁</button>
+            </span>
+          </label>
+          <label class="auth-label">
+            Confirmar senha
+            <input id="cadSenhaConfirma" type="password" autocomplete="new-password" minlength="6" required>
           </label>
           <label class="auth-label">
             Código de convite
