@@ -30,6 +30,10 @@ autoUpdater.on('error', (err) => {
   console.warn('Erro no auto-updater:', err.message);
 });
 
+// DevTools só no modo desenvolvedor. No .exe distribuído fica desligado
+// pra usuário comum não conseguir bisbilhotar as credenciais compartilhadas.
+const DEVTOOLS_HABILITADO = !app.isPackaged;
+
 let janelaPrincipal = null;
 
 function criarJanelaPrincipal() {
@@ -40,7 +44,8 @@ function criarJanelaPrincipal() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      devTools: DEVTOOLS_HABILITADO
     }
   });
   janelaPrincipal.loadFile('login.html');
@@ -134,7 +139,8 @@ ipcMain.on('abrir-app', (_evt, payload) => {
 // ─── Janela simples (sem autologin) ──────────────────────────────────────────
 function abrirJanelaSimples(url) {
   const win = new BrowserWindow({
-    width: 1200, height: 800, autoHideMenuBar: true
+    width: 1200, height: 800, autoHideMenuBar: true,
+    webPreferences: { devTools: DEVTOOLS_HABILITADO }
   });
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
 }
@@ -148,7 +154,8 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
     webPreferences: {
       webSecurity: false,
       allowRunningInsecureContent: true,
-      partition
+      partition,
+      devTools: DEVTOOLS_HABILITADO
     }
   });
 
