@@ -36,7 +36,7 @@ async function exigirAdmin(req) {
 // O usuário com BOOTSTRAP_ADMIN_UID chama isso 1 vez pra ganhar a custom claim.
 exports.bootstrapAdmin = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  if (auth.uid !== BOOTSTRAP_ADMIN_UID) {
+  if (!ehBootstrapAdmin(auth.uid)) {
     throw new HttpsError('permission-denied', 'Você não é o admin inicial.');
   }
   await admin.auth().setCustomUserClaims(auth.uid, { admin: true });
@@ -125,7 +125,7 @@ exports.setUserAdmin = onCall(async (req) => {
   const { uid, isAdmin } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   // Impede de tirar a claim do próprio admin inicial
-  if (uid === BOOTSTRAP_ADMIN_UID && isAdmin === false) {
+  if (ehBootstrapAdmin(uid) && isAdmin === false) {
     throw new HttpsError('failed-precondition', 'O admin inicial não pode ser rebaixado.');
   }
   await admin.auth().setCustomUserClaims(uid, { admin: !!isAdmin });

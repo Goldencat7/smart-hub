@@ -64,6 +64,16 @@ const APPS = [
     key: 'motiva', categoria: 'performance',
     titulo: 'Motiva Smart', icone: 'MS', desc: 'Motivação & metas',
     url: 'https://motivatech-app.web.app', autologin: false
+  },
+  {
+    key: 'universidade', categoria: 'treinamento',
+    titulo: 'Universidade RE/MAX', icone: 'UR', desc: 'Treinamento e cursos',
+    url: 'https://universidaderemax.studionmx.com/', autologin: false
+  },
+  {
+    key: 'goiconnect', categoria: 'captacao',
+    titulo: 'GOI Connect', icone: 'GC', desc: 'goiconnect.com',
+    url: 'https://goiconnect.com/SignIn.aspx?ReturnUrl=%2f', autologin: false
   }
 ];
 
@@ -72,6 +82,7 @@ const CATEGORIAS = [
   { id: 'vistoria',    nome: 'Vistoria',    icone: '🔎' },
   { id: 'locacao',     nome: 'Locação',     icone: '🤝' },
   { id: 'performance', nome: 'Performance', icone: '📊' },
+  { id: 'treinamento', nome: 'Treinamento', icone: '🎓' },
   { id: 'documentos',  nome: 'Documentos',  icone: '📄', placeholder: true }
 ];
 
