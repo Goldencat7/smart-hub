@@ -43,16 +43,28 @@
           <p>Nenhum resultado.</p>
         </div>
 
-        <!-- ──── Aba Documentos (placeholder) ──── -->
-        <section id="secaoDocumentos" class="docs-placeholder" hidden>
-          <div class="docs-card">
-            <h3>📄 Documentos da empresa</h3>
-            <p class="muted">
-              Em breve: PDFs sincronizados com o Google Drive da Remax Smart.
-              Aqui você vai poder consultar contratos modelo, manuais, fichas etc.
-            </p>
-            <span class="badge falta">Em desenvolvimento</span>
+        <!-- ──── Aba Documentos (Google Drive) ──── -->
+        <section id="secaoDocumentos" class="docs-wrap" hidden>
+          <div class="docs-head">
+            <p class="muted">📁 Documentos da empresa — sincronizados com o Google Drive. Clique num arquivo pra abrir.</p>
+            <button id="btnAbrirDrive" class="topbar-btn">Abrir no Drive ↗</button>
           </div>
+          <iframe id="driveFrame" class="drive-frame" title="Documentos da empresa"></iframe>
+        </section>
+
+        <!-- ──── Aba Agenda (calendário completo) ──── -->
+        <section id="secaoAgenda" class="agenda-full" hidden>
+          <div class="cal-coluna">
+            <div class="cal-head">
+              <button id="calPrev" class="topbar-btn" title="Mês anterior">‹</button>
+              <h3 id="calTitulo">—</h3>
+              <button id="calProx" class="topbar-btn" title="Próximo mês">›</button>
+              <button id="calHoje" class="topbar-btn">Hoje</button>
+              <button id="btnNovoEvento2" class="topbar-btn primario">+ Novo compromisso</button>
+            </div>
+            <div id="calGrade" class="cal-grade"></div>
+          </div>
+          <div id="calDiaDetalhe" class="cal-dia-detalhe"></div>
         </section>
 
         <!-- ──── Aba Configurações ──── -->
@@ -84,7 +96,55 @@
           </div>
         </section>
       </main>
+
+      <!-- ──── Painel lateral direito: relógio + mini calendário + próximos ──── -->
+      <aside class="agenda-panel" id="agendaPanel">
+        <button id="btnMinAgenda" class="agenda-min" title="Minimizar agenda">›</button>
+        <div class="relogio">
+          <div id="relogioHora" class="relogio-hora">--:--</div>
+          <div id="relogioData" class="relogio-data">—</div>
+        </div>
+        <div id="miniCal" class="mini-cal"></div>
+        <div class="agenda-prox">
+          <div class="agenda-prox-head">
+            <h4>Próximos</h4>
+            <button id="btnNovoEvento" class="topbar-btn primario">+ Novo</button>
+          </div>
+          <div id="listaProx" class="lista-prox"></div>
+        </div>
+      </aside>
     </div>
+
+    <!-- Botão pra reabrir a agenda quando minimizada -->
+    <button id="btnExpandAgenda" class="agenda-expand" title="Mostrar agenda" hidden>‹</button>
+
+    <!-- Modal: novo compromisso -->
+    <dialog id="modalEvento" class="modal">
+      <form method="dialog" id="formEvento" class="modal-form">
+        <h3 id="modalEventoTitulo">Novo compromisso</h3>
+        <label class="auth-label">
+          Título
+          <input id="evTitulo" type="text" required maxlength="120" placeholder="Ex.: Reunião de equipe">
+        </label>
+        <div class="ev-datahora">
+          <label class="auth-label">Data <input id="evData" type="date" required></label>
+          <label class="auth-label">Hora <input id="evHora" type="time" required></label>
+        </div>
+        <label class="auth-label">
+          Descrição (opcional)
+          <input id="evDesc" type="text" maxlength="500">
+        </label>
+        <div id="evParticipantesArea" class="ev-participantes" hidden>
+          <label class="auth-label-inline"><input type="checkbox" id="evTodos"> Marcar para <strong>todos</strong></label>
+          <p class="muted" style="margin:6px 0 4px">Ou escolha quem participa:</p>
+          <div id="evPessoas" class="ev-pessoas"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="cancelarEvento" class="topbar-btn">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Salvar</button>
+        </div>
+      </form>
+    </dialog>
 
     <script type="module" src="hub-app.js"></script>
   </body>

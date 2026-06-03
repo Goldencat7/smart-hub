@@ -596,7 +596,7 @@ body {
 .hub-body { display: block; }
 .hub-layout {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 240px 1fr 300px;
   gap: 0;
   min-height: calc(100vh - 110px);
 }
@@ -711,6 +711,15 @@ body {
   border-radius: 14px;
 }
 
+/* Documentos (embed do Google Drive) */
+.docs-wrap { display: flex; flex-direction: column; gap: 12px; min-height: 72vh; }
+.docs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.docs-head .muted { margin: 0; }
+.drive-frame {
+  width: 100%; flex: 1; min-height: 70vh;
+  border: 1px solid var(--border); border-radius: 14px; background: #fff;
+}
+
 /* Placeholder de Documentos */
 .docs-placeholder { padding: 30px 0; }
 .docs-card {
@@ -787,7 +796,107 @@ body {
 .config-msg { font-size: 13px; font-weight: 600; }
 .auth-label input:disabled { opacity: .6; cursor: not-allowed; }
 
+/* ── Agenda ─────────────────────────────────────────────────── */
+/* Painel da agenda minimizado (ou escondido na própria aba Agenda — seria redundante) */
+.hub-layout.agenda-oculta { grid-template-columns: 240px 1fr; }
+.hub-layout.agenda-oculta .agenda-panel { display: none; }
+.hub-layout.na-agenda { grid-template-columns: 240px 1fr; }
+.hub-layout.na-agenda .agenda-panel { display: none; }
+
+.agenda-panel {
+  position: relative;
+  border-left: 1px solid var(--border);
+  background: rgba(15, 18, 24, 0.5);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+}
+.agenda-min {
+  position: absolute; top: 8px; left: 8px;
+  width: 24px; height: 24px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-2); cursor: pointer; font-size: 15px; line-height: 1;
+}
+.agenda-min:hover { color: var(--text-1); border-color: var(--border-hover); }
+.agenda-expand {
+  position: fixed; top: 96px; right: 0; z-index: 50;
+  width: 22px; height: 46px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-card); border: 1px solid var(--border); border-right: none;
+  border-radius: 8px 0 0 8px; color: var(--text-2); cursor: pointer; font-size: 15px;
+}
+.agenda-expand:hover { color: var(--text-1); border-color: var(--border-hover); }
+.relogio { text-align: center; }
+.relogio-hora { font-size: 34px; font-weight: 800; letter-spacing: 1px; }
+.relogio-data { font-size: 12px; color: var(--text-2); text-transform: capitalize; margin-top: 2px; }
+
+.mini-cal-titulo { font-size: 13px; font-weight: 700; text-align: center; margin-bottom: 8px; text-transform: capitalize; }
+.cal-semana { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px; }
+.cal-semana span { text-align: center; font-size: 10px; color: var(--text-3); font-weight: 700; }
+.cal-dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-dia {
+  position: relative; aspect-ratio: 1; min-height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent; border-radius: 8px;
+  color: var(--text-1); font-size: 12px; cursor: pointer;
+}
+.cal-dia.vazio { cursor: default; }
+.cal-dia:not(.vazio):hover { background: var(--bg-card); }
+.cal-dia.hoje { border-color: var(--accent); font-weight: 800; }
+.cal-dia.sel { background: var(--accent); color: #fff; }
+.cal-dia.tem-ev .cal-ponto {
+  position: absolute; bottom: 3px; right: 4px;
+  min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px;
+  background: var(--accent); color: #fff; border-radius: 7px; font-size: 9px; font-weight: 700; text-align: center;
+}
+.cal-dia.sel .cal-ponto { background: #fff; color: var(--accent); }
+
+.agenda-prox-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.agenda-prox-head h4 { margin: 0; font-size: 14px; }
+.lista-prox { display: flex; flex-direction: column; gap: 8px; }
+.ev-item {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+}
+.ev-item.compacto { flex-direction: column; gap: 2px; }
+.ev-quando { font-size: 11px; color: var(--accent); font-weight: 700; white-space: nowrap; }
+.ev-corpo { flex: 1; }
+.ev-titulo { font-size: 13px; font-weight: 600; }
+.ev-desc { font-size: 12px; color: var(--text-2); }
+.ev-tag { font-size: 9px; background: var(--accent); color: #fff; border-radius: 6px; padding: 1px 5px; vertical-align: middle; }
+.ev-del { background: transparent; border: none; color: var(--text-3); cursor: pointer; font-size: 13px; }
+.ev-del:hover { color: #ffb4bc; }
+
+/* Calendário completo (aba Agenda) */
+.agenda-full { width: 100%; }
+.cal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.cal-head h3 { margin: 0; font-size: 18px; min-width: 160px; text-transform: capitalize; }
+.cal-grade .cal-semana { margin-bottom: 6px; }
+.cal-grade .cal-semana span { font-size: 12px; }
+.cal-grade .cal-dia { min-height: 64px; align-items: flex-start; justify-content: flex-start; padding: 6px; font-size: 14px; }
+.cal-grade .cal-num { font-weight: 600; }
+.cal-dia-detalhe {
+  margin-top: 18px; padding: 16px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: 14px; max-width: 560px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.dia-det-head { display: flex; align-items: center; justify-content: space-between; }
+.dia-det-head h4 { margin: 0; font-size: 15px; text-transform: capitalize; }
+
+/* Modal de evento */
+.ev-datahora { display: flex; gap: 12px; }
+.ev-datahora .auth-label { flex: 1; }
+.ev-participantes { border-top: 1px solid var(--border); padding-top: 10px; }
+.ev-pessoas { display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+
 /* Responsive: sidebar vira topo em telas estreitas */
+@media (max-width: 1040px) {
+  .hub-layout { grid-template-columns: 240px 1fr; }
+  .agenda-panel { display: none; } /* o calendário completo continua na aba Agenda */
+}
 @media (max-width: 720px) {
   .hub-layout { grid-template-columns: 1fr; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--border); padding: 12px 16px; }
@@ -795,4 +904,5 @@ body {
   .nav-item { white-space: nowrap; }
   .nav-item-fim { margin-top: 0; margin-left: auto; border-top: none; padding-top: 10px; }
   .hub-main { padding: 18px 18px 30px; }
+  .cal-grade .cal-dia { min-height: 44px; }
 }

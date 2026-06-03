@@ -48,6 +48,18 @@ function criarJanelaPrincipal() {
       devTools: DEVTOOLS_HABILITADO
     }
   });
+  // Links de arquivos (ex.: documentos do Drive) abrem numa janela nova
+  janelaPrincipal.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      const w = new BrowserWindow({
+        width: 1200, height: 800, autoHideMenuBar: true,
+        webPreferences: { devTools: DEVTOOLS_HABILITADO }
+      });
+      w.loadURL(url).catch(() => {});
+    }
+    return { action: 'deny' };
+  });
+
   janelaPrincipal.loadFile('login.html');
 }
 

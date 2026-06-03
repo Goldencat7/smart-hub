@@ -28,6 +28,10 @@ const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
+const criarEvento = httpsCallable(fns, 'criarEvento');
+const listarEventos = httpsCallable(fns, 'listarEventos');
+const excluirEvento = httpsCallable(fns, 'excluirEvento');
+const listarPessoas = httpsCallable(fns, 'listarPessoas');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -93,6 +97,7 @@ const CATEGORIAS = [
   { id: 'locacao',     nome: 'Locação',     icone: '🤝' },
   { id: 'performance', nome: 'Performance', icone: '📊' },
   { id: 'treinamento', nome: 'Treinamento', icone: '🎓' },
+  { id: 'agenda',      nome: 'Agenda',      icone: '📅', agenda: true },
   { id: 'documentos',  nome: 'Documentos',  icone: '📄', placeholder: true },
   { id: 'config',      nome: 'Configurações', icone: '⚙️', config: true }
 ];
@@ -114,7 +119,14 @@ const inputBusca     = document.getElementById('inputBusca');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
 const secaoDocs      = document.getElementById('secaoDocumentos');
+const driveFrame     = document.getElementById('driveFrame');
+const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
 const secaoConfig    = document.getElementById('secaoConfig');
+
+// Pasta de documentos no Google Drive (compartilhada como "qualquer um com link: leitor")
+const DRIVE_FOLDER_ID  = '10dlIlDyGyvyMCZQUWbt2_YVDdXgfmlzp';
+const DRIVE_EMBED_URL  = `https://drive.google.com/embeddedfolderview?id=${DRIVE_FOLDER_ID}#grid`;
+const DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}`;
 const usuarioInfo    = document.getElementById('usuarioInfo');
 const topAvatar      = document.getElementById('topAvatar');
 const btnAdmin       = document.getElementById('btnAdmin');
@@ -130,7 +142,26 @@ const cfgEmail       = document.getElementById('cfgEmail');
 const cfgSalvar      = document.getElementById('cfgSalvar');
 const cfgMsg         = document.getElementById('cfgMsg');
 
+// Refs da Agenda
+const secaoAgenda    = document.getElementById('secaoAgenda');
+const agendaPanel    = document.getElementById('agendaPanel');
+const relogioHora    = document.getElementById('relogioHora');
+const relogioData    = document.getElementById('relogioData');
+const miniCal        = document.getElementById('miniCal');
+const listaProx      = document.getElementById('listaProx');
+const calTitulo      = document.getElementById('calTitulo');
+const calGrade       = document.getElementById('calGrade');
+const calDiaDetalhe  = document.getElementById('calDiaDetalhe');
+const modalEvento    = document.getElementById('modalEvento');
+
 let fotoPendente = null; // null = sem mudança; string = nova foto (ou '' = remover)
+
+// Estado da agenda
+let eventos = [];                 // {id, titulo, descricao, inicio:Date, todos, souDono}
+let calAno, calMes;               // mês exibido no calendário completo
+let diaSelecionado = null;        // 'YYYY-MM-DD' no calendário completo
+const alertados = new Set();      // ids já alertados (1h antes)
+let pessoasCache = null;          // lista de pessoas (admin) pro seletor
 
 // ─── Render sidebar ──────────────────────────────────────────────────────
 function renderSidebar() {
@@ -157,6 +188,23 @@ function renderCentro() {
   const cat = CATEGORIAS.find(c => c.id === categoriaAtiva);
   tituloCategoria.textContent = cat.nome;
   secaoConfig.hidden = true;
+  secaoAgenda.hidden = true;
+  // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
+  hubLayout.classList.toggle('na-agenda', !!cat.agenda);
+  btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
+
+  // Aba Agenda (calendário completo)
+  if (cat.agenda) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoConfig.hidden = true;
+    secaoAgenda.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    renderCalendarioCompleto();
+    return;
+  }
 
   // Aba Configurações
   if (cat.config) {
@@ -170,13 +218,14 @@ function renderCentro() {
     return;
   }
 
-  // Placeholder de documentos
+  // Documentos (embed do Google Drive)
   if (cat.placeholder) {
     appsGrid.hidden = true;
     estadoVazio.hidden = true;
     secaoDocs.hidden = false;
     inputBusca.disabled = true;
-    inputBusca.placeholder = 'Em desenvolvimento';
+    inputBusca.placeholder = '';
+    if (driveFrame && !driveFrame.getAttribute('src')) driveFrame.src = DRIVE_EMBED_URL;
     return;
   }
   inputBusca.disabled = false;
@@ -369,8 +418,210 @@ onAuthStateChanged(auth, async (user) => {
   }
   renderCentro();
   carregarPerfil(); // popula o avatar no topo
+
+  // Agenda: carrega eventos e liga os alertas
+  await carregarEventos(new Date(Date.now() - 86400000), new Date(Date.now() + 1000 * 60 * 60 * 24 * 90));
+  renderPainelAgenda();
+  if (categoriaAtiva === 'agenda') renderCalendarioCompleto();
+  verificarAlertas();
+  if (!window.__alertaTimer) window.__alertaTimer = setInterval(verificarAlertas, 30000);
 });
 
+// ─── Agenda ────────────────────────────────────────────────────────────────
+const DIAS_SEM = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function chaveDia(d){
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function atualizarRelogio(){
+  const agora = new Date();
+  relogioHora.textContent = agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+  relogioData.textContent = agora.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
+}
+
+async function carregarEventos(de, ate){
+  try {
+    const r = await listarEventos({ de: de.toISOString(), ate: ate.toISOString() });
+    const novos = (r.data || []).map(e => ({ ...e, inicio: new Date(e.inicio) }));
+    const mapa = new Map(eventos.map(e => [e.id, e]));
+    novos.forEach(e => mapa.set(e.id, e));
+    eventos = Array.from(mapa.values()).sort((a,b) => a.inicio - b.inicio);
+  } catch(e){ console.warn('Eventos:', e); }
+}
+
+function eventosDoDia(chave){
+  return eventos.filter(e => chaveDia(e.inicio) === chave).sort((a,b)=>a.inicio-b.inicio);
+}
+
+function montarGradeMes(ano, mes){
+  const inicioSemana = new Date(ano, mes, 1).getDay();
+  const diasNoMes = new Date(ano, mes+1, 0).getDate();
+  const hojeChave = chaveDia(new Date());
+  let html = '<div class="cal-semana">' + DIAS_SEM.map(d=>`<span>${d}</span>`).join('') + '</div><div class="cal-dias">';
+  for(let i=0;i<inicioSemana;i++) html += '<span class="cal-dia vazio"></span>';
+  for(let dia=1; dia<=diasNoMes; dia++){
+    const chave = chaveDia(new Date(ano, mes, dia));
+    const evs = eventosDoDia(chave);
+    html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''}" data-dia="${chave}">
+      <span class="cal-num">${dia}</span>${evs.length?`<span class="cal-ponto">${evs.length>1?evs.length:''}</span>`:''}
+    </button>`;
+  }
+  return html + '</div>';
+}
+
+function renderPainelAgenda(){
+  const agora = new Date();
+  miniCal.innerHTML = `<div class="mini-cal-titulo">${MESES[agora.getMonth()]} ${agora.getFullYear()}</div>` +
+                      montarGradeMes(agora.getFullYear(), agora.getMonth());
+  miniCal.querySelectorAll('.cal-dia[data-dia]').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      diaSelecionado = b.dataset.dia;
+      const d = new Date(b.dataset.dia + 'T00:00:00');
+      calAno = d.getFullYear(); calMes = d.getMonth();
+      categoriaAtiva = 'agenda'; renderSidebar(); renderCentro();
+    });
+  });
+  const prox = eventos.filter(e => e.inicio >= new Date(Date.now()-3600000)).slice(0,8);
+  listaProx.innerHTML = prox.length === 0
+    ? '<p class="muted" style="font-size:12px">Nenhum compromisso.</p>'
+    : prox.map(e => `
+      <div class="ev-item compacto">
+        <div class="ev-quando">${e.inicio.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} ${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="ev-titulo">${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
+      </div>`).join('');
+}
+
+async function renderCalendarioCompleto(){
+  if(calAno == null){ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); }
+  if(!diaSelecionado) diaSelecionado = chaveDia(new Date()); // detalhe sempre visível (sem "pulo")
+  await carregarEventos(new Date(calAno, calMes-1, 1), new Date(calAno, calMes+2, 0));
+  calTitulo.textContent = `${MESES[calMes]} ${calAno}`;
+  calGrade.innerHTML = montarGradeMes(calAno, calMes);
+  calGrade.querySelectorAll('.cal-dia[data-dia]').forEach(b=>{
+    b.addEventListener('click', ()=>{ diaSelecionado = b.dataset.dia; renderCalendarioCompleto(); });
+  });
+  renderDetalheDia();
+  renderPainelAgenda();
+}
+
+function renderDetalheDia(){
+  if(!diaSelecionado){ calDiaDetalhe.hidden = true; return; }
+  calDiaDetalhe.hidden = false;
+  const evs = eventosDoDia(diaSelecionado);
+  const d = new Date(diaSelecionado + 'T00:00:00');
+  calDiaDetalhe.innerHTML = `
+    <div class="dia-det-head">
+      <h4>${d.toLocaleDateString('pt-BR',{weekday:'long', day:'2-digit', month:'long'})}</h4>
+      <button class="topbar-btn primario" id="btnNovoNoDia">+ Compromisso</button>
+    </div>
+    ${evs.length ? evs.map(e=>`
+      <div class="ev-item">
+        <div class="ev-quando">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="ev-corpo">
+          <div class="ev-titulo">${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
+          ${e.descricao?`<div class="ev-desc">${escapeHtml(e.descricao)}</div>`:''}
+        </div>
+        ${(e.souDono||isAdmin)?`<button class="ev-del" data-id="${e.id}" title="Excluir">✕</button>`:''}
+      </div>`).join('') : '<p class="muted">Nada nesse dia.</p>'}
+  `;
+  calDiaDetalhe.querySelector('#btnNovoNoDia')?.addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
+  calDiaDetalhe.querySelectorAll('.ev-del').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      if(!confirm('Excluir este compromisso?')) return;
+      try { await excluirEvento({ id: b.dataset.id }); eventos = eventos.filter(e=>e.id!==b.dataset.id); renderCalendarioCompleto(); }
+      catch(e){ alert('Erro: '+e.message); }
+    });
+  });
+}
+
+async function abrirModalEvento(diaPre){
+  document.getElementById('evTitulo').value = '';
+  document.getElementById('evDesc').value = '';
+  document.getElementById('evHora').value = '09:00';
+  document.getElementById('evData').value = diaPre || chaveDia(new Date());
+  const area = document.getElementById('evParticipantesArea');
+  if(isAdmin){
+    area.hidden = false;
+    document.getElementById('evTodos').checked = false;
+    const cont = document.getElementById('evPessoas');
+    cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
+    try {
+      if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; }
+      cont.innerHTML = pessoasCache.map(p=>`
+        <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('');
+    } catch(e){ cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
+  } else {
+    area.hidden = true;
+  }
+  modalEvento.showModal();
+}
+
+function verificarAlertas(){
+  const agora = Date.now();
+  eventos.forEach(e=>{
+    const falta = e.inicio.getTime() - agora;
+    if(falta > 0 && falta <= 3600000 && !alertados.has(e.id)){
+      alertados.add(e.id);
+      const hora = e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      alert(`⏰ Lembrete: "${e.titulo}" às ${hora} (em menos de 1h).`);
+    }
+  });
+}
+
+// Listeners da agenda
+document.getElementById('btnNovoEvento').addEventListener('click', ()=> abrirModalEvento(null));
+document.getElementById('btnNovoEvento2').addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
+document.getElementById('cancelarEvento').addEventListener('click', ()=> modalEvento.close());
+document.getElementById('calPrev').addEventListener('click', ()=>{ calMes--; if(calMes<0){calMes=11;calAno--;} renderCalendarioCompleto(); });
+document.getElementById('calProx').addEventListener('click', ()=>{ calMes++; if(calMes>11){calMes=0;calAno++;} renderCalendarioCompleto(); });
+document.getElementById('calHoje').addEventListener('click', ()=>{ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); diaSelecionado=chaveDia(h); renderCalendarioCompleto(); });
+document.getElementById('evTodos').addEventListener('change', (e)=>{ document.getElementById('evPessoas').style.opacity = e.target.checked ? '0.4' : '1'; });
+
+document.getElementById('formEvento').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const titulo = document.getElementById('evTitulo').value.trim();
+  const data = document.getElementById('evData').value;
+  const hora = document.getElementById('evHora').value;
+  const descricao = document.getElementById('evDesc').value.trim();
+  if(!titulo || !data || !hora) return;
+  const payload = { titulo, inicio: new Date(data + 'T' + hora).toISOString(), descricao };
+  if(isAdmin){
+    if(document.getElementById('evTodos').checked) payload.todos = true;
+    else payload.participantes = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c=>c.value);
+  }
+  try {
+    await criarEvento(payload);
+    modalEvento.close();
+    await carregarEventos(new Date(Date.now()-86400000), new Date(Date.now()+1000*60*60*24*90));
+    renderPainelAgenda();
+    if(categoriaAtiva==='agenda') renderCalendarioCompleto();
+  } catch(err){ alert('Erro ao salvar: '+err.message); }
+});
+
+// Abrir a pasta no Drive (pra admin gerenciar / ou visualizar completo)
+btnAbrirDrive.addEventListener('click', () => window.open(DRIVE_FOLDER_URL, '_blank'));
+
+// Minimizar/mostrar o painel da agenda (setinha no canto + botão flutuante; lembra a preferência)
+const btnMinAgenda = document.getElementById('btnMinAgenda');
+const btnExpandAgenda = document.getElementById('btnExpandAgenda');
+const hubLayout = document.querySelector('.hub-layout');
+function setAgendaOculta(oculta){
+  hubLayout.classList.toggle('agenda-oculta', oculta);
+  btnExpandAgenda.hidden = !oculta;
+  try { localStorage.setItem('agendaOculta', oculta ? '1' : '0'); } catch(e){}
+}
+btnMinAgenda.addEventListener('click', () => setAgendaOculta(true));
+btnExpandAgenda.addEventListener('click', () => setAgendaOculta(false));
+let _agendaOcultaInicial = false;
+try { _agendaOcultaInicial = localStorage.getItem('agendaOculta') === '1'; } catch(e){}
+setAgendaOculta(_agendaOcultaInicial);
+
 // ─── Render inicial ──────────────────────────────────────────────────────
+atualizarRelogio();
+setInterval(atualizarRelogio, 1000);
+renderPainelAgenda();
 renderSidebar();
 renderCentro();

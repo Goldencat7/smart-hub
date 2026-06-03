@@ -237,6 +237,88 @@ exports.salvarMeuPerfil = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Agenda / Eventos ────────────────────────────────────────────────────────
+// Admin pode criar pra outras pessoas (ou "todos"); usuário comum só pra si.
+exports.criarEvento = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ehAdmin = ehAdminAuth(auth);
+  const { titulo, inicio, participantes, todos, descricao } = req.data || {};
+  if (!titulo || !inicio) throw new HttpsError('invalid-argument', 'Título e data/hora são obrigatórios.');
+  const dataInicio = new Date(inicio);
+  if (isNaN(dataInicio.getTime())) throw new HttpsError('invalid-argument', 'Data/hora inválida.');
+
+  let parts = [auth.uid];
+  let paraTodos = false;
+  if (ehAdmin) {
+    if (todos) { paraTodos = true; parts = []; }
+    else if (Array.isArray(participantes) && participantes.length) parts = participantes.slice(0, 300);
+  }
+
+  const ref = await db.collection('events').add({
+    titulo: String(titulo).slice(0, 120),
+    descricao: descricao ? String(descricao).slice(0, 500) : '',
+    inicio: admin.firestore.Timestamp.fromDate(dataInicio),
+    participantes: parts,
+    todos: paraTodos,
+    criadoPor: auth.uid,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true, id: ref.id };
+});
+
+// Lista os eventos do usuário num período (participante, "todos", ou criados por ele)
+exports.listarEventos = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { de, ate } = req.data || {};
+  const dDe = de ? new Date(de) : new Date();
+  const dAte = ate ? new Date(ate) : new Date(Date.now() + 1000 * 60 * 60 * 24 * 60);
+  const snap = await db.collection('events')
+    .where('inicio', '>=', admin.firestore.Timestamp.fromDate(dDe))
+    .where('inicio', '<=', admin.firestore.Timestamp.fromDate(dAte))
+    .orderBy('inicio')
+    .get();
+
+  const lista = [];
+  snap.forEach(d => {
+    const x = d.data();
+    const meu = x.todos === true
+      || (Array.isArray(x.participantes) && x.participantes.includes(auth.uid))
+      || x.criadoPor === auth.uid;
+    if (meu) {
+      lista.push({
+        id: d.id,
+        titulo: x.titulo,
+        descricao: x.descricao || '',
+        inicio: x.inicio.toDate().toISOString(),
+        todos: !!x.todos,
+        souDono: x.criadoPor === auth.uid
+      });
+    }
+  });
+  return lista;
+});
+
+exports.excluirEvento = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { id } = req.data || {};
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  const ref = db.collection('events').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: true };
+  if (snap.data().criadoPor !== auth.uid && !ehAdminAuth(auth)) {
+    throw new HttpsError('permission-denied', 'Só quem criou (ou admin) pode excluir.');
+  }
+  await ref.delete();
+  return { ok: true };
+});
+
+// (admin) Lista pessoas pra escolher participantes de uma reunião
+exports.listarPessoas = onCall(async (req) => {
+  await exigirAdmin(req);
+  const result = await admin.auth().listUsers(1000);
+  return result.users.map(u => ({ uid: u.uid, nome: u.displayName || u.email || u.uid }));
+});
+
 exports.setUserAdmin = onCall(async (req) => {
   await exigirAdmin(req);
   const { uid, isAdmin } = req.data || {};
