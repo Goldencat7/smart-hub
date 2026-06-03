@@ -110,7 +110,10 @@ ipcMain.on('abrir-app', (_evt, payload) => {
     clicksign: {
       seletorUser: 'input[name="user[email]"], #user_email, input[type="email"], input[name*="email" i], input[autocomplete="username"]',
       seletorPass: 'input[name="user[password]"], #user_password, input[type="password"], input[name*="password" i]',
-      seletorBtn:  'button[type="submit"], input[type="submit"], form button, button'
+      seletorBtn:  'button[type="submit"], input[type="submit"]',
+      // ClickSign tem reCAPTCHA: preenche tudo mas NÃO clica em Entrar
+      // (evita tentativa falha/bloqueio). A pessoa clica e resolve o captcha.
+      naoEnviar: true
     },
     cadastro_imobiliario: {
       seletorUser: 'input[type="text"], input[name="username"], input[name="login"]',
@@ -138,7 +141,7 @@ ipcMain.on('abrir-app', (_evt, payload) => {
   }
 
   abrirPwaComAutologin(url, cfg.seletorUser, cfg.seletorPass, cfg.seletorBtn,
-                      credenciais.login, credenciais.password || '');
+                      credenciais.login, credenciais.password || '', { naoEnviar: !!cfg.naoEnviar });
 });
 
 // ─── Janela simples (sem autologin) ──────────────────────────────────────────
@@ -151,7 +154,7 @@ function abrirJanelaSimples(url) {
 }
 
 // ─── Janela com autologin ────────────────────────────────────────────────────
-function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario, senha) {
+function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario, senha, opcoes = {}) {
   const partition = `inmem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const pwaWindow = new BrowserWindow({
@@ -164,14 +167,19 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
     }
   });
 
-  pwaWindow.webContents.on('did-fail-load', (_e, errCode, errDesc, failedUrl) => {
-    console.error(`Falha ao carregar ${failedUrl}: [${errCode}] ${errDesc}`);
+  // Páginas com muitos iframes (reCAPTCHA etc.) podem estourar o limite padrão de listeners
+  pwaWindow.webContents.setMaxListeners(50);
+
+  pwaWindow.webContents.on('did-fail-load', (_e, errCode, errDesc, failedUrl, isMainFrame) => {
+    // Ignora falhas de subframes (reCAPTCHA, anúncios) — só registra a página principal
+    if (isMainFrame) console.error(`Falha ao carregar ${failedUrl}: [${errCode}] ${errDesc}`);
   });
 
-  pwaWindow.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
+  pwaWindow.loadURL(url).catch(() => {}); // falhas reais já vêm pelo did-fail-load
 
-  pwaWindow.webContents.on('did-frame-finish-load', () => {
-    const payload = { seletorUser, seletorPass, seletorBtn, usuario, senha };
+  // Injeta no dom-ready (cedo, e uma vez por carregamento — não por frame)
+  pwaWindow.webContents.on('dom-ready', () => {
+    const payload = { seletorUser, seletorPass, seletorBtn, usuario, senha, naoEnviar: !!opcoes.naoEnviar };
 
     const scriptLoop = `
       (function(){
@@ -210,6 +218,23 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           el.dispatchEvent(new Event('change', { bubbles: true }));
           el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
         }
+        // Preenche simulando digitação real — frameworks (React/Ember/Vue) "enxergam" o valor
+        function preencher(el, valor){
+          if(!el) return;
+          try { el.focus(); } catch(e){}
+          let ok = false;
+          try {
+            try { el.select(); } catch(e){}
+            try { document.execCommand('selectAll', false, null); } catch(e){}
+            ok = document.execCommand('insertText', false, valor);
+          } catch(e){}
+          if(!ok || el.value !== valor){
+            setNativeValue(el, valor);
+            // truque pro framework detectar a mudança (React usa _valueTracker)
+            if(el._valueTracker){ try { el._valueTracker.setValue(' '); } catch(e){} }
+          }
+          disparar(el);
+        }
         function visivel(el){
           if(!el) return false;
           const r = el.getBoundingClientRect();
@@ -219,6 +244,14 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           const lista = Array.from(document.querySelectorAll(sel));
           return lista.find(visivel) || lista[0] || null;
         }
+        // Detecta botões de "mostrar/ocultar senha" (olho) pra NUNCA clicar neles
+        function ehMostrarSenha(el){
+          if(!el || el.type === 'submit') return false;
+          const s = ((el.getAttribute('aria-label')||'') + ' ' + (el.getAttribute('title')||'') + ' ' +
+                     (el.className||'') + ' ' + (el.innerText || el.value || '')).toLowerCase();
+          if(/eye|olho|password-toggle|toggle-password|show-password|reveal/.test(s)) return true;
+          return /senha|password/.test(s) && /(mostrar|ocultar|exibir|esconder|ver|show|hide|toggle)/.test(s);
+        }
         function acharPorTexto(termos){
           const elementos = Array.from(document.querySelectorAll(
             'button, input[type="submit"], input[type="button"], input[type="image"], a, [role="button"]'
@@ -227,12 +260,49 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             const t = termo.toLowerCase();
             const achado = elementos.find(el => {
               if(!visivel(el)) return false;
+              if(ehMostrarSenha(el)) return false;
               const texto = (el.innerText || el.value || el.getAttribute('aria-label') || '').toLowerCase().trim();
               return texto.includes(t);
             });
             if(achado) return achado;
           }
           return null;
+        }
+        // Mantém o campo de senha SEMPRE oculto, mesmo se clicarem no "olho"
+        function blindarSenha(el){
+          if(!el) return;
+          if(el.type !== 'password') { try { el.type = 'password'; } catch(e){} }
+          if(el.__hubBlindado) return;
+          el.__hubBlindado = true;
+          try {
+            const obs = new MutationObserver(() => {
+              if(el.type !== 'password') el.type = 'password';
+            });
+            obs.observe(el, { attributes: true, attributeFilter: ['type'] });
+          } catch(e){}
+          // Bloqueia o clique no botão de "mostrar senha" (olho) — reforço
+          if(!window.__hubBloqueioOlho){
+            window.__hubBloqueioOlho = true;
+            document.addEventListener('click', function(e){
+              let n = e.target;
+              for(let i=0; i<4 && n; i++){
+                if(ehMostrarSenha(n)){ e.preventDefault(); e.stopPropagation(); return; }
+                n = n.parentElement;
+              }
+            }, true);
+          }
+        }
+        function temCaptchaVisivel(){
+          const cands = Array.from(document.querySelectorAll(
+            'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], ' +
+            '.g-recaptcha, .h-captcha, .cf-turnstile'
+          ));
+          return cands.some(el => {
+            if(el.closest && el.closest('.grecaptcha-badge')) return false; // ignora o selo flutuante
+            const r = el.getBoundingClientRect();
+            // o desafio interativo ("Não sou um robô") é grande; o selo é pequeno
+            return r.width > 150 && r.height > 60 && getComputedStyle(el).visibility !== 'hidden';
+          });
         }
 
         const precisaSenha = cfg.senha !== '';
@@ -253,6 +323,9 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           const inputPass = precisaSenha ? achar(cfg.seletorPass) : null;
           const btn       = achar(cfg.seletorBtn);
 
+          // Blinda a senha assim que o campo existir (nunca deixa revelar)
+          if(inputPass) blindarSenha(inputPass);
+
           if(etapa === 'aguardando-usuario' && tentativas > 8){
             const sinalLogin = inputPass || acharPorTexto(['continuar','próximo','proximo','avançar','avancar','prosseguir']);
             if(!sinalLogin){
@@ -263,8 +336,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           }
 
           if(etapa === 'aguardando-usuario' && inputUser){
-            setNativeValue(inputUser, cfg.usuario);
-            disparar(inputUser);
+            preencher(inputUser, cfg.usuario);
 
             if(precisaSenha && !inputPass){
               banner('usuário preenchido, clicando em Continuar...');
@@ -279,21 +351,20 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             }
 
             if(precisaSenha && inputPass){
-              setNativeValue(inputPass, cfg.senha);
-              disparar(inputPass);
+              preencher(inputPass, cfg.senha);
+              blindarSenha(inputPass);
             }
 
-            const captchaCandidatos = Array.from(document.querySelectorAll(
-              'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="turnstile"], ' +
-              '.g-recaptcha, .h-captcha, .cf-turnstile'
-            ));
-            const captchaVisivel = captchaCandidatos.find(el => {
-              const r = el.getBoundingClientRect();
-              return r.width > 30 && r.height > 30 && getComputedStyle(el).visibility !== 'hidden';
-            });
-            if(captchaVisivel){
+            // Sites com reCAPTCHA: preenche mas não envia (a pessoa clica + resolve)
+            if(cfg.naoEnviar){
               clearInterval(intervalo);
-              banner('CAPTCHA detectado — resolva e clique em Continuar.', '#b8860b', 8000);
+              banner('Senha preenchida. Clique em Entrar e resolva o CAPTCHA.', '#0043ff', 20000);
+              return;
+            }
+
+            if(temCaptchaVisivel()){
+              clearInterval(intervalo);
+              banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 9000);
               return;
             }
 
@@ -337,15 +408,41 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           }
 
           if(etapa === 'aguardando-senha' && inputPass){
-            setNativeValue(inputPass, cfg.senha);
-            disparar(inputPass);
+            preencher(inputPass, cfg.senha);
+            blindarSenha(inputPass);
+            // Segurança: garante que a senha NÃO fique visível
+            try { if(inputPass.type === 'text') inputPass.type = 'password'; } catch(e){}
+
+            // Sites com reCAPTCHA (ClickSign): preenche mas NÃO envia — a pessoa
+            // clica em Entrar e resolve o captcha (evita tentativa falha/bloqueio).
+            if(cfg.naoEnviar){
+              clearInterval(intervalo);
+              banner('Senha preenchida. Clique em Entrar e resolva o CAPTCHA.', '#0043ff', 20000);
+              return;
+            }
+
+            // CAPTCHA já visível antes de enviar (alguns sites): para e deixa resolver.
+            if(temCaptchaVisivel()){
+              clearInterval(intervalo);
+              banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 15000);
+              return;
+            }
+
             setTimeout(() => {
-              const btn2 = achar(cfg.seletorBtn)
-                        || acharPorTexto(['entrar','login','acessar','enviar','continuar','sign in','log in']);
+              try { if(inputPass.type === 'text') inputPass.type = 'password'; } catch(e){}
+              // Prefere o botão de enviar de verdade (texto), depois type=submit — nunca o "olho"
+              const btn2 = acharPorTexto(['entrar','acessar','fazer login','login','sign in','log in','enviar'])
+                        || achar('button[type="submit"], input[type="submit"]');
               if(btn2 && !btn2.disabled) btn2.click();
               else inputPass.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', keyCode:13, bubbles:true }));
               try { sessionStorage.setItem('__hubLogadoOk','1'); } catch(e){}
-              banner('senha enviada.', '#0a7a3a', 3000);
+              // ClickSign mostra o reCAPTCHA SÓ DEPOIS de clicar em Entrar — checa de novo
+              setTimeout(() => {
+                if(temCaptchaVisivel())
+                  banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 15000);
+                else
+                  banner('login enviado.', '#0a7a3a', 3000);
+              }, 1800);
             }, 600);
             clearInterval(intervalo);
             return;
