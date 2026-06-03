@@ -203,6 +203,40 @@ exports.registrarAcesso = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Perfil do usuário (nome + foto) ─────────────────────────────────────────
+exports.getMeuPerfil = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const userRec = await admin.auth().getUser(auth.uid).catch(() => null);
+  const snap = await db.collection('user_profiles').doc(auth.uid).get();
+  const p = snap.exists ? snap.data() : {};
+  return {
+    email: (userRec && userRec.email) || (auth.token && auth.token.email) || '',
+    displayName: (userRec && userRec.displayName) || '',
+    photo: p.photo || ''
+  };
+});
+
+exports.salvarMeuPerfil = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { displayName, photo } = req.data || {};
+  const upd = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+
+  if (typeof displayName === 'string' && displayName.trim()) {
+    const nome = displayName.trim().slice(0, 80);
+    await admin.auth().updateUser(auth.uid, { displayName: nome });
+    upd.displayName = nome;
+  }
+  if (typeof photo === 'string') {
+    // foto = data URL (base64) pequena. Limite de segurança ~300KB.
+    if (photo.length > 400000) {
+      throw new HttpsError('invalid-argument', 'Foto muito grande. Tente uma imagem menor.');
+    }
+    upd.photo = photo;
+  }
+  await db.collection('user_profiles').doc(auth.uid).set(upd, { merge: true });
+  return { ok: true };
+});
+
 exports.setUserAdmin = onCall(async (req) => {
   await exigirAdmin(req);
   const { uid, isAdmin } = req.data || {};

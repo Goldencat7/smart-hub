@@ -26,6 +26,8 @@ const getCredentials = httpsCallable(fns, 'getCredentials');
 const bootstrapAdmin = httpsCallable(fns, 'bootstrapAdmin');
 const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
+const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
+const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -91,8 +93,14 @@ const CATEGORIAS = [
   { id: 'locacao',     nome: 'Locação',     icone: '🤝' },
   { id: 'performance', nome: 'Performance', icone: '📊' },
   { id: 'treinamento', nome: 'Treinamento', icone: '🎓' },
-  { id: 'documentos',  nome: 'Documentos',  icone: '📄', placeholder: true }
+  { id: 'documentos',  nome: 'Documentos',  icone: '📄', placeholder: true },
+  { id: 'config',      nome: 'Configurações', icone: '⚙️', config: true }
 ];
+
+// Avatar padrão (quando a pessoa não tem foto)
+const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="#1d222d"/><circle cx="60" cy="46" r="22" fill="#6b7280"/><rect x="24" y="74" width="72" height="48" rx="24" fill="#6b7280"/></svg>'
+);
 
 let categoriaAtiva = 'captacao';
 let termoBusca = '';
@@ -106,14 +114,28 @@ const inputBusca     = document.getElementById('inputBusca');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
 const secaoDocs      = document.getElementById('secaoDocumentos');
+const secaoConfig    = document.getElementById('secaoConfig');
 const usuarioInfo    = document.getElementById('usuarioInfo');
+const topAvatar      = document.getElementById('topAvatar');
 const btnAdmin       = document.getElementById('btnAdmin');
 const btnSair        = document.getElementById('btnSair');
+
+// Refs da aba Configurações
+const cfgAvatar      = document.getElementById('cfgAvatar');
+const cfgTrocarFoto  = document.getElementById('cfgTrocarFoto');
+const cfgRemoverFoto = document.getElementById('cfgRemoverFoto');
+const cfgFileInput   = document.getElementById('cfgFileInput');
+const cfgNome        = document.getElementById('cfgNome');
+const cfgEmail       = document.getElementById('cfgEmail');
+const cfgSalvar      = document.getElementById('cfgSalvar');
+const cfgMsg         = document.getElementById('cfgMsg');
+
+let fotoPendente = null; // null = sem mudança; string = nova foto (ou '' = remover)
 
 // ─── Render sidebar ──────────────────────────────────────────────────────
 function renderSidebar() {
   navCategorias.innerHTML = CATEGORIAS.map(c => `
-    <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${c.id}">
+    <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''} ${c.config ? 'nav-item-fim' : ''}" data-cat="${c.id}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
     </button>
@@ -134,6 +156,19 @@ function renderSidebar() {
 function renderCentro() {
   const cat = CATEGORIAS.find(c => c.id === categoriaAtiva);
   tituloCategoria.textContent = cat.nome;
+  secaoConfig.hidden = true;
+
+  // Aba Configurações
+  if (cat.config) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoConfig.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarPerfil();
+    return;
+  }
 
   // Placeholder de documentos
   if (cat.placeholder) {
@@ -227,6 +262,77 @@ inputBusca.addEventListener('input', (e) => {
   renderCentro();
 });
 
+// ─── Configurações / Perfil ──────────────────────────────────────────────
+function setFoto(dataURL) {
+  cfgAvatar.src = dataURL || AVATAR_PADRAO;
+  if (dataURL) { topAvatar.src = dataURL; topAvatar.hidden = false; }
+  else { topAvatar.hidden = true; }
+}
+
+async function carregarPerfil() {
+  fotoPendente = null;
+  cfgNome.value = '';
+  cfgEmail.value = '';
+  setFoto('');
+  try {
+    const r = await getMeuPerfil();
+    cfgEmail.value = r.data.email || '';
+    cfgNome.value = r.data.displayName || '';
+    setFoto(r.data.photo || '');
+  } catch (e) {
+    console.warn('Perfil:', e);
+  }
+}
+
+function mostrarMsgCfg(texto, ok) {
+  cfgMsg.textContent = texto;
+  cfgMsg.style.color = ok ? '#8ddca8' : '#ffb4bc';
+  cfgMsg.hidden = false;
+  setTimeout(() => { cfgMsg.hidden = true; }, 3000);
+}
+
+cfgTrocarFoto.addEventListener('click', () => cfgFileInput.click());
+cfgRemoverFoto.addEventListener('click', () => { fotoPendente = ''; setFoto(''); });
+
+cfgFileInput.addEventListener('change', () => {
+  const f = cfgFileInput.files[0];
+  cfgFileInput.value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const tam = 240;
+      const min = Math.min(img.width, img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = tam; canvas.height = tam;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, tam, tam);
+      const dataURL = canvas.toDataURL('image/jpeg', 0.85);
+      fotoPendente = dataURL;
+      setFoto(dataURL);
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+cfgSalvar.addEventListener('click', async () => {
+  cfgSalvar.disabled = true;
+  const payload = { displayName: cfgNome.value };
+  if (fotoPendente !== null) payload.photo = fotoPendente;
+  try {
+    await salvarMeuPerfil(payload);
+    fotoPendente = null;
+    usuarioInfo.textContent = cfgNome.value || cfgEmail.value;
+    mostrarMsgCfg('Salvo!', true);
+  } catch (e) {
+    mostrarMsgCfg('Erro: ' + e.message, false);
+  } finally {
+    cfgSalvar.disabled = false;
+  }
+});
+
 // ─── Auth + topbar ───────────────────────────────────────────────────────
 btnAdmin.addEventListener('click', () => window.hubApi.abrirAdmin());
 btnSair.addEventListener('click', async () => { await signOut(auth); });
@@ -255,13 +361,14 @@ onAuthStateChanged(auth, async (user) => {
   // Busca os apps restritos liberados pra este usuário e re-renderiza
   try {
     const perm = await getMinhasPermissoes();
-    appsPermitidos = perm.apps || [];
-    if (perm.isAdmin) isAdmin = true;
+    appsPermitidos = perm.data.apps || [];
+    if (perm.data.isAdmin) isAdmin = true;
   } catch (e) {
     console.warn('Permissões:', e);
     appsPermitidos = [];
   }
   renderCentro();
+  carregarPerfil(); // popula o avatar no topo
 });
 
 // ─── Render inicial ──────────────────────────────────────────────────────

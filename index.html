@@ -11,6 +11,7 @@
         <img class="brand-logo" src="logo.png" alt="Imóveis RE/MAX Smart">
       </div>
       <div class="topbar-right">
+        <img id="topAvatar" class="top-avatar" hidden alt="">
         <span id="usuarioInfo" class="user-pill"></span>
         <button id="btnAdmin" class="topbar-btn" hidden>Admin</button>
         <button id="btnSair" class="topbar-btn">Sair</button>
@@ -51,6 +52,35 @@
               Aqui você vai poder consultar contratos modelo, manuais, fichas etc.
             </p>
             <span class="badge falta">Em desenvolvimento</span>
+          </div>
+        </section>
+
+        <!-- ──── Aba Configurações ──── -->
+        <section id="secaoConfig" class="config-wrap" hidden>
+          <div class="config-card">
+            <div class="config-avatar-area">
+              <img id="cfgAvatar" class="config-avatar" alt="Foto de perfil">
+              <div>
+                <button type="button" id="cfgTrocarFoto" class="topbar-btn">Trocar foto</button>
+                <button type="button" id="cfgRemoverFoto" class="topbar-btn perigo">Remover</button>
+                <input id="cfgFileInput" type="file" accept="image/*" hidden>
+                <p class="muted config-dica">PNG ou JPG. A imagem é reduzida automaticamente.</p>
+              </div>
+            </div>
+
+            <label class="auth-label">
+              Nome
+              <input id="cfgNome" type="text" autocomplete="name" placeholder="Seu nome">
+            </label>
+            <label class="auth-label">
+              Email
+              <input id="cfgEmail" type="email" disabled>
+            </label>
+
+            <div class="config-actions">
+              <span id="cfgMsg" class="config-msg" hidden></span>
+              <button type="button" id="cfgSalvar" class="topbar-btn primario">Salvar</button>
+            </div>
           </div>
         </section>
       </main>
