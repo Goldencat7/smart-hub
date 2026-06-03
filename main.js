@@ -107,6 +107,11 @@ ipcMain.on('abrir-app', (_evt, payload) => {
       seletorPass: 'input[type="password"], input[name*="senha" i], input[name*="pass" i], input[placeholder*="senha" i]',
       seletorBtn:  'button[type="submit"], form button, button'
     },
+    clicksign: {
+      seletorUser: 'input[name="user[email]"], #user_email, input[type="email"], input[name*="email" i], input[autocomplete="username"]',
+      seletorPass: 'input[name="user[password]"], #user_password, input[type="password"], input[name*="password" i]',
+      seletorBtn:  'button[type="submit"], input[type="submit"], form button, button'
+    },
     cadastro_imobiliario: {
       seletorUser: 'input[type="text"], input[name="username"], input[name="login"]',
       seletorPass: 'input[type="password"]',

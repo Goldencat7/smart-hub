@@ -24,6 +24,8 @@ const fns  = getFunctions(app, 'southamerica-east1');
 
 const getCredentials = httpsCallable(fns, 'getCredentials');
 const bootstrapAdmin = httpsCallable(fns, 'bootstrapAdmin');
+const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
+const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -61,6 +63,11 @@ const APPS = [
     url: 'https://app.alude.com.br/', autologin: true
   },
   {
+    key: 'clicksign', categoria: 'locacao',
+    titulo: 'ClickSign', icone: 'CS', desc: 'Assinatura digital',
+    url: 'https://app.clicksign.com/', autologin: true, restrito: true
+  },
+  {
     key: 'motiva', categoria: 'performance',
     titulo: 'Motiva Smart', icone: 'MS', desc: 'Motivação & metas',
     url: 'https://motivatech-app.web.app', autologin: false
@@ -89,6 +96,8 @@ const CATEGORIAS = [
 
 let categoriaAtiva = 'captacao';
 let termoBusca = '';
+let isAdmin = false;
+let appsPermitidos = []; // apps restritos liberados pra este usuário
 
 // ─── DOM ─────────────────────────────────────────────────────────────────
 const navCategorias  = document.getElementById('navCategorias');
@@ -144,6 +153,7 @@ function renderCentro() {
   const termo = termoBusca.trim().toLowerCase();
   const filtrados = APPS.filter(a =>
     a.categoria === categoriaAtiva &&
+    (!a.restrito || isAdmin || appsPermitidos.includes(a.key)) &&
     (!termo || a.titulo.toLowerCase().includes(termo) || a.desc.toLowerCase().includes(termo))
   );
 
@@ -178,6 +188,15 @@ function renderCentro() {
 async function abrirApp(siteKey) {
   const app = APPS.find(a => a.key === siteKey);
   if (!app) return;
+
+  // Registra o acesso (não bloqueia a abertura)
+  registrarAcesso({ siteKey, titulo: app.titulo }).catch(() => {});
+
+  // ClickSign: admin entra com o próprio login (sem autologin compartilhado)
+  if (siteKey === 'clicksign' && isAdmin) {
+    window.hubApi.abrirApp({ siteKey, url: app.url, credenciais: null });
+    return;
+  }
 
   if (!app.autologin) {
     window.hubApi.abrirApp({ siteKey, url: app.url, credenciais: null });
@@ -220,7 +239,7 @@ onAuthStateChanged(auth, async (user) => {
   usuarioInfo.textContent = user.displayName || user.email;
 
   const tokenResult = await user.getIdTokenResult();
-  let isAdmin = !!tokenResult.claims.admin;
+  isAdmin = !!tokenResult.claims.admin;
 
   if (!isAdmin && BOOTSTRAP_ADMIN_UIDS.includes(user.uid)) {
     try {
@@ -232,6 +251,17 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   btnAdmin.hidden = !isAdmin;
+
+  // Busca os apps restritos liberados pra este usuário e re-renderiza
+  try {
+    const perm = await getMinhasPermissoes();
+    appsPermitidos = perm.apps || [];
+    if (perm.isAdmin) isAdmin = true;
+  } catch (e) {
+    console.warn('Permissões:', e);
+    appsPermitidos = [];
+  }
+  renderCentro();
 });
 
 // ─── Render inicial ──────────────────────────────────────────────────────

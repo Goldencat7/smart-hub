@@ -27,6 +27,13 @@ const deleteUserAccount = httpsCallable(fns, 'deleteUserAccount');
 const criarCodigoConvite    = httpsCallable(fns, 'criarCodigoConvite');
 const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
+const getUserAccess  = httpsCallable(fns, 'getUserAccess');
+const setUserAccess  = httpsCallable(fns, 'setUserAccess');
+
+// Apps restritos (aparecem só pra quem o admin liberar)
+const APPS_RESTRITOS = [
+  { key: 'clicksign', nome: 'ClickSign' }
+];
 
 // Mesma lista do hub-app.js — sites que têm autologin (são os únicos com credenciais)
 const SITES = [
@@ -34,7 +41,8 @@ const SITES = [
   { key: 'cadastro_imobiliario', nome: 'Central de Cadastro' },
   { key: 'imovelp', nome: 'Imóvel do Proprietário' },
   { key: 'sp_imovel', nome: 'SP Imóvel' },
-  { key: 'forsale', nome: 'Jr Captações (Sigavi360)' }
+  { key: 'forsale', nome: 'Jr Captações (Sigavi360)' },
+  { key: 'clicksign', nome: 'ClickSign (conta compartilhada)' }
 ];
 
 const elListaCred  = document.getElementById('listaCredenciais');
@@ -44,6 +52,16 @@ const modalCred    = document.getElementById('modalCred');
 const modalUser    = document.getElementById('modalUser');
 const modalCodigo  = document.getElementById('modalCodigo');
 const modalCodigoGerado = document.getElementById('modalCodigoGerado');
+const modalPermissoes = document.getElementById('modalPermissoes');
+const modalConfirm = document.getElementById('modalConfirm');
+
+// Formata "03/06 14:30"
+function fmtDataHora(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  });
+}
 
 // Verifica auth + admin
 onAuthStateChanged(auth, async (user) => {
@@ -163,7 +181,7 @@ async function carregarCredenciais() {
         const key  = b.dataset.key;
         if (acao === 'editar') abrirModalCredencial(key, b.dataset.nome);
         if (acao === 'excluir') {
-          if (!confirm(`Excluir credenciais de ${key}?`)) return;
+          if (!(await confirmar(`Excluir as credenciais de ${key}?`))) return;
           await deleteCredentials({ siteKey: key });
           carregarCredenciais();
         }
@@ -223,7 +241,7 @@ async function carregarCodigos() {
     `;
     elListaCodigos.querySelectorAll('button[data-cod]').forEach(b => {
       b.addEventListener('click', async () => {
-        if (!confirm(`Excluir código ${b.dataset.cod}?`)) return;
+        if (!(await confirmar(`Excluir o código ${b.dataset.cod}?`))) return;
         try {
           await excluirCodigoConvite({ codigo: b.dataset.cod });
           carregarCodigos();
@@ -243,7 +261,7 @@ async function carregarUsuarios() {
     elListaUser.innerHTML = `
       <table class="users-table">
         <thead>
-          <tr><th>Email</th><th>Admin</th><th>Criado</th><th>Último acesso</th><th></th></tr>
+          <tr><th>Email</th><th>Admin</th><th>Criado</th><th>Último acesso</th><th>Último app</th><th></th></tr>
         </thead>
         <tbody>
           ${usuarios.map(u => `
@@ -254,7 +272,11 @@ async function carregarUsuarios() {
               </td>
               <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-BR') : '—'}</td>
               <td>${u.lastSignIn ? new Date(u.lastSignIn).toLocaleDateString('pt-BR') : 'nunca'}</td>
-              <td><button class="topbar-btn perigo" data-uid="${u.uid}" data-email="${u.email}">Excluir</button></td>
+              <td>${u.lastApp ? `${u.lastApp} · ${fmtDataHora(u.lastAppAt)}` : '<span class="muted">—</span>'}</td>
+              <td class="acoes-user">
+                <button class="topbar-btn" data-perm="${u.uid}" data-email="${u.email || ''}">Permissões</button>
+                <button class="topbar-btn perigo" data-uid="${u.uid}" data-email="${u.email}">Excluir</button>
+              </td>
             </tr>
           `).join('')}
         </tbody>
@@ -269,14 +291,74 @@ async function carregarUsuarios() {
     });
     elListaUser.querySelectorAll('button[data-uid]').forEach(b => {
       b.addEventListener('click', async () => {
-        if (!confirm(`Excluir usuário ${b.dataset.email}?`)) return;
+        if (!(await confirmar(`Excluir o usuário ${b.dataset.email}? Essa ação não pode ser desfeita.`))) return;
         try {
           await deleteUserAccount({ uid: b.dataset.uid });
           carregarUsuarios();
         } catch (e) { alert('Erro: ' + e.message); }
       });
     });
+    elListaUser.querySelectorAll('button[data-perm]').forEach(b => {
+      b.addEventListener('click', () => abrirModalPermissoes(b.dataset.perm, b.dataset.email));
+    });
   } catch (err) {
     elListaUser.innerHTML = `<p class="erro">Erro: ${err.message}</p>`;
   }
+}
+
+// ─── Modal de permissões (apps restritos por usuário) ────────────────────────
+async function abrirModalPermissoes(uid, email) {
+  document.getElementById('permUid').value = uid;
+  document.getElementById('permEmail').textContent = email || '(sem email)';
+  const cont = document.getElementById('permLista');
+  cont.innerHTML = '<p class="muted">carregando...</p>';
+  modalPermissoes.showModal();
+  try {
+    const r = await getUserAccess({ uid });
+    const liberados = r.data.apps || [];
+    const alvoAdmin = !!r.data.isAdmin;
+    cont.innerHTML =
+      (alvoAdmin ? '<p class="muted">Este usuário é admin — já enxerga todos os apps.</p>' : '') +
+      APPS_RESTRITOS.map(a => `
+        <label class="auth-label-inline">
+          <input type="checkbox" value="${a.key}"
+            ${(alvoAdmin || liberados.includes(a.key)) ? 'checked' : ''}
+            ${alvoAdmin ? 'disabled' : ''}>
+          ${a.nome}
+        </label>
+      `).join('');
+  } catch (e) {
+    cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+  }
+}
+
+document.getElementById('cancelarPermissoes').addEventListener('click', () => modalPermissoes.close());
+document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const uid = document.getElementById('permUid').value;
+  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:checked')).map(c => c.value);
+  try {
+    await setUserAccess({ uid, apps });
+    modalPermissoes.close();
+  } catch (err) { alert('Erro: ' + err.message); }
+});
+
+// ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────
+function confirmar(mensagem) {
+  return new Promise((resolve) => {
+    document.getElementById('confirmMsg').textContent = mensagem;
+    const btnSim = document.getElementById('confirmSim');
+    const btnNao = document.getElementById('confirmNao');
+    const fechar = (valor) => {
+      btnSim.removeEventListener('click', onSim);
+      btnNao.removeEventListener('click', onNao);
+      modalConfirm.close();
+      resolve(valor);
+    };
+    const onSim = () => fechar(true);
+    const onNao = () => fechar(false);
+    btnSim.addEventListener('click', onSim);
+    btnNao.addEventListener('click', onNao);
+    modalConfirm.showModal();
+  });
 }

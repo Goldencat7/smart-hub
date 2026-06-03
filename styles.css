@@ -181,8 +181,8 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 7px;
-  background: var(--bg-card);
+  padding: 6px;
+  background: #fff;
 }
 
 .card-title {
@@ -719,6 +719,17 @@ body {
   font-weight: 700;
 }
 .docs-card .badge { align-self: flex-start; }
+
+/* Permissões / ações de usuário no Admin */
+.acoes-user { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.perm-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 0 4px;
+}
+.perm-lista .auth-label-inline { margin: 0; }
+.perm-lista .muted { margin: 0; }
 
 /* Responsive: sidebar vira topo em telas estreitas */
 @media (max-width: 720px) {

@@ -17,6 +17,23 @@ function ehBootstrapAdmin(uid) {
   return BOOTSTRAP_ADMIN_UIDS.includes(uid);
 }
 
+// Apps "restritos": só aparecem/funcionam pra quem o admin liberar (ou pra admins).
+const RESTRICTED_APPS = ['clicksign'];
+
+function ehAdminAuth(auth) {
+  return !!(auth && ((auth.token && auth.token.admin === true) || ehBootstrapAdmin(auth.uid)));
+}
+
+// Verifica se o usuário pode acessar um app (todos podem os normais; restritos só liberados/admin)
+async function temAcessoApp(auth, siteKey) {
+  if (!RESTRICTED_APPS.includes(siteKey)) return true;
+  if (!auth) return false;
+  if (ehAdminAuth(auth)) return true;
+  const snap = await db.collection('user_access').doc(auth.uid).get();
+  const apps = snap.exists ? (snap.data().apps || []) : [];
+  return apps.includes(siteKey);
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function exigirAutenticado(req) {
@@ -47,15 +64,57 @@ exports.bootstrapAdmin = onCall(async (req) => {
 // Qualquer usuário autenticado pode pedir credenciais — elas voltam só na resposta,
 // nunca ficam no .exe nem no disco do cliente.
 exports.getCredentials = onCall(async (req) => {
-  exigirAutenticado(req);
+  const auth = exigirAutenticado(req);
   const { siteKey } = req.data || {};
   if (!siteKey) throw new HttpsError('invalid-argument', 'siteKey é obrigatório.');
+
+  // Apps restritos: só entrega credenciais pra quem tem acesso
+  if (!(await temAcessoApp(auth, siteKey))) {
+    throw new HttpsError('permission-denied', 'Você não tem acesso a este app.');
+  }
 
   const snap = await db.collection('credentials').doc(siteKey).get();
   if (!snap.exists) throw new HttpsError('not-found', `Sem credenciais para ${siteKey}.`);
 
   const d = snap.data();
   return { login: d.login || '', password: d.password || '' };
+});
+
+// Apps restritos que o usuário ATUAL pode ver (admin vê todos)
+exports.getMinhasPermissoes = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true };
+  const snap = await db.collection('user_access').doc(auth.uid).get();
+  const apps = snap.exists ? (snap.data().apps || []) : [];
+  return { apps, isAdmin: false };
+});
+
+// (admin) Lê os apps restritos liberados pra um usuário + lista de restritos disponíveis
+exports.getUserAccess = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { uid } = req.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  const userRec = await admin.auth().getUser(uid).catch(() => null);
+  const alvoAdmin = !!(userRec && userRec.customClaims && userRec.customClaims.admin) || ehBootstrapAdmin(uid);
+  const snap = await db.collection('user_access').doc(uid).get();
+  return {
+    apps: snap.exists ? (snap.data().apps || []) : [],
+    restritos: RESTRICTED_APPS,
+    isAdmin: alvoAdmin
+  };
+});
+
+// (admin) Define quais apps restritos um usuário pode ver
+exports.setUserAccess = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { uid, apps } = req.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
+  await db.collection('user_access').doc(uid).set({
+    apps: limpos,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true };
 });
 
 // Lista quais siteKeys têm credenciais cadastradas
@@ -109,15 +168,39 @@ exports.deleteCredentials = onCall(async (req) => {
 exports.listUsers = onCall(async (req) => {
   await exigirAdmin(req);
   const result = await admin.auth().listUsers(1000);
-  return result.users.map(u => ({
-    uid: u.uid,
-    email: u.email,
-    displayName: u.displayName,
-    disabled: u.disabled,
-    isAdmin: !!(u.customClaims && u.customClaims.admin),
-    createdAt: u.metadata.creationTime,
-    lastSignIn: u.metadata.lastSignInTime
-  }));
+
+  // Carrega a atividade (último app acessado) de todos de uma vez
+  const atividade = {};
+  const actSnap = await db.collection('user_activity').get();
+  actSnap.forEach(d => { atividade[d.id] = d.data(); });
+
+  return result.users.map(u => {
+    const a = atividade[u.uid] || {};
+    return {
+      uid: u.uid,
+      email: u.email,
+      displayName: u.displayName,
+      disabled: u.disabled,
+      isAdmin: !!(u.customClaims && u.customClaims.admin),
+      createdAt: u.metadata.creationTime,
+      lastSignIn: u.metadata.lastSignInTime,
+      lastApp: a.lastAppTitulo || null,
+      lastAppAt: a.lastAppAt ? a.lastAppAt.toDate().toISOString() : null
+    };
+  });
+});
+
+// Registra o último app que o usuário abriu (chamado pelo Hub ao abrir um app)
+exports.registrarAcesso = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { siteKey, titulo } = req.data || {};
+  if (!siteKey) throw new HttpsError('invalid-argument', 'siteKey é obrigatório.');
+  await db.collection('user_activity').doc(auth.uid).set({
+    lastApp: siteKey,
+    lastAppTitulo: titulo || siteKey,
+    lastAppAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
 });
 
 exports.setUserAdmin = onCall(async (req) => {

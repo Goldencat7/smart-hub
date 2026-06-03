@@ -128,6 +128,32 @@
       </div>
     </dialog>
 
+    <!-- Modal: permissões de apps restritos por usuário -->
+    <dialog id="modalPermissoes" class="modal">
+      <form method="dialog" id="formPermissoes" class="modal-form">
+        <h3>Permissões de apps</h3>
+        <p class="muted">Apps restritos liberados para <strong id="permEmail"></strong>:</p>
+        <input type="hidden" id="permUid">
+        <div id="permLista" class="perm-lista"></div>
+        <div class="modal-actions">
+          <button type="button" id="cancelarPermissoes" class="topbar-btn">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Modal: confirmação de exclusão -->
+    <dialog id="modalConfirm" class="modal">
+      <div class="modal-form">
+        <h3>Confirmar</h3>
+        <p id="confirmMsg" class="muted">Tem certeza?</p>
+        <div class="modal-actions">
+          <button type="button" id="confirmNao" class="topbar-btn">Cancelar</button>
+          <button type="button" id="confirmSim" class="topbar-btn perigo">Excluir</button>
+        </div>
+      </div>
+    </dialog>
+
     <script type="module" src="admin-app.js"></script>
   </body>
 </html>
