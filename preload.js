@@ -11,7 +11,11 @@ contextBridge.exposeInMainWorld('hubApi', {
   voltarParaHub: () => ipcRenderer.send('voltar-para-hub'),
 
   // Conectar Google Agenda: abre o navegador e devolve o código de autorização
-  conectarGoogle: () => ipcRenderer.invoke('conectar-google')
+  conectarGoogle: () => ipcRenderer.invoke('conectar-google'),
+
+  // Iniciar com o Windows (Configurações)
+  getIniciarWindows: () => ipcRenderer.invoke('get-iniciar-windows'),
+  setIniciarWindows: (ligar) => ipcRenderer.invoke('set-iniciar-windows', ligar)
 });
 
 // API específica de login (chamada pelo auth-login.js depois do login Firebase)

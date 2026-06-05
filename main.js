@@ -2,7 +2,27 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
+
+// ─── Preferências locais (arquivo no userData) ──────────────────────────────
+function prefsPath() { return path.join(app.getPath('userData'), 'hub-prefs.json'); }
+function lerPrefs() { try { return JSON.parse(fs.readFileSync(prefsPath(), 'utf8')); } catch (e) { return {}; } }
+function salvarPrefs(p) { try { fs.writeFileSync(prefsPath(), JSON.stringify(p)); } catch (e) {} }
+
+// Iniciar com o Windows: ligado por padrão na primeira vez (só vale no app instalado).
+function iniciarComWindowsAtivo() {
+  if (app.isPackaged) return app.getLoginItemSettings().openAtLogin;
+  return lerPrefs().iniciarComWindows !== false; // no modo dev, reflete só a preferência
+}
+function definirIniciarComWindows(ligar) {
+  const p = lerPrefs(); p.iniciarComWindows = !!ligar; salvarPrefs(p);
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!ligar });
+}
+function aplicarPadraoIniciarComWindows() {
+  const p = lerPrefs();
+  if (p.iniciarComWindows === undefined) definirIniciarComWindows(true); // 1ª vez: liga
+}
 
 // ─── Google OAuth (conectar a Google Agenda) ────────────────────────────────
 // O Google não deixa logar dentro do Electron, então abrimos o navegador real
@@ -78,6 +98,7 @@ function criarJanelaPrincipal() {
 }
 
 app.whenReady().then(() => {
+  aplicarPadraoIniciarComWindows();
   criarJanelaPrincipal();
   // Verifica updates 3s após abrir (não bloqueia o login)
   if (app.isPackaged) {
@@ -110,6 +131,10 @@ ipcMain.on('abrir-admin', () => {
 ipcMain.on('voltar-para-hub', () => {
   if (janelaPrincipal) janelaPrincipal.loadFile('index.html');
 });
+
+// ─── Iniciar com o Windows (lido/alterado nas Configurações) ─────────────────
+ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());
+ipcMain.handle('set-iniciar-windows', (_e, ligar) => { definirIniciarComWindows(ligar); return { ok: true }; });
 
 // ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────
 // Devolve { ok, code, codeVerifier, redirectUri } pro renderer, que então chama

@@ -13,6 +13,7 @@
       <div class="topbar-right">
         <img id="topAvatar" class="top-avatar" hidden alt="">
         <span id="usuarioInfo" class="user-pill"></span>
+        <button id="btnAviso" class="topbar-btn" hidden>📢 Enviar aviso</button>
         <button id="btnAdmin" class="topbar-btn" hidden>Admin</button>
         <button id="btnSair" class="topbar-btn">Sair</button>
       </div>
@@ -62,7 +63,7 @@
               <h3 id="calTitulo">—</h3>
               <button id="calProx" class="topbar-btn" title="Próximo mês">›</button>
               <button id="calHoje" class="topbar-btn">Hoje</button>
-              <button id="btnNovoEvento2" class="topbar-btn primario">+ Novo compromisso</button>
+              <button id="btnNovoEvento2" class="topbar-btn primario">+ Criar</button>
               <button id="btnGoogleAgenda" class="topbar-btn google-btn" title="Sincronizar com a Google Agenda">📅 Conectar Google</button>
             </div>
             <div id="calGrade" class="cal-grade"></div>
@@ -90,6 +91,10 @@
             <label class="auth-label">
               Email
               <input id="cfgEmail" type="email" disabled>
+            </label>
+
+            <label class="auth-label-inline cfg-toggle">
+              <input type="checkbox" id="cfgIniciarWindows"> Iniciar o Hub junto com o Windows
             </label>
 
             <div class="config-actions">
@@ -124,7 +129,7 @@
     <!-- Modal: novo compromisso -->
     <dialog id="modalEvento" class="modal">
       <form method="dialog" id="formEvento" class="modal-form">
-        <h3 id="modalEventoTitulo">Novo compromisso</h3>
+        <h3 id="modalEventoTitulo">Criar</h3>
         <div id="evTipoSel" class="ev-tipo-sel">
           <label class="ev-tipo-op"><input type="radio" name="evTipo" value="evento" checked><span>📅 Evento</span></label>
           <label class="ev-tipo-op"><input type="radio" name="evTipo" value="tarefa"><span>✓ Tarefa</span></label>
@@ -150,6 +155,42 @@
         <div class="modal-actions">
           <button type="button" id="cancelarEvento" class="topbar-btn">Cancelar</button>
           <button type="submit" class="topbar-btn primario">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Popup: aviso recebido (só fecha clicando em "Vi") -->
+    <dialog id="modalAviso" class="modal">
+      <div class="modal-form aviso-recebido">
+        <div class="aviso-icone">📢</div>
+        <h3 id="avisoTitulo">Aviso</h3>
+        <p id="avisoMensagem" class="aviso-msg"></p>
+        <div class="modal-actions">
+          <button type="button" id="avisoCheck" class="topbar-btn primario">✓ Vi</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Modal: admin envia um aviso -->
+    <dialog id="modalEnviarAviso" class="modal">
+      <form method="dialog" id="formEnviarAviso" class="modal-form">
+        <h3>📢 Enviar aviso</h3>
+        <label class="auth-label">
+          Título (opcional)
+          <input id="avTitulo" type="text" maxlength="120" placeholder="Ex.: Reunião amanhã">
+        </label>
+        <label class="auth-label">
+          Mensagem
+          <textarea id="avMensagem" required maxlength="1000" rows="4" placeholder="Escreva o aviso..."></textarea>
+        </label>
+        <div class="ev-participantes">
+          <label class="auth-label-inline"><input type="checkbox" id="avTodos"> Enviar para <strong>todos</strong></label>
+          <p class="muted" style="margin:6px 0 4px">Ou escolha quem recebe:</p>
+          <div id="avPessoas" class="ev-pessoas"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="avCancelar" class="topbar-btn">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Enviar</button>
         </div>
       </form>
     </dialog>

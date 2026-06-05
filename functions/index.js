@@ -595,6 +595,91 @@ exports.listarPessoas = onCall(async (req) => {
   return result.users.map(u => ({ uid: u.uid, nome: u.displayName || u.email || u.uid }));
 });
 
+// ─── Avisos / Notificações (admin → pessoas, com confirmação obrigatória) ─────
+exports.criarNotificacao = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const { mensagem, titulo, participantes, todos } = req.data || {};
+  if (!mensagem || !String(mensagem).trim()) throw new HttpsError('invalid-argument', 'A mensagem é obrigatória.');
+
+  let parts = [];
+  let paraTodos = false;
+  if (todos) paraTodos = true;
+  else if (Array.isArray(participantes) && participantes.length) parts = participantes.slice(0, 300);
+  else throw new HttpsError('invalid-argument', 'Escolha "todos" ou pelo menos uma pessoa.');
+
+  const ref = await db.collection('notifications').add({
+    titulo: titulo ? String(titulo).slice(0, 120) : '',
+    mensagem: String(mensagem).slice(0, 1000),
+    todos: paraTodos,
+    destinatarios: parts,
+    criadoPor: auth.uid,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    lidoPor: []
+  });
+  return { ok: true, id: ref.id };
+});
+
+// Avisos que o usuário atual AINDA não confirmou (mostra como popup ao abrir o app).
+exports.listarMinhasNotificacoes = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const snap = await db.collection('notifications').orderBy('criadoEm', 'asc').get();
+  const lista = [];
+  snap.forEach(d => {
+    const x = d.data();
+    if (x.criadoPor === auth.uid) return; // quem enviou não recebe o próprio aviso
+    const ehAlvo = x.todos === true || (Array.isArray(x.destinatarios) && x.destinatarios.includes(auth.uid));
+    const jaLeu = Array.isArray(x.lidoPor) && x.lidoPor.includes(auth.uid);
+    if (ehAlvo && !jaLeu) {
+      lista.push({
+        id: d.id,
+        titulo: x.titulo || '',
+        mensagem: x.mensagem || '',
+        criadoEm: x.criadoEm ? x.criadoEm.toDate().toISOString() : null
+      });
+    }
+  });
+  return lista;
+});
+
+// Marca um aviso como visto (a pessoa clicou em "Vi").
+exports.marcarNotificacaoLida = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { id } = req.data || {};
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  await db.collection('notifications').doc(id).update({
+    lidoPor: admin.firestore.FieldValue.arrayUnion(auth.uid)
+  });
+  return { ok: true };
+});
+
+// (admin) Avisos enviados + quantos confirmaram.
+exports.listarNotificacoesAdmin = onCall(async (req) => {
+  await exigirAdmin(req);
+  const snap = await db.collection('notifications').orderBy('criadoEm', 'desc').get();
+  let totalUsuarios = 0;
+  try { totalUsuarios = (await admin.auth().listUsers(1000)).users.length; } catch (e) {}
+  return snap.docs.map(d => {
+    const x = d.data();
+    return {
+      id: d.id,
+      titulo: x.titulo || '',
+      mensagem: x.mensagem || '',
+      todos: !!x.todos,
+      confirmaram: Array.isArray(x.lidoPor) ? x.lidoPor.length : 0,
+      alvo: x.todos ? totalUsuarios : (Array.isArray(x.destinatarios) ? x.destinatarios.length : 0),
+      criadoEm: x.criadoEm ? x.criadoEm.toDate().toISOString() : null
+    };
+  });
+});
+
+exports.excluirNotificacao = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { id } = req.data || {};
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  await db.collection('notifications').doc(id).delete();
+  return { ok: true };
+});
+
 exports.setUserAdmin = onCall(async (req) => {
   await exigirAdmin(req);
   const { uid, isAdmin } = req.data || {};

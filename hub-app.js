@@ -36,6 +36,9 @@ const conectarGoogleAgenda = httpsCallable(fns, 'conectarGoogleAgenda');
 const desconectarGoogleAgenda = httpsCallable(fns, 'desconectarGoogleAgenda');
 const statusGoogleAgenda = httpsCallable(fns, 'statusGoogleAgenda');
 const listarGoogleAgenda = httpsCallable(fns, 'listarGoogleAgenda');
+const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
+const listarMinhasNotificacoes = httpsCallable(fns, 'listarMinhasNotificacoes');
+const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -134,6 +137,7 @@ const DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${DRIVE_FOLDER_
 const usuarioInfo    = document.getElementById('usuarioInfo');
 const topAvatar      = document.getElementById('topAvatar');
 const btnAdmin       = document.getElementById('btnAdmin');
+const btnAviso       = document.getElementById('btnAviso');
 const btnSair        = document.getElementById('btnSair');
 
 // Refs da aba Configurações
@@ -328,6 +332,7 @@ async function carregarPerfil() {
   cfgNome.value = '';
   cfgEmail.value = '';
   setFoto('');
+  carregarIniciarWindows();
   try {
     const r = await getMeuPerfil();
     cfgEmail.value = r.data.email || '';
@@ -430,6 +435,11 @@ onAuthStateChanged(auth, async (user) => {
   if (categoriaAtiva === 'agenda') renderCalendarioCompleto();
   verificarAlertas();
   if (!window.__alertaTimer) window.__alertaTimer = setInterval(verificarAlertas, 30000);
+
+  // Avisos do admin: mostra os não confirmados ao abrir + checa a cada 3 min
+  btnAviso.hidden = !isAdmin;
+  verificarNotificacoes();
+  if (!window.__notifTimer) window.__notifTimer = setInterval(verificarNotificacoes, 180000);
 });
 
 // ─── Agenda ────────────────────────────────────────────────────────────────
@@ -722,6 +732,90 @@ btnExpandAgenda.addEventListener('click', () => setAgendaOculta(false));
 let _agendaOcultaInicial = false;
 try { _agendaOcultaInicial = localStorage.getItem('agendaOculta') === '1'; } catch(e){}
 setAgendaOculta(_agendaOcultaInicial);
+
+// ─── Avisos / Notificações do admin ──────────────────────────────────────
+const modalAviso = document.getElementById('modalAviso');
+modalAviso.addEventListener('cancel', (e) => e.preventDefault()); // não fecha no ESC: precisa clicar "Vi"
+let filaAvisos = [];
+
+function mostrarProximoAviso(){
+  if(!filaAvisos.length){ if(modalAviso.open) modalAviso.close(); return; }
+  const av = filaAvisos[0];
+  document.getElementById('avisoTitulo').textContent = av.titulo || '📢 Aviso';
+  document.getElementById('avisoMensagem').textContent = av.mensagem;
+  if(!modalAviso.open) modalAviso.showModal();
+}
+
+document.getElementById('avisoCheck').addEventListener('click', async () => {
+  const av = filaAvisos[0];
+  if(!av){ modalAviso.close(); return; }
+  const btn = document.getElementById('avisoCheck');
+  btn.disabled = true;
+  try { await marcarNotificacaoLida({ id: av.id }); } catch(e){ console.warn('marcar lido:', e); }
+  btn.disabled = false;
+  filaAvisos.shift();
+  if(filaAvisos.length) mostrarProximoAviso(); else modalAviso.close();
+});
+
+async function verificarNotificacoes(){
+  try {
+    const r = await listarMinhasNotificacoes();
+    const novos = r.data || [];
+    if(!novos.length) return;
+    const naFila = new Set(filaAvisos.map(a => a.id));
+    novos.forEach(n => { if(!naFila.has(n.id)) filaAvisos.push(n); });
+    mostrarProximoAviso();
+  } catch(e){ console.warn('Notificações:', e); }
+}
+
+// Admin: enviar aviso
+const modalEnviarAviso = document.getElementById('modalEnviarAviso');
+btnAviso.addEventListener('click', async () => {
+  document.getElementById('avTitulo').value = '';
+  document.getElementById('avMensagem').value = '';
+  document.getElementById('avTodos').checked = false;
+  const cont = document.getElementById('avPessoas');
+  cont.style.opacity = '1';
+  cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
+  try {
+    if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; }
+    cont.innerHTML = pessoasCache.map(p => `
+      <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('');
+  } catch(e){ cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
+  modalEnviarAviso.showModal();
+});
+document.getElementById('avCancelar').addEventListener('click', () => modalEnviarAviso.close());
+document.getElementById('avTodos').addEventListener('change', (e) => {
+  document.getElementById('avPessoas').style.opacity = e.target.checked ? '0.4' : '1';
+});
+document.getElementById('formEnviarAviso').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mensagem = document.getElementById('avMensagem').value.trim();
+  const titulo = document.getElementById('avTitulo').value.trim();
+  if(!mensagem) return;
+  const payload = { mensagem, titulo };
+  if(document.getElementById('avTodos').checked) payload.todos = true;
+  else payload.participantes = Array.from(document.querySelectorAll('#avPessoas input:checked')).map(c => c.value);
+  if(!payload.todos && (!payload.participantes || !payload.participantes.length)){
+    alert('Escolha "todos" ou pelo menos uma pessoa.'); return;
+  }
+  try {
+    await criarNotificacao(payload);
+    modalEnviarAviso.close();
+    alert('Aviso enviado! ✅');
+  } catch(err){ alert('Erro ao enviar: ' + err.message); }
+});
+
+// ─── Config: iniciar com o Windows ────────────────────────────────────────
+const cfgIniciarWindows = document.getElementById('cfgIniciarWindows');
+async function carregarIniciarWindows(){
+  if(!cfgIniciarWindows || !window.hubApi.getIniciarWindows) return;
+  try { cfgIniciarWindows.checked = await window.hubApi.getIniciarWindows(); } catch(e){ console.warn(e); }
+}
+cfgIniciarWindows?.addEventListener('change', async () => {
+  try { await window.hubApi.setIniciarWindows(cfgIniciarWindows.checked); }
+  catch(e){ alert('Não foi possível alterar: ' + e.message); }
+});
 
 // ─── Render inicial ──────────────────────────────────────────────────────
 atualizarRelogio();

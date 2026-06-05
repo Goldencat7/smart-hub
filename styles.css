@@ -394,6 +394,33 @@ body {
 }
 .topbar-btn.perigo:hover { background: rgba(220, 28, 46, 0.12); }
 
+/* Aviso recebido (popup com confirmação) */
+.aviso-recebido { text-align: center; max-width: 420px; }
+.aviso-icone { font-size: 40px; margin-bottom: 6px; }
+.aviso-msg {
+  white-space: pre-wrap;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text-1);
+  margin: 6px 0 14px;
+}
+.aviso-recebido .modal-actions { justify-content: center; }
+
+/* Textarea do envio de aviso */
+#avMensagem {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+
+/* Toggle nas Configurações */
+.cfg-toggle { margin: 4px 0 2px; cursor: pointer; }
+
 /* Etiqueta de item vindo do Google (Fase 2 — só leitura no Hub) */
 .ev-tag-google {
   background: rgba(66, 133, 244, 0.18);
