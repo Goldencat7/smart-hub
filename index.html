@@ -45,11 +45,13 @@
 
         <!-- ──── Aba Documentos (Google Drive) ──── -->
         <section id="secaoDocumentos" class="docs-wrap" hidden>
-          <div class="docs-head">
-            <p class="muted">📁 Documentos da empresa — sincronizados com o Google Drive. Clique num arquivo pra abrir.</p>
-            <button id="btnAbrirDrive" class="topbar-btn">Abrir no Drive ↗</button>
+          <div class="docs-painel">
+            <div class="docs-painel-head">
+              <span>📁 Documentos da empresa</span>
+              <button id="btnAbrirDrive" class="topbar-btn">Abrir no Drive ↗</button>
+            </div>
+            <iframe id="driveFrame" class="drive-frame" title="Documentos da empresa"></iframe>
           </div>
-          <iframe id="driveFrame" class="drive-frame" title="Documentos da empresa"></iframe>
         </section>
 
         <!-- ──── Aba Agenda (calendário completo) ──── -->
