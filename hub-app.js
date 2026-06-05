@@ -460,7 +460,24 @@ function eventosDoDia(chave){
   return eventos.filter(e => chaveDia(e.inicio) === chave).sort((a,b)=>a.inicio-b.inicio);
 }
 
-function montarGradeMes(ano, mes){
+// ─── Feriados nacionais (BrasilAPI — grátis, sem login) ──────────────────────
+let feriados = {};                  // { 'YYYY-MM-DD': 'Nome do feriado' }
+const feriadosAnos = new Set();     // anos já carregados (cache)
+async function carregarFeriados(ano){
+  if(feriadosAnos.has(ano)) return;
+  feriadosAnos.add(ano);            // marca antes pra evitar corrida em chamadas paralelas
+  try {
+    const resp = await fetch(`https://brasilapi.com.br/api/feriados/v1/${ano}`);
+    if(!resp.ok) throw new Error('status ' + resp.status);
+    const lista = await resp.json();
+    lista.forEach(f => { feriados[f.date] = f.name; });
+  } catch(e){
+    feriadosAnos.delete(ano);       // deixa tentar de novo numa próxima
+    console.warn('Feriados:', e.message);
+  }
+}
+
+function montarGradeMes(ano, mes, mini=false){
   const inicioSemana = new Date(ano, mes, 1).getDay();
   const diasNoMes = new Date(ano, mes+1, 0).getDate();
   const hojeChave = chaveDia(new Date());
@@ -469,8 +486,9 @@ function montarGradeMes(ano, mes){
   for(let dia=1; dia<=diasNoMes; dia++){
     const chave = chaveDia(new Date(ano, mes, dia));
     const evs = eventosDoDia(chave);
-    html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''}" data-dia="${chave}">
-      <span class="cal-num">${dia}</span>${evs.length?`<span class="cal-ponto">${evs.length>1?evs.length:''}</span>`:''}
+    const fer = feriados[chave];
+    html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''} ${fer?'feriado':''}" data-dia="${chave}"${fer?` title="${escapeHtml(fer)}"`:''}>
+      <span class="cal-num">${dia}</span>${evs.length?`<span class="cal-ponto">${evs.length>1?evs.length:''}</span>`:''}${(fer && !mini)?`<span class="cal-feriado">${escapeHtml(fer)}</span>`:''}
     </button>`;
   }
   return html + '</div>';
@@ -479,7 +497,7 @@ function montarGradeMes(ano, mes){
 function renderPainelAgenda(){
   const agora = new Date();
   miniCal.innerHTML = `<div class="mini-cal-titulo">${MESES[agora.getMonth()]} ${agora.getFullYear()}</div>` +
-                      montarGradeMes(agora.getFullYear(), agora.getMonth());
+                      montarGradeMes(agora.getFullYear(), agora.getMonth(), true);
   miniCal.querySelectorAll('.cal-dia[data-dia]').forEach(b=>{
     b.addEventListener('click', ()=>{
       diaSelecionado = b.dataset.dia;
@@ -501,6 +519,7 @@ function renderPainelAgenda(){
 async function renderCalendarioCompleto(){
   if(calAno == null){ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); }
   if(!diaSelecionado) diaSelecionado = chaveDia(new Date()); // detalhe sempre visível (sem "pulo")
+  await carregarFeriados(calAno);
   await carregarEventos(new Date(calAno, calMes-1, 1), new Date(calAno, calMes+2, 0));
   calTitulo.textContent = `${MESES[calMes]} ${calAno}`;
   calGrade.innerHTML = montarGradeMes(calAno, calMes);
@@ -521,6 +540,7 @@ function renderDetalheDia(){
       <h4>${d.toLocaleDateString('pt-BR',{weekday:'long', day:'2-digit', month:'long'})}</h4>
       <button class="topbar-btn primario" id="btnNovoNoDia">+ Compromisso</button>
     </div>
+    ${feriados[diaSelecionado] ? `<div class="dia-det-feriado">🎉 Feriado: ${escapeHtml(feriados[diaSelecionado])}</div>` : ''}
     ${evs.length ? evs.map(e=>`
       <div class="ev-item">
         <div class="ev-quando">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
@@ -687,3 +707,5 @@ setInterval(atualizarRelogio, 1000);
 renderPainelAgenda();
 renderSidebar();
 renderCentro();
+// Feriados do ano atual já no mini calendário (atualiza assim que chegar)
+carregarFeriados(new Date().getFullYear()).then(() => renderPainelAgenda());

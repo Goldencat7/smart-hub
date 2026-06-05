@@ -394,6 +394,31 @@ body {
 }
 .topbar-btn.perigo:hover { background: rgba(220, 28, 46, 0.12); }
 
+/* Feriados no calendário */
+.cal-dia.feriado { background: rgba(220, 180, 60, 0.10); }
+.cal-dia.feriado .cal-num { color: #f0c040; font-weight: 700; }
+.cal-feriado {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.15;
+  color: #e6b84a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.dia-det-feriado {
+  margin: 4px 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(220, 180, 60, 0.12);
+  border: 1px solid rgba(220, 180, 60, 0.4);
+  color: #f0c040;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* Seletor de tipo no modal (Evento / Tarefa / Lembrete) */
 .ev-tipo-sel {
   display: flex;
