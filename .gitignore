@@ -60,6 +60,9 @@ firestore-debug.log
 firestore-debug.*.log
 .runtimeconfig.json
 
+# Claude Code
+.claude/
+
 # Editor / OS
 .DS_Store
 Thumbs.db
