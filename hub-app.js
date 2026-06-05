@@ -32,6 +32,9 @@ const criarEvento = httpsCallable(fns, 'criarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
 const excluirEvento = httpsCallable(fns, 'excluirEvento');
 const listarPessoas = httpsCallable(fns, 'listarPessoas');
+const conectarGoogleAgenda = httpsCallable(fns, 'conectarGoogleAgenda');
+const desconectarGoogleAgenda = httpsCallable(fns, 'desconectarGoogleAgenda');
+const statusGoogleAgenda = httpsCallable(fns, 'statusGoogleAgenda');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -203,6 +206,7 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     renderCalendarioCompleto();
+    atualizarStatusGoogle();
     return;
   }
 
@@ -490,7 +494,7 @@ function renderPainelAgenda(){
     : prox.map(e => `
       <div class="ev-item compacto">
         <div class="ev-quando">${e.inicio.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} ${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
-        <div class="ev-titulo">${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
+        <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
       </div>`).join('');
 }
 
@@ -521,7 +525,7 @@ function renderDetalheDia(){
       <div class="ev-item">
         <div class="ev-quando">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
         <div class="ev-corpo">
-          <div class="ev-titulo">${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
+          <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
           ${e.descricao?`<div class="ev-desc">${escapeHtml(e.descricao)}</div>`:''}
         </div>
         ${(e.souDono||isAdmin)?`<button class="ev-del" data-id="${e.id}" title="Excluir">✕</button>`:''}
@@ -537,11 +541,15 @@ function renderDetalheDia(){
   });
 }
 
+function iconeTipo(tipo){ return tipo === 'tarefa' ? '✓' : tipo === 'lembrete' ? '🔔' : '📅'; }
+
 async function abrirModalEvento(diaPre){
   document.getElementById('evTitulo').value = '';
   document.getElementById('evDesc').value = '';
   document.getElementById('evHora').value = '09:00';
   document.getElementById('evData').value = diaPre || chaveDia(new Date());
+  const radioEvento = document.querySelector('input[name="evTipo"][value="evento"]');
+  if(radioEvento) radioEvento.checked = true;
   const area = document.getElementById('evParticipantesArea');
   if(isAdmin){
     area.hidden = false;
@@ -580,6 +588,59 @@ document.getElementById('calProx').addEventListener('click', ()=>{ calMes++; if(
 document.getElementById('calHoje').addEventListener('click', ()=>{ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); diaSelecionado=chaveDia(h); renderCalendarioCompleto(); });
 document.getElementById('evTodos').addEventListener('change', (e)=>{ document.getElementById('evPessoas').style.opacity = e.target.checked ? '0.4' : '1'; });
 
+// ─── Conectar / desconectar a Google Agenda ──────────────────────────────────
+const btnGoogleAgenda = document.getElementById('btnGoogleAgenda');
+let googleConectado = false;
+
+function pintarBotaoGoogle(conectado, email){
+  googleConectado = conectado;
+  if(conectado){
+    btnGoogleAgenda.classList.add('google-on');
+    btnGoogleAgenda.textContent = '📅 Google ✓';
+    btnGoogleAgenda.title = email ? `Conectado: ${email} — clique para desconectar` : 'Conectado — clique para desconectar';
+  } else {
+    btnGoogleAgenda.classList.remove('google-on');
+    btnGoogleAgenda.textContent = '📅 Conectar Google';
+    btnGoogleAgenda.title = 'Sincronizar com a Google Agenda';
+  }
+}
+
+async function atualizarStatusGoogle(){
+  try {
+    const r = await statusGoogleAgenda();
+    pintarBotaoGoogle(!!(r.data && r.data.conectado), (r.data && r.data.email) || '');
+  } catch(e){ console.warn('Status Google:', e); }
+}
+
+btnGoogleAgenda.addEventListener('click', async ()=>{
+  // Já conectado → oferece desconectar
+  if(googleConectado){
+    if(!confirm('Desconectar sua Google Agenda? Os compromissos já enviados continuam lá.')) return;
+    btnGoogleAgenda.disabled = true;
+    try { await desconectarGoogleAgenda(); pintarBotaoGoogle(false, ''); }
+    catch(e){ alert('Erro ao desconectar: '+e.message); }
+    finally { btnGoogleAgenda.disabled = false; }
+    return;
+  }
+  // Não conectado → abre o navegador pra autorizar
+  btnGoogleAgenda.disabled = true;
+  const txtAntes = btnGoogleAgenda.textContent;
+  btnGoogleAgenda.textContent = 'Abrindo navegador...';
+  try {
+    const r = await window.hubApi.conectarGoogle();
+    if(!r || !r.ok){ alert('Conexão cancelada' + (r && r.erro ? ': '+r.erro : '.')); return; }
+    btnGoogleAgenda.textContent = 'Finalizando...';
+    const res = await conectarGoogleAgenda({ code: r.code, codeVerifier: r.codeVerifier, redirectUri: r.redirectUri });
+    pintarBotaoGoogle(true, (res.data && res.data.email) || '');
+    alert('Google Agenda conectada! ✅ Novos compromissos vão aparecer lá também.');
+  } catch(e){
+    alert('Erro ao conectar: '+e.message);
+  } finally {
+    btnGoogleAgenda.disabled = false;
+    if(!googleConectado) btnGoogleAgenda.textContent = txtAntes;
+  }
+});
+
 document.getElementById('formEvento').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const titulo = document.getElementById('evTitulo').value.trim();
@@ -587,7 +648,8 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
   const hora = document.getElementById('evHora').value;
   const descricao = document.getElementById('evDesc').value.trim();
   if(!titulo || !data || !hora) return;
-  const payload = { titulo, inicio: new Date(data + 'T' + hora).toISOString(), descricao };
+  const tipo = (document.querySelector('input[name="evTipo"]:checked') || {}).value || 'evento';
+  const payload = { titulo, inicio: new Date(data + 'T' + hora).toISOString(), descricao, tipo, dataLocal: data };
   if(isAdmin){
     if(document.getElementById('evTodos').checked) payload.todos = true;
     else payload.participantes = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c=>c.value);

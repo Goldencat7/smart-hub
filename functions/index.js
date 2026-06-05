@@ -7,6 +7,131 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
 
 const db = admin.firestore();
 
+// ─── Google Agenda (OAuth + sincronização) ──────────────────────────────────
+// A chave secreta do cliente OAuth fica no cofre (Secret Manager), NUNCA no código.
+const { defineSecret } = require('firebase-functions/params');
+const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
+const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
+const TZ = 'America/Sao_Paulo';
+
+async function googleTokenRequest(params) {
+  const resp = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(params)
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    throw new HttpsError('internal', 'Google OAuth: ' + (data.error_description || data.error || resp.status));
+  }
+  return data;
+}
+
+// Troca o "code" (vindo do fluxo no app) por tokens — o que importa é o refresh_token.
+async function trocarCodePorTokens(code, codeVerifier, redirectUri) {
+  return googleTokenRequest({
+    code,
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET.value(),
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+    code_verifier: codeVerifier
+  });
+}
+
+// Gera um access_token novo a partir do refresh_token guardado.
+async function getAccessToken(refreshToken) {
+  const data = await googleTokenRequest({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET.value(),
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token'
+  });
+  return data.access_token;
+}
+
+// Insere um evento na agenda "primary" do usuário; devolve o id do evento no Google.
+async function inserirEventoGoogle(accessToken, ev) {
+  const resp = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary: ev.titulo,
+      description: ev.descricao || '',
+      start: { dateTime: ev.inicioISO, timeZone: TZ },
+      end:   { dateTime: ev.fimISO,    timeZone: TZ }
+    })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new HttpsError('internal', 'Calendar insert: ' + ((data.error && data.error.message) || resp.status));
+  return data.id;
+}
+
+async function removerEventoGoogle(accessToken, googleEventId) {
+  const resp = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${googleEventId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  // 410 = já removido, 404 = não existe — tratamos como ok.
+  if (!resp.ok && resp.status !== 410 && resp.status !== 404) {
+    throw new HttpsError('internal', 'Calendar delete: ' + resp.status);
+  }
+}
+
+// Insere uma TAREFA na lista padrão do Google Tarefas; devolve o id da tarefa.
+// (No Google, "lembrete" e "tarefa" são a mesma coisa — ambos viram Tarefa.)
+async function inserirTarefaGoogle(accessToken, ev) {
+  const resp = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: ev.titulo,
+      notes: ev.descricao || '',
+      due: ev.dueISO   // o Google Tarefas só guarda a DATA (ignora a hora)
+    })
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new HttpsError('internal', 'Tasks insert: ' + ((data.error && data.error.message) || resp.status));
+  return data.id;
+}
+
+async function removerTarefaGoogle(accessToken, taskId) {
+  const resp = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/${taskId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!resp.ok && resp.status !== 410 && resp.status !== 404) {
+    throw new HttpsError('internal', 'Tasks delete: ' + resp.status);
+  }
+}
+
+// uids que conectaram a Google Agenda (usado em eventos "para todos").
+async function uidsConectados() {
+  const snap = await db.collection('google_tokens').get();
+  return snap.docs.map(d => d.id);
+}
+
+// Espelha um item pro Google de cada uid conectado; devolve { uid: googleId }.
+// tipo 'evento' → Google Agenda; 'tarefa'/'lembrete' → Google Tarefas.
+// Best-effort: falha de um não derruba os outros.
+async function sincronizarParaGoogle(uids, ev, tipo) {
+  const ehTarefa = (tipo === 'tarefa' || tipo === 'lembrete');
+  const ids = {};
+  for (const uid of [...new Set(uids)]) {
+    try {
+      const tokSnap = await db.collection('google_tokens').doc(uid).get();
+      if (!tokSnap.exists || !tokSnap.data().refreshToken) continue;
+      const accessToken = await getAccessToken(tokSnap.data().refreshToken);
+      ids[uid] = ehTarefa
+        ? await inserirTarefaGoogle(accessToken, ev)
+        : await inserirEventoGoogle(accessToken, ev);
+    } catch (e) {
+      console.warn(`Sync Google falhou p/ ${uid} (${tipo}):`, e.message);
+    }
+  }
+  return ids;
+}
+
 // UIDs dos admins iniciais — usado SÓ pra "bootstrap": setar a claim de admin
 // na primeira vez que cada um logar. Depois disso, admins gerenciam outros admins pela UI.
 const BOOTSTRAP_ADMIN_UIDS = [
@@ -237,15 +362,59 @@ exports.salvarMeuPerfil = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Google Agenda: conectar / desconectar / status ──────────────────────────
+// O app abre o navegador, a pessoa autoriza, e manda o "code" pra cá. A troca
+// pela permissão de longo prazo (refresh_token) acontece aqui no servidor.
+exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { code, codeVerifier, redirectUri } = req.data || {};
+  if (!code || !codeVerifier || !redirectUri) {
+    throw new HttpsError('invalid-argument', 'Dados de conexão incompletos.');
+  }
+  const tokens = await trocarCodePorTokens(code, codeVerifier, redirectUri);
+  if (!tokens.refresh_token) {
+    throw new HttpsError('failed-precondition', 'Não recebemos a permissão de longo prazo. Tente conectar de novo.');
+  }
+  // Descobre o email da conta Google conectada (vem no id_token) só pra mostrar na tela.
+  let email = '';
+  try {
+    if (tokens.id_token) {
+      const payload = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64').toString('utf8'));
+      email = payload.email || '';
+    }
+  } catch (e) { /* email é só cosmético */ }
+
+  await db.collection('google_tokens').doc(auth.uid).set({
+    refreshToken: tokens.refresh_token,
+    email,
+    connectedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true, email };
+});
+
+exports.desconectarGoogleAgenda = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  await db.collection('google_tokens').doc(auth.uid).delete();
+  return { ok: true };
+});
+
+exports.statusGoogleAgenda = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const snap = await db.collection('google_tokens').doc(auth.uid).get();
+  if (!snap.exists) return { conectado: false, email: '' };
+  return { conectado: true, email: snap.data().email || '' };
+});
+
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Admin pode criar pra outras pessoas (ou "todos"); usuário comum só pra si.
-exports.criarEvento = onCall(async (req) => {
+exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);
   const ehAdmin = ehAdminAuth(auth);
-  const { titulo, inicio, participantes, todos, descricao } = req.data || {};
+  const { titulo, inicio, participantes, todos, descricao, tipo, dataLocal } = req.data || {};
   if (!titulo || !inicio) throw new HttpsError('invalid-argument', 'Título e data/hora são obrigatórios.');
   const dataInicio = new Date(inicio);
   if (isNaN(dataInicio.getTime())) throw new HttpsError('invalid-argument', 'Data/hora inválida.');
+  const tipoLimpo = ['evento', 'tarefa', 'lembrete'].includes(tipo) ? tipo : 'evento';
 
   let parts = [auth.uid];
   let paraTodos = false;
@@ -254,15 +423,40 @@ exports.criarEvento = onCall(async (req) => {
     else if (Array.isArray(participantes) && participantes.length) parts = participantes.slice(0, 300);
   }
 
+  const tituloLimpo = String(titulo).slice(0, 120);
+  const descricaoLimpa = descricao ? String(descricao).slice(0, 500) : '';
+
   const ref = await db.collection('events').add({
-    titulo: String(titulo).slice(0, 120),
-    descricao: descricao ? String(descricao).slice(0, 500) : '',
+    titulo: tituloLimpo,
+    descricao: descricaoLimpa,
     inicio: admin.firestore.Timestamp.fromDate(dataInicio),
+    tipo: tipoLimpo,
     participantes: parts,
     todos: paraTodos,
     criadoPor: auth.uid,
     criadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
+
+  // Espelha no Google de quem estiver conectado (best-effort; não derruba o item).
+  // Evento → Google Agenda (googleEventIds); tarefa/lembrete → Google Tarefas (googleTaskIds).
+  try {
+    const alvos = paraTodos ? await uidsConectados() : parts;
+    const inicioISO = dataInicio.toISOString();
+    const fimISO = new Date(dataInicio.getTime() + 60 * 60 * 1000).toISOString();
+    // Tarefa só guarda a data — usa a data local escolhida (evita erro de fuso).
+    const dueISO = (dataLocal && /^\d{4}-\d{2}-\d{2}$/.test(dataLocal))
+      ? `${dataLocal}T00:00:00.000Z` : inicioISO;
+    const ids = await sincronizarParaGoogle(alvos, {
+      titulo: tituloLimpo, descricao: descricaoLimpa, inicioISO, fimISO, dueISO
+    }, tipoLimpo);
+    if (Object.keys(ids).length) {
+      const campo = (tipoLimpo === 'evento') ? 'googleEventIds' : 'googleTaskIds';
+      await ref.update({ [campo]: ids });
+    }
+  } catch (e) {
+    console.warn('Sync Google (criarEvento) falhou:', e.message);
+  }
+
   return { ok: true, id: ref.id };
 });
 
@@ -290,6 +484,7 @@ exports.listarEventos = onCall(async (req) => {
         titulo: x.titulo,
         descricao: x.descricao || '',
         inicio: x.inicio.toDate().toISOString(),
+        tipo: x.tipo || 'evento',
         todos: !!x.todos,
         souDono: x.criadoPor === auth.uid
       });
@@ -298,16 +493,36 @@ exports.listarEventos = onCall(async (req) => {
   return lista;
 });
 
-exports.excluirEvento = onCall(async (req) => {
+exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { id } = req.data || {};
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
   const ref = db.collection('events').doc(id);
   const snap = await ref.get();
   if (!snap.exists) return { ok: true };
-  if (snap.data().criadoPor !== auth.uid && !ehAdminAuth(auth)) {
+  const dados = snap.data();
+  if (dados.criadoPor !== auth.uid && !ehAdminAuth(auth)) {
     throw new HttpsError('permission-denied', 'Só quem criou (ou admin) pode excluir.');
   }
+
+  // Remove do Google onde foi espelhado (best-effort): eventos da Agenda, tarefas das Tarefas.
+  const remover = async (mapa, ehTarefa) => {
+    if (!mapa) return;
+    for (const [uid, gid] of Object.entries(mapa)) {
+      try {
+        const tokSnap = await db.collection('google_tokens').doc(uid).get();
+        if (!tokSnap.exists || !tokSnap.data().refreshToken) continue;
+        const accessToken = await getAccessToken(tokSnap.data().refreshToken);
+        if (ehTarefa) await removerTarefaGoogle(accessToken, gid);
+        else await removerEventoGoogle(accessToken, gid);
+      } catch (e) {
+        console.warn(`Remover Google (excluirEvento) falhou p/ ${uid}:`, e.message);
+      }
+    }
+  };
+  await remover(dados.googleEventIds, false);
+  await remover(dados.googleTaskIds, true);
+
   await ref.delete();
   return { ok: true };
 });

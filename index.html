@@ -63,6 +63,7 @@
               <button id="calProx" class="topbar-btn" title="Próximo mês">›</button>
               <button id="calHoje" class="topbar-btn">Hoje</button>
               <button id="btnNovoEvento2" class="topbar-btn primario">+ Novo compromisso</button>
+              <button id="btnGoogleAgenda" class="topbar-btn google-btn" title="Sincronizar com a Google Agenda">📅 Conectar Google</button>
             </div>
             <div id="calGrade" class="cal-grade"></div>
           </div>
@@ -124,6 +125,11 @@
     <dialog id="modalEvento" class="modal">
       <form method="dialog" id="formEvento" class="modal-form">
         <h3 id="modalEventoTitulo">Novo compromisso</h3>
+        <div id="evTipoSel" class="ev-tipo-sel">
+          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="evento" checked><span>📅 Evento</span></label>
+          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="tarefa"><span>✓ Tarefa</span></label>
+          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="lembrete"><span>🔔 Lembrete</span></label>
+        </div>
         <label class="auth-label">
           Título
           <input id="evTitulo" type="text" required maxlength="120" placeholder="Ex.: Reunião de equipe">

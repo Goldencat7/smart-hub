@@ -394,6 +394,46 @@ body {
 }
 .topbar-btn.perigo:hover { background: rgba(220, 28, 46, 0.12); }
 
+/* Seletor de tipo no modal (Evento / Tarefa / Lembrete) */
+.ev-tipo-sel {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ev-tipo-op {
+  flex: 1;
+  cursor: pointer;
+}
+.ev-tipo-op input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.ev-tipo-op span {
+  display: block;
+  text-align: center;
+  padding: 8px 6px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-2);
+  transition: all .15s ease;
+}
+.ev-tipo-op input:checked + span {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #0c2749);
+  color: #fff;
+}
+
+/* Botão de conectar Google Agenda — verde quando conectado */
+.topbar-btn.google-on {
+  background: rgba(10, 122, 58, 0.16);
+  color: #7ee2a8;
+  border-color: rgba(10, 122, 58, 0.55);
+}
+.topbar-btn.google-on:hover { background: rgba(10, 122, 58, 0.26); }
+
 .hub-card.loading { opacity: .6; pointer-events: none; }
 .hub-card.loading::after {
   content: "...";

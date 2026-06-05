@@ -1,6 +1,20 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const http = require('http');
+const crypto = require('crypto');
 const { autoUpdater } = require('electron-updater');
+
+// ─── Google OAuth (conectar a Google Agenda) ────────────────────────────────
+// O Google não deixa logar dentro do Electron, então abrimos o navegador real
+// e capturamos a resposta num servidor local (loopback). A troca do "code" pela
+// permissão acontece no servidor (Cloud Function), não aqui — a chave secreta
+// nunca entra no app.
+const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
+const GOOGLE_SCOPES = 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks';
+
+function base64url(buf) {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
 
 // Permite sites HTTP antigos e ignora cert errors
 app.commandLine.appendSwitch('ignore-certificate-errors');
@@ -95,6 +109,61 @@ ipcMain.on('abrir-admin', () => {
 
 ipcMain.on('voltar-para-hub', () => {
   if (janelaPrincipal) janelaPrincipal.loadFile('index.html');
+});
+
+// ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────
+// Devolve { ok, code, codeVerifier, redirectUri } pro renderer, que então chama
+// a Cloud Function pra finalizar. Usa PKCE (S256) por segurança.
+ipcMain.handle('conectar-google', async () => {
+  return await new Promise((resolve) => {
+    const codeVerifier  = base64url(crypto.randomBytes(32));
+    const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
+    const state = base64url(crypto.randomBytes(16));
+    let redirectUri = '';
+    let resolvido = false;
+    const finalizar = (r) => { if (!resolvido) { resolvido = true; resolve(r); } };
+
+    const server = http.createServer((reqH, resH) => {
+      try {
+        const url = new URL(reqH.url, 'http://127.0.0.1');
+        if (url.pathname !== '/') { resH.writeHead(404); resH.end(); return; }
+        const code     = url.searchParams.get('code');
+        const retState = url.searchParams.get('state');
+        const erro     = url.searchParams.get('error');
+        resH.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        resH.end('<!doctype html><html lang="pt-br"><meta charset="utf-8"><body style="font-family:system-ui,Segoe UI,Arial;text-align:center;padding-top:64px;background:#0e1117;color:#e6e6e6"><h2>Pronto! ✅</h2><p>Pode fechar esta aba e voltar ao Hub.</p></body></html>');
+        server.close();
+        if (erro) return finalizar({ ok: false, erro });
+        if (retState !== state) return finalizar({ ok: false, erro: 'Resposta inválida (state).' });
+        if (!code) return finalizar({ ok: false, erro: 'Sem código de autorização.' });
+        finalizar({ ok: true, code, codeVerifier, redirectUri });
+      } catch (e) {
+        finalizar({ ok: false, erro: e.message });
+      }
+    });
+
+    server.on('error', (e) => finalizar({ ok: false, erro: e.message }));
+
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      redirectUri = `http://127.0.0.1:${port}`;
+      const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: GOOGLE_SCOPES,
+        access_type: 'offline',
+        prompt: 'consent',
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256'
+      });
+      shell.openExternal(authUrl);
+    });
+
+    // Desiste após 5 min se a pessoa não concluir.
+    setTimeout(() => { try { server.close(); } catch (e) {} finalizar({ ok: false, erro: 'Tempo esgotado.' }); }, 300000);
+  });
 });
 
 // ─── Abre uma janela do PWA (com ou sem autologin) ───────────────────────────

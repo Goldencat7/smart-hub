@@ -8,7 +8,10 @@ contextBridge.exposeInMainWorld('hubApi', {
   // Navegação entre páginas (login → index → admin)
   voltarParaLogin: () => ipcRenderer.send('voltar-para-login'),
   abrirAdmin: () => ipcRenderer.send('abrir-admin'),
-  voltarParaHub: () => ipcRenderer.send('voltar-para-hub')
+  voltarParaHub: () => ipcRenderer.send('voltar-para-hub'),
+
+  // Conectar Google Agenda: abre o navegador e devolve o código de autorização
+  conectarGoogle: () => ipcRenderer.invoke('conectar-google')
 });
 
 // API específica de login (chamada pelo auth-login.js depois do login Firebase)
