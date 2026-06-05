@@ -486,11 +486,72 @@ exports.listarEventos = onCall(async (req) => {
         inicio: x.inicio.toDate().toISOString(),
         tipo: x.tipo || 'evento',
         todos: !!x.todos,
-        souDono: x.criadoPor === auth.uid
+        souDono: x.criadoPor === auth.uid,
+        // id do item no Google (pra Fase 2 não trazer ele de volta duplicado)
+        googleId: (x.googleEventIds && x.googleEventIds[auth.uid]) ||
+                  (x.googleTaskIds && x.googleTaskIds[auth.uid]) || null
       });
     }
   });
   return lista;
+});
+
+// ─── Fase 2: lê os itens criados DIRETO no Google (Agenda + Tarefas) ──────────
+// Best-effort: se algo falhar, devolve o que conseguiu (não quebra a agenda do Hub).
+exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { de, ate } = req.data || {};
+  const tokSnap = await db.collection('google_tokens').doc(auth.uid).get();
+  if (!tokSnap.exists || !tokSnap.data().refreshToken) return { itens: [] };
+
+  let accessToken;
+  try { accessToken = await getAccessToken(tokSnap.data().refreshToken); }
+  catch (e) { console.warn('listarGoogleAgenda token:', e.message); return { itens: [] }; }
+
+  const timeMin = de ? new Date(de).toISOString() : new Date().toISOString();
+  const timeMax = ate ? new Date(ate).toISOString() : new Date(Date.now() + 1000 * 60 * 60 * 24 * 60).toISOString();
+  const itens = [];
+
+  // Eventos da Agenda
+  try {
+    const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+      + `?singleEvents=true&orderBy=startTime&maxResults=250`
+      + `&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && Array.isArray(data.items)) {
+      data.items.forEach(ev => {
+        if (ev.status === 'cancelled' || !ev.start) return;
+        // Evento com hora → usa a hora; dia inteiro (date) → meio-dia UTC (evita erro de fuso).
+        const inicioISO = ev.start.dateTime
+          ? new Date(ev.start.dateTime).toISOString()
+          : (ev.start.date ? ev.start.date + 'T12:00:00.000Z' : null);
+        if (!inicioISO) return;
+        itens.push({ googleId: ev.id, titulo: ev.summary || '(sem título)', descricao: ev.description || '', inicio: inicioISO, tipo: 'evento' });
+      });
+    }
+  } catch (e) { console.warn('listarGoogleAgenda eventos:', e.message); }
+
+  // Tarefas (Google Tarefas) — só as com data, dentro do período.
+  try {
+    const resp = await fetch('https://tasks.googleapis.com/tasks/v1/lists/@default/tasks?showCompleted=false&maxResults=100', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok && Array.isArray(data.items)) {
+      const minMs = new Date(timeMin).getTime();
+      const maxMs = new Date(timeMax).getTime();
+      data.items.forEach(t => {
+        if (!t.due) return;
+        const inicioISO = t.due.slice(0, 10) + 'T12:00:00.000Z'; // só a data importa
+        const ms = new Date(inicioISO).getTime();
+        if (ms < minMs || ms > maxMs) return;
+        itens.push({ googleId: t.id, titulo: t.title || '(sem título)', descricao: t.notes || '', inicio: inicioISO, tipo: 'tarefa' });
+      });
+    }
+  } catch (e) { console.warn('listarGoogleAgenda tarefas:', e.message); }
+
+  return { itens };
 });
 
 exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {

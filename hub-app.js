@@ -35,6 +35,7 @@ const listarPessoas = httpsCallable(fns, 'listarPessoas');
 const conectarGoogleAgenda = httpsCallable(fns, 'conectarGoogleAgenda');
 const desconectarGoogleAgenda = httpsCallable(fns, 'desconectarGoogleAgenda');
 const statusGoogleAgenda = httpsCallable(fns, 'statusGoogleAgenda');
+const listarGoogleAgenda = httpsCallable(fns, 'listarGoogleAgenda');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -446,12 +447,32 @@ function atualizarRelogio(){
   relogioData.textContent = agora.toLocaleDateString('pt-BR', { weekday:'long', day:'2-digit', month:'long' });
 }
 
+function chaveEvento(e){ return e.origem === 'google' ? ('g:' + e.googleId) : e.id; }
+
 async function carregarEventos(de, ate){
   try {
     const r = await listarEventos({ de: de.toISOString(), ate: ate.toISOString() });
     const novos = (r.data || []).map(e => ({ ...e, inicio: new Date(e.inicio) }));
-    const mapa = new Map(eventos.map(e => [e.id, e]));
+    // Mantém só o que está FORA do período recarregado; o de dentro é refeito do zero,
+    // assim itens excluídos (no Hub ou no Google) somem ao atualizar a agenda.
+    const deMs = de.getTime(), ateMs = ate.getTime();
+    const mapa = new Map(
+      eventos.filter(e => { const t = e.inicio.getTime(); return t < deMs || t > ateMs; })
+             .map(e => [chaveEvento(e), e])
+    );
     novos.forEach(e => mapa.set(e.id, e));
+
+    // Fase 2: traz o que foi criado direto no Google (só se conectado), sem duplicar.
+    if (googleConectado) {
+      try {
+        const g = await listarGoogleAgenda({ de: de.toISOString(), ate: ate.toISOString() });
+        const idsDoHub = new Set(novos.map(e => e.googleId).filter(Boolean));
+        ((g.data && g.data.itens) || []).forEach(it => {
+          if (idsDoHub.has(it.googleId)) return; // já é um item do Hub espelhado
+          mapa.set('g:' + it.googleId, { ...it, inicio: new Date(it.inicio), origem: 'google', souDono: false });
+        });
+      } catch(e){ console.warn('Google agenda:', e); }
+    }
     eventos = Array.from(mapa.values()).sort((a,b) => a.inicio - b.inicio);
   } catch(e){ console.warn('Eventos:', e); }
 }
@@ -545,10 +566,10 @@ function renderDetalheDia(){
       <div class="ev-item">
         <div class="ev-quando">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
         <div class="ev-corpo">
-          <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
+          <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''} ${e.origem==='google'?'<span class="ev-tag ev-tag-google">Google</span>':''}</div>
           ${e.descricao?`<div class="ev-desc">${escapeHtml(e.descricao)}</div>`:''}
         </div>
-        ${(e.souDono||isAdmin)?`<button class="ev-del" data-id="${e.id}" title="Excluir">✕</button>`:''}
+        ${(e.souDono||isAdmin) && e.origem!=='google'?`<button class="ev-del" data-id="${e.id}" title="Excluir">✕</button>`:''}
       </div>`).join('') : '<p class="muted">Nada nesse dia.</p>'}
   `;
   calDiaDetalhe.querySelector('#btnNovoNoDia')?.addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
@@ -590,9 +611,10 @@ async function abrirModalEvento(diaPre){
 function verificarAlertas(){
   const agora = Date.now();
   eventos.forEach(e=>{
+    const k = chaveEvento(e);
     const falta = e.inicio.getTime() - agora;
-    if(falta > 0 && falta <= 3600000 && !alertados.has(e.id)){
-      alertados.add(e.id);
+    if(falta > 0 && falta <= 3600000 && !alertados.has(k)){
+      alertados.add(k);
       const hora = e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       alert(`⏰ Lembrete: "${e.titulo}" às ${hora} (em menos de 1h).`);
     }
