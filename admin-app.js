@@ -344,21 +344,34 @@ document.getElementById('formPermissoes').addEventListener('submit', async (e) =
 });
 
 // ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────
+// ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────
 function confirmar(mensagem) {
   return new Promise((resolve) => {
     document.getElementById('confirmMsg').textContent = mensagem;
     const btnSim = document.getElementById('confirmSim');
     const btnNao = document.getElementById('confirmNao');
+    
     const fechar = (valor) => {
       btnSim.removeEventListener('click', onSim);
       btnNao.removeEventListener('click', onNao);
+      modalConfirm.removeEventListener('cancel', onCancel); // Limpa o evento do ESC
       modalConfirm.close();
       resolve(valor);
     };
+    
     const onSim = () => fechar(true);
     const onNao = () => fechar(false);
+    
+    // Se a pessoa apertar ESC, cancelamos a Promise com "false"
+    const onCancel = (e) => {
+      e.preventDefault(); 
+      fechar(false);
+    };
+
     btnSim.addEventListener('click', onSim);
     btnNao.addEventListener('click', onNao);
+    modalConfirm.addEventListener('cancel', onCancel); // Ouve a tecla ESC
+    
     modalConfirm.showModal();
   });
 }
