@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('hubApi', {
   // Conectar Google Agenda: abre o navegador e devolve o código de autorização
   conectarGoogle: () => ipcRenderer.invoke('conectar-google'),
 
+  // Versão do app
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
   // Iniciar com o Windows (Configurações)
   getIniciarWindows: () => ipcRenderer.invoke('get-iniciar-windows'),
   setIniciarWindows: (ligar) => ipcRenderer.invoke('set-iniciar-windows', ligar)

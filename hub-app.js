@@ -401,6 +401,12 @@ cfgSalvar.addEventListener('click', async () => {
 btnAdmin.addEventListener('click', () => window.hubApi.abrirAdmin());
 btnSair.addEventListener('click', async () => { await signOut(auth); });
 
+// Exibe a versão do app ao lado da logo
+window.hubApi.getAppVersion().then(v => {
+  const el = document.getElementById('appVersion');
+  if (el) el.textContent = 'v' + v;
+}).catch(() => {});
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.hubApi.voltarParaLogin();
@@ -523,8 +529,11 @@ function montarGradeMes(ano, mes, mini=false){
     const chave = chaveDia(new Date(ano, mes, dia));
     const evs = eventosDoDia(chave);
     const fer = feriados[chave];
+    const hubEvs = evs.filter(e => e.origem !== 'google');
+    const googleEvs = evs.filter(e => e.origem === 'google');
+    const pontoHtml = evs.length ? `<span class="cal-pontos">${hubEvs.length ? `<span class="cal-ponto">${hubEvs.length > 1 ? hubEvs.length : ''}</span>` : ''}${googleEvs.length ? `<span class="cal-ponto-google"></span>` : ''}</span>` : '';
     html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''} ${fer?'feriado':''}" data-dia="${chave}"${fer?` title="${escapeHtml(fer)}"`:''}>
-      <span class="cal-num">${dia}</span>${evs.length?`<span class="cal-ponto">${evs.length>1?evs.length:''}</span>`:''}${(fer && !mini)?`<span class="cal-feriado">${escapeHtml(fer)}</span>`:''}
+      <span class="cal-num">${dia}</span>${pontoHtml}${(fer && !mini)?`<span class="cal-feriado">${escapeHtml(fer)}</span>`:''}
     </button>`;
   }
   return html + '</div>';
@@ -599,29 +608,60 @@ function renderDetalheDia(){
 
 function iconeTipo(tipo){ return tipo === 'tarefa' ? '✓' : tipo === 'lembrete' ? '🔔' : '📅'; }
 
-async function abrirModalEvento(diaPre){
+async function abrirModalEvento(diaPre) {
+  // 1. Limpa os campos iniciais
   document.getElementById('evTitulo').value = '';
   document.getElementById('evDesc').value = '';
   document.getElementById('evHora').value = '09:00';
   document.getElementById('evData').value = diaPre || chaveDia(new Date());
+  
   const radioEvento = document.querySelector('input[name="evTipo"][value="evento"]');
   if(radioEvento) radioEvento.checked = true;
+
+  // 2. ABRE O MODAL IMEDIATAMENTE (O usuário já vê a tela)
+  modalEvento.showModal();
+
+  // 3. Força o foco com um pequeno atraso (Resolve o bug do Chromium ignorar o cursor)
+  setTimeout(() => {
+    document.getElementById('evTitulo').focus();
+  }, 50);
+
+  // 4. Lógica de Admin (carrega as pessoas sem congelar a abertura do modal)
   const area = document.getElementById('evParticipantesArea');
-  if(isAdmin){
+  if (isAdmin) {
     area.hidden = false;
     document.getElementById('evTodos').checked = false;
     const cont = document.getElementById('evPessoas');
-    cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
-    try {
-      if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; }
-      cont.innerHTML = pessoasCache.map(p=>`
-        <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('');
-    } catch(e){ cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
+    
+    // Se não tiver cache, avisa que está carregando, mas a pessoa já pode ir digitando o título
+    if (!pessoasCache) {
+      cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
+      try {
+        const r = await listarPessoas(); 
+        pessoasCache = r.data || []; 
+      } catch(e) { 
+        cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; 
+        return; // Sai se der erro pra não quebrar a tela
+      }
+    }
+    
+    // Preenche a lista assim que o Firebase responder (ou instantaneamente se tiver cache)
+    cont.innerHTML = pessoasCache.map(p => `
+      <label class="auth-label-inline">
+        <input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}
+      </label>
+    `).join('');
+
+    // Rebuilding innerHTML can steal focus — return it to the title field if the user
+    // hasn't already moved to another field inside the modal
+    const focado = document.activeElement;
+    if (!focado || !modalEvento.contains(focado) || focado === document.body) {
+      document.getElementById('evTitulo').focus();
+    }
+
   } else {
     area.hidden = true;
   }
-  modalEvento.showModal();
-  document.getElementById('evTitulo').focus();
 }
 
 function verificarAlertas(){
@@ -643,8 +683,30 @@ function verificarAlertas(){
 document.getElementById('btnNovoEvento').addEventListener('click', ()=> abrirModalEvento(null));
 document.getElementById('btnNovoEvento2').addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
 document.getElementById('cancelarEvento').addEventListener('click', ()=> modalEvento.close());
-document.getElementById('calPrev').addEventListener('click', ()=>{ calMes--; if(calMes<0){calMes=11;calAno--;} renderCalendarioCompleto(); });
-document.getElementById('calProx').addEventListener('click', ()=>{ calMes++; if(calMes>11){calMes=0;calAno++;} renderCalendarioCompleto(); });
+document.getElementById('calPrev').addEventListener('click', async (e) => { 
+  const b = e.currentTarget;
+  b.disabled = true; // Trava o botão
+  calMes--; 
+  if(calMes < 0) { calMes = 11; calAno--; } 
+  try { 
+    await renderCalendarioCompleto(); 
+  } finally { 
+    b.disabled = false; // Destrava quando o Firebase responder
+  }
+});
+
+document.getElementById('calProx').addEventListener('click', async (e) => { 
+  const b = e.currentTarget;
+  b.disabled = true; // Trava o botão
+  calMes++; 
+  if(calMes > 11) { calMes = 0; calAno++; } 
+  try { 
+    await renderCalendarioCompleto(); 
+  } finally { 
+    b.disabled = false; // Destrava quando o Firebase responder
+  }
+});
+
 document.getElementById('calHoje').addEventListener('click', ()=>{ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); diaSelecionado=chaveDia(h); renderCalendarioCompleto(); });
 document.getElementById('calRecarregar').addEventListener('click', async (e)=>{
   const b = e.currentTarget; const t = b.textContent;

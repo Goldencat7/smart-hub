@@ -75,6 +75,8 @@ function criarJanelaPrincipal() {
     width: 1100,
     height: 760,
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#0f1218', symbolColor: '#f5f7fa', height: 45 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -133,6 +135,7 @@ ipcMain.on('voltar-para-hub', () => {
 });
 
 // ─── Iniciar com o Windows (lido/alterado nas Configurações) ─────────────────
+ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());
 ipcMain.handle('set-iniciar-windows', (_e, ligar) => { definirIniciarComWindows(ligar); return { ok: true }; });
 

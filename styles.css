@@ -41,6 +41,7 @@ body {
 
 .topbar {
   padding: 20px 32px;
+  -webkit-app-region: drag;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -61,6 +62,17 @@ body {
   height: 40px;
   width: auto;
   display: block;
+  -webkit-app-region: no-drag;
+}
+
+.brand-version {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+  letter-spacing: 0.5px;
+  align-self: flex-end;
+  margin-bottom: 3px;
+  -webkit-app-region: no-drag;
 }
 .brand-tag-admin {
   font-size: 11px;
@@ -363,6 +375,8 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding-right: 148px;
+  -webkit-app-region: no-drag;
 }
 .user-pill {
   padding: 6px 12px;
@@ -952,12 +966,20 @@ body {
 .cal-dia:not(.vazio):hover { background: var(--bg-card); }
 .cal-dia.hoje { border-color: var(--accent); font-weight: 800; }
 .cal-dia.sel { background: var(--accent); color: #fff; }
-.cal-dia.tem-ev .cal-ponto {
+.cal-dia.tem-ev .cal-pontos {
   position: absolute; bottom: 3px; right: 4px;
+  display: flex; gap: 3px; align-items: center;
+}
+.cal-dia.tem-ev .cal-ponto {
   min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px;
   background: var(--accent); color: #fff; border-radius: 7px; font-size: 9px; font-weight: 700; text-align: center;
 }
+.cal-ponto-google {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #4285f4; flex-shrink: 0;
+}
 .cal-dia.sel .cal-ponto { background: #fff; color: var(--accent); }
+.cal-dia.sel .cal-ponto-google { background: rgba(255,255,255,0.85); }
 
 .agenda-prox-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .agenda-prox-head h4 { margin: 0; font-size: 14px; }
@@ -981,7 +1003,11 @@ body {
 .cal-head h3 { margin: 0; font-size: 18px; min-width: 160px; text-transform: capitalize; }
 .cal-grade .cal-semana { margin-bottom: 6px; }
 .cal-grade .cal-semana span { font-size: 12px; }
-.cal-grade .cal-dia { min-height: 64px; align-items: flex-start; justify-content: flex-start; padding: 6px; font-size: 14px; }
+.cal-grade .cal-dias { background: var(--border); gap: 1px; border-radius: 8px; overflow: hidden; }
+.cal-grade .cal-dia { min-height: 64px; align-items: flex-start; justify-content: flex-start; padding: 6px; font-size: 14px; background: var(--bg-2); border: none; border-radius: 0; }
+.cal-grade .cal-dia.hoje { background: var(--bg-2); box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-grade .cal-dia.sel { background: var(--accent); box-shadow: none; }
+.cal-grade .cal-dia:not(.vazio):hover { background: var(--bg-card-hover); }
 .cal-grade .cal-num { font-weight: 600; }
 .cal-dia-detalhe {
   margin-top: 18px; padding: 16px; background: var(--bg-card);
