@@ -519,6 +519,7 @@ exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (
       + `&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`;
     const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) console.warn('listarGoogleAgenda DEBUG Calendar status', resp.status, JSON.stringify(data).slice(0, 300));
     if (resp.ok && Array.isArray(data.items)) {
       data.items.forEach(ev => {
         if (ev.status === 'cancelled' || !ev.start) return;
@@ -538,6 +539,7 @@ exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) console.warn('listarGoogleAgenda DEBUG Tasks status', resp.status, JSON.stringify(data).slice(0, 300));
     if (resp.ok && Array.isArray(data.items)) {
       const minMs = new Date(timeMin).getTime();
       const maxMs = new Date(timeMax).getTime();

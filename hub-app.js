@@ -94,6 +94,11 @@ const APPS = [
     key: 'goiconnect', categoria: 'crm',
     titulo: 'IConnect', icone: 'IC', desc: 'goiconnect.com',
     url: 'https://goiconnect.com/SignIn.aspx?ReturnUrl=%2f', autologin: false
+  },
+  {
+    key: 'brokerapp', categoria: 'crm',
+    titulo: 'BrokerApp', icone: 'BA', desc: 'brokerapp.com.br',
+    url: 'https://brokerapp.com.br/app/', autologin: false
   }
 ];
 
@@ -616,9 +621,12 @@ async function abrirModalEvento(diaPre){
     area.hidden = true;
   }
   modalEvento.showModal();
+  document.getElementById('evTitulo').focus();
 }
 
 function verificarAlertas(){
+  // Não interrompe com alerta enquanto a pessoa está num modal (ex.: criando compromisso)
+  if (document.querySelector('dialog[open]')) return;
   const agora = Date.now();
   eventos.forEach(e=>{
     const k = chaveEvento(e);
@@ -638,6 +646,11 @@ document.getElementById('cancelarEvento').addEventListener('click', ()=> modalEv
 document.getElementById('calPrev').addEventListener('click', ()=>{ calMes--; if(calMes<0){calMes=11;calAno--;} renderCalendarioCompleto(); });
 document.getElementById('calProx').addEventListener('click', ()=>{ calMes++; if(calMes>11){calMes=0;calAno++;} renderCalendarioCompleto(); });
 document.getElementById('calHoje').addEventListener('click', ()=>{ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); diaSelecionado=chaveDia(h); renderCalendarioCompleto(); });
+document.getElementById('calRecarregar').addEventListener('click', async (e)=>{
+  const b = e.currentTarget; const t = b.textContent;
+  b.disabled = true; b.textContent = '↻ Atualizando...';
+  try { await renderCalendarioCompleto(); } finally { b.disabled = false; b.textContent = t; }
+});
 document.getElementById('evTodos').addEventListener('change', (e)=>{ document.getElementById('evPessoas').style.opacity = e.target.checked ? '0.4' : '1'; });
 
 // ─── Conectar / desconectar a Google Agenda ──────────────────────────────────
@@ -758,6 +771,8 @@ document.getElementById('avisoCheck').addEventListener('click', async () => {
 });
 
 async function verificarNotificacoes(){
+  // Não abre o aviso por cima de outro modal aberto (ex.: criando compromisso)
+  if (document.querySelector('dialog[open]')) return;
   try {
     const r = await listarMinhasNotificacoes();
     const novos = r.data || [];
