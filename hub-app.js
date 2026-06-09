@@ -425,7 +425,7 @@ onAuthStateChanged(auth, async (user) => {
   currentUid = user.uid;
   usuarioInfo.textContent = user.displayName || user.email;
 
-  const tokenResult = await user.getIdTokenResult();
+  const tokenResult = await user.getIdTokenResult(true); // force refresh pra pegar claims atualizadas (ex: nova promoção a admin)
   isAdmin = !!tokenResult.claims.admin;
 
   if (!isAdmin && BOOTSTRAP_ADMIN_UIDS.includes(user.uid)) {
@@ -690,7 +690,7 @@ async function abrirModalEvento(diaPre) {
   const todosLabel = document.getElementById('evTodosLabel');
   const chkTodos = document.getElementById('evTodos');
   area.hidden = false;
-  if (todosLabel) todosLabel.hidden = !isAdmin;
+  if (todosLabel) todosLabel.hidden = false;
   if (chkTodos) chkTodos.checked = false;
 
   const cont = document.getElementById('evPessoas');

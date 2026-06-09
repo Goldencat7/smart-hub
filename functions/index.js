@@ -406,7 +406,7 @@ exports.statusGoogleAgenda = onCall(async (req) => {
 });
 
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
-// Admin pode criar pra outras pessoas (ou "todos"); usuário comum só pra si.
+// Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".
 exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);
   const ehAdmin = ehAdminAuth(auth);
@@ -416,10 +416,10 @@ exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
   if (isNaN(dataInicio.getTime())) throw new HttpsError('invalid-argument', 'Data/hora inválida.');
   const tipoLimpo = ['evento', 'tarefa', 'lembrete'].includes(tipo) ? tipo : 'evento';
 
-  // Todos podem convidar pessoas; "todos" só admin. Criador sempre incluso.
+  // Todos podem convidar pessoas e usar "para todos". Criador sempre incluso.
   let parts = [auth.uid];
   let paraTodos = false;
-  if (todos && ehAdmin) {
+  if (todos) {
     paraTodos = true;
     parts = [auth.uid];
   } else if (Array.isArray(participantes) && participantes.length) {
