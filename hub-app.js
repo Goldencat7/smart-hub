@@ -124,7 +124,9 @@ let categoriaAtiva = 'captacao';
 let termoBusca = '';
 let isAdmin = false;
 let currentUid = null;
-let appsPermitidos = []; // apps restritos liberados pra este usuário
+let appsPermitidos = [];
+let renderizandoCal = false;      // Bug 2: evita race condition em renderCalendarioCompleto
+let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verificarNotificacoes // apps restritos liberados pra este usuário
 
 // ─── DOM ─────────────────────────────────────────────────────────────────
 const navCategorias  = document.getElementById('navCategorias');
@@ -177,6 +179,7 @@ let calAno, calMes;               // mês exibido no calendário completo
 let diaSelecionado = null;        // 'YYYY-MM-DD' no calendário completo
 const alertados = new Set();      // ids já alertados (1h antes)
 let pessoasCache = null;          // lista de pessoas (admin) pro seletor
+let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5 min)
 
 // ─── Render sidebar ──────────────────────────────────────────────────────
 function renderSidebar() {
@@ -453,12 +456,15 @@ onAuthStateChanged(auth, async (user) => {
   renderPainelAgenda();
   if (categoriaAtiva === 'agenda') renderCalendarioCompleto();
   verificarAlertas();
-  if (!window.__alertaTimer) window.__alertaTimer = setInterval(verificarAlertas, 30000);
+  // Bug 1: limpa timers anteriores antes de criar novos (evita duplicação ao voltar do Admin)
+  clearInterval(window.__alertaTimer);
+  window.__alertaTimer = setInterval(verificarAlertas, 30000);
 
   // Avisos do admin: mostra os não confirmados ao abrir + checa a cada 3 min
   btnAviso.hidden = !isAdmin;
   verificarNotificacoes();
-  if (!window.__notifTimer) window.__notifTimer = setInterval(verificarNotificacoes, 180000);
+  clearInterval(window.__notifTimer);
+  window.__notifTimer = setInterval(verificarNotificacoes, 180000);
 });
 
 // ─── Agenda ────────────────────────────────────────────────────────────────
@@ -539,7 +545,8 @@ function montarGradeMes(ano, mes, mini=false){
     const fer = feriados[chave];
     const googleEvs = evs.filter(e => e.origem === 'google');
     const pendentesEvs = evs.filter(e => e.meuRsvp === 'pendente' && !e.souDono && e.origem !== 'google');
-    const hubNormais = evs.filter(e => e.origem !== 'google' && !pendentesEvs.includes(e));
+    const pendentesIds = new Set(pendentesEvs.map(e => e.id));
+    const hubNormais = evs.filter(e => e.origem !== 'google' && !pendentesIds.has(e.id));
     const pontoHtml = evs.length ? `<span class="cal-pontos">` +
       (hubNormais.length ? `<span class="cal-ponto">${hubNormais.length > 1 ? hubNormais.length : ''}</span>` : '') +
       (pendentesEvs.length ? `<span class="cal-ponto-pendente">${pendentesEvs.length > 1 ? pendentesEvs.length : ''}</span>` : '') +
@@ -575,6 +582,10 @@ function renderPainelAgenda(){
 }
 
 async function renderCalendarioCompleto(){
+  // Bug 2: ignora chamada concorrente para evitar sobrescrever eventos de forma intercalada
+  if (renderizandoCal) return;
+  renderizandoCal = true;
+  try {
   if(calAno == null){ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); }
   if(!diaSelecionado) diaSelecionado = chaveDia(new Date()); // detalhe sempre visível (sem "pulo")
   await carregarFeriados(calAno);
@@ -586,6 +597,7 @@ async function renderCalendarioCompleto(){
   });
   renderDetalheDia();
   renderPainelAgenda();
+  } finally { renderizandoCal = false; }
 }
 
 function renderDetalheDia(){
@@ -644,7 +656,8 @@ function renderDetalheDia(){
         await responderConvite({ eventoId: b.dataset.id, status });
         // Atualiza localmente sem precisar rebuscar tudo
         const ev = eventos.find(e => e.id === b.dataset.id);
-        if (ev) { ev.meuRsvp = status; if (!ev.rsvp) ev.rsvp = {}; ev.rsvp[currentUid] = status; }
+        // Bug 4: só atualiza estado local se currentUid já foi definido
+        if (ev && currentUid) { ev.meuRsvp = status; if (!ev.rsvp) ev.rsvp = {}; ev.rsvp[currentUid] = status; }
         renderDetalheDia();
         renderPainelAgenda();
       } catch(e) { alert('Erro: ' + e.message); b.disabled = false; }
@@ -681,13 +694,16 @@ async function abrirModalEvento(diaPre) {
   if (chkTodos) chkTodos.checked = false;
 
   const cont = document.getElementById('evPessoas');
-  if (!pessoasCache) {
+  if (!pessoasCache || (Date.now() - pessoasCacheAt) > 300000) {
     cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
     try {
       const r = await listarPessoas();
       pessoasCache = r.data || [];
+      pessoasCacheAt = Date.now();
     } catch(e) {
-      cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+      // Bug 6: fecha o modal antes de mostrar o erro — evita modal aberto sem conteúdo
+      modalEvento.close();
+      alert('Não foi possível carregar a lista de participantes: ' + e.message);
       return;
     }
   }
@@ -816,6 +832,8 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
   const hora = document.getElementById('evHora').value;
   const descricao = document.getElementById('evDesc').value.trim();
   if(!titulo || !data || !hora) return;
+  const btnSalvar = e.target.querySelector('[type="submit"]');
+  btnSalvar.disabled = true;
   const tipo = (document.querySelector('input[name="evTipo"]:checked') || {}).value || 'evento';
   const payload = { titulo, inicio: new Date(data + 'T' + hora).toISOString(), descricao, tipo, dataLocal: data };
   if(document.getElementById('evTodos').checked && isAdmin) {
@@ -831,6 +849,7 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
     renderPainelAgenda();
     if(categoriaAtiva==='agenda') renderCalendarioCompleto();
   } catch(err){ alert('Erro ao salvar: '+err.message); }
+  finally { btnSalvar.disabled = false; }
 });
 
 // Abrir a pasta no Drive (pra admin gerenciar / ou visualizar completo)
@@ -872,12 +891,14 @@ document.getElementById('avisoCheck').addEventListener('click', async () => {
   try { await marcarNotificacaoLida({ id: av.id }); } catch(e){ console.warn('marcar lido:', e); }
   btn.disabled = false;
   filaAvisos.shift();
-  if(filaAvisos.length) mostrarProximoAviso(); else modalAviso.close();
+  if(filaAvisos.length) mostrarProximoAviso(); else { modalAviso.close(); verificarNotificacoes(); }
 });
 
 async function verificarNotificacoes(){
-  // Não abre o aviso por cima de outro modal aberto (ex.: criando compromisso)
+  // Bug 5: evita chamadas concorrentes que duplicariam avisos na fila
+  if (verificandoNotif) return;
   if (document.querySelector('dialog[open]')) return;
+  verificandoNotif = true;
   try {
     const r = await listarMinhasNotificacoes();
     const novos = r.data || [];
@@ -886,6 +907,7 @@ async function verificarNotificacoes(){
     novos.forEach(n => { if(!naFila.has(n.id)) filaAvisos.push(n); });
     mostrarProximoAviso();
   } catch(e){ console.warn('Notificações:', e); }
+  finally { verificandoNotif = false; }
 }
 
 // Admin: enviar aviso

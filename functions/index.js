@@ -634,7 +634,8 @@ exports.responderConvite = onCall(async (req) => {
   const dados = snap.data();
   if (dados.criadoPor === auth.uid)
     throw new HttpsError('failed-precondition', 'O organizador não precisa responder.');
-  if (!Array.isArray(dados.participantes) || !dados.participantes.includes(auth.uid))
+  const eParticipante = dados.todos === true || (Array.isArray(dados.participantes) && dados.participantes.includes(auth.uid));
+  if (!eParticipante)
     throw new HttpsError('permission-denied', 'Você não foi convidado para este evento.');
 
   await ref.update({ [`rsvp.${auth.uid}`]: status });

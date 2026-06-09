@@ -1,7 +1,7 @@
 // Tela de login do Hub — Firebase Auth (Email/Senha) + cadastro via código de convite
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, onAuthStateChanged
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   getFunctions, httpsCallable
@@ -22,19 +22,26 @@ const fns  = getFunctions(app, 'southamerica-east1');
 const criarContaComCodigo = httpsCallable(fns, 'criarContaComCodigo');
 
 // Refs
-const viewLogin    = document.getElementById('viewLogin');
-const viewCadastro = document.getElementById('viewCadastro');
-const formLogin    = document.getElementById('formLogin');
-const formCadastro = document.getElementById('formCadastro');
-const inputEmail   = document.getElementById('inputEmail');
-const inputPass    = document.getElementById('inputPass');
-const btnEntrar    = document.getElementById('btnEntrar');
-const btnCriar     = document.getElementById('btnCriar');
-const msgErro      = document.getElementById('msgErro');
-const msgErroCad   = document.getElementById('msgErroCad');
-const msgOkCad     = document.getElementById('msgOkCad');
-const linkCriarConta  = document.getElementById('linkCriarConta');
-const linkVoltarLogin = document.getElementById('linkVoltarLogin');
+const viewLogin      = document.getElementById('viewLogin');
+const viewCadastro   = document.getElementById('viewCadastro');
+const viewEsqueceu   = document.getElementById('viewEsqueceu');
+const formLogin      = document.getElementById('formLogin');
+const formCadastro   = document.getElementById('formCadastro');
+const formEsqueceu   = document.getElementById('formEsqueceu');
+const inputEmail     = document.getElementById('inputEmail');
+const inputPass      = document.getElementById('inputPass');
+const btnEntrar      = document.getElementById('btnEntrar');
+const btnCriar       = document.getElementById('btnCriar');
+const btnReset       = document.getElementById('btnReset');
+const msgErro        = document.getElementById('msgErro');
+const msgErroCad     = document.getElementById('msgErroCad');
+const msgOkCad       = document.getElementById('msgOkCad');
+const msgErroReset   = document.getElementById('msgErroReset');
+const msgOkReset     = document.getElementById('msgOkReset');
+const linkCriarConta    = document.getElementById('linkCriarConta');
+const linkVoltarLogin   = document.getElementById('linkVoltarLogin');
+const linkEsqueceu      = document.getElementById('linkEsqueceu');
+const linkVoltarEsqueceu = document.getElementById('linkVoltarEsqueceu');
 
 function mostrar(el, t) { el.textContent = t; el.hidden = false; }
 function esconder(el)   { el.hidden = true; el.textContent = ''; }
@@ -42,6 +49,10 @@ function esconder(el)   { el.hidden = true; el.textContent = ''; }
 function travarBotoes(travar) {
   btnEntrar.disabled = travar;
   btnEntrar.textContent = travar ? 'Entrando...' : 'Entrar';
+}
+function travarReset(travar) {
+  btnReset.disabled = travar;
+  btnReset.textContent = travar ? 'Enviando...' : 'Enviar link';
 }
 function travarCadastro(travar) {
   btnCriar.disabled = travar;
@@ -63,18 +74,35 @@ function traduzErroFirebase(code) {
   return map[code] || `Erro: ${code}`;
 }
 
-// ─── Trocar entre login e cadastro ───────────────────────────────────────────
-linkCriarConta.addEventListener('click', (e) => {
-  e.preventDefault();
+// ─── Trocar entre views ───────────────────────────────────────────────────────
+function mostrarView(view) {
+  viewLogin.hidden    = view !== 'login';
+  viewCadastro.hidden = view !== 'cadastro';
+  viewEsqueceu.hidden = view !== 'esqueceu';
   esconder(msgErro); esconder(msgErroCad); esconder(msgOkCad);
-  viewLogin.hidden = true;
-  viewCadastro.hidden = false;
-});
-linkVoltarLogin.addEventListener('click', (e) => {
+  esconder(msgErroReset); esconder(msgOkReset);
+}
+
+linkCriarConta.addEventListener('click',      (e) => { e.preventDefault(); mostrarView('cadastro'); });
+linkVoltarLogin.addEventListener('click',     (e) => { e.preventDefault(); mostrarView('login'); });
+linkEsqueceu.addEventListener('click',        (e) => { e.preventDefault(); mostrarView('esqueceu'); });
+linkVoltarEsqueceu.addEventListener('click',  (e) => { e.preventDefault(); mostrarView('login'); });
+
+// ─── Redefinir senha ─────────────────────────────────────────────────────────
+formEsqueceu.addEventListener('submit', async (e) => {
   e.preventDefault();
-  esconder(msgErro); esconder(msgErroCad); esconder(msgOkCad);
-  viewCadastro.hidden = true;
-  viewLogin.hidden = false;
+  esconder(msgErroReset); esconder(msgOkReset);
+  travarReset(true);
+  const email = document.getElementById('resetEmail').value.trim();
+  try {
+    await sendPasswordResetEmail(auth, email);
+    mostrar(msgOkReset, 'Link enviado! Verifique sua caixa de entrada (e o spam).');
+    formEsqueceu.reset();
+  } catch (err) {
+    mostrar(msgErroReset, traduzErroFirebase(err.code));
+  } finally {
+    travarReset(false);
+  }
 });
 
 // ─── Olhinho: mostrar/ocultar a senha do cadastro ────────────────────────────
@@ -124,7 +152,9 @@ formCadastro.addEventListener('submit', async (e) => {
     // Faz login automaticamente com as credenciais novas
     await signInWithEmailAndPassword(auth, email, senha);
   } catch (err) {
-    const msg = err.message || 'Erro ao criar conta.';
+    const msg = (err.code && err.code.startsWith('auth/'))
+      ? traduzErroFirebase(err.code)
+      : (err.message || 'Erro ao criar conta.');
     mostrar(msgErroCad, msg);
     travarCadastro(false);
   }
