@@ -416,12 +416,29 @@ exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
   if (isNaN(dataInicio.getTime())) throw new HttpsError('invalid-argument', 'Data/hora inválida.');
   const tipoLimpo = ['evento', 'tarefa', 'lembrete'].includes(tipo) ? tipo : 'evento';
 
+  // Todos podem convidar pessoas; "todos" só admin. Criador sempre incluso.
   let parts = [auth.uid];
   let paraTodos = false;
-  if (ehAdmin) {
-    if (todos) { paraTodos = true; parts = []; }
-    else if (Array.isArray(participantes) && participantes.length) parts = participantes.slice(0, 300);
+  if (todos && ehAdmin) {
+    paraTodos = true;
+    parts = [auth.uid];
+  } else if (Array.isArray(participantes) && participantes.length) {
+    const set = new Set([auth.uid, ...participantes]);
+    parts = [...set].slice(0, 300);
   }
+
+  // Busca os nomes dos participantes para exibir nos convites
+  const participantesNomes = {};
+  await Promise.all(parts.map(async uid => {
+    try {
+      const u = await admin.auth().getUser(uid);
+      participantesNomes[uid] = u.displayName || u.email || uid;
+    } catch { participantesNomes[uid] = uid; }
+  }));
+
+  // RSVP: criador aceita automaticamente; demais ficam "pendente"
+  const rsvp = {};
+  for (const uid of parts) rsvp[uid] = uid === auth.uid ? 'aceito' : 'pendente';
 
   const tituloLimpo = String(titulo).slice(0, 120);
   const descricaoLimpa = descricao ? String(descricao).slice(0, 500) : '';
@@ -433,6 +450,8 @@ exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
     tipo: tipoLimpo,
     participantes: parts,
     todos: paraTodos,
+    rsvp,
+    participantesNomes,
     criadoPor: auth.uid,
     criadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
@@ -487,6 +506,9 @@ exports.listarEventos = onCall(async (req) => {
         tipo: x.tipo || 'evento',
         todos: !!x.todos,
         souDono: x.criadoPor === auth.uid,
+        rsvp: x.rsvp || {},
+        meuRsvp: (x.rsvp && x.rsvp[auth.uid]) || 'aceito', // eventos antigos sem rsvp = aceito
+        participantesNomes: x.participantesNomes || {},
         // id do item no Google (pra Fase 2 não trazer ele de volta duplicado)
         googleId: (x.googleEventIds && x.googleEventIds[auth.uid]) ||
                   (x.googleTaskIds && x.googleTaskIds[auth.uid]) || null
@@ -590,11 +612,33 @@ exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) 
   return { ok: true };
 });
 
-// (admin) Lista pessoas pra escolher participantes de uma reunião
+// Lista pessoas para escolher participantes (qualquer usuário autenticado)
 exports.listarPessoas = onCall(async (req) => {
-  await exigirAdmin(req);
+  exigirAutenticado(req);
   const result = await admin.auth().listUsers(1000);
   return result.users.map(u => ({ uid: u.uid, nome: u.displayName || u.email || u.uid }));
+});
+
+// Responder a um convite de reunião (aceitar ou recusar)
+exports.responderConvite = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { eventoId, status } = req.data || {};
+  if (!eventoId) throw new HttpsError('invalid-argument', 'eventoId é obrigatório.');
+  if (!['aceito', 'recusado'].includes(status))
+    throw new HttpsError('invalid-argument', 'Status deve ser "aceito" ou "recusado".');
+
+  const ref = db.collection('events').doc(eventoId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Evento não encontrado.');
+
+  const dados = snap.data();
+  if (dados.criadoPor === auth.uid)
+    throw new HttpsError('failed-precondition', 'O organizador não precisa responder.');
+  if (!Array.isArray(dados.participantes) || !dados.participantes.includes(auth.uid))
+    throw new HttpsError('permission-denied', 'Você não foi convidado para este evento.');
+
+  await ref.update({ [`rsvp.${auth.uid}`]: status });
+  return { ok: true };
 });
 
 // ─── Avisos / Notificações (admin → pessoas, com confirmação obrigatória) ─────

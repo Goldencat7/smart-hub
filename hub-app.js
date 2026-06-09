@@ -39,6 +39,7 @@ const listarGoogleAgenda = httpsCallable(fns, 'listarGoogleAgenda');
 const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
 const listarMinhasNotificacoes = httpsCallable(fns, 'listarMinhasNotificacoes');
 const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
+const responderConvite = httpsCallable(fns, 'responderConvite');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -122,6 +123,7 @@ const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 let categoriaAtiva = 'captacao';
 let termoBusca = '';
 let isAdmin = false;
+let currentUid = null;
 let appsPermitidos = []; // apps restritos liberados pra este usuário
 
 // ─── DOM ─────────────────────────────────────────────────────────────────
@@ -215,7 +217,12 @@ function renderCentro() {
     secaoAgenda.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
-    renderCalendarioCompleto();
+    // Auto-refresh ao entrar na aba: mostra "Atualizando..." no botão enquanto carrega
+    const btnR = document.getElementById('calRecarregar');
+    const textoR = btnR.textContent;
+    btnR.disabled = true;
+    btnR.textContent = '↻ Atualizando...';
+    renderCalendarioCompleto().finally(() => { btnR.disabled = false; btnR.textContent = textoR; });
     atualizarStatusGoogle();
     return;
   }
@@ -412,6 +419,7 @@ onAuthStateChanged(auth, async (user) => {
     window.hubApi.voltarParaLogin();
     return;
   }
+  currentUid = user.uid;
   usuarioInfo.textContent = user.displayName || user.email;
 
   const tokenResult = await user.getIdTokenResult();
@@ -529,9 +537,14 @@ function montarGradeMes(ano, mes, mini=false){
     const chave = chaveDia(new Date(ano, mes, dia));
     const evs = eventosDoDia(chave);
     const fer = feriados[chave];
-    const hubEvs = evs.filter(e => e.origem !== 'google');
     const googleEvs = evs.filter(e => e.origem === 'google');
-    const pontoHtml = evs.length ? `<span class="cal-pontos">${hubEvs.length ? `<span class="cal-ponto">${hubEvs.length > 1 ? hubEvs.length : ''}</span>` : ''}${googleEvs.length ? `<span class="cal-ponto-google"></span>` : ''}</span>` : '';
+    const pendentesEvs = evs.filter(e => e.meuRsvp === 'pendente' && !e.souDono && e.origem !== 'google');
+    const hubNormais = evs.filter(e => e.origem !== 'google' && !pendentesEvs.includes(e));
+    const pontoHtml = evs.length ? `<span class="cal-pontos">` +
+      (hubNormais.length ? `<span class="cal-ponto">${hubNormais.length > 1 ? hubNormais.length : ''}</span>` : '') +
+      (pendentesEvs.length ? `<span class="cal-ponto-pendente">${pendentesEvs.length > 1 ? pendentesEvs.length : ''}</span>` : '') +
+      (googleEvs.length ? `<span class="cal-ponto-google"></span>` : '') +
+      `</span>` : '';
     html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''} ${fer?'feriado':''}" data-dia="${chave}"${fer?` title="${escapeHtml(fer)}"`:''}>
       <span class="cal-num">${dia}</span>${pontoHtml}${(fer && !mini)?`<span class="cal-feriado">${escapeHtml(fer)}</span>`:''}
     </button>`;
@@ -557,7 +570,7 @@ function renderPainelAgenda(){
     : prox.map(e => `
       <div class="ev-item compacto">
         <div class="ev-quando">${e.inicio.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})} ${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
-        <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}</div>
+        <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''}${e.meuRsvp==='pendente'&&!e.souDono?'<span class="ev-tag ev-tag-pendente">convite</span>':''}</div>
       </div>`).join('');
 }
 
@@ -586,15 +599,33 @@ function renderDetalheDia(){
       <button class="topbar-btn primario" id="btnNovoNoDia">+ Compromisso</button>
     </div>
     ${feriados[diaSelecionado] ? `<div class="dia-det-feriado">🎉 Feriado: ${escapeHtml(feriados[diaSelecionado])}</div>` : ''}
-    ${evs.length ? evs.map(e=>`
-      <div class="ev-item">
+    ${evs.length ? evs.map(e => {
+      const pendente = e.meuRsvp === 'pendente' && !e.souDono && e.origem !== 'google';
+      // Lista de participantes com status RSVP (só pra quem criou o evento)
+      const rsvpLista = (e.souDono && e.rsvp && Object.keys(e.rsvp).length > 1)
+        ? `<div class="ev-rsvp-lista">${Object.entries(e.rsvp).filter(([uid]) => uid !== currentUid).map(([uid, st]) => {
+            const nome = escapeHtml((e.participantesNomes && e.participantesNomes[uid]) || uid);
+            const badge = st === 'aceito' ? 'rsvp-aceito' : st === 'recusado' ? 'rsvp-recusado' : 'rsvp-pendente';
+            const icone = st === 'aceito' ? '✓' : st === 'recusado' ? '✗' : '?';
+            return `<span class="rsvp-badge ${badge}">${nome} ${icone}</span>`;
+          }).join('')}</div>` : '';
+      // Botões aceitar/recusar para quem foi convidado e ainda não respondeu
+      const rsvpBtns = pendente
+        ? `<div class="ev-rsvp-btns"><button class="btn-rsvp btn-rsvp-aceitar" data-id="${e.id}">✓ Aceitar</button><button class="btn-rsvp btn-rsvp-recusar" data-id="${e.id}">✗ Recusar</button></div>`
+        : (e.meuRsvp === 'recusado' && !e.souDono && e.origem !== 'google'
+            ? `<div class="ev-rsvp-btns"><button class="btn-rsvp btn-rsvp-aceitar" data-id="${e.id}">✓ Aceitar</button></div>`
+            : '');
+      return `
+      <div class="ev-item${pendente ? ' ev-pendente' : ''}">
         <div class="ev-quando">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
         <div class="ev-corpo">
           <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''} ${e.origem==='google'?'<span class="ev-tag ev-tag-google">Google</span>':''}</div>
           ${e.descricao?`<div class="ev-desc">${escapeHtml(e.descricao)}</div>`:''}
+          ${rsvpLista}${rsvpBtns}
         </div>
         ${(e.souDono||isAdmin) && e.origem!=='google'?`<button class="ev-del" data-id="${e.id}" title="Excluir">✕</button>`:''}
-      </div>`).join('') : '<p class="muted">Nada nesse dia.</p>'}
+      </div>`;
+    }).join('') : '<p class="muted">Nada nesse dia.</p>'}
   `;
   calDiaDetalhe.querySelector('#btnNovoNoDia')?.addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
   calDiaDetalhe.querySelectorAll('.ev-del').forEach(b=>{
@@ -602,6 +633,21 @@ function renderDetalheDia(){
       if(!confirm('Excluir este compromisso?')) return;
       try { await excluirEvento({ id: b.dataset.id }); eventos = eventos.filter(e=>e.id!==b.dataset.id); renderCalendarioCompleto(); }
       catch(e){ alert('Erro: '+e.message); }
+    });
+  });
+  // Listeners dos botões de RSVP (aceitar / recusar convite)
+  calDiaDetalhe.querySelectorAll('.btn-rsvp').forEach(b => {
+    b.addEventListener('click', async () => {
+      const status = b.classList.contains('btn-rsvp-aceitar') ? 'aceito' : 'recusado';
+      b.disabled = true;
+      try {
+        await responderConvite({ eventoId: b.dataset.id, status });
+        // Atualiza localmente sem precisar rebuscar tudo
+        const ev = eventos.find(e => e.id === b.dataset.id);
+        if (ev) { ev.meuRsvp = status; if (!ev.rsvp) ev.rsvp = {}; ev.rsvp[currentUid] = status; }
+        renderDetalheDia();
+        renderPainelAgenda();
+      } catch(e) { alert('Erro: ' + e.message); b.disabled = false; }
     });
   });
 }
@@ -626,41 +672,36 @@ async function abrirModalEvento(diaPre) {
     document.getElementById('evTitulo').focus();
   }, 50);
 
-  // 4. Lógica de Admin (carrega as pessoas sem congelar a abertura do modal)
+  // 4. Participantes — todos podem convidar; "Todos" só admin
   const area = document.getElementById('evParticipantesArea');
-  if (isAdmin) {
-    area.hidden = false;
-    document.getElementById('evTodos').checked = false;
-    const cont = document.getElementById('evPessoas');
-    
-    // Se não tiver cache, avisa que está carregando, mas a pessoa já pode ir digitando o título
-    if (!pessoasCache) {
-      cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
-      try {
-        const r = await listarPessoas(); 
-        pessoasCache = r.data || []; 
-      } catch(e) { 
-        cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; 
-        return; // Sai se der erro pra não quebrar a tela
-      }
-    }
-    
-    // Preenche a lista assim que o Firebase responder (ou instantaneamente se tiver cache)
-    cont.innerHTML = pessoasCache.map(p => `
-      <label class="auth-label-inline">
-        <input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}
-      </label>
-    `).join('');
+  const todosLabel = document.getElementById('evTodosLabel');
+  const chkTodos = document.getElementById('evTodos');
+  area.hidden = false;
+  if (todosLabel) todosLabel.hidden = !isAdmin;
+  if (chkTodos) chkTodos.checked = false;
 
-    // Rebuilding innerHTML can steal focus — return it to the title field if the user
-    // hasn't already moved to another field inside the modal
-    const focado = document.activeElement;
-    if (!focado || !modalEvento.contains(focado) || focado === document.body) {
-      document.getElementById('evTitulo').focus();
+  const cont = document.getElementById('evPessoas');
+  if (!pessoasCache) {
+    cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
+    try {
+      const r = await listarPessoas();
+      pessoasCache = r.data || [];
+    } catch(e) {
+      cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+      return;
     }
+  }
 
-  } else {
-    area.hidden = true;
+  // Remove o próprio usuário da lista (já é incluído automaticamente pelo servidor)
+  const outros = pessoasCache.filter(p => p.uid !== currentUid);
+  cont.innerHTML = outros.length
+    ? outros.map(p => `<label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('')
+    : '<p class="muted" style="font-size:12px">Nenhuma outra pessoa cadastrada.</p>';
+
+  // Rebuilding innerHTML pode roubar o foco — devolve pro título se necessário
+  const focado = document.activeElement;
+  if (!focado || !modalEvento.contains(focado) || focado === document.body) {
+    document.getElementById('evTitulo').focus();
   }
 }
 
@@ -777,9 +818,11 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
   if(!titulo || !data || !hora) return;
   const tipo = (document.querySelector('input[name="evTipo"]:checked') || {}).value || 'evento';
   const payload = { titulo, inicio: new Date(data + 'T' + hora).toISOString(), descricao, tipo, dataLocal: data };
-  if(isAdmin){
-    if(document.getElementById('evTodos').checked) payload.todos = true;
-    else payload.participantes = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c=>c.value);
+  if(document.getElementById('evTodos').checked && isAdmin) {
+    payload.todos = true;
+  } else {
+    const selecionados = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c => c.value);
+    if(selecionados.length) payload.participantes = selecionados;
   }
   try {
     await criarEvento(payload);

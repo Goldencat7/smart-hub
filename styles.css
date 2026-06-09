@@ -442,6 +442,13 @@ body {
   border: 1px solid rgba(66, 133, 244, 0.4);
 }
 
+/* Etiqueta de convite pendente */
+.ev-tag-pendente {
+  background: rgba(251, 146, 60, 0.18);
+  color: #fb923c;
+  border: 1px solid rgba(251, 146, 60, 0.4);
+}
+
 /* Feriados no calendário */
 .cal-dia.feriado { background: rgba(220, 180, 60, 0.10); }
 .cal-dia.feriado .cal-num { color: #f0c040; font-weight: 700; }
@@ -978,8 +985,49 @@ body {
   width: 8px; height: 8px; border-radius: 50%;
   background: #4285f4; flex-shrink: 0;
 }
+/* Bolinha âmbar = dia com convite pendente */
+.cal-ponto-pendente {
+  min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px;
+  background: #fb923c; color: #fff; border-radius: 7px; font-size: 9px; font-weight: 700; text-align: center;
+}
 .cal-dia.sel .cal-ponto { background: #fff; color: var(--accent); }
+.cal-dia.sel .cal-ponto-pendente { background: rgba(255,255,255,0.9); color: #fb923c; }
 .cal-dia.sel .cal-ponto-google { background: rgba(255,255,255,0.85); }
+
+/* Evento com convite pendente — borda âmbar na lista do dia */
+.ev-item.ev-pendente {
+  border-left: 3px solid #fb923c;
+  padding-left: 10px;
+}
+
+/* Lista de respostas RSVP (visível pro anfitrião) */
+.ev-rsvp-lista {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px;
+}
+.rsvp-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+}
+.rsvp-aceito  { background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.35); }
+.rsvp-recusado{ background: rgba(248, 113, 113, 0.15); color: #f87171; border: 1px solid rgba(248, 113, 113, 0.35); }
+.rsvp-pendente{ background: rgba(251, 146, 60, 0.15); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.35); }
+
+/* Botões de aceitar / recusar convite */
+.ev-rsvp-btns { display: flex; gap: 8px; margin-top: 8px; }
+.btn-rsvp {
+  padding: 5px 14px; border-radius: 8px; border: 1px solid; font-size: 12px;
+  font-weight: 700; cursor: pointer; transition: background .15s;
+}
+.btn-rsvp:disabled { opacity: 0.5; cursor: default; }
+.btn-rsvp-aceitar {
+  background: rgba(52, 211, 153, 0.12); color: #34d399;
+  border-color: rgba(52, 211, 153, 0.4);
+}
+.btn-rsvp-aceitar:hover:not(:disabled) { background: rgba(52, 211, 153, 0.25); }
+.btn-rsvp-recusar {
+  background: rgba(248, 113, 113, 0.12); color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+.btn-rsvp-recusar:hover:not(:disabled) { background: rgba(248, 113, 113, 0.25); }
 
 .agenda-prox-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .agenda-prox-head h4 { margin: 0; font-size: 14px; }
