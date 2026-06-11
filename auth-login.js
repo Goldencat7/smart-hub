@@ -59,6 +59,10 @@ function travarCadastro(travar) {
   btnCriar.textContent = travar ? 'Criando...' : 'Criar conta';
 }
 
+function toTitleCase(str) {
+  return str.trim().toLowerCase().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 function traduzErroFirebase(code) {
   const map = {
     'auth/invalid-credential': 'Email ou senha incorretos.',
@@ -108,10 +112,12 @@ formEsqueceu.addEventListener('submit', async (e) => {
 // ─── Olhinho: mostrar/ocultar a senha do cadastro ────────────────────────────
 const olhoCadSenha  = document.getElementById('olhoCadSenha');
 const inputCadSenha = document.getElementById('cadSenha');
+const SVG_OLHO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const SVG_OLHO_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 7 10 7a16.4 16.4 0 0 1-2.9 3.6"/><path d="M6.6 6.6A16.1 16.1 0 0 0 2 12s3.5 7 10 7a10.9 10.9 0 0 0 4-.7"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m2 2 20 20"/></svg>';
 olhoCadSenha.addEventListener('click', () => {
   const mostrando = inputCadSenha.type === 'text';
   inputCadSenha.type = mostrando ? 'password' : 'text';
-  olhoCadSenha.textContent = mostrando ? '👁' : '🙈';
+  olhoCadSenha.innerHTML = mostrando ? SVG_OLHO : SVG_OLHO_OFF;
   olhoCadSenha.setAttribute('aria-label', mostrando ? 'Mostrar senha' : 'Ocultar senha');
 });
 
@@ -134,7 +140,14 @@ formCadastro.addEventListener('submit', async (e) => {
   esconder(msgErroCad); esconder(msgOkCad);
   travarCadastro(true);
 
-  const nome    = document.getElementById('cadNome').value.trim();
+  const nomeRaw      = document.getElementById('cadNome').value.trim();
+  const sobrenomeRaw = document.getElementById('cadSobrenome').value.trim();
+  if (!nomeRaw || !sobrenomeRaw) {
+    mostrar(msgErroCad, 'Preencha o nome e o sobrenome.');
+    travarCadastro(false);
+    return;
+  }
+  const nome    = toTitleCase(`${nomeRaw} ${sobrenomeRaw}`);
   const email   = document.getElementById('cadEmail').value.trim();
   const senha   = document.getElementById('cadSenha').value;
   const confirma = document.getElementById('cadSenhaConfirma').value;

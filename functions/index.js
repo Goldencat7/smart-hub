@@ -828,6 +828,13 @@ exports.criarContaComCodigo = onCall(async (req) => {
   if (senha.length < 6) {
     throw new HttpsError('invalid-argument', 'A senha precisa ter pelo menos 6 caracteres.');
   }
+  if (!displayName || !displayName.trim()) {
+    throw new HttpsError('invalid-argument', 'Nome e sobrenome são obrigatórios.');
+  }
+
+  // Normaliza: "JOÃO SILVA" ou "joão silva" → "João Silva"
+  const nomeNormalizado = displayName.trim().toLowerCase()
+    .split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
   const ref = db.collection('codigos_convite').doc(codigo.trim().toUpperCase());
 
@@ -848,7 +855,7 @@ exports.criarContaComCodigo = onCall(async (req) => {
     user = await admin.auth().createUser({
       email,
       password: senha,
-      displayName: displayName || undefined
+      displayName: nomeNormalizado
     });
   } catch (e) {
     if (e.code === 'auth/email-already-exists') {

@@ -1,7 +1,7 @@
 {
   "name": "remax-smart-hub",
   "productName": "Remax Smart Hub",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Hub interno da Remax Smart — acesso rápido às plataformas com autologin via Firebase.",
   "main": "main.js",
   "type": "commonjs",
@@ -37,6 +37,7 @@
       "logo.png",
       "logo-navy.png",
       "app-icons/**",
+      "marketing/**",
       "!functions/**",
       "!release/**",
       "!.firebase/**",

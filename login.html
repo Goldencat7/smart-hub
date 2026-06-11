@@ -8,7 +8,7 @@
   <body class="auth-body">
     <main class="auth-card">
       <header class="auth-header">
-        <img class="brand-logo" src="logo.png" alt="Imóveis RE/MAX Smart">
+        <img class="brand-logo" src="logo.png" alt="Imóveis REMAX Smart">
       </header>
 
       <!-- ──── View: Login ──── -->
@@ -30,9 +30,31 @@
 
         <p class="auth-toggle">
           Não tem conta? <a href="#" id="linkCriarConta">Criar conta</a>
+          &nbsp;·&nbsp; <a href="#" id="linkEsqueceu">Esqueceu a senha?</a>
         </p>
 
         <p id="msgErro" class="auth-erro" hidden></p>
+      </div>
+
+      <!-- ──── View: Esqueceu a senha ──── -->
+      <div id="viewEsqueceu" hidden>
+        <h1 class="auth-title">Redefinir senha</h1>
+        <p class="auth-sub">Digite seu email e enviaremos um link para redefinir a senha.</p>
+
+        <form id="formEsqueceu" class="auth-form">
+          <label class="auth-label">
+            Email
+            <input id="resetEmail" type="email" autocomplete="email" required>
+          </label>
+          <button type="submit" class="auth-btn auth-btn-primary" id="btnReset">Enviar link</button>
+        </form>
+
+        <p class="auth-toggle">
+          <a href="#" id="linkVoltarEsqueceu">← Voltar pro login</a>
+        </p>
+
+        <p id="msgErroReset" class="auth-erro" hidden></p>
+        <p id="msgOkReset"   class="auth-ok"   hidden></p>
       </div>
 
       <!-- ──── View: Cadastro ──── -->
@@ -43,7 +65,11 @@
         <form id="formCadastro" class="auth-form">
           <label class="auth-label">
             Nome
-            <input id="cadNome" type="text" autocomplete="name" required>
+            <input id="cadNome" type="text" autocomplete="given-name" placeholder="Ex: João" required>
+          </label>
+          <label class="auth-label">
+            Sobrenome
+            <input id="cadSobrenome" type="text" autocomplete="family-name" placeholder="Ex: Silva" required>
           </label>
           <label class="auth-label">
             Email
@@ -53,7 +79,7 @@
             Senha (mín. 6)
             <span class="senha-wrap">
               <input id="cadSenha" type="password" autocomplete="new-password" minlength="6" required>
-              <button type="button" class="olho-btn" id="olhoCadSenha" aria-label="Mostrar senha">👁</button>
+              <button type="button" class="olho-btn" id="olhoCadSenha" aria-label="Mostrar senha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></button>
             </span>
           </label>
           <label class="auth-label">

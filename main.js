@@ -5,6 +5,47 @@ const crypto = require('crypto');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
+// ─── Servidor local pros templates de Marketing ─────────────────────────────
+// Os templates são HTMLs auto-empacotados (fontes/scripts em base64 viram blob:
+// em runtime). Sob file://, o blob herda origem "null" e a 1ª tentativa de
+// carregar cada recurso falha (o template tem fallback, mas gera erros no console).
+// Servindo por http://127.0.0.1 a origem fica válida e os erros somem na raiz.
+// fs.readFile lê de dentro do asar normalmente, então funciona no .exe instalado.
+const MARKETING_MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript', '.css': 'text/css',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml', '.otf': 'font/otf', '.ttf': 'font/ttf', '.woff': 'font/woff', '.woff2': 'font/woff2'
+};
+let servidorMarketing = null; // { url } depois de iniciado
+
+function iniciarServidorMarketing() {
+  if (servidorMarketing) return Promise.resolve(servidorMarketing);
+  return new Promise((resolve, reject) => {
+    const baseDir = path.join(__dirname, 'marketing');
+    const server = http.createServer((req, res) => {
+      try {
+        const nome = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname).replace(/^\/+/, '');
+        const alvo = path.join(baseDir, nome);
+        // Proteção contra path traversal: o arquivo tem que ficar dentro de marketing/
+        if (!alvo.startsWith(baseDir)) { res.writeHead(403); res.end('Forbidden'); return; }
+        fs.readFile(alvo, (err, data) => {
+          if (err) { res.writeHead(404); res.end('Not found'); return; }
+          const mime = MARKETING_MIME[path.extname(alvo).toLowerCase()] || 'application/octet-stream';
+          res.writeHead(200, { 'Content-Type': mime });
+          res.end(data);
+        });
+      } catch (e) { res.writeHead(500); res.end('Error'); }
+    });
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port;
+      servidorMarketing = { url: `http://127.0.0.1:${port}`, server };
+      resolve(servidorMarketing);
+    });
+  });
+}
+
 // ─── Preferências locais (arquivo no userData) ──────────────────────────────
 function prefsPath() { return path.join(app.getPath('userData'), 'hub-prefs.json'); }
 function lerPrefs() { try { return JSON.parse(fs.readFileSync(prefsPath(), 'utf8')); } catch (e) { return {}; } }
@@ -139,6 +180,29 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());
 ipcMain.handle('set-iniciar-windows', (_e, ligar) => { definirIniciarComWindows(ligar); return { ok: true }; });
 
+// ─── Templates de Marketing ──────────────────────────────────────────────────
+ipcMain.on('abrir-template', async (_e, fileName) => {
+  // Só nomes de arquivo simples (sem barras) — defesa extra contra path traversal
+  const nome = path.basename(String(fileName || ''));
+  const w = new BrowserWindow({
+    width: 1280, height: 860,
+    autoHideMenuBar: true,
+    title: 'Editor de Template — REMAX Smart',
+    webPreferences: {
+      devTools: DEVTOOLS_HABILITADO,
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  try {
+    const { url } = await iniciarServidorMarketing();
+    await w.loadURL(`${url}/${encodeURIComponent(nome)}`);
+  } catch (err) {
+    console.warn('Erro ao abrir template:', err.message);
+    if (!w.isDestroyed()) w.destroy();
+  }
+});
+
 // ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────
 // Devolve { ok, code, codeVerifier, redirectUri } pro renderer, que então chama
 // a Cloud Function pra finalizar. Usa PKCE (S256) por segurança.
@@ -249,8 +313,9 @@ ipcMain.on('abrir-app', (_evt, payload) => {
     return;
   }
 
+  // Bug 11: garante que login/senha nunca sejam undefined (evita string literal "undefined" no site)
   abrirPwaComAutologin(url, cfg.seletorUser, cfg.seletorPass, cfg.seletorBtn,
-                      credenciais.login, credenciais.password || '', { naoEnviar: !!cfg.naoEnviar });
+                      credenciais.login || '', credenciais.password || '', { naoEnviar: !!cfg.naoEnviar });
 });
 
 // ─── Janela simples (sem autologin) ──────────────────────────────────────────

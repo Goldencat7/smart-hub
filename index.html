@@ -8,13 +8,13 @@
   <body class="hub-body">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="logo.png" alt="Imóveis RE/MAX Smart">
+        <img class="brand-logo" src="logo.png" alt="Imóveis REMAX Smart">
         <span id="appVersion" class="brand-version"></span>
       </div>
       <div class="topbar-right">
         <img id="topAvatar" class="top-avatar" hidden alt="">
         <span id="usuarioInfo" class="user-pill"></span>
-        <button id="btnAviso" class="topbar-btn" hidden>📢 Enviar aviso</button>
+        <button id="btnAviso" class="topbar-btn" hidden><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>Enviar aviso</button>
         <button id="btnAdmin" class="topbar-btn" hidden>Admin</button>
         <button id="btnSair" class="topbar-btn">Sair</button>
       </div>
@@ -33,6 +33,7 @@
         <div class="hub-main-head">
           <h2 id="tituloCategoria">Captação</h2>
           <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></svg>
             <input id="inputBusca" type="search" placeholder="Buscar nesta categoria..." autocomplete="off">
           </div>
         </div>
@@ -45,11 +46,54 @@
           <p>Nenhum resultado.</p>
         </div>
 
+        <!-- ──── Aba Marketing (templates editáveis) ──── -->
+        <section id="secaoMarketing" class="mkt-wrap" hidden>
+          <div class="mkt-grid">
+
+            <div class="mkt-card" data-template="vendido.html">
+              <div class="mkt-thumb">
+                <svg viewBox="0 0 200 280" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,BlinkMacSystemFont,Arial,sans-serif">
+                  <!-- fundo navy -->
+                  <rect width="200" height="280" fill="#001f3f"/>
+                  <!-- legenda topo -->
+                  <text x="10" y="16" font-size="7" fill="rgba(255,255,255,0.4)">Imóvel vendido</text>
+                  <!-- logo REMAX topo direito -->
+                  <rect x="148" y="6" width="44" height="14" rx="2" fill="#DC1C2E"/>
+                  <text x="170" y="16" text-anchor="middle" font-size="7.5" fill="white" font-weight="900" letter-spacing="1">REMAX</text>
+                  <!-- banner VENDIDO -->
+                  <rect x="22" y="28" width="156" height="46" rx="4" fill="#DC1C2E"/>
+                  <text x="100" y="46" text-anchor="middle" font-size="9" fill="white" font-weight="700" letter-spacing="2">IMÓVEL</text>
+                  <text x="100" y="66" text-anchor="middle" font-size="20" fill="white" font-weight="900" letter-spacing="1">VENDIDO</text>
+                  <!-- área da foto -->
+                  <rect x="12" y="84" width="176" height="108" fill="#0a1828"/>
+                  <text x="100" y="144" text-anchor="middle" font-size="9" fill="rgba(255,255,255,0.15)">foto do imóvel</text>
+                  <!-- linha separadora -->
+                  <line x1="12" y1="200" x2="188" y2="200" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+                  <!-- localização -->
+                  <text x="100" y="218" text-anchor="middle" font-size="7" fill="rgba(255,255,255,0.55)" letter-spacing="1.5">BAIRRO · ZONA / CIDADE</text>
+                  <!-- nome do corretor -->
+                  <text x="12" y="248" font-size="22" fill="white" font-weight="900" letter-spacing="-0.5">NOME</text>
+                  <!-- cargo e creci -->
+                  <text x="12" y="264" font-size="7.5" fill="rgba(255,255,255,0.5)">Corretor · CRECI 00000-J</text>
+                  <!-- telefone -->
+                  <text x="12" y="276" font-size="7.5" fill="rgba(255,255,255,0.4)">(11) 99999-9999</text>
+                </svg>
+              </div>
+              <div class="mkt-info">
+                <span class="mkt-nome">Vendido</span>
+                <span class="mkt-desc">Post para anúncio de imóvel vendido</span>
+              </div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>
+
+          </div>
+        </section>
+
         <!-- ──── Aba Documentos (Google Drive) ──── -->
         <section id="secaoDocumentos" class="docs-wrap" hidden>
           <div class="docs-painel">
             <div class="docs-painel-head">
-              <span>📁 Documentos da empresa</span>
+              <span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a1 1 0 0 1-.7-.3L10.9 4.3a1 1 0 0 0-.7-.3H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>Documentos da empresa</span>
               <button id="btnAbrirDrive" class="topbar-btn">Abrir no Drive ↗</button>
             </div>
             <iframe id="driveFrame" class="drive-frame" title="Documentos da empresa"></iframe>
@@ -66,7 +110,7 @@
               <button id="calHoje" class="topbar-btn">Hoje</button>
               <button id="calRecarregar" class="topbar-btn" title="Atualizar a agenda">↻ Atualizar</button>
               <button id="btnNovoEvento2" class="topbar-btn primario">+ Criar</button>
-              <button id="btnGoogleAgenda" class="topbar-btn google-btn" title="Sincronizar com a Google Agenda">📅 Conectar Google</button>
+              <button id="btnGoogleAgenda" class="topbar-btn google-btn" title="Sincronizar com a Google Agenda"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Conectar Google</button>
             </div>
             <div id="calGrade" class="cal-grade"></div>
           </div>
@@ -133,9 +177,9 @@
       <form method="dialog" id="formEvento" class="modal-form">
         <h3 id="modalEventoTitulo">Criar</h3>
         <div id="evTipoSel" class="ev-tipo-sel">
-          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="evento" checked><span>📅 Evento</span></label>
-          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="tarefa"><span>✓ Tarefa</span></label>
-          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="lembrete"><span>🔔 Lembrete</span></label>
+          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="evento" checked><span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Evento</span></label>
+          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="tarefa"><span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Tarefa</span></label>
+          <label class="ev-tipo-op"><input type="radio" name="evTipo" value="lembrete"><span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Lembrete</span></label>
         </div>
         <label class="auth-label">
           Título
@@ -164,11 +208,11 @@
     <!-- Popup: aviso recebido (só fecha clicando em "Vi") -->
     <dialog id="modalAviso" class="modal">
       <div class="modal-form aviso-recebido">
-        <div class="aviso-icone">📢</div>
+        <div class="aviso-icone"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></div>
         <h3 id="avisoTitulo">Aviso</h3>
         <p id="avisoMensagem" class="aviso-msg"></p>
         <div class="modal-actions">
-          <button type="button" id="avisoCheck" class="topbar-btn primario">✓ Vi</button>
+          <button type="button" id="avisoCheck" class="topbar-btn primario"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Vi</button>
         </div>
       </div>
     </dialog>
@@ -176,7 +220,7 @@
     <!-- Modal: admin envia um aviso -->
     <dialog id="modalEnviarAviso" class="modal">
       <form method="dialog" id="formEnviarAviso" class="modal-form">
-        <h3>📢 Enviar aviso</h3>
+        <h3><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>Enviar aviso</h3>
         <label class="auth-label">
           Título (opcional)
           <input id="avTitulo" type="text" maxlength="120" placeholder="Ex.: Reunião amanhã">

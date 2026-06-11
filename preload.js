@@ -18,7 +18,10 @@ contextBridge.exposeInMainWorld('hubApi', {
 
   // Iniciar com o Windows (Configurações)
   getIniciarWindows: () => ipcRenderer.invoke('get-iniciar-windows'),
-  setIniciarWindows: (ligar) => ipcRenderer.invoke('set-iniciar-windows', ligar)
+  setIniciarWindows: (ligar) => ipcRenderer.invoke('set-iniciar-windows', ligar),
+
+  // Abrir template de marketing numa janela dedicada
+  abrirTemplate: (fileName) => ipcRenderer.send('abrir-template', fileName)
 });
 
 // API específica de login (chamada pelo auth-login.js depois do login Firebase)

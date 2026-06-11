@@ -88,7 +88,7 @@ const APPS = [
   },
   {
     key: 'universidade', categoria: 'treinamento',
-    titulo: 'Universidade RE/MAX', icone: 'UR', desc: 'Treinamento e cursos',
+    titulo: 'Universidade REMAX', icone: 'UR', desc: 'Treinamento e cursos',
     url: 'https://universidaderemax.studionmx.com/', autologin: false
   },
   {
@@ -103,16 +103,32 @@ const APPS = [
   }
 ];
 
+// Ícones em SVG (estilo linha, herdam a cor do item via currentColor)
+const svgIcone = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+const ICN = {
+  captacao:    svgIcone('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/>'),
+  crm:         svgIcone('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2.2"/><path d="M15.5 8.5h2.5"/><path d="M15.5 12h2.5"/><path d="M6.5 16c.5-1.6 4.5-1.6 5 0"/>'),
+  vistoria:    svgIcone('<circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/>'),
+  locacao:     svgIcone('<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.8 12.2 8.2-8.2"/><path d="m16 7 3 3"/>'),
+  performance: svgIcone('<path d="M4 4v16h16"/><path d="M8 16v-4"/><path d="M13 16V9"/><path d="M18 16V6"/>'),
+  treinamento: svgIcone('<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v4.5c0 1.1 2.7 2.5 6 2.5s6-1.4 6-2.5V12"/>'),
+  marketing:   svgIcone('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/>'),
+  agenda:      svgIcone('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/>'),
+  documentos:  svgIcone('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
+  config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
+};
+
 const CATEGORIAS = [
-  { id: 'captacao',    nome: 'Captação',    icone: '🏠' },
-  { id: 'crm',         nome: 'CRM',         icone: '📇' },
-  { id: 'vistoria',    nome: 'Vistoria',    icone: '🔎' },
-  { id: 'locacao',     nome: 'Locação',     icone: '🤝' },
-  { id: 'performance', nome: 'Performance', icone: '📊' },
-  { id: 'treinamento', nome: 'Treinamento', icone: '🎓' },
-  { id: 'agenda',      nome: 'Agenda',      icone: '📅', agenda: true },
-  { id: 'documentos',  nome: 'Documentos',  icone: '📄', placeholder: true },
-  { id: 'config',      nome: 'Configurações', icone: '⚙️', config: true }
+  { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
+  { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
+  { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
+  { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao },
+  { id: 'performance', nome: 'Performance', icone: ICN.performance },
+  { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento },
+  { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
+  { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
+  { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
+  { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
 
 // Avatar padrão (quando a pessoa não tem foto)
@@ -134,6 +150,7 @@ const tituloCategoria = document.getElementById('tituloCategoria');
 const inputBusca     = document.getElementById('inputBusca');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
+const secaoMarketing = document.getElementById('secaoMarketing');
 const secaoDocs      = document.getElementById('secaoDocumentos');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -207,6 +224,7 @@ function renderCentro() {
   tituloCategoria.textContent = cat.nome;
   secaoConfig.hidden = true;
   secaoAgenda.hidden = true;
+  secaoMarketing.hidden = true;
   // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
   btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
@@ -239,6 +257,17 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarPerfil();
+    return;
+  }
+
+  // Aba Marketing (templates editáveis)
+  if (cat.marketing) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoMarketing.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
     return;
   }
 
@@ -665,7 +694,12 @@ function renderDetalheDia(){
   });
 }
 
-function iconeTipo(tipo){ return tipo === 'tarefa' ? '✓' : tipo === 'lembrete' ? '🔔' : '📅'; }
+function iconeTipo(tipo){
+  const p = tipo === 'tarefa' ? '<path d="M20 6 9 17l-5-5"/>'
+    : tipo === 'lembrete' ? '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'
+    : '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/>';
+  return `<svg class="ev-tipo-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+}
 
 async function abrirModalEvento(diaPre) {
   // 1. Limpa os campos iniciais
@@ -776,15 +810,17 @@ document.getElementById('evTodos').addEventListener('change', (e)=>{ document.ge
 const btnGoogleAgenda = document.getElementById('btnGoogleAgenda');
 let googleConectado = false;
 
+const SVG_CAL_BTN = '<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>';
+const SVG_CHECK_BTN = '<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 function pintarBotaoGoogle(conectado, email){
   googleConectado = conectado;
   if(conectado){
     btnGoogleAgenda.classList.add('google-on');
-    btnGoogleAgenda.textContent = '📅 Google ✓';
+    btnGoogleAgenda.innerHTML = SVG_CAL_BTN + 'Google' + SVG_CHECK_BTN;
     btnGoogleAgenda.title = email ? `Conectado: ${email} — clique para desconectar` : 'Conectado — clique para desconectar';
   } else {
     btnGoogleAgenda.classList.remove('google-on');
-    btnGoogleAgenda.textContent = '📅 Conectar Google';
+    btnGoogleAgenda.innerHTML = SVG_CAL_BTN + 'Conectar Google';
     btnGoogleAgenda.title = 'Sincronizar com a Google Agenda';
   }
 }
@@ -855,6 +891,13 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
 // Abrir a pasta no Drive (pra admin gerenciar / ou visualizar completo)
 btnAbrirDrive.addEventListener('click', () => window.open(DRIVE_FOLDER_URL, '_blank'));
 
+// Abrir template de marketing numa janela dedicada
+document.getElementById('secaoMarketing').addEventListener('click', (e) => {
+  const card = e.target.closest('.mkt-card');
+  if (!card) return;
+  window.hubApi.abrirTemplate(card.dataset.template);
+});
+
 // Minimizar/mostrar o painel da agenda (setinha no canto + botão flutuante; lembra a preferência)
 const btnMinAgenda = document.getElementById('btnMinAgenda');
 const btnExpandAgenda = document.getElementById('btnExpandAgenda');
@@ -878,7 +921,7 @@ let filaAvisos = [];
 function mostrarProximoAviso(){
   if(!filaAvisos.length){ if(modalAviso.open) modalAviso.close(); return; }
   const av = filaAvisos[0];
-  document.getElementById('avisoTitulo').textContent = av.titulo || '📢 Aviso';
+  document.getElementById('avisoTitulo').textContent = av.titulo || 'Aviso';
   document.getElementById('avisoMensagem').textContent = av.mensagem;
   if(!modalAviso.open) modalAviso.showModal();
 }
