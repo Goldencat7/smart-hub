@@ -67,6 +67,11 @@ const APPS = [
     url: 'https://jr.sigavi360.com.br/Login.aspx?ReturnUrl=%2f', autologin: true
   },
   {
+    key: 'itbi_smart', categoria: 'captacao',
+    titulo: 'ITBI Smart', icone: 'IT', desc: 'Cálculo de ITBI',
+    url: 'https://itbi-smart.web.app', autologin: false
+  },
+  {
     key: 'checkvisto', categoria: 'vistoria',
     titulo: 'Smart Vistorias', icone: 'SV', desc: 'Controle de visitas',
     url: 'https://checkvisto-app.web.app', autologin: false
