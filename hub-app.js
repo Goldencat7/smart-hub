@@ -146,7 +146,8 @@ let termoBusca = '';
 let isAdmin = false;
 let currentUid = null;
 let appsPermitidos = [];
-let renderizandoCal = false;      // Bug 2: evita race condition em renderCalendarioCompleto
+let renderizandoCal = false;
+let renderCalPendente = false;    // fix 3: guarda clique durante render pra re-renderizar depois
 let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verificarNotificacoes // apps restritos liberados pra este usuário
 
 // ─── DOM ─────────────────────────────────────────────────────────────────
@@ -485,7 +486,8 @@ onAuthStateChanged(auth, async (user) => {
   renderCentro();
   carregarPerfil(); // popula o avatar no topo
 
-  // Agenda: carrega eventos e liga os alertas
+  // fix 2: busca status Google antes de carregar eventos para incluir eventos do Google no mini calendário desde o início
+  await atualizarStatusGoogle();
   await carregarEventos(new Date(Date.now() - 86400000), new Date(Date.now() + 1000 * 60 * 60 * 24 * 90));
   renderPainelAgenda();
   if (categoriaAtiva === 'agenda') renderCalendarioCompleto();
@@ -616,9 +618,10 @@ function renderPainelAgenda(){
 }
 
 async function renderCalendarioCompleto(){
-  // Bug 2: ignora chamada concorrente para evitar sobrescrever eventos de forma intercalada
-  if (renderizandoCal) return;
+  // fix 3: se já está renderizando, guarda o pedido e re-renderiza ao terminar
+  if (renderizandoCal) { renderCalPendente = true; return; }
   renderizandoCal = true;
+  renderCalPendente = false;
   try {
   if(calAno == null){ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); }
   if(!diaSelecionado) diaSelecionado = chaveDia(new Date()); // detalhe sempre visível (sem "pulo")
@@ -631,7 +634,10 @@ async function renderCalendarioCompleto(){
   });
   renderDetalheDia();
   renderPainelAgenda();
-  } finally { renderizandoCal = false; }
+  } finally {
+    renderizandoCal = false;
+    if (renderCalPendente) renderCalendarioCompleto();
+  }
 }
 
 function renderDetalheDia(){
@@ -862,7 +868,7 @@ btnGoogleAgenda.addEventListener('click', async ()=>{
     alert('Erro ao conectar: '+e.message);
   } finally {
     btnGoogleAgenda.disabled = false;
-    if(!googleConectado) btnGoogleAgenda.textContent = txtAntes;
+    if(!googleConectado) pintarBotaoGoogle(false, ''); // fix 1: restaura HTML completo (com SVG), não só texto
   }
 });
 
@@ -968,7 +974,7 @@ btnAviso.addEventListener('click', async () => {
   cont.style.opacity = '1';
   cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
   try {
-    if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; }
+    if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; pessoasCacheAt = Date.now(); } // fix 5: atualiza timestamp do cache
     cont.innerHTML = pessoasCache.map(p => `
       <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('');
   } catch(e){ cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
@@ -1015,3 +1021,10 @@ renderSidebar();
 renderCentro();
 // Feriados do ano atual já no mini calendário (atualiza assim que chegar)
 carregarFeriados(new Date().getFullYear()).then(() => renderPainelAgenda());
+
+// fix 7: checa notificações quando qualquer dialog fechar (evita delay de 3 min se modal estava aberto)
+document.querySelectorAll('dialog').forEach(d => {
+  new MutationObserver(() => {
+    if (!d.open && !document.querySelector('dialog[open]')) verificarNotificacoes();
+  }).observe(d, { attributes: true, attributeFilter: ['open'] });
+});

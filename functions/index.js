@@ -1,6 +1,7 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
+const crypto = require('crypto');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
@@ -616,7 +617,7 @@ exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) 
 exports.listarPessoas = onCall(async (req) => {
   exigirAutenticado(req);
   const result = await admin.auth().listUsers(1000);
-  return result.users.map(u => ({ uid: u.uid, nome: u.displayName || u.email || u.uid }));
+  return result.users.filter(u => !u.disabled).map(u => ({ uid: u.uid, nome: u.displayName || u.email || u.uid })); // fix 6: exclui contas desativadas
 });
 
 // Responder a um convite de reunião (aceitar ou recusar)
@@ -767,7 +768,7 @@ exports.deleteUserAccount = onCall(async (req) => {
 const ALFABETO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sem 0/O, 1/I/L
 function gerarCodigoAleatorio(tamanho = 8) {
   let s = '';
-  for (let i = 0; i < tamanho; i++) s += ALFABETO[Math.floor(Math.random() * ALFABETO.length)];
+  for (let i = 0; i < tamanho; i++) s += ALFABETO[crypto.randomInt(ALFABETO.length)]; // fix 4: crypto seguro
   return 'REMAX-' + s;
 }
 
