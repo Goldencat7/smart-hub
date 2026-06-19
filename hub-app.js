@@ -40,6 +40,9 @@ const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
 const listarMinhasNotificacoes = httpsCallable(fns, 'listarMinhasNotificacoes');
 const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
 const responderConvite = httpsCallable(fns, 'responderConvite');
+const getFotoDrives = httpsCallable(fns, 'getFotoDrives');
+const setFotoDrive = httpsCallable(fns, 'setFotoDrive');
+const enviarSuporte = httpsCallable(fns, 'enviarSuporte');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -120,6 +123,7 @@ const ICN = {
   marketing:   svgIcone('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/>'),
   agenda:      svgIcone('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/>'),
   documentos:  svgIcone('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
+  fotografia:  svgIcone('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -133,6 +137,7 @@ const CATEGORIAS = [
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
+  { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
 
@@ -146,6 +151,7 @@ let termoBusca = '';
 let isAdmin = false;
 let currentUid = null;
 let appsPermitidos = [];
+let temDrivesFotografia = false;
 let renderizandoCal = false;
 let renderCalPendente = false;    // fix 3: guarda clique durante render pra re-renderizar depois
 let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verificarNotificacoes // apps restritos liberados pra este usuário
@@ -156,8 +162,9 @@ const tituloCategoria = document.getElementById('tituloCategoria');
 const inputBusca     = document.getElementById('inputBusca');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
-const secaoMarketing = document.getElementById('secaoMarketing');
-const secaoDocs      = document.getElementById('secaoDocumentos');
+const secaoMarketing   = document.getElementById('secaoMarketing');
+const secaoDocs        = document.getElementById('secaoDocumentos');
+const secaoFotografia  = document.getElementById('secaoFotografia');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
 const secaoConfig    = document.getElementById('secaoConfig');
@@ -166,6 +173,10 @@ const secaoConfig    = document.getElementById('secaoConfig');
 const DRIVE_FOLDER_ID  = '10dlIlDyGyvyMCZQUWbt2_YVDdXgfmlzp';
 const DRIVE_EMBED_URL  = `https://drive.google.com/embeddedfolderview?id=${DRIVE_FOLDER_ID}#grid`;
 const DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${DRIVE_FOLDER_ID}`;
+
+// Agendamento de sessão de fotografia (Google Agenda — booking page)
+const AGENDA_FOTOGRAFIA_URL = 'https://calendar.app.google/xXv4jHQee8Q9zAoR6';
+
 const usuarioInfo    = document.getElementById('usuarioInfo');
 const topAvatar      = document.getElementById('topAvatar');
 const btnAdmin       = document.getElementById('btnAdmin');
@@ -231,6 +242,7 @@ function renderCentro() {
   secaoConfig.hidden = true;
   secaoAgenda.hidden = true;
   secaoMarketing.hidden = true;
+  secaoFotografia.hidden = true;
   // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
   btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
@@ -274,6 +286,18 @@ function renderCentro() {
     secaoMarketing.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
+    return;
+  }
+
+  // Aba Fotografia
+  if (cat.fotografia) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoFotografia.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarFotografia();
     return;
   }
 
@@ -478,6 +502,7 @@ onAuthStateChanged(auth, async (user) => {
   try {
     const perm = await getMinhasPermissoes();
     appsPermitidos = perm.data.apps || [];
+    temDrivesFotografia = !!perm.data.drives_fotografia;
     if (perm.data.isAdmin) isAdmin = true;
   } catch (e) {
     console.warn('Permissões:', e);
@@ -1011,6 +1036,228 @@ async function carregarIniciarWindows(){
 cfgIniciarWindows?.addEventListener('change', async () => {
   try { await window.hubApi.setIniciarWindows(cfgIniciarWindows.checked); }
   catch(e){ alert('Não foi possível alterar: ' + e.message); }
+});
+
+// ─── Fotografia ───────────────────────────────────────────────────────────────
+let fotoPessoasCache = null;     // lista de pessoas+links (só pra quem gerencia)
+let fotoVisaoUsuario = false;    // gestor pré-visualizando como usuário comum
+
+async function carregarFotografia() {
+  fotoVisaoUsuario = false; // fix B: sempre abre a aba na visão de gestão (não gruda o preview)
+  secaoFotografia.innerHTML = '<p class="muted" style="padding:20px">Carregando...</p>';
+  try {
+    const r = await getFotoDrives();
+    if (r.data.gerenciar) {
+      fotoPessoasCache = r.data.pessoas || [];
+      renderFotografiaGestor();
+    } else {
+      fotoPessoasCache = null;
+      renderFotoPessoal(r.data.driveLink || '');
+    }
+  } catch (e) {
+    secaoFotografia.innerHTML = `<p style="padding:20px;color:var(--danger)">Erro: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// Decide o que mostrar pra quem gerencia: tabela de gestão ou visão de usuário comum
+function renderFotografiaGestor() {
+  if (fotoVisaoUsuario) {
+    const eu = (fotoPessoasCache || []).find(p => p.uid === currentUid);
+    renderFotoPessoal(eu ? eu.driveLink : '', true);
+  } else {
+    renderFotoGerenciar(fotoPessoasCache || []);
+  }
+}
+
+// Barra com o botão de alternar visão (só aparece pra quem gerencia)
+function barraToggleFoto() {
+  return `
+    <div class="foto-toggle-bar">
+      <button class="topbar-btn" id="btnToggleFotoVisao">${fotoVisaoUsuario ? '← Voltar para gestão' : '👁 Ver como usuário'}</button>
+      ${fotoVisaoUsuario ? '<span class="muted" style="font-size:11px">Pré-visualização — assim um usuário comum enxerga esta aba.</span>' : ''}
+    </div>`;
+}
+function ligarToggleFoto() {
+  document.getElementById('btnToggleFotoVisao')?.addEventListener('click', () => {
+    fotoVisaoUsuario = !fotoVisaoUsuario;
+    renderFotografiaGestor();
+  });
+}
+
+function linkParaEmbedDrive(link) {
+  const m = (link || '').match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? `https://drive.google.com/embeddedfolderview?id=${m[1]}#grid` : null;
+}
+
+// Card de agendamento de fotografia — aparece pra todos no topo da aba
+function cardAgendamentoFoto() {
+  return `
+    <div class="foto-agendar">
+      <div class="foto-agendar-info">
+        <h3><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Agende sua fotografia</h3>
+        <p class="muted">Escolha um horário disponível para fazer suas fotos profissionais.</p>
+        <button class="topbar-btn primario" id="btnAgendarFoto">Agendar horário ↗</button>
+      </div>
+      <iframe class="foto-agendar-frame" src="${AGENDA_FOTOGRAFIA_URL}" title="Agendar fotografia"></iframe>
+    </div>`;
+}
+
+function ligarBotaoAgendar() {
+  document.getElementById('btnAgendarFoto')?.addEventListener('click', () => window.open(AGENDA_FOTOGRAFIA_URL, '_blank'));
+}
+
+function renderFotoPessoal(driveLink, gestorPreview = false) {
+  const topo = gestorPreview ? barraToggleFoto() : '';
+  if (!driveLink) {
+    secaoFotografia.innerHTML = topo + cardAgendamentoFoto() + `
+      <div class="foto-vazio">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <p>Nenhuma pasta de fotos foi atribuída a você ainda.</p>
+      </div>`;
+    ligarBotaoAgendar();
+    if (gestorPreview) ligarToggleFoto();
+    return;
+  }
+  const embedUrl = linkParaEmbedDrive(driveLink);
+  secaoFotografia.innerHTML = topo + cardAgendamentoFoto() + `
+    <div class="docs-painel">
+      <div class="docs-painel-head">
+        <span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Minha pasta de fotos</span>
+        <span style="display:flex;gap:6px">
+          ${embedUrl ? '<button class="topbar-btn" id="btnAtualizarFoto" title="Recarregar a pasta pra ver fotos novas">↻ Atualizar</button>' : ''}
+          <button class="topbar-btn" id="btnAbrirFotoDrive">Abrir no Drive ↗</button>
+        </span>
+      </div>
+      ${embedUrl
+        ? `<iframe id="fotoDriveFrame" class="drive-frame" src="${escapeHtml(embedUrl)}" title="Pasta de fotos"></iframe>`
+        : `<div class="foto-vazio" style="border:none"><p>Link configurado. Clique em "Abrir no Drive" pra acessar.</p></div>`}
+    </div>`;
+  ligarBotaoAgendar();
+  if (gestorPreview) ligarToggleFoto();
+  document.getElementById('btnAbrirFotoDrive')?.addEventListener('click', () => window.open(driveLink, '_blank'));
+  document.getElementById('btnAtualizarFoto')?.addEventListener('click', (e) => {
+    const frame = document.getElementById('fotoDriveFrame');
+    if (frame) frame.src = frame.src; // recarrega o embed (puxa o conteúdo atual do Drive)
+    const b = e.currentTarget; const t = b.textContent;
+    b.disabled = true; b.textContent = '↻ Atualizando...';
+    setTimeout(() => { b.disabled = false; b.textContent = t; }, 1200);
+  });
+}
+
+function renderFotoGerenciar(pessoas) {
+  secaoFotografia.innerHTML = barraToggleFoto() + `
+    <div class="foto-gerenciar">
+      <div class="docs-painel-head" style="border:1px solid var(--border);border-radius:var(--radius-card);margin-bottom:12px">
+        <span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Gerenciar pastas de fotografia</span>
+        <span class="muted" style="font-size:11px">${pessoas.length} pessoa${pessoas.length !== 1 ? 's' : ''}</span>
+      </div>
+      <table class="users-table">
+        <thead><tr><th>Nome</th><th>Link do Drive (pasta de fotos)</th><th></th></tr></thead>
+        <tbody>
+          ${pessoas.map(p => `
+            <tr data-uid="${p.uid}">
+              <td class="foto-nome">${escapeHtml(p.nome)}</td>
+              <td><input class="foto-input" type="url" placeholder="https://drive.google.com/drive/folders/..." value="${escapeHtml(p.driveLink || '')}"></td>
+              <td><button class="topbar-btn foto-salvar-btn">Salvar</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  ligarBotaoAgendar();
+  ligarToggleFoto();
+  secaoFotografia.querySelectorAll('tr[data-uid]').forEach(row => {
+    const uid = row.dataset.uid;
+    const input = row.querySelector('.foto-input');
+    const btn = row.querySelector('.foto-salvar-btn');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const novoLink = input.value.trim();
+        await setFotoDrive({ uid, driveLink: novoLink });
+        // fix A: atualiza o cache local pra refletir na pré-visualização e em re-renders
+        const p = (fotoPessoasCache || []).find(x => x.uid === uid);
+        if (p) p.driveLink = novoLink;
+        btn.textContent = '✓ Salvo';
+        setTimeout(() => { btn.textContent = 'Salvar'; btn.disabled = false; }, 1800);
+      } catch (e) {
+        alert('Erro: ' + e.message);
+        btn.textContent = 'Salvar';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+// ─── Suporte (botão flutuante + modal) ────────────────────────────────────
+const btnSuporte   = document.getElementById('btnSuporte');
+const modalSuporte = document.getElementById('modalSuporte');
+const supMensagem  = document.getElementById('supMensagem');
+const supFile      = document.getElementById('supFile');
+const supFileNome  = document.getElementById('supFileNome');
+const supPreview   = document.getElementById('supPreview');
+const supMsg       = document.getElementById('supMsg');
+let supImagemPendente = null; // data URL da imagem anexada (ou null)
+
+function resetSuporte() {
+  supMensagem.value = '';
+  supFile.value = '';
+  supImagemPendente = null;
+  supFileNome.textContent = '';
+  supPreview.hidden = true;
+  supPreview.removeAttribute('src');
+  supMsg.hidden = true;
+}
+
+btnSuporte.addEventListener('click', () => { resetSuporte(); modalSuporte.showModal(); });
+document.getElementById('supCancelar').addEventListener('click', () => modalSuporte.close());
+document.getElementById('supAnexar').addEventListener('click', () => supFile.click());
+
+supFile.addEventListener('change', () => {
+  const f = supFile.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      // Redimensiona pra no máx 1400px (mantém proporção) e comprime — evita anexo gigante
+      const maxDim = 1400;
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        const escala = maxDim / Math.max(width, height);
+        width = Math.round(width * escala); height = Math.round(height * escala);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      supImagemPendente = canvas.toDataURL('image/jpeg', 0.8);
+      supFileNome.textContent = f.name;
+      supPreview.src = supImagemPendente;
+      supPreview.hidden = false;
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(f);
+});
+
+document.getElementById('formSuporte').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const mensagem = supMensagem.value.trim();
+  if (!mensagem) return;
+  const btn = document.getElementById('supEnviar');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try {
+    await enviarSuporte({ mensagem, imagem: supImagemPendente, imagemNome: supFile.files[0]?.name });
+    modalSuporte.close();
+    alert('Chamado enviado! ✅ Em breve entramos em contato.');
+  } catch (err) {
+    supMsg.textContent = 'Erro: ' + err.message;
+    supMsg.style.color = '#ffb4bc';
+    supMsg.hidden = false;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enviar';
+  }
 });
 
 // ─── Render inicial ──────────────────────────────────────────────────────

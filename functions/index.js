@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
@@ -12,6 +13,9 @@ const db = admin.firestore();
 // A chave secreta do cliente OAuth fica no cofre (Secret Manager), NUNCA no código.
 const { defineSecret } = require('firebase-functions/params');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
+// Senha de app (Google Workspace) da conta que envia/recebe os chamados de suporte.
+const SUPPORT_EMAIL_PASS = defineSecret('SUPPORT_EMAIL_PASS');
+const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
 const TZ = 'America/Sao_Paulo';
 
@@ -150,6 +154,13 @@ function ehAdminAuth(auth) {
   return !!(auth && ((auth.token && auth.token.admin === true) || ehBootstrapAdmin(auth.uid)));
 }
 
+// Verifica se o usuário tem a permissão "drives fotografia" (nem todo admin tem — é explícita)
+async function temPermissaoFotografia(auth) {
+  if (!auth) return false;
+  const snap = await db.collection('user_access').doc(auth.uid).get();
+  return !!(snap.exists && snap.data().drives_fotografia);
+}
+
 // Verifica se o usuário pode acessar um app (todos podem os normais; restritos só liberados/admin)
 async function temAcessoApp(auth, siteKey) {
   if (!RESTRICTED_APPS.includes(siteKey)) return true;
@@ -209,10 +220,12 @@ exports.getCredentials = onCall(async (req) => {
 // Apps restritos que o usuário ATUAL pode ver (admin vê todos)
 exports.getMinhasPermissoes = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true };
   const snap = await db.collection('user_access').doc(auth.uid).get();
-  const apps = snap.exists ? (snap.data().apps || []) : [];
-  return { apps, isAdmin: false };
+  const dados = snap.exists ? snap.data() : {};
+  const drives_fotografia = !!dados.drives_fotografia;
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia };
+  const apps = dados.apps || [];
+  return { apps, isAdmin: false, drives_fotografia };
 });
 
 // (admin) Lê os apps restritos liberados pra um usuário + lista de restritos disponíveis
@@ -223,21 +236,24 @@ exports.getUserAccess = onCall(async (req) => {
   const userRec = await admin.auth().getUser(uid).catch(() => null);
   const alvoAdmin = !!(userRec && userRec.customClaims && userRec.customClaims.admin) || ehBootstrapAdmin(uid);
   const snap = await db.collection('user_access').doc(uid).get();
+  const dados = snap.exists ? snap.data() : {};
   return {
-    apps: snap.exists ? (snap.data().apps || []) : [],
+    apps: dados.apps || [],
     restritos: RESTRICTED_APPS,
-    isAdmin: alvoAdmin
+    isAdmin: alvoAdmin,
+    drives_fotografia: !!dados.drives_fotografia
   };
 });
 
 // (admin) Define quais apps restritos um usuário pode ver
 exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
-  const { uid, apps } = req.data || {};
+  const { uid, apps, drives_fotografia } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
     apps: limpos,
+    drives_fotografia: !!drives_fotografia,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
   return { ok: true };
@@ -360,6 +376,62 @@ exports.salvarMeuPerfil = onCall(async (req) => {
     upd.photo = photo;
   }
   await db.collection('user_profiles').doc(auth.uid).set(upd, { merge: true });
+  return { ok: true };
+});
+
+// ─── Suporte (chamado por email com anexo opcional) ──────────────────────────
+function escaparHtml(s) {
+  return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+exports.enviarSuporte = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { mensagem, imagem, imagemNome } = req.data || {};
+  if (!mensagem || !String(mensagem).trim()) {
+    throw new HttpsError('invalid-argument', 'A mensagem é obrigatória.');
+  }
+
+  // Dados de quem enviou (pra você saber quem é, sem a pessoa precisar digitar)
+  let nome = auth.uid;
+  let email = (auth.token && auth.token.email) || '';
+  try {
+    const u = await admin.auth().getUser(auth.uid);
+    nome = u.displayName || u.email || auth.uid;
+    email = u.email || email;
+  } catch (e) { /* usa o que tiver */ }
+
+  // Anexo opcional (data URL base64). Limite ~7MB de base64 (~5MB de imagem).
+  const attachments = [];
+  if (typeof imagem === 'string' && imagem.startsWith('data:')) {
+    if (imagem.length > 7000000) {
+      throw new HttpsError('invalid-argument', 'Imagem muito grande. Tente uma menor.');
+    }
+    const m = imagem.match(/^data:(.+?);base64,(.+)$/);
+    if (m) attachments.push({ filename: imagemNome || 'anexo.jpg', content: Buffer.from(m[2], 'base64') });
+  }
+
+  const texto = String(mensagem).slice(0, 5000);
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+  });
+
+  try {
+    await transporter.sendMail({
+      from: `Hub RE/MAX Smart <${SUPORTE_EMAIL}>`,
+      to: SUPORTE_EMAIL,
+      replyTo: email || undefined,
+      subject: `[Hub] Suporte — ${nome}`,
+      text: `De: ${nome} (${email})\n\n${texto}`,
+      html: `<p><strong>De:</strong> ${escaparHtml(nome)} (${escaparHtml(email)})</p>`
+          + `<p style="white-space:pre-wrap">${escaparHtml(texto)}</p>`
+          + (attachments.length ? '<p><em>(imagem anexada)</em></p>' : ''),
+      attachments
+    });
+  } catch (e) {
+    console.error('Erro ao enviar suporte:', e.message);
+    throw new HttpsError('internal', 'Não foi possível enviar o chamado. Tente de novo.');
+  }
   return { ok: true };
 });
 
@@ -610,6 +682,51 @@ exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) 
   await remover(dados.googleTaskIds, true);
 
   await ref.delete();
+  return { ok: true };
+});
+
+// ─── Fotografia — links de Drive por pessoa ───────────────────────────────────
+// Quem tem "drives_fotografia" vê todos + pode editar. Outros veem só o próprio.
+exports.getFotoDrives = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const podeGerenciar = await temPermissaoFotografia(auth);
+  if (podeGerenciar) {
+    const [usuarios, drivesSnap] = await Promise.all([
+      admin.auth().listUsers(1000),
+      db.collection('foto_drives').get()
+    ]);
+    const drives = {};
+    drivesSnap.forEach(d => { drives[d.id] = d.data().driveLink || ''; });
+    return {
+      gerenciar: true,
+      pessoas: usuarios.users.filter(u => !u.disabled).map(u => ({
+        uid: u.uid,
+        nome: u.displayName || u.email || u.uid,
+        driveLink: drives[u.uid] || ''
+      }))
+    };
+  }
+  const snap = await db.collection('foto_drives').doc(auth.uid).get();
+  return { gerenciar: false, driveLink: snap.exists ? (snap.data().driveLink || '') : '' };
+});
+
+exports.setFotoDrive = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!(await temPermissaoFotografia(auth))) {
+    throw new HttpsError('permission-denied', 'Você não tem permissão para gerenciar drives de fotografia.');
+  }
+  const { uid, driveLink } = req.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  const link = typeof driveLink === 'string' ? driveLink.trim() : '';
+  if (link) {
+    await db.collection('foto_drives').doc(uid).set({
+      driveLink: link,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.uid
+    });
+  } else {
+    await db.collection('foto_drives').doc(uid).delete();
+  }
   return { ok: true };
 });
 

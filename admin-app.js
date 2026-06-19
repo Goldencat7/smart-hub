@@ -317,8 +317,9 @@ async function abrirModalPermissoes(uid, email) {
     const r = await getUserAccess({ uid });
     const liberados = r.data.apps || [];
     const alvoAdmin = !!r.data.isAdmin;
+    const temFoto = !!r.data.drives_fotografia;
     cont.innerHTML =
-      (alvoAdmin ? '<p class="muted">Este usuário é admin — já enxerga todos os apps.</p>' : '') +
+      (alvoAdmin ? '<p class="muted">Este usuário é admin — já enxerga todos os apps restritos.</p>' : '') +
       APPS_RESTRITOS.map(a => `
         <label class="auth-label-inline">
           <input type="checkbox" value="${a.key}"
@@ -326,7 +327,13 @@ async function abrirModalPermissoes(uid, email) {
             ${alvoAdmin ? 'disabled' : ''}>
           ${a.nome}
         </label>
-      `).join('');
+      `).join('') +
+      `<hr style="border-color:var(--border);margin:10px 0">
+       <p class="muted" style="font-size:11px;margin:0 0 6px">Permissões especiais:</p>
+       <label class="auth-label-inline">
+         <input type="checkbox" id="permDrivesFotografia" ${temFoto ? 'checked' : ''}>
+         Drives Fotografia <span class="muted" style="font-size:10px">(gerenciar pastas de fotos)</span>
+       </label>`;
   } catch (e) {
     cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
   }
@@ -336,9 +343,10 @@ document.getElementById('cancelarPermissoes').addEventListener('click', () => mo
 document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const uid = document.getElementById('permUid').value;
-  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:checked')).map(c => c.value);
+  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):checked')).map(c => c.value);
+  const drives_fotografia = !!(document.getElementById('permDrivesFotografia')?.checked);
   try {
-    await setUserAccess({ uid, apps });
+    await setUserAccess({ uid, apps, drives_fotografia });
     modalPermissoes.close();
   } catch (err) { alert('Erro: ' + err.message); }
 });

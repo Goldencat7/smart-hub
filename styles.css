@@ -703,6 +703,77 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .docs-card h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text-primary); }
 .docs-card .badge { align-self: flex-start; }
 
+/* ── Fotografia ─────────────────────────────────────────────────── */
+.foto-wrap { min-height: 70vh; }
+
+.foto-vazio {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 60px 20px; text-align: center;
+  color: var(--text-muted); font-size: 13px;
+  background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-card);
+}
+.foto-vazio svg { width: 40px; height: 40px; opacity: 0.35; }
+
+.foto-gerenciar { display: flex; flex-direction: column; gap: 12px; }
+
+.foto-toggle-bar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.foto-input {
+  width: 100%; padding: 0 10px; height: 30px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-input); color: var(--text-primary);
+  font: 11px/1 inherit; outline: none;
+  transition: border-color 150ms ease;
+}
+.foto-input:focus { border-color: var(--blue); }
+.foto-input::placeholder { color: var(--text-muted); }
+
+.foto-nome { font-weight: 600; font-size: 12px; white-space: nowrap; }
+
+.foto-agendar {
+  display: flex; gap: 16px; flex-wrap: wrap; align-items: stretch;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); padding: 16px; margin-bottom: 14px;
+}
+.foto-agendar-info {
+  flex: 1 1 220px; min-width: 200px;
+  display: flex; flex-direction: column; gap: 8px; justify-content: center;
+}
+.foto-agendar-info h3 {
+  margin: 0; font-size: 14px; font-weight: 700; color: var(--text-primary);
+  display: flex; align-items: center; gap: 6px;
+}
+.foto-agendar-info p { margin: 0; font-size: 12px; }
+.foto-agendar-info button { align-self: flex-start; margin-top: 4px; }
+.foto-agendar-frame {
+  flex: 2 1 380px; min-height: 420px;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  background: #fff;
+}
+
+/* ── Suporte (botão flutuante + modal) ──────────────────────────── */
+.suporte-fab {
+  position: fixed; bottom: 18px; right: 18px; z-index: 1000;
+  width: 46px; height: 46px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--blue); color: #fff; border: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4); cursor: pointer;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+.suporte-fab svg { width: 22px; height: 22px; }
+.suporte-fab:hover { filter: brightness(1.1); transform: scale(1.06); }
+.suporte-fab:active { transform: scale(0.97); }
+
+.sup-anexo { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.sup-preview {
+  margin-top: 8px; max-width: 100%; max-height: 200px;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  object-fit: contain; background: var(--bg);
+}
+
 /* ── Marketing (templates editáveis) ────────────────────────────── */
 .mkt-wrap { padding: 8px 0 24px; }
 .mkt-grid {
