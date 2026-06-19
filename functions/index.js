@@ -345,6 +345,33 @@ exports.registrarAcesso = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Status dos apps (aviso de instabilidade, sem precisar atualizar o .exe) ──
+// Admin marca um app como instável com uma mensagem; aparece pra todos no Hub.
+exports.listarStatusApps = onCall(async (req) => {
+  exigirAutenticado(req);
+  const snap = await db.collection('app_status').where('ativo', '==', true).get();
+  const status = {};
+  snap.forEach(d => { status[d.id] = d.data().mensagem || ''; });
+  return { status };
+});
+
+exports.setStatusApp = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const { siteKey, mensagem, ativo } = req.data || {};
+  if (!siteKey) throw new HttpsError('invalid-argument', 'siteKey é obrigatório.');
+  if (ativo) {
+    await db.collection('app_status').doc(siteKey).set({
+      mensagem: String(mensagem || '').slice(0, 300),
+      ativo: true,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.uid
+    });
+  } else {
+    await db.collection('app_status').doc(siteKey).delete();
+  }
+  return { ok: true };
+});
+
 // ─── Perfil do usuário (nome + foto) ─────────────────────────────────────────
 exports.getMeuPerfil = onCall(async (req) => {
   const auth = exigirAutenticado(req);

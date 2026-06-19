@@ -252,6 +252,7 @@
     <!-- Modal: suporte -->
     <dialog id="modalSuporte" class="modal">
       <form method="dialog" id="formSuporte" class="modal-form">
+        <button type="button" id="supFechar" class="modal-close" title="Fechar" aria-label="Fechar">✕</button>
         <h3><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>Suporte / Ajuda</h3>
         <p class="muted" style="margin:0 0 8px;font-size:12px">Descreva o problema ou dúvida. Se quiser, anexe um print da tela.</p>
         <label class="auth-label">
@@ -261,6 +262,7 @@
         <div class="sup-anexo">
           <button type="button" id="supAnexar" class="topbar-btn"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>Anexar imagem</button>
           <span id="supFileNome" class="muted" style="font-size:11px"></span>
+          <button type="button" id="supRemover" class="topbar-btn perigo" hidden>✕ Remover</button>
           <input id="supFile" type="file" accept="image/*" hidden>
         </div>
         <img id="supPreview" class="sup-preview" hidden alt="Pré-visualização do anexo">

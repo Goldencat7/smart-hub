@@ -43,6 +43,7 @@ const responderConvite = httpsCallable(fns, 'responderConvite');
 const getFotoDrives = httpsCallable(fns, 'getFotoDrives');
 const setFotoDrive = httpsCallable(fns, 'setFotoDrive');
 const enviarSuporte = httpsCallable(fns, 'enviarSuporte');
+const listarStatusApps = httpsCallable(fns, 'listarStatusApps');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -152,6 +153,7 @@ let isAdmin = false;
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
+let statusApps = {};               // { siteKey: 'mensagem de instabilidade' } — avisos do admin
 let renderizandoCal = false;
 let renderCalPendente = false;    // fix 3: guarda clique durante render pra re-renderizar depois
 let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verificarNotificacoes // apps restritos liberados pra este usuário
@@ -332,13 +334,14 @@ function renderCentro() {
   estadoVazio.hidden = true;
 
   appsGrid.innerHTML = filtrados.map(a => `
-    <button class="hub-card" data-app="${a.key}">
+    <button class="hub-card ${statusApps[a.key] ? 'com-aviso' : ''}" data-app="${a.key}">
       <span class="card-icon">
         <img class="card-icon-img" src="app-icons/${a.key}.png" alt="">
         ${a.icone}
       </span>
       <span class="card-title">${a.titulo}</span>
       <span class="card-desc">${a.desc}</span>
+      ${statusApps[a.key] ? `<span class="card-aviso" title="${escapeHtml(statusApps[a.key])}">⚠ Instável</span>` : ''}
     </button>
   `).join('');
 
@@ -351,10 +354,26 @@ function renderCentro() {
   });
 }
 
+// ─── Status dos apps (avisos de instabilidade postados pelo admin) ────────
+async function carregarStatusApps() {
+  try {
+    const r = await listarStatusApps();
+    statusApps = r.data.status || {};
+  } catch (e) {
+    console.warn('Status apps:', e);
+    statusApps = {};
+  }
+}
+
 // ─── Abrir app (com ou sem autologin) ────────────────────────────────────
 async function abrirApp(siteKey) {
   const app = APPS.find(a => a.key === siteKey);
   if (!app) return;
+
+  // Aviso de instabilidade (marcado por um admin): confirma antes de abrir
+  if (statusApps[siteKey]) {
+    if (!confirm(`⚠️ ${statusApps[siteKey]}\n\nEsse app pode estar instável agora. Abrir mesmo assim?`)) return;
+  }
 
   // Registra o acesso (não bloqueia a abertura)
   registrarAcesso({ siteKey, titulo: app.titulo }).catch(() => {});
@@ -457,7 +476,7 @@ cfgSalvar.addEventListener('click', async () => {
   try {
     await salvarMeuPerfil(payload);
     fotoPendente = null;
-    usuarioInfo.textContent = cfgNome.value || cfgEmail.value;
+    usuarioInfo.textContent = formatarNome(cfgNome.value) || cfgEmail.value;
     mostrarMsgCfg('Salvo!', true);
   } catch (e) {
     mostrarMsgCfg('Erro: ' + e.message, false);
@@ -482,7 +501,7 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   currentUid = user.uid;
-  usuarioInfo.textContent = user.displayName || user.email;
+  usuarioInfo.textContent = formatarNome(user.displayName) || user.email;
 
   const tokenResult = await user.getIdTokenResult(true); // force refresh pra pegar claims atualizadas (ex: nova promoção a admin)
   isAdmin = !!tokenResult.claims.admin;
@@ -508,8 +527,17 @@ onAuthStateChanged(auth, async (user) => {
     console.warn('Permissões:', e);
     appsPermitidos = [];
   }
+  await carregarStatusApps(); // avisos de apps instáveis (antes de renderizar os cards)
   renderCentro();
   carregarPerfil(); // popula o avatar no topo
+
+  // Atualiza os avisos de instabilidade a cada 3 min (sem precisar relogar)
+  clearInterval(window.__statusTimer);
+  window.__statusTimer = setInterval(async () => {
+    const antes = JSON.stringify(statusApps);
+    await carregarStatusApps();
+    if (JSON.stringify(statusApps) !== antes) renderCentro();
+  }, 180000);
 
   // fix 2: busca status Google antes de carregar eventos para incluir eventos do Google no mini calendário desde o início
   await atualizarStatusGoogle();
@@ -533,6 +561,12 @@ const DIAS_SEM = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Padroniza nome: "ALEXANDRE gutierres" → "Alexandre Gutierres". Email/uid ficam como estão.
+function formatarNome(nome){
+  const s = String(nome || '').trim();
+  if (!s || s.includes('@')) return s;
+  return s.toLowerCase().split(/\s+/).map(w => w ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(' ');
+}
 function chaveDia(d){
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
@@ -681,7 +715,7 @@ function renderDetalheDia(){
       // Lista de participantes com status RSVP (só pra quem criou o evento)
       const rsvpLista = (e.souDono && e.rsvp && Object.keys(e.rsvp).length > 1)
         ? `<div class="ev-rsvp-lista">${Object.entries(e.rsvp).filter(([uid]) => uid !== currentUid).map(([uid, st]) => {
-            const nome = escapeHtml((e.participantesNomes && e.participantesNomes[uid]) || uid);
+            const nome = escapeHtml(formatarNome((e.participantesNomes && e.participantesNomes[uid]) || uid));
             const badge = st === 'aceito' ? 'rsvp-aceito' : st === 'recusado' ? 'rsvp-recusado' : 'rsvp-pendente';
             const icone = st === 'aceito' ? '✓' : st === 'recusado' ? '✗' : '?';
             return `<span class="rsvp-badge ${badge}">${nome} ${icone}</span>`;
@@ -781,7 +815,7 @@ async function abrirModalEvento(diaPre) {
   // Remove o próprio usuário da lista (já é incluído automaticamente pelo servidor)
   const outros = pessoasCache.filter(p => p.uid !== currentUid);
   cont.innerHTML = outros.length
-    ? outros.map(p => `<label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('')
+    ? outros.map(p => `<label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(formatarNome(p.nome))}</label>`).join('')
     : '<p class="muted" style="font-size:12px">Nenhuma outra pessoa cadastrada.</p>';
 
   // Rebuilding innerHTML pode roubar o foco — devolve pro título se necessário
@@ -1001,7 +1035,7 @@ btnAviso.addEventListener('click', async () => {
   try {
     if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; pessoasCacheAt = Date.now(); } // fix 5: atualiza timestamp do cache
     cont.innerHTML = pessoasCache.map(p => `
-      <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(p.nome)}</label>`).join('');
+      <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(formatarNome(p.nome))}</label>`).join('');
   } catch(e){ cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
   modalEnviarAviso.showModal();
 });
@@ -1089,21 +1123,14 @@ function linkParaEmbedDrive(link) {
   return m ? `https://drive.google.com/embeddedfolderview?id=${m[1]}#grid` : null;
 }
 
-// Card de agendamento de fotografia — aparece pra todos no topo da aba
+// Card de agendamento de fotografia — aparece pra todos no topo da aba.
+// A pessoa agenda direto na própria visualização (sem abrir janela nova).
 function cardAgendamentoFoto() {
   return `
     <div class="foto-agendar">
-      <div class="foto-agendar-info">
-        <h3><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Agende sua fotografia</h3>
-        <p class="muted">Escolha um horário disponível para fazer suas fotos profissionais.</p>
-        <button class="topbar-btn primario" id="btnAgendarFoto">Agendar horário ↗</button>
-      </div>
+      <h3 class="foto-agendar-titulo"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Agende sua fotografia <span class="muted" style="font-weight:400;font-size:12px">— escolha um horário disponível abaixo</span></h3>
       <iframe class="foto-agendar-frame" src="${AGENDA_FOTOGRAFIA_URL}" title="Agendar fotografia"></iframe>
     </div>`;
-}
-
-function ligarBotaoAgendar() {
-  document.getElementById('btnAgendarFoto')?.addEventListener('click', () => window.open(AGENDA_FOTOGRAFIA_URL, '_blank'));
 }
 
 function renderFotoPessoal(driveLink, gestorPreview = false) {
@@ -1114,7 +1141,6 @@ function renderFotoPessoal(driveLink, gestorPreview = false) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <p>Nenhuma pasta de fotos foi atribuída a você ainda.</p>
       </div>`;
-    ligarBotaoAgendar();
     if (gestorPreview) ligarToggleFoto();
     return;
   }
@@ -1132,7 +1158,6 @@ function renderFotoPessoal(driveLink, gestorPreview = false) {
         ? `<iframe id="fotoDriveFrame" class="drive-frame" src="${escapeHtml(embedUrl)}" title="Pasta de fotos"></iframe>`
         : `<div class="foto-vazio" style="border:none"><p>Link configurado. Clique em "Abrir no Drive" pra acessar.</p></div>`}
     </div>`;
-  ligarBotaoAgendar();
   if (gestorPreview) ligarToggleFoto();
   document.getElementById('btnAbrirFotoDrive')?.addEventListener('click', () => window.open(driveLink, '_blank'));
   document.getElementById('btnAtualizarFoto')?.addEventListener('click', (e) => {
@@ -1156,7 +1181,7 @@ function renderFotoGerenciar(pessoas) {
         <tbody>
           ${pessoas.map(p => `
             <tr data-uid="${p.uid}">
-              <td class="foto-nome">${escapeHtml(p.nome)}</td>
+              <td class="foto-nome">${escapeHtml(formatarNome(p.nome))}</td>
               <td><input class="foto-input" type="url" placeholder="https://drive.google.com/drive/folders/..." value="${escapeHtml(p.driveLink || '')}"></td>
               <td><button class="topbar-btn foto-salvar-btn">Salvar</button></td>
             </tr>`).join('')}
@@ -1164,7 +1189,6 @@ function renderFotoGerenciar(pessoas) {
       </table>
     </div>`;
 
-  ligarBotaoAgendar();
   ligarToggleFoto();
   secaoFotografia.querySelectorAll('tr[data-uid]').forEach(row => {
     const uid = row.dataset.uid;
@@ -1197,29 +1221,43 @@ const supMensagem  = document.getElementById('supMensagem');
 const supFile      = document.getElementById('supFile');
 const supFileNome  = document.getElementById('supFileNome');
 const supPreview   = document.getElementById('supPreview');
+const supRemover   = document.getElementById('supRemover');
 const supMsg       = document.getElementById('supMsg');
 let supImagemPendente = null; // data URL da imagem anexada (ou null)
 
-function resetSuporte() {
-  supMensagem.value = '';
-  supFile.value = '';
+function limparAnexoSuporte() {
   supImagemPendente = null;
+  supFile.value = '';
   supFileNome.textContent = '';
   supPreview.hidden = true;
   supPreview.removeAttribute('src');
+  supRemover.hidden = true;
+}
+
+function resetSuporte() {
+  supMensagem.value = '';
+  limparAnexoSuporte();
   supMsg.hidden = true;
 }
 
 btnSuporte.addEventListener('click', () => { resetSuporte(); modalSuporte.showModal(); });
 document.getElementById('supCancelar').addEventListener('click', () => modalSuporte.close());
+document.getElementById('supFechar').addEventListener('click', () => modalSuporte.close());
 document.getElementById('supAnexar').addEventListener('click', () => supFile.click());
+supRemover.addEventListener('click', limparAnexoSuporte);
 
 supFile.addEventListener('change', () => {
   const f = supFile.files[0];
   if (!f) return;
+  const falhou = () => {
+    limparAnexoSuporte(); // limpa qualquer anexo anterior pra não enviar imagem errada
+    alert('Não consegui ler essa imagem. Tente outro arquivo (PNG ou JPG).');
+  };
   const reader = new FileReader();
+  reader.onerror = falhou;
   reader.onload = () => {
     const img = new Image();
+    img.onerror = falhou;
     img.onload = () => {
       // Redimensiona pra no máx 1400px (mantém proporção) e comprime — evita anexo gigante
       const maxDim = 1400;
@@ -1235,6 +1273,7 @@ supFile.addEventListener('change', () => {
       supFileNome.textContent = f.name;
       supPreview.src = supImagemPendente;
       supPreview.hidden = false;
+      supRemover.hidden = false;
     };
     img.src = reader.result;
   };

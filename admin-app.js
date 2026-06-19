@@ -29,10 +29,28 @@ const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
+const listarStatusApps = httpsCallable(fns, 'listarStatusApps');
+const setStatusApp     = httpsCallable(fns, 'setStatusApp');
 
 // Apps restritos (aparecem só pra quem o admin liberar)
 const APPS_RESTRITOS = [
   { key: 'clicksign', nome: 'ClickSign' }
+];
+
+// Todos os apps do Hub (espelha o array APPS do hub-app.js) — pro controle de status
+const TODOS_APPS = [
+  { key: 'cadastro_imobiliario', nome: 'Central de Cadastro' },
+  { key: 'imovelp', nome: 'Imóvel do Proprietário' },
+  { key: 'sp_imovel', nome: 'SP Imóvel' },
+  { key: 'forsale', nome: 'Jr Captações' },
+  { key: 'itbi_smart', nome: 'ITBI Smart' },
+  { key: 'checkvisto', nome: 'Smart Vistorias' },
+  { key: 'alude', nome: 'Alude' },
+  { key: 'clicksign', nome: 'ClickSign' },
+  { key: 'motiva', nome: 'Motiva Smart' },
+  { key: 'universidade', nome: 'Universidade REMAX' },
+  { key: 'goiconnect', nome: 'IConnect' },
+  { key: 'brokerapp', nome: 'BrokerApp' }
 ];
 
 // Mesma lista do hub-app.js — sites que têm autologin (são os únicos com credenciais)
@@ -48,6 +66,7 @@ const SITES = [
 const elListaCred  = document.getElementById('listaCredenciais');
 const elListaUser  = document.getElementById('listaUsuarios');
 const elListaCodigos = document.getElementById('listaCodigos');
+const elListaStatus = document.getElementById('listaStatusApps');
 const modalCred    = document.getElementById('modalCred');
 const modalUser    = document.getElementById('modalUser');
 const modalCodigo  = document.getElementById('modalCodigo');
@@ -141,7 +160,57 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
 });
 
 async function carregarTudo() {
-  await Promise.all([carregarCredenciais(), carregarUsuarios(), carregarCodigos()]);
+  await Promise.all([carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
+}
+
+// ─── Status dos apps (avisos de instabilidade) ───────────────────────────────
+function escHtml(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function carregarStatusApps() {
+  elListaStatus.innerHTML = '<p class="muted">carregando...</p>';
+  let ativos = {};
+  try {
+    const r = await listarStatusApps();
+    ativos = r.data.status || {};
+  } catch (e) {
+    elListaStatus.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+    return;
+  }
+  elListaStatus.innerHTML = `
+    <table class="users-table">
+      <thead><tr><th>App</th><th>Mensagem de aviso</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        ${TODOS_APPS.map(a => {
+          const ativo = a.key in ativos;
+          const msg = ativos[a.key] || '';
+          return `
+            <tr data-key="${a.key}">
+              <td><strong>${escHtml(a.nome)}</strong></td>
+              <td><input class="foto-input status-msg" type="text" maxlength="300" placeholder="Ex.: instável, fora do ar momentaneamente..." value="${escHtml(msg)}"></td>
+              <td>${ativo ? '<span class="badge falta">⚠ Com aviso</span>' : '<span class="badge ok">OK</span>'}</td>
+              <td class="acoes-user">
+                <button class="topbar-btn status-ativar">${ativo ? 'Atualizar' : 'Ativar aviso'}</button>
+                ${ativo ? '<button class="topbar-btn perigo status-limpar">Limpar</button>' : ''}
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+
+  elListaStatus.querySelectorAll('tr[data-key]').forEach(row => {
+    const key = row.dataset.key;
+    const input = row.querySelector('.status-msg');
+    row.querySelector('.status-ativar').addEventListener('click', async () => {
+      const mensagem = input.value.trim();
+      if (!mensagem) { alert('Escreva a mensagem do aviso (ou use "Limpar" pra remover).'); return; }
+      try { await setStatusApp({ siteKey: key, mensagem, ativo: true }); carregarStatusApps(); }
+      catch (e) { alert('Erro: ' + e.message); }
+    });
+    row.querySelector('.status-limpar')?.addEventListener('click', async () => {
+      try { await setStatusApp({ siteKey: key, ativo: false }); carregarStatusApps(); }
+      catch (e) { alert('Erro: ' + e.message); }
+    });
+  });
 }
 
 async function carregarCredenciais() {

@@ -263,6 +263,17 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 
 .hub-card.loading { opacity: 0.6; pointer-events: none; }
 
+/* App com aviso de instabilidade (marcado pelo admin) */
+.hub-card.com-aviso { border-color: rgba(251,191,36,0.5); }
+.card-aviso {
+  position: absolute; top: 8px; right: 8px;
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 6px; border-radius: var(--radius-badge);
+  background: rgba(251,191,36,0.15); color: var(--warning);
+  border: 1px solid rgba(251,191,36,0.4);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap;
+}
+
 /* Estado vazio */
 [hidden] { display: none !important; }
 
@@ -579,9 +590,19 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .modal::backdrop { background: rgba(0,0,0,0.6); }
 
 .modal-form {
+  position: relative;
   padding: 18px 18px 14px;
   display: flex; flex-direction: column; gap: 12px;
 }
+.modal-close {
+  position: absolute; top: 10px; right: 10px;
+  width: 26px; height: 26px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: none; border-radius: 5px;
+  color: var(--text-muted); cursor: pointer; font-size: 15px; line-height: 1;
+  transition: background 150ms ease, color 150ms ease;
+}
+.modal-close:hover { background: var(--bg); color: var(--text-primary); }
 .modal-form h3 {
   margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary);
   display: flex; align-items: center; gap: 8px;
@@ -692,6 +713,8 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   padding: 10px 14px; border-bottom: 1px solid var(--border);
   background: var(--bg); font-weight: 600; font-size: 12px; color: var(--text-primary);
 }
+/* Espaço entre o ícone e o texto no rótulo do cabeçalho (câmera/pasta + título) */
+.docs-painel-head > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
 .drive-frame { flex: 1; width: 100%; border: none; background: #fff; }
 
 .docs-placeholder { padding: 24px 0; }
@@ -734,22 +757,16 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .foto-nome { font-weight: 600; font-size: 12px; white-space: nowrap; }
 
 .foto-agendar {
-  display: flex; gap: 16px; flex-wrap: wrap; align-items: stretch;
+  display: flex; flex-direction: column; gap: 12px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-card); padding: 16px; margin-bottom: 14px;
 }
-.foto-agendar-info {
-  flex: 1 1 220px; min-width: 200px;
-  display: flex; flex-direction: column; gap: 8px; justify-content: center;
-}
-.foto-agendar-info h3 {
+.foto-agendar-titulo {
   margin: 0; font-size: 14px; font-weight: 700; color: var(--text-primary);
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
-.foto-agendar-info p { margin: 0; font-size: 12px; }
-.foto-agendar-info button { align-self: flex-start; margin-top: 4px; }
 .foto-agendar-frame {
-  flex: 2 1 380px; min-height: 420px;
+  width: 100%; min-height: 620px;
   border: 1px solid var(--border); border-radius: var(--radius-card);
   background: #fff;
 }

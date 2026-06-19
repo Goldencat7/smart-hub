@@ -110,6 +110,7 @@ autoUpdater.on('error', (err) => {
 const DEVTOOLS_HABILITADO = !app.isPackaged;
 
 let janelaPrincipal = null;
+let forcandoSaida = false; // true quando o fechamento é intencional (botão "Fechar tudo", update, etc.)
 
 function criarJanelaPrincipal() {
   janelaPrincipal = new BrowserWindow({
@@ -124,6 +125,33 @@ function criarJanelaPrincipal() {
       nodeIntegration: false,
       devTools: DEVTOOLS_HABILITADO
     }
+  });
+
+  // Impede fechar o Hub enquanto houver janelas de sistemas abertas (evita ficar
+  // "trancado pra fora": a sub-janela segura o app vivo, mas a principal some).
+  janelaPrincipal.on('close', (e) => {
+    if (forcandoSaida) return;
+    const subs = BrowserWindow.getAllWindows().filter(w => w !== janelaPrincipal && !w.isDestroyed());
+    if (subs.length === 0) return; // sem sub-janelas: fecha normal
+    e.preventDefault();
+    dialog.showMessageBox(janelaPrincipal, {
+      type: 'warning',
+      title: 'Há janelas abertas',
+      message: `Você tem ${subs.length} janela(s) de sistema aberta(s).`,
+      detail: 'Feche as janelas dos sistemas antes de sair — ou clique em "Fechar tudo" para encerrar o Hub e todas as janelas abertas.',
+      buttons: ['Cancelar', 'Fechar tudo'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true
+    }).then(({ response }) => {
+      if (response === 1) {
+        forcandoSaida = true;
+        BrowserWindow.getAllWindows().forEach(w => {
+          if (w !== janelaPrincipal) { try { w.destroy(); } catch (_) {} }
+        });
+        janelaPrincipal.close();
+      }
+    });
   });
   // Links de arquivos (ex.: documentos do Drive) abrem numa janela nova
   janelaPrincipal.webContents.setWindowOpenHandler(({ url }) => {
@@ -153,6 +181,9 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) criarJanelaPrincipal();
   });
 });
+
+// Qualquer saída programática (update, app.quit) libera o bloqueio do fechamento.
+app.on('before-quit', () => { forcandoSaida = true; });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
