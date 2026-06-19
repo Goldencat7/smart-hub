@@ -1034,7 +1034,7 @@ btnAviso.addEventListener('click', async () => {
   cont.innerHTML = '<p class="muted" style="font-size:12px">carregando...</p>';
   try {
     if(!pessoasCache){ const r = await listarPessoas(); pessoasCache = r.data || []; pessoasCacheAt = Date.now(); } // fix 5: atualiza timestamp do cache
-    cont.innerHTML = pessoasCache.map(p => `
+    cont.innerHTML = pessoasCache.filter(p => p.uid !== currentUid).map(p => `
       <label class="auth-label-inline"><input type="checkbox" value="${p.uid}"> ${escapeHtml(formatarNome(p.nome))}</label>`).join('');
   } catch(e){ cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
   modalEnviarAviso.showModal();

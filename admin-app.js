@@ -186,7 +186,12 @@ async function carregarStatusApps() {
           return `
             <tr data-key="${a.key}">
               <td><strong>${escHtml(a.nome)}</strong></td>
-              <td><input class="foto-input status-msg" type="text" maxlength="300" placeholder="Ex.: instável, fora do ar momentaneamente..." value="${escHtml(msg)}"></td>
+              <td>
+                <select class="foto-input status-msg">
+                  <option value="Indisponível" ${msg === 'Indisponível' ? 'selected' : ''}>Indisponível</option>
+                  <option value="Em manutenção" ${msg === 'Em manutenção' ? 'selected' : ''}>Em manutenção</option>
+                </select>
+              </td>
               <td>${ativo ? '<span class="badge falta">⚠ Com aviso</span>' : '<span class="badge ok">OK</span>'}</td>
               <td class="acoes-user">
                 <button class="topbar-btn status-ativar">${ativo ? 'Atualizar' : 'Ativar aviso'}</button>
@@ -201,8 +206,7 @@ async function carregarStatusApps() {
     const key = row.dataset.key;
     const input = row.querySelector('.status-msg');
     row.querySelector('.status-ativar').addEventListener('click', async () => {
-      const mensagem = input.value.trim();
-      if (!mensagem) { alert('Escreva a mensagem do aviso (ou use "Limpar" pra remover).'); return; }
+      const mensagem = input.value; // "Indisponível" ou "Em manutenção"
       try { await setStatusApp({ siteKey: key, mensagem, ativo: true }); carregarStatusApps(); }
       catch (e) { alert('Erro: ' + e.message); }
     });
