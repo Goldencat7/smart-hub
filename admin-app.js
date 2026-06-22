@@ -40,6 +40,9 @@ const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 const setStatusApp     = httpsCallable(fns, 'setStatusApp');
 const getBanner        = httpsCallable(fns, 'getBanner');
 const setBanner        = httpsCallable(fns, 'setBanner');
+const listarBanners    = httpsCallable(fns, 'listarBanners');
+const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
+const removerBanner    = httpsCallable(fns, 'removerBanner');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -348,45 +351,42 @@ document.getElementById('materialFileInput').addEventListener('change', async ()
   }
 });
 
-// ─── Banner principal ─────────────────────────────────────────────────────────
-let bannerPendente = null; // null = sem mudança, '' = remover, string = nova imagem
-
+// ─── Banner principal (carrossel) ─────────────────────────────────────────────
 async function carregarBanner() {
   const el = document.getElementById('bannerAdmin');
   el.innerHTML = '<p class="muted">carregando...</p>';
-  let imagemAtual = '';
-  try {
-    const r = await getBanner();
-    imagemAtual = r.data.imagem || '';
-  } catch (e) {
-    el.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; return;
-  }
-  bannerPendente = null;
-  renderBannerAdmin(el, imagemAtual);
+  let banners = [];
+  try { const r = await listarBanners(); banners = r.data.banners || []; }
+  catch (e) { el.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; return; }
+  renderBannerAdmin(el, banners);
 }
 
-function renderBannerAdmin(el, imagemAtual) {
+function renderBannerAdmin(el, banners) {
   el.innerHTML = `
-    <div class="banner-admin-preview">
-      ${imagemAtual
-        ? `<img id="bannerPreviewImg" src="${imagemAtual}" class="banner-preview-img" alt="Banner atual">`
-        : `<div class="banner-preview-vazio"><span>Nenhum banner cadastrado</span></div>`}
+    <div class="banner-admin-lista">
+      ${banners.map((b, i) => `
+        <div class="banner-admin-item">
+          <span class="banner-admin-num">${i + 1}</span>
+          <img src="${b.imagem}" class="banner-preview-img" alt="Banner ${i+1}">
+          <button class="topbar-btn perigo banner-rm" data-id="${b.id}">✕ Remover</button>
+        </div>`).join('')}
+      ${!banners.length ? '<div class="banner-preview-vazio"><span>Nenhum banner cadastrado</span></div>' : ''}
     </div>
-    <div class="banner-admin-acoes">
-      <button class="topbar-btn primario" id="bannerEscolher"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>${imagemAtual ? 'Trocar imagem' : 'Enviar imagem'}</button>
-      ${imagemAtual ? '<button class="topbar-btn perigo" id="bannerRemover">✕ Remover banner</button>' : ''}
-      <span id="bannerMsg" class="muted" style="font-size:11px"></span>
+    <div class="banner-admin-acoes" style="margin-top:10px">
+      <button class="topbar-btn primario" id="bannerAdicionar">
+        <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        ${banners.length ? 'Adicionar outro banner' : 'Enviar banner'}
+      </button>
+      ${banners.length > 1 ? `<span class="muted" style="font-size:11px">${banners.length} banners · alternam a cada 30s</span>` : ''}
     </div>`;
 
-  document.getElementById('bannerEscolher').addEventListener('click', () => {
-    document.getElementById('bannerFileInput').click();
-  });
-  document.getElementById('bannerRemover')?.addEventListener('click', async () => {
-    if (!(await confirmar('Remover o banner atual?'))) return;
-    try {
-      await setBanner({ imagem: '' });
-      carregarBanner();
-    } catch (e) { alert('Erro: ' + e.message); }
+  document.getElementById('bannerAdicionar').addEventListener('click', () => document.getElementById('bannerFileInput').click());
+  el.querySelectorAll('.banner-rm').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmar('Remover este banner?'))) return;
+      try { await removerBanner({ id: btn.dataset.id }); carregarBanner(); }
+      catch (e) { alert('Erro: ' + e.message); }
+    });
   });
 }
 
@@ -399,27 +399,18 @@ document.getElementById('bannerFileInput').addEventListener('change', async () =
     const img = new Image();
     img.onerror = () => alert('Não consegui ler essa imagem. Tente PNG ou JPG.');
     img.onload = async () => {
-      // Redimensiona e recorta na proporção 6:1 (900×150 base, 1800×300 @2x)
       const MAX_W = 1800, MAX_H = 300;
-      let sw = img.width, sh = img.height;
-      const escala = Math.min(MAX_W / sw, MAX_H / sh, 1);
-      const w = Math.round(sw * escala), h = Math.round(sh * escala);
+      const escala = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+      const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(img, 0, 0, w, h);
       const dataURL = canvas.toDataURL('image/jpeg', 0.88);
-      if (dataURL.length > 600000) { alert('Imagem ainda muito grande após compressão. Use JPEG em menor resolução.'); return; }
-      const el = document.getElementById('bannerAdmin');
-      const msg = document.getElementById('bannerMsg');
-      const btn = document.getElementById('bannerEscolher');
+      if (dataURL.length > 600000) { alert('Imagem ainda muito grande após compressão.'); return; }
+      const btn = document.getElementById('bannerAdicionar');
       btn.disabled = true; btn.textContent = 'Salvando...';
-      try {
-        await setBanner({ imagem: dataURL });
-        carregarBanner();
-      } catch (e) {
-        msg.textContent = 'Erro: ' + e.message;
-        btn.disabled = false; btn.textContent = 'Trocar imagem';
-      }
+      try { await adicionarBanner({ imagem: dataURL }); carregarBanner(); }
+      catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
     };
     img.src = reader.result;
   };

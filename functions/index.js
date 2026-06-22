@@ -433,27 +433,55 @@ exports.setTreinamentoLink = onCall(async (req) => {
   return { ok: true };
 });
 
-// ─── Banner principal (imagem exibida no topo do Hub em todas as abas normais) ──
-// Qualquer autenticado pode buscar; só admin salva/remove.
-// Imagem salva como base64 em config/banner (limite: ~500KB base64).
+// ─── Banners principais (carrossel — múltiplas imagens, alternam no Hub) ────────
+// Coleção `banners`: cada doc tem { imagem: base64, ordem: number, updatedAt }.
+exports.listarBanners = onCall(async (req) => {
+  exigirAutenticado(req);
+  const snap = await db.collection('banners').orderBy('ordem').get();
+  return { banners: snap.docs.map(d => ({ id: d.id, imagem: d.data().imagem || '' })) };
+});
+
+exports.adicionarBanner = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const { imagem } = req.data || {};
+  if (typeof imagem !== 'string' || !imagem) throw new HttpsError('invalid-argument', 'imagem é obrigatória.');
+  if (imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande.');
+  const snap = await db.collection('banners').orderBy('ordem', 'desc').limit(1).get();
+  const proximaOrdem = snap.empty ? 0 : (snap.docs[0].data().ordem || 0) + 1;
+  const ref = await db.collection('banners').add({
+    imagem,
+    ordem: proximaOrdem,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: auth.uid
+  });
+  return { ok: true, id: ref.id };
+});
+
+exports.removerBanner = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { id } = req.data || {};
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  await db.collection('banners').doc(id).delete();
+  return { ok: true };
+});
+
+// Mantém getBanner/setBanner por compatibilidade (migração: se não há banners na coleção nova,
+// retorna o banner antigo de config/banner como fallback).
 exports.getBanner = onCall(async (req) => {
   exigirAutenticado(req);
-  const snap = await db.collection('config').doc('banner').get();
-  if (!snap.exists) return { imagem: '' };
-  return { imagem: snap.data().imagem || '' };
+  const snap = await db.collection('banners').orderBy('ordem').limit(1).get();
+  if (!snap.empty) return { imagem: snap.docs[0].data().imagem || '' };
+  const old = await db.collection('config').doc('banner').get();
+  return { imagem: old.exists ? (old.data().imagem || '') : '' };
 });
 
 exports.setBanner = onCall(async (req) => {
   const auth = await exigirAdmin(req);
   const { imagem } = req.data || {};
   if (typeof imagem !== 'string') throw new HttpsError('invalid-argument', 'imagem é obrigatória.');
-  if (imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande. Tente reduzir ou usar JPEG.');
+  if (imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande.');
   if (imagem) {
-    await db.collection('config').doc('banner').set({
-      imagem,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedBy: auth.uid
-    });
+    await db.collection('config').doc('banner').set({ imagem, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: auth.uid }, { merge: true });
   } else {
     await db.collection('config').doc('banner').delete();
   }

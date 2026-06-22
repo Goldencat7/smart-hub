@@ -48,7 +48,10 @@ const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
 const listarMinhasNotificacoes = httpsCallable(fns, 'listarMinhasNotificacoes');
 const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
 const responderConvite = httpsCallable(fns, 'responderConvite');
-const getBanner = httpsCallable(fns, 'getBanner');
+const getBanner        = httpsCallable(fns, 'getBanner');
+const listarBanners    = httpsCallable(fns, 'listarBanners');
+const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
+const removerBanner    = httpsCallable(fns, 'removerBanner');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
 const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 
@@ -203,7 +206,8 @@ let temDrivesFotografia = false;
 let statusApps = {};
 let treinamentoLinks = {};     // { itemId: { url, tipo } }
 let treinamentoCatAberta = null; // id da categoria expandida no accordion
-let bannerImagem = '';             // data URL do banner atual (vazio = sem banner)
+let bannerImagens = [];            // array de data URLs dos banners
+let bannerIdx = 0;                 // índice do banner atual no carrossel
 let renderizandoCal = false;
 let renderCalPendente = false;    // fix 3: guarda clique durante render pra re-renderizar depois
 let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verificarNotificacoes // apps restritos liberados pra este usuário
@@ -425,21 +429,45 @@ const bannerEl = document.getElementById('bannerPrincipal');
 
 async function carregarBanner() {
   try {
-    const r = await getBanner();
-    bannerImagem = r.data.imagem || '';
+    const r = await listarBanners();
+    bannerImagens = (r.data.banners || []).map(b => b.imagem).filter(Boolean);
   } catch (e) {
     console.warn('Banner:', e);
-    bannerImagem = '';
+    bannerImagens = [];
   }
+  bannerIdx = 0;
+  iniciarRotacaoBanner();
 }
 
 // Tabs que NÃO mostram o banner
 const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia']);
 
 function atualizarBanner() {
-  const mostrar = !SEM_BANNER.has(categoriaAtiva) && !!bannerImagem;
+  const mostrar = !SEM_BANNER.has(categoriaAtiva) && bannerImagens.length > 0;
   bannerEl.hidden = !mostrar;
-  if (mostrar) bannerEl.innerHTML = `<img src="${bannerImagem}" class="banner-img" alt="Banner">`;
+  if (mostrar) {
+    const img = bannerEl.querySelector('.banner-img');
+    if (img) {
+      img.src = bannerImagens[bannerIdx] || '';
+    } else {
+      bannerEl.innerHTML = `<img src="${bannerImagens[bannerIdx]}" class="banner-img" alt="Banner">`;
+    }
+  }
+}
+
+function iniciarRotacaoBanner() {
+  clearInterval(window.__bannerTimer);
+  if (bannerImagens.length <= 1) return;
+  window.__bannerTimer = setInterval(() => {
+    const img = bannerEl.querySelector('.banner-img');
+    if (!img) return;
+    img.style.opacity = '0';
+    setTimeout(() => {
+      bannerIdx = (bannerIdx + 1) % bannerImagens.length;
+      img.src = bannerImagens[bannerIdx];
+      img.style.opacity = '1';
+    }, 400);
+  }, 30000);
 }
 
 // ─── Status dos apps (avisos de instabilidade postados pelo admin) ────────
