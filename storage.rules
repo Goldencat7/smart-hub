@@ -6,5 +6,10 @@ service firebase.storage {
       allow read:  if request.auth != null;
       allow write, delete: if request.auth != null && request.auth.token.admin == true;
     }
+    // Banners (GIF/MP4 grandes vão pro Storage)
+    match /banners/{allPaths=**} {
+      allow read:  if request.auth != null;
+      allow write, delete: if request.auth != null && request.auth.token.admin == true;
+    }
   }
 }

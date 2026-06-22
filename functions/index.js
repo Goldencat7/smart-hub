@@ -438,22 +438,24 @@ exports.setTreinamentoLink = onCall(async (req) => {
 exports.listarBanners = onCall(async (req) => {
   exigirAutenticado(req);
   const snap = await db.collection('banners').orderBy('ordem').get();
-  return { banners: snap.docs.map(d => ({ id: d.id, imagem: d.data().imagem || '' })) };
+  return { banners: snap.docs.map(d => {
+    const x = d.data();
+    return { id: d.id, tipo: x.tipo || 'imagem', imagem: x.imagem || '', mediaUrl: x.mediaUrl || '' };
+  })};
 });
 
 exports.adicionarBanner = onCall(async (req) => {
   const auth = await exigirAdmin(req);
-  const { imagem } = req.data || {};
-  if (typeof imagem !== 'string' || !imagem) throw new HttpsError('invalid-argument', 'imagem é obrigatória.');
-  if (imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande.');
+  const { imagem, mediaUrl, tipo } = req.data || {};
+  // imagem = base64 (JPG/PNG) | mediaUrl = Storage URL (GIF/MP4)
+  if (!imagem && !mediaUrl) throw new HttpsError('invalid-argument', 'imagem ou mediaUrl é obrigatório.');
+  if (imagem && imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande.');
   const snap = await db.collection('banners').orderBy('ordem', 'desc').limit(1).get();
   const proximaOrdem = snap.empty ? 0 : (snap.docs[0].data().ordem || 0) + 1;
-  const ref = await db.collection('banners').add({
-    imagem,
-    ordem: proximaOrdem,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedBy: auth.uid
-  });
+  const doc = { ordem: proximaOrdem, tipo: tipo || 'imagem', updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: auth.uid };
+  if (imagem) doc.imagem = imagem;
+  if (mediaUrl) doc.mediaUrl = mediaUrl;
+  const ref = await db.collection('banners').add(doc);
   return { ok: true, id: ref.id };
 });
 

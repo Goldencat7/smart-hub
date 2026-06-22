@@ -394,27 +394,60 @@ document.getElementById('bannerFileInput').addEventListener('change', async () =
   const f = document.getElementById('bannerFileInput').files[0];
   document.getElementById('bannerFileInput').value = '';
   if (!f) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const img = new Image();
-    img.onerror = () => alert('Não consegui ler essa imagem. Tente PNG ou JPG.');
-    img.onload = async () => {
-      const MAX_W = 1800, MAX_H = 300;
-      const escala = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
-      const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataURL = canvas.toDataURL('image/jpeg', 0.88);
-      if (dataURL.length > 600000) { alert('Imagem ainda muito grande após compressão.'); return; }
-      const btn = document.getElementById('bannerAdicionar');
-      btn.disabled = true; btn.textContent = 'Salvando...';
-      try { await adicionarBanner({ imagem: dataURL }); carregarBanner(); }
-      catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
-    };
-    img.src = reader.result;
-  };
-  reader.readAsDataURL(f);
+
+  const ext = f.name.split('.').pop().toLowerCase();
+  const isVideo = f.type === 'video/mp4' || ext === 'mp4';
+  const isGif   = f.type === 'image/gif'  || ext === 'gif';
+  const btn = document.getElementById('bannerAdicionar');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+
+  try {
+    if (isVideo || isGif) {
+      // GIF e MP4 vão pro Firebase Storage (sem limite de 1MB)
+      const sRef = ref(storage, `banners/${Date.now()}_${f.name}`);
+      const task = uploadBytesResumable(sRef, f);
+      await new Promise((resolve, reject) => {
+        task.on('state_changed',
+          snap => {
+            const pct = Math.round(snap.bytesTransferred / snap.totalBytes * 100);
+            btn.textContent = `Enviando ${pct}%...`;
+          },
+          reject, resolve
+        );
+      });
+      const mediaUrl = await getDownloadURL(task.snapshot.ref);
+      await adicionarBanner({ mediaUrl, tipo: isVideo ? 'video' : 'gif' });
+    } else {
+      // PNG/JPG: redimensiona via canvas e salva como base64 no Firestore
+      await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = reject;
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Não consegui ler a imagem.'));
+          img.onload = async () => {
+            const MAX_W = 1800, MAX_H = 300;
+            const escala = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
+            const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            const dataURL = canvas.toDataURL('image/jpeg', 0.88);
+            if (dataURL.length > 600000) { reject(new Error('Imagem muito grande após compressão.')); return; }
+            await adicionarBanner({ imagem: dataURL, tipo: 'imagem' });
+            resolve();
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(f);
+      });
+    }
+    carregarBanner();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ─── Status dos apps (avisos de instabilidade) ───────────────────────────────

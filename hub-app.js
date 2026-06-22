@@ -430,7 +430,7 @@ const bannerEl = document.getElementById('bannerPrincipal');
 async function carregarBanner() {
   try {
     const r = await listarBanners();
-    bannerImagens = (r.data.banners || []).map(b => b.imagem).filter(Boolean);
+    bannerImagens = (r.data.banners || []).filter(b => b.imagem || b.mediaUrl);
   } catch (e) {
     console.warn('Banner:', e);
     bannerImagens = [];
@@ -442,16 +442,19 @@ async function carregarBanner() {
 // Tabs que NÃO mostram o banner
 const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia']);
 
+function renderBannerEl(banner) {
+  if (banner.tipo === 'video') {
+    return `<video class="banner-video" autoplay loop muted playsinline src="${banner.mediaUrl}"></video>`;
+  }
+  const src = banner.mediaUrl || banner.imagem;
+  return `<img src="${src}" class="banner-img" alt="Banner">`;
+}
+
 function atualizarBanner() {
   const mostrar = !SEM_BANNER.has(categoriaAtiva) && bannerImagens.length > 0;
   bannerEl.hidden = !mostrar;
-  if (mostrar) {
-    const img = bannerEl.querySelector('.banner-img');
-    if (img) {
-      img.src = bannerImagens[bannerIdx] || '';
-    } else {
-      bannerEl.innerHTML = `<img src="${bannerImagens[bannerIdx]}" class="banner-img" alt="Banner">`;
-    }
+  if (mostrar && !bannerEl.children.length) {
+    bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
   }
 }
 
@@ -459,13 +462,11 @@ function iniciarRotacaoBanner() {
   clearInterval(window.__bannerTimer);
   if (bannerImagens.length <= 1) return;
   window.__bannerTimer = setInterval(() => {
-    const img = bannerEl.querySelector('.banner-img');
-    if (!img) return;
-    img.style.opacity = '0';
+    bannerEl.style.opacity = '0';
     setTimeout(() => {
       bannerIdx = (bannerIdx + 1) % bannerImagens.length;
-      img.src = bannerImagens[bannerIdx];
-      img.style.opacity = '1';
+      bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
+      bannerEl.style.opacity = '1';
     }, 400);
   }, 30000);
 }
