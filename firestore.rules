@@ -1,10 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Bloqueia TODO acesso direto do cliente.
-    // Tudo deve passar pelas Cloud Functions (que usam o Admin SDK e ignoram regras).
+    // Bloqueia tudo por padrão — Cloud Functions usam Admin SDK e ignoram estas regras.
     match /{document=**} {
       allow read, write: if false;
+    }
+
+    // Presença online: cada usuário lê/escreve o próprio doc; admin lê todos.
+    match /user_presence/{uid} {
+      allow read:  if request.auth != null && (request.auth.uid == uid || request.auth.token.admin == true);
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Notificações: admin lê diretamente (para onSnapshot em tempo real de "quem viu").
+    match /notifications/{id} {
+      allow read: if request.auth != null && request.auth.token.admin == true;
     }
   }
 }

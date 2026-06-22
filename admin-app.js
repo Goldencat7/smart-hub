@@ -3,6 +3,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
+import { getFirestore, collection, onSnapshot, doc as fsDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -17,6 +18,7 @@ const app     = initializeApp(firebaseConfig);
 const auth    = getAuth(app);
 const fns     = getFunctions(app, 'southamerica-east1');
 const storage = getStorage(app);
+const dbFs    = getFirestore(app);
 
 const listCredentials   = httpsCallable(fns, 'listCredentials');
 const getCredentialAdmin = httpsCallable(fns, 'getCredentialAdmin');
@@ -31,7 +33,8 @@ const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
-const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
+const listarStatusApps        = httpsCallable(fns, 'listarStatusApps');
+const listarNotificacoesAdmin = httpsCallable(fns, 'listarNotificacoesAdmin');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
 const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 const setStatusApp     = httpsCallable(fns, 'setStatusApp');
@@ -104,6 +107,9 @@ const SITES = [
   { key: 'clicksign', nome: 'ClickSign (conta compartilhada)' }
 ];
 
+// Estado de presença em tempo real (uid → { online, updatedAt })
+let presenceMap = {};
+
 const elListaCred  = document.getElementById('listaCredenciais');
 const elListaUser  = document.getElementById('listaUsuarios');
 const elListaCodigos = document.getElementById('listaCodigos');
@@ -133,6 +139,26 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   carregarTudo();
+
+  // Presença em tempo real — atualiza os dots na tabela de usuários
+  onSnapshot(collection(dbFs, 'user_presence'), snap => {
+    presenceMap = {};
+    const limiteOnline = Date.now() - 3 * 60 * 1000; // considera online se viu nos últimos 3 min
+    snap.forEach(d => {
+      const dados = d.data();
+      const ms = dados.updatedAt?.toMillis?.() || 0;
+      presenceMap[d.id] = dados.online === true && ms > limiteOnline;
+    });
+    atualizarDotsPresenca();
+  });
+
+  // Avisos em tempo real — quem viu
+  onSnapshot(collection(dbFs, 'notifications'), snap => {
+    const lista = [];
+    snap.forEach(d => { lista.push({ id: d.id, ...d.data() }); });
+    lista.sort((a, b) => (b.criadoEm?.toMillis?.() || 0) - (a.criadoEm?.toMillis?.() || 0));
+    renderAvisosEnviados(lista);
+  });
 });
 
 document.getElementById('btnVoltar').addEventListener('click', () => window.hubApi.voltarParaHub());
@@ -576,7 +602,7 @@ async function carregarUsuarios() {
         <tbody>
           ${usuarios.map(u => `
             <tr>
-              <td>${u.email || '<em>sem email</em>'}</td>
+              <td><span class="presence-dot ${presenceMap[u.uid] ? 'online' : 'offline'}" data-uid="${u.uid}" title="${presenceMap[u.uid] ? 'Online' : 'Offline'}"></span> ${u.email || '<em>sem email</em>'}</td>
               <td>
                 <input type="checkbox" ${u.isAdmin ? 'checked' : ''} data-uid="${u.uid}" class="toggle-admin">
               </td>
@@ -661,7 +687,55 @@ document.getElementById('formPermissoes').addEventListener('submit', async (e) =
   } catch (err) { alert('Erro: ' + err.message); }
 });
 
-// ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────
+// ─── Presença: atualiza os dots na tabela de usuários sem recarregar tudo ────
+function dotPresenca(uid) {
+  const online = !!presenceMap[uid];
+  return `<span class="presence-dot ${online ? 'online' : 'offline'}" title="${online ? 'Online' : 'Offline'}"></span>`;
+}
+
+function atualizarDotsPresenca() {
+  document.querySelectorAll('.presence-dot[data-uid]').forEach(el => {
+    const online = !!presenceMap[el.dataset.uid];
+    el.className = `presence-dot ${online ? 'online' : 'offline'}`;
+    el.title = online ? 'Online' : 'Offline';
+  });
+}
+
+// ─── Avisos enviados (tempo real via onSnapshot) ──────────────────────────────
+function renderAvisosEnviados(lista) {
+  const el = document.getElementById('listaAvisosEnviados');
+  if (!el) return;
+  if (!lista.length) { el.innerHTML = '<p class="muted">Nenhum aviso enviado ainda.</p>'; return; }
+  el.innerHTML = `
+    <table class="users-table">
+      <thead><tr><th>Título / Mensagem</th><th>Enviado em</th><th>Confirmações</th></tr></thead>
+      <tbody>
+        ${lista.map(n => {
+          const total = n.todos ? '(todos)' : (Array.isArray(n.destinatarios) ? n.destinatarios.length : 0);
+          const lidos = Array.isArray(n.lidoPor) ? n.lidoPor.length : 0;
+          const pct = typeof total === 'number' && total > 0 ? Math.round((lidos / total) * 100) : null;
+          const data = n.criadoEm ? n.criadoEm.toDate().toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+          return `
+            <tr>
+              <td>
+                <strong style="font-size:12px">${escHtml(n.titulo || '(sem título)')}</strong>
+                <div class="muted" style="font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px">${escHtml(n.mensagem || '')}</div>
+              </td>
+              <td style="font-size:12px;white-space:nowrap">${data}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div class="aviso-progresso">
+                    <div class="aviso-progresso-bar" style="width:${pct ?? 0}%"></div>
+                  </div>
+                  <span style="font-size:12px;white-space:nowrap">${lidos}${typeof total === 'number' ? '/'+total : ''} ${pct !== null ? '('+pct+'%)' : ''}</span>
+                </div>
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
 // ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────
 function confirmar(mensagem) {
   return new Promise((resolve) => {

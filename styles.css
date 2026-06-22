@@ -742,6 +742,22 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 .mat-progress span { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
+/* ── Presença online (dots) ──────────────────────────────────────── */
+.presence-dot {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 50%; flex-shrink: 0; vertical-align: middle; margin-right: 5px;
+  transition: background 400ms ease;
+}
+.presence-dot.online  { background: var(--success); }
+.presence-dot.offline { background: var(--text-nav-inactive); }
+
+/* ── Avisos: barra de progresso de confirmações ──────────────────── */
+.aviso-progresso {
+  width: 80px; height: 5px; background: var(--border);
+  border-radius: 3px; overflow: hidden; flex-shrink: 0;
+}
+.aviso-progresso-bar { height: 100%; background: var(--success); border-radius: 3px; }
+
 /* ── Treinamento (accordion) ─────────────────────────────────────── */
 .trein-secao { display: flex; flex-direction: column; }
 .trein-univ-card { max-width: 240px; margin-bottom: 4px; }

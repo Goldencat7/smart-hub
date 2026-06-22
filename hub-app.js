@@ -11,6 +11,9 @@ import {
 import {
   getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
+import {
+  getFirestore, doc, setDoc, serverTimestamp as fsTs
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -25,6 +28,7 @@ const app     = initializeApp(firebaseConfig);
 const auth    = getAuth(app);
 const fns     = getFunctions(app, 'southamerica-east1');
 const storage = getStorage(app);
+const db      = getFirestore(app);
 
 const getCredentials = httpsCallable(fns, 'getCredentials');
 const bootstrapAdmin = httpsCallable(fns, 'bootstrapAdmin');
@@ -571,7 +575,10 @@ cfgSalvar.addEventListener('click', async () => {
 
 // ─── Auth + topbar ───────────────────────────────────────────────────────
 btnAdmin.addEventListener('click', () => window.hubApi.abrirAdmin());
-btnSair.addEventListener('click', async () => { await signOut(auth); });
+btnSair.addEventListener('click', async () => {
+  if (currentUid) await setDoc(doc(db, 'user_presence', currentUid), { online: false, updatedAt: fsTs() }, { merge: true }).catch(() => {});
+  await signOut(auth);
+});
 
 // Exibe a versão do app ao lado da logo
 window.hubApi.getAppVersion().then(v => {
@@ -586,6 +593,12 @@ onAuthStateChanged(auth, async (user) => {
   }
   currentUid = user.uid;
   usuarioInfo.textContent = formatarNome(user.displayName) || user.email;
+
+  // Marca presença online + heartbeat a cada 2 min
+  const marcarOnline = () => setDoc(doc(db, 'user_presence', user.uid), { online: true, updatedAt: fsTs() }, { merge: true }).catch(() => {});
+  marcarOnline();
+  clearInterval(window.__presenceTimer);
+  window.__presenceTimer = setInterval(marcarOnline, 120000);
 
   const tokenResult = await user.getIdTokenResult(true); // force refresh pra pegar claims atualizadas (ex: nova promoção a admin)
   isAdmin = !!tokenResult.claims.admin;
