@@ -440,7 +440,7 @@ exports.listarBanners = onCall(async (req) => {
   const snap = await db.collection('banners').orderBy('ordem').get();
   return { banners: snap.docs.map(d => {
     const x = d.data();
-    return { id: d.id, tipo: x.tipo || 'imagem', imagem: x.imagem || '', mediaUrl: x.mediaUrl || '' };
+    return { id: d.id, tipo: x.tipo || 'imagem', imagem: x.imagem || '', mediaUrl: x.mediaUrl || '', duracao: x.duracao || null };
   })};
 });
 
@@ -452,9 +452,11 @@ exports.adicionarBanner = onCall(async (req) => {
   if (imagem && imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande.');
   const snap = await db.collection('banners').orderBy('ordem', 'desc').limit(1).get();
   const proximaOrdem = snap.empty ? 0 : (snap.docs[0].data().ordem || 0) + 1;
+  const { duracao } = req.data || {}; // duração em ms (GIF: calculada no cliente)
   const doc = { ordem: proximaOrdem, tipo: tipo || 'imagem', updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: auth.uid };
   if (imagem) doc.imagem = imagem;
   if (mediaUrl) doc.mediaUrl = mediaUrl;
+  if (duracao) doc.duracao = duracao;
   const ref = await db.collection('banners').add(doc);
   return { ok: true, id: ref.id };
 });

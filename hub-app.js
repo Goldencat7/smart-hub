@@ -458,17 +458,38 @@ function atualizarBanner() {
   }
 }
 
-function iniciarRotacaoBanner() {
-  clearInterval(window.__bannerTimer);
+function avancarBanner() {
   if (bannerImagens.length <= 1) return;
-  window.__bannerTimer = setInterval(() => {
-    bannerEl.style.opacity = '0';
-    setTimeout(() => {
-      bannerIdx = (bannerIdx + 1) % bannerImagens.length;
-      bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
-      bannerEl.style.opacity = '1';
-    }, 400);
-  }, 30000);
+  bannerEl.style.opacity = '0';
+  setTimeout(() => {
+    bannerIdx = (bannerIdx + 1) % bannerImagens.length;
+    bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
+    bannerEl.style.opacity = '1';
+    agendarProximoBanner();
+  }, 400);
+}
+
+function agendarProximoBanner() {
+  clearTimeout(window.__bannerTimer);
+  if (bannerImagens.length <= 1) return;
+  const banner = bannerImagens[bannerIdx];
+
+  if (banner.tipo === 'video') {
+    // MP4: avança quando o vídeo terminar
+    const video = bannerEl.querySelector('.banner-video');
+    if (video) video.addEventListener('ended', avancarBanner, { once: true });
+  } else if (banner.tipo === 'gif' && banner.duracao) {
+    // GIF: avança após 1 loop completo (duração calculada dos frames)
+    window.__bannerTimer = setTimeout(avancarBanner, banner.duracao);
+  } else {
+    // PNG/JPG: 30 segundos fixos
+    window.__bannerTimer = setTimeout(avancarBanner, 30000);
+  }
+}
+
+function iniciarRotacaoBanner() {
+  bannerIdx = 0;
+  agendarProximoBanner();
 }
 
 // ─── Status dos apps (avisos de instabilidade postados pelo admin) ────────

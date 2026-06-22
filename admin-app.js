@@ -390,6 +390,34 @@ function renderBannerAdmin(el, banners) {
   });
 }
 
+// Calcula duração total do GIF em ms lendo os delays dos frames no binário
+async function calcularDuracaoGif(file) {
+  try {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    let ms = 0, i = 6;
+    const flags = buf[10];
+    if (flags & 0x80) i += 3 * (2 << (flags & 7)); // pula global color table
+    i += 7;
+    while (i < buf.length && buf[i] !== 0x3B) {
+      if (buf[i] === 0x21 && buf[i+1] === 0xF9) { // Graphic Control Extension
+        ms += ((buf[i+4] | buf[i+5] << 8) || 10) * 10; // delay em centisegundos → ms
+        i += 8;
+      } else if (buf[i] === 0x21) { // outra extensão
+        i += 2;
+        while (buf[i]) i += buf[i] + 1;
+        i++;
+      } else if (buf[i] === 0x2C) { // Image Descriptor
+        const lf = buf[i+9];
+        if (lf & 0x80) i += 3 * (2 << (lf & 7));
+        i += 11;
+        while (buf[i]) i += buf[i] + 1;
+        i++;
+      } else break;
+    }
+    return ms > 0 ? ms : null;
+  } catch { return null; }
+}
+
 document.getElementById('bannerFileInput').addEventListener('change', async () => {
   const f = document.getElementById('bannerFileInput').files[0];
   document.getElementById('bannerFileInput').value = '';
@@ -416,7 +444,9 @@ document.getElementById('bannerFileInput').addEventListener('change', async () =
         );
       });
       const mediaUrl = await getDownloadURL(task.snapshot.ref);
-      await adicionarBanner({ mediaUrl, tipo: isVideo ? 'video' : 'gif' });
+      let duracao = null;
+      if (isGif) duracao = await calcularDuracaoGif(f);
+      await adicionarBanner({ mediaUrl, tipo: isVideo ? 'video' : 'gif', ...(duracao ? { duracao } : {}) });
     } else {
       // PNG/JPG: redimensiona via canvas e salva como base64 no Firestore
       await new Promise((resolve, reject) => {
