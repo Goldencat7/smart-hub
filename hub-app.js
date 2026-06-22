@@ -8,6 +8,9 @@ import {
 import {
   getFunctions, httpsCallable
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
+import {
+  getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject
+} from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -18,9 +21,10 @@ const firebaseConfig = {
   appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
 };
 
-const app  = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const fns  = getFunctions(app, 'southamerica-east1');
+const app     = initializeApp(firebaseConfig);
+const auth    = getAuth(app);
+const fns     = getFunctions(app, 'southamerica-east1');
+const storage = getStorage(app);
 
 const getCredentials = httpsCallable(fns, 'getCredentials');
 const bootstrapAdmin = httpsCallable(fns, 'bootstrapAdmin');
@@ -40,6 +44,10 @@ const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
 const listarMinhasNotificacoes = httpsCallable(fns, 'listarMinhasNotificacoes');
 const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
 const responderConvite = httpsCallable(fns, 'responderConvite');
+const getBanner = httpsCallable(fns, 'getBanner');
+const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
+const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
+
 const getFotoDrives = httpsCallable(fns, 'getFotoDrives');
 const setFotoDrive = httpsCallable(fns, 'setFotoDrive');
 const enviarSuporte = httpsCallable(fns, 'enviarSuporte');
@@ -128,13 +136,48 @@ const ICN = {
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
+// ─── Estrutura fixa dos treinamentos ─────────────────────────────────────────
+const TREINAMENTO_CATS = [
+  { id: 'onboarding', nome: 'Onboarding', emoji: '📋', itens: [
+    { id: 'onb1', nome: 'Do Zero à Primeira Venda' },
+    { id: 'onb2', nome: 'Primeiros 30 Dias' },
+    { id: 'onb3', nome: 'Cultura REMAX Smart' },
+    { id: 'onb4', nome: 'Gestão de Locação Smart' }
+  ]},
+  { id: 'captacao_t', nome: 'Captação', emoji: '🎯', itens: [
+    { id: 'cap1', nome: 'Prospecção de Proprietários' },
+    { id: 'cap2', nome: 'Captação por Indicação' },
+    { id: 'cap3', nome: 'Captação Digital' }
+  ]},
+  { id: 'vendas', nome: 'Vendas', emoji: '🤝', itens: [
+    { id: 'ven1', nome: 'Processo Completo da Venda' },
+    { id: 'ven2', nome: 'Objeções e Negociação' },
+    { id: 'ven3', nome: 'Fechamento de Negócios' }
+  ]},
+  { id: 'locacao_t', nome: 'Locação', emoji: '🏠', itens: [
+    { id: 'loc1', nome: 'Primeira Locação' },
+    { id: 'loc2', nome: 'Atendimento ao Locatário' },
+    { id: 'loc3', nome: 'Processo de Locação' }
+  ]},
+  { id: 'mkt_t', nome: 'Marketing', emoji: '📣', itens: [
+    { id: 'mkt1', nome: 'Instagram para Corretores' },
+    { id: 'mkt2', nome: 'Produção de Conteúdo' },
+    { id: 'mkt3', nome: 'Posicionamento Digital' }
+  ]},
+  { id: 'remax', nome: 'REMAX Smart', emoji: '🏢', itens: [
+    { id: 'rmx1', nome: 'Modelo de Negócio' },
+    { id: 'rmx2', nome: 'Ferramentas da Unidade' },
+    { id: 'rmx3', nome: 'Processos Internos' }
+  ]}
+];
+
 const CATEGORIAS = [
   { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
   { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
   { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao },
   { id: 'performance', nome: 'Performance', icone: ICN.performance },
-  { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento },
+  { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
@@ -153,7 +196,10 @@ let isAdmin = false;
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
-let statusApps = {};               // { siteKey: 'mensagem de instabilidade' } — avisos do admin
+let statusApps = {};
+let treinamentoLinks = {};     // { itemId: { url, tipo } }
+let treinamentoCatAberta = null; // id da categoria expandida no accordion
+let bannerImagem = '';             // data URL do banner atual (vazio = sem banner)
 let renderizandoCal = false;
 let renderCalPendente = false;    // fix 3: guarda clique durante render pra re-renderizar depois
 let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verificarNotificacoes // apps restritos liberados pra este usuário
@@ -164,9 +210,10 @@ const tituloCategoria = document.getElementById('tituloCategoria');
 const inputBusca     = document.getElementById('inputBusca');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
-const secaoMarketing   = document.getElementById('secaoMarketing');
-const secaoDocs        = document.getElementById('secaoDocumentos');
-const secaoFotografia  = document.getElementById('secaoFotografia');
+const secaoMarketing      = document.getElementById('secaoMarketing');
+const secaoDocs           = document.getElementById('secaoDocumentos');
+const secaoFotografia     = document.getElementById('secaoFotografia');
+const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
 const secaoConfig    = document.getElementById('secaoConfig');
@@ -245,6 +292,8 @@ function renderCentro() {
   secaoAgenda.hidden = true;
   secaoMarketing.hidden = true;
   secaoFotografia.hidden = true;
+  secaoTreinamento.hidden = true;
+  atualizarBanner();
   // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
   btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
@@ -288,6 +337,19 @@ function renderCentro() {
     secaoMarketing.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
+    setTimeout(iniciarCarrosseis, 50); // aguarda render pra medir scrollWidth
+    return;
+  }
+
+  // Aba Treinamento (accordion de categorias)
+  if (cat.treinamento) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoTreinamento.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarTreinamento();
     return;
   }
 
@@ -352,6 +414,28 @@ function renderCentro() {
   appsGrid.querySelectorAll('.card-icon-img').forEach(img => {
     img.addEventListener('error', () => img.remove());
   });
+}
+
+// ─── Banner principal ──────────────────────────────────────────────────────
+const bannerEl = document.getElementById('bannerPrincipal');
+
+async function carregarBanner() {
+  try {
+    const r = await getBanner();
+    bannerImagem = r.data.imagem || '';
+  } catch (e) {
+    console.warn('Banner:', e);
+    bannerImagem = '';
+  }
+}
+
+// Tabs que NÃO mostram o banner
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia']);
+
+function atualizarBanner() {
+  const mostrar = !SEM_BANNER.has(categoriaAtiva) && !!bannerImagem;
+  bannerEl.hidden = !mostrar;
+  if (mostrar) bannerEl.innerHTML = `<img src="${bannerImagem}" class="banner-img" alt="Banner">`;
 }
 
 // ─── Status dos apps (avisos de instabilidade postados pelo admin) ────────
@@ -527,7 +611,7 @@ onAuthStateChanged(auth, async (user) => {
     console.warn('Permissões:', e);
     appsPermitidos = [];
   }
-  await carregarStatusApps(); // avisos de apps instáveis (antes de renderizar os cards)
+  await Promise.all([carregarStatusApps(), carregarBanner()]); // carrega dados antes de renderizar
   renderCentro();
   carregarPerfil(); // popula o avatar no topo
 
@@ -963,10 +1047,38 @@ btnAbrirDrive.addEventListener('click', () => window.open(DRIVE_FOLDER_URL, '_bl
 
 // Abrir template de marketing numa janela dedicada
 document.getElementById('secaoMarketing').addEventListener('click', (e) => {
+  // Navegação do carrossel
+  const navBtn = e.target.closest('.mkt-nav-btn');
+  if (navBtn) {
+    const carousel = navBtn.closest('.mkt-carousel-wrap').querySelector('.mkt-carousel');
+    const passo = 220 + 14; // largura do card + gap
+    carousel.scrollBy({ left: navBtn.classList.contains('mkt-next') ? passo : -passo, behavior: 'smooth' });
+    return;
+  }
   const card = e.target.closest('.mkt-card');
   if (!card) return;
   window.hubApi.abrirTemplate(card.dataset.template);
 });
+
+// Atualiza estado dos botões ‹ › ao scrollar
+document.getElementById('secaoMarketing').addEventListener('scroll', (e) => {
+  atualizarNavMarketing(e.target);
+}, true);
+
+function atualizarNavMarketing(carousel) {
+  if (!carousel.classList.contains('mkt-carousel')) return;
+  const wrap = carousel.closest('.mkt-carousel-wrap');
+  if (!wrap) return;
+  const prev = wrap.querySelector('.mkt-prev');
+  const next = wrap.querySelector('.mkt-next');
+  if (prev) prev.disabled = carousel.scrollLeft <= 0;
+  if (next) next.disabled = carousel.scrollLeft + carousel.clientWidth >= carousel.scrollWidth - 2;
+}
+
+// Estado inicial dos botões ao abrir a aba
+function iniciarCarrosseis() {
+  document.querySelectorAll('.mkt-carousel').forEach(c => atualizarNavMarketing(c));
+}
 
 // Minimizar/mostrar o painel da agenda (setinha no canto + botão flutuante; lembra a preferência)
 const btnMinAgenda = document.getElementById('btnMinAgenda');
@@ -1071,6 +1183,156 @@ cfgIniciarWindows?.addEventListener('change', async () => {
   try { await window.hubApi.setIniciarWindows(cfgIniciarWindows.checked); }
   catch(e){ alert('Não foi possível alterar: ' + e.message); }
 });
+
+// ─── Treinamento ──────────────────────────────────────────────────────────────
+async function carregarTreinamento() {
+  secaoTreinamento.innerHTML = '<p class="muted" style="padding:20px">Carregando...</p>';
+  try {
+    const r = await getTreinamentoLinks();
+    treinamentoLinks = r.data.links || {};
+  } catch (e) {
+    console.warn('Treinamento links:', e);
+    treinamentoLinks = {};
+  }
+  renderTreinamento();
+}
+
+function renderTreinamento() {
+  const iconesTipo = { video: '▶', pdf: '📄', drive: '📁', link: '🔗' };
+
+  const appUniv = APPS.find(a => a.key === 'universidade');
+  const statusUniv = statusApps['universidade'] ? `<span class="card-aviso" title="${escapeHtml(statusApps['universidade'])}">⚠ Instável</span>` : '';
+
+  secaoTreinamento.innerHTML = `
+    <div class="trein-wrap">
+      ${appUniv ? `
+      <button class="hub-card trein-univ-card ${statusApps['universidade'] ? 'com-aviso' : ''}" id="btnUniversidade">
+        <span class="card-icon">
+          <img class="card-icon-img" src="app-icons/universidade.png" alt="" onerror="this.remove()">
+          ${appUniv.icone}
+        </span>
+        <span class="card-title">${appUniv.titulo}</span>
+        <span class="card-desc">${appUniv.desc}</span>
+        ${statusUniv}
+      </button>` : ''}
+      <div class="trein-header">
+        <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v4.5c0 1.1 2.7 2.5 6 2.5s6-1.4 6-2.5V12"/></svg>
+        Materiais de Treinamento
+      </div>
+      <div class="trein-lista">
+        ${TREINAMENTO_CATS.map(cat => {
+          const aberta = treinamentoCatAberta === cat.id;
+          const totalLinks = cat.itens.filter(it => treinamentoLinks[it.id]?.url).length;
+          return `
+            <div class="trein-cat ${aberta ? 'aberta' : ''}" data-cat="${cat.id}">
+              <button class="trein-cat-btn">
+                <span class="trein-cat-emoji">${cat.emoji}</span>
+                <span class="trein-cat-nome">${cat.nome}</span>
+                ${totalLinks ? `<span class="trein-badge">${totalLinks}/${cat.itens.length}</span>` : ''}
+                <svg class="trein-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="trein-itens">
+                ${cat.itens.map(item => {
+                  const link = treinamentoLinks[item.id];
+                  return `
+                    <div class="trein-item ${link ? 'tem-link' : ''}" data-item="${item.id}" data-url="${escapeHtml(link?.url || '')}" data-nome="${escapeHtml(item.nome)}">
+                      <span class="trein-item-ico">${link ? (iconesTipo[link.tipo] || '🔗') : '○'}</span>
+                      <span class="trein-item-nome">${escapeHtml(item.nome)}</span>
+                      ${link ? '<span class="trein-item-abrir">Abrir →</span>' : '<span class="trein-item-em-breve">Em breve</span>'}
+                      ${isAdmin ? `<button class="trein-item-editar" data-item="${item.id}" data-url="${escapeHtml(link?.url || '')}" data-tipo="${link?.tipo || 'link'}" title="Editar link">✎</button>` : ''}
+                    </div>`;
+                }).join('')}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  // Card Universidade REMAX
+  document.getElementById('btnUniversidade')?.addEventListener('click', () => abrirApp('universidade'));
+
+  // Acordeon — toggle categoria
+  secaoTreinamento.querySelectorAll('.trein-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const catId = btn.closest('.trein-cat').dataset.cat;
+      treinamentoCatAberta = treinamentoCatAberta === catId ? null : catId;
+      renderTreinamento();
+    });
+  });
+
+  // Abrir item com link
+  secaoTreinamento.querySelectorAll('.trein-item.tem-link').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.classList.contains('trein-item-editar')) return;
+      const url = el.dataset.url;
+      if (url) window.open(url, '_blank');
+    });
+  });
+
+  // Editar link (admin inline)
+  secaoTreinamento.querySelectorAll('.trein-item-editar').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      abrirEdicaoTreinamento(btn.dataset.item, btn.dataset.url, btn.dataset.tipo);
+    });
+  });
+}
+
+// Seletor de arquivo reutilizável pra upload de treinamento
+let _treinUploadTarget = null;
+const _treinFileInput = (() => {
+  const el = document.createElement('input');
+  el.type = 'file';
+  el.accept = '.pdf,.mp4,.mov,.pptx,.docx,image/*';
+  el.style.display = 'none';
+  document.body.appendChild(el);
+  el.addEventListener('change', async () => {
+    const file = el.files[0];
+    el.value = '';
+    if (!file || !_treinUploadTarget) return;
+    const { itemId, urlAnterior, rowEl } = _treinUploadTarget;
+    _treinUploadTarget = null;
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    const tipo = ext === 'pdf' ? 'pdf' : ['mp4','mov','avi'].includes(ext) ? 'video' : 'link';
+
+    // Mostra progresso inline no item
+    const editBtn = rowEl?.querySelector('.trein-item-editar');
+    if (editBtn) { editBtn.textContent = '0%'; editBtn.disabled = true; }
+
+    try {
+      if (urlAnterior && urlAnterior.includes('firebasestorage')) {
+        try { await deleteObject(storageRef(storage, urlAnterior)); } catch (_) {}
+      }
+      const sRef = storageRef(storage, `treinamentos/${itemId}/${Date.now()}_${file.name}`);
+      const task = uploadBytesResumable(sRef, file);
+
+      await new Promise((resolve, reject) => {
+        task.on('state_changed',
+          snap => {
+            const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+            if (editBtn) editBtn.textContent = pct + '%';
+          },
+          reject, resolve
+        );
+      });
+
+      const url = await getDownloadURL(task.snapshot.ref);
+      await setTreinamentoLink({ itemId, url, tipo });
+      carregarTreinamento();
+    } catch (e) {
+      if (editBtn) { editBtn.textContent = '✎'; editBtn.disabled = false; }
+      alert('Erro no upload: ' + e.message);
+    }
+  });
+  return el;
+})();
+
+function abrirEdicaoTreinamento(itemId, urlAtual) {
+  const rowEl = secaoTreinamento.querySelector(`[data-item="${itemId}"]`);
+  _treinUploadTarget = { itemId, urlAnterior: urlAtual, rowEl };
+  _treinFileInput.click();
+}
 
 // ─── Fotografia ───────────────────────────────────────────────────────────────
 let fotoPessoasCache = null;     // lista de pessoas+links (só pra quem gerencia)

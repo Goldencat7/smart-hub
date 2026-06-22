@@ -1,0 +1,71 @@
+/* ===== V1 — Faixa Diagonal · corretor ancorado ===== */
+.v1{ background:var(--blue-dark); color:#fff; }
+
+/* photo hero, diagonal bottom cut reveals navy */
+.v1-photowrap{
+  position:absolute; top:0; left:0; width:1080px; height:952px;
+  clip-path:polygon(0 0, 1080px 0, 1080px 844px, 0 952px);
+  overflow:hidden;
+}
+.v1-photo{ width:1080px; height:952px; object-fit:cover; }
+.v1-photo-scrim{
+  position:absolute; inset:0;
+  background:
+    linear-gradient(180deg, rgba(0,26,51,.55) 0%, rgba(0,26,51,0) 24%),
+    linear-gradient(180deg, rgba(0,26,51,0) 62%, rgba(0,26,51,.45) 100%);
+}
+
+.v1-balloon{ position:absolute; top:54px; right:58px; width:96px; height:auto; filter:drop-shadow(0 8px 18px rgba(0,0,0,.35)); }
+
+/* VENDIDO stamp — centered at top */
+.v1-stamp{
+  position:absolute; top:74px; left:50%; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center;
+  padding:18px 60px 22px;
+  background:linear-gradient(180deg, var(--remax-red) 0%, #c0151f 100%);
+  border-radius:12px;
+  box-shadow:0 20px 44px rgba(0,26,51,.45);
+}
+.v1-stamp::after{
+  content:""; position:absolute; inset:8px; border:2px solid rgba(255,255,255,.5);
+  border-radius:6px; pointer-events:none;
+}
+.v1-stamp-kicker{
+  font-weight:700; font-size:23px; letter-spacing:.52em; color:#fff; text-indent:.52em;
+}
+.v1-stamp-word{
+  font-weight:900; font-size:88px; line-height:.9; letter-spacing:-.01em; color:#fff; margin-top:4px;
+}
+
+/* agent anchored bottom-left, faded into the navy */
+.v1-agent{
+  position:absolute; left:-46px; bottom:160px; width:540px; height:auto;
+  -webkit-mask-image:linear-gradient(180deg, #000 84%, transparent 100%);
+          mask-image:linear-gradient(180deg, #000 84%, transparent 100%);
+  filter:drop-shadow(0 18px 26px rgba(0,0,0,.34));
+}
+
+/* identity block, right-aligned */
+.v1-id{ position:absolute; right:64px; top:1000px; width:560px; text-align:right; }
+.v1-eyebrow{
+  font-weight:700; font-size:22px; letter-spacing:.14em; color:var(--blue-light);
+  display:flex; align-items:center; justify-content:flex-end; gap:.6em; white-space:nowrap; text-transform:uppercase;
+}
+.v1-dot{ width:8px; height:8px; border-radius:999px; background:var(--remax-red); display:inline-block; }
+.v1-name{ margin-top:16px; font-weight:900; font-size:82px; line-height:.9; letter-spacing:-.015em; color:#fff; text-transform:uppercase; }
+.v1-role{ margin-top:14px; font-weight:600; font-size:30px; letter-spacing:.01em; color:#fff; }
+.v1-role span{ color:#fff; margin:0 .12em; }
+.v1-creci{ margin-top:10px; font-weight:500; font-size:22px; letter-spacing:.12em; color:var(--blue-light); }
+
+/* footer bar — logo left (with room), contact right */
+.v1-footer{
+  position:absolute; left:0; right:0; bottom:0; height:152px;
+  background:#001a33;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 64px;
+  border-top:3px solid var(--remax-red);
+}
+.v1-logo{ width:206px; height:auto; }
+.v1-contact{ display:flex; flex-direction:column; align-items:flex-end; gap:7px; }
+.v1-phone{ font-weight:800; font-size:40px; line-height:1; color:#fff; }
+.v1-site{ font-weight:500; font-size:22px; letter-spacing:.1em; color:var(--blue-light); }

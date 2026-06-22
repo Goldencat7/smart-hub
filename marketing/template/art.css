@@ -1,0 +1,23 @@
+/* ===== REMAX Smart — VENDIDO art · shared styles ===== */
+@font-face { font-family:"Gotham"; src:url("assets/fonts/Gotham-Book.otf") format("opentype"); font-weight:400; font-display:swap; }
+@font-face { font-family:"Gotham"; src:url("assets/fonts/Gotham-Medium.otf") format("opentype"); font-weight:500; font-display:swap; }
+@font-face { font-family:"Gotham"; src:url("assets/fonts/Gotham-Bold.otf") format("opentype"); font-weight:700; font-display:swap; }
+@font-face { font-family:"Gotham"; src:url("assets/fonts/Gotham-Black.otf") format("opentype"); font-weight:800; font-display:swap; }
+@font-face { font-family:"Gotham"; src:url("assets/fonts/Gotham-Ultra.otf") format("opentype"); font-weight:900; font-display:swap; }
+
+:root{
+  --remax-blue:#003DA5; --remax-red:#DC1C2E; --white:#FFFFFF;
+  --blue-dark:#002749; --blue-mid:#0D7DC3; --blue-light:#A4D7F4;
+  --gray-dark:#404041; --gray-light:#C4C6C8;
+  --ink:#002749; --line:#DDE3EB; --surface:#F5F7FA;
+  --g: "Gotham","Montserrat",system-ui,sans-serif;
+}
+
+/* every artboard is a fixed 1080x1440 stage */
+.vendido{
+  position:relative; width:1080px; height:1440px; overflow:hidden;
+  font-family:var(--g); color:var(--ink); background:#fff;
+  -webkit-font-smoothing:antialiased;
+}
+.vendido *{ box-sizing:border-box; margin:0; }
+.vendido img{ display:block; }

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VENDIDO · REMAX Smart</title>
+<link rel="stylesheet" href="art.css"/>
+<link rel="stylesheet" href="style-a.css"/>
+<link rel="stylesheet" href="style-b.css"/>
+<style>
+  html,body{ margin:0; height:100%; background:#eceef2; }
+  #root{ height:100vh; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+<script src="vendido-data.js"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="vendido-a.jsx"></script>
+<script type="text/babel" src="vendido-b.jsx"></script>
+<script type="text/babel">
+const { DesignCanvas, DCSection, DCArtboard } = window;
+function App(){
+  return (
+    <DesignCanvas>
+      <DCSection id="vendido" title="IMÓVEL VENDIDO — Penha de França / Zona Leste" subtitle="Duas direções profissionais · Feed Instagram 1080×1440">
+        <DCArtboard id="v1" label="V1 · Faixa Diagonal" width={1080} height={1440}>
+          <VendidoA/>
+        </DCArtboard>
+        <DCArtboard id="v2" label="V2 · Editorial Premium" width={1080} height={1440}>
+          <VendidoB/>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

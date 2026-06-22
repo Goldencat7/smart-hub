@@ -406,6 +406,60 @@ exports.salvarMeuPerfil = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Treinamento — links dos materiais por item ───────────────────────────────
+exports.getTreinamentoLinks = onCall(async (req) => {
+  exigirAutenticado(req);
+  const snap = await db.collection('treinamento_links').get();
+  const links = {};
+  snap.forEach(d => { links[d.id] = d.data(); });
+  return { links };
+});
+
+exports.setTreinamentoLink = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const { itemId, url, tipo } = req.data || {};
+  if (!itemId) throw new HttpsError('invalid-argument', 'itemId é obrigatório.');
+  const tipoLimpo = ['video', 'pdf', 'drive', 'link'].includes(tipo) ? tipo : 'link';
+  if (url && url.trim()) {
+    await db.collection('treinamento_links').doc(itemId).set({
+      url: url.trim(),
+      tipo: tipoLimpo,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.uid
+    });
+  } else {
+    await db.collection('treinamento_links').doc(itemId).delete();
+  }
+  return { ok: true };
+});
+
+// ─── Banner principal (imagem exibida no topo do Hub em todas as abas normais) ──
+// Qualquer autenticado pode buscar; só admin salva/remove.
+// Imagem salva como base64 em config/banner (limite: ~500KB base64).
+exports.getBanner = onCall(async (req) => {
+  exigirAutenticado(req);
+  const snap = await db.collection('config').doc('banner').get();
+  if (!snap.exists) return { imagem: '' };
+  return { imagem: snap.data().imagem || '' };
+});
+
+exports.setBanner = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const { imagem } = req.data || {};
+  if (typeof imagem !== 'string') throw new HttpsError('invalid-argument', 'imagem é obrigatória.');
+  if (imagem.length > 600000) throw new HttpsError('invalid-argument', 'Imagem muito grande. Tente reduzir ou usar JPEG.');
+  if (imagem) {
+    await db.collection('config').doc('banner').set({
+      imagem,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedBy: auth.uid
+    });
+  } else {
+    await db.collection('config').doc('banner').delete();
+  }
+  return { ok: true };
+});
+
 // ─── Suporte (chamado por email com anexo opcional) ──────────────────────────
 function escaparHtml(s) {
   return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

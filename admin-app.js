@@ -2,6 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -12,9 +13,10 @@ const firebaseConfig = {
   appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
 };
 
-const app  = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const fns  = getFunctions(app, 'southamerica-east1');
+const app     = initializeApp(firebaseConfig);
+const auth    = getAuth(app);
+const fns     = getFunctions(app, 'southamerica-east1');
+const storage = getStorage(app);
 
 const listCredentials   = httpsCallable(fns, 'listCredentials');
 const getCredentialAdmin = httpsCallable(fns, 'getCredentialAdmin');
@@ -29,8 +31,47 @@ const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
-const listarStatusApps = httpsCallable(fns, 'listarStatusApps');
+const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
+const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
+const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 const setStatusApp     = httpsCallable(fns, 'setStatusApp');
+const getBanner        = httpsCallable(fns, 'getBanner');
+const setBanner        = httpsCallable(fns, 'setBanner');
+
+// Estrutura de treinamentos (espelho do hub-app.js)
+const TREINAMENTO_CATS = [
+  { id: 'onboarding', nome: 'Onboarding', emoji: '📋', itens: [
+    { id: 'onb1', nome: 'Do Zero à Primeira Venda' },
+    { id: 'onb2', nome: 'Primeiros 30 Dias' },
+    { id: 'onb3', nome: 'Cultura REMAX Smart' },
+    { id: 'onb4', nome: 'Gestão de Locação Smart' }
+  ]},
+  { id: 'captacao_t', nome: 'Captação', emoji: '🎯', itens: [
+    { id: 'cap1', nome: 'Prospecção de Proprietários' },
+    { id: 'cap2', nome: 'Captação por Indicação' },
+    { id: 'cap3', nome: 'Captação Digital' }
+  ]},
+  { id: 'vendas', nome: 'Vendas', emoji: '🤝', itens: [
+    { id: 'ven1', nome: 'Processo Completo da Venda' },
+    { id: 'ven2', nome: 'Objeções e Negociação' },
+    { id: 'ven3', nome: 'Fechamento de Negócios' }
+  ]},
+  { id: 'locacao_t', nome: 'Locação', emoji: '🏠', itens: [
+    { id: 'loc1', nome: 'Primeira Locação' },
+    { id: 'loc2', nome: 'Atendimento ao Locatário' },
+    { id: 'loc3', nome: 'Processo de Locação' }
+  ]},
+  { id: 'mkt_t', nome: 'Marketing', emoji: '📣', itens: [
+    { id: 'mkt1', nome: 'Instagram para Corretores' },
+    { id: 'mkt2', nome: 'Produção de Conteúdo' },
+    { id: 'mkt3', nome: 'Posicionamento Digital' }
+  ]},
+  { id: 'remax', nome: 'REMAX Smart', emoji: '🏢', itens: [
+    { id: 'rmx1', nome: 'Modelo de Negócio' },
+    { id: 'rmx2', nome: 'Ferramentas da Unidade' },
+    { id: 'rmx3', nome: 'Processos Internos' }
+  ]}
+];
 
 // Apps restritos (aparecem só pra quem o admin liberar)
 const APPS_RESTRITOS = [
@@ -160,8 +201,204 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
 });
 
 async function carregarTudo() {
-  await Promise.all([carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
+  await Promise.all([carregarMateriais(), carregarBanner(), carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
 }
+
+// ─── Materiais de Treinamento ─────────────────────────────────────────────────
+const elListaMateriais = document.getElementById('listaMateriais');
+let materialUploadTarget = null; // { itemId, nomeAnteriorUrl } — item que receberá o upload
+
+async function carregarMateriais() {
+  elListaMateriais.innerHTML = '<p class="muted">carregando...</p>';
+  let links = {};
+  try { const r = await getTreinamentoLinks(); links = r.data.links || {}; }
+  catch (e) { elListaMateriais.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; return; }
+
+  elListaMateriais.innerHTML = TREINAMENTO_CATS.map(cat => `
+    <div class="material-cat">
+      <div class="material-cat-head">${cat.emoji} ${cat.nome}</div>
+      <table class="users-table">
+        <tbody>
+          ${cat.itens.map(item => {
+            const link = links[item.id];
+            const temArquivo = !!(link && link.url);
+            const nomeArquivo = temArquivo ? decodeURIComponent(link.url.split('%2F').pop().split('?')[0]) : '';
+            const tipo = link?.tipo || '';
+            const icone = { pdf:'📄', video:'▶', drive:'📁', link:'🔗' }[tipo] || '📎';
+            return `
+              <tr data-item="${item.id}" data-url="${escapeHtml(link?.url || '')}">
+                <td style="width:220px;font-weight:600;font-size:12px">${item.nome}</td>
+                <td>
+                  ${temArquivo
+                    ? `<span class="badge ok">${icone} ${escapeHtml(nomeArquivo.slice(0,40))}</span>`
+                    : '<span class="badge falta">Sem arquivo</span>'}
+                </td>
+                <td class="acoes-user">
+                  <button class="topbar-btn mat-upload" data-item="${item.id}" data-url="${escapeHtml(link?.url || '')}">${temArquivo ? 'Trocar' : '↑ Enviar'}</button>
+                  ${temArquivo ? `<button class="topbar-btn perigo mat-remover" data-item="${item.id}" data-url="${escapeHtml(link.url)}">Remover</button>` : ''}
+                  ${temArquivo ? `<a class="topbar-btn" href="${escapeHtml(link.url)}" target="_blank">Abrir ↗</a>` : ''}
+                  <div class="mat-progress" id="prog-${item.id}" hidden>
+                    <div class="mat-progress-bar" id="bar-${item.id}"></div>
+                    <span id="pct-${item.id}">0%</span>
+                  </div>
+                </td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+
+  // Upload
+  elListaMateriais.querySelectorAll('.mat-upload').forEach(btn => {
+    btn.addEventListener('click', () => {
+      materialUploadTarget = { itemId: btn.dataset.item, urlAnterior: btn.dataset.url };
+      document.getElementById('materialFileInput').click();
+    });
+  });
+
+  // Remover
+  elListaMateriais.querySelectorAll('.mat-remover').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmar(`Remover o arquivo de "${btn.closest('tr').querySelector('td').textContent.trim()}"?`))) return;
+      try {
+        // Apaga do Storage se for URL do Firebase
+        if (btn.dataset.url && btn.dataset.url.includes('firebasestorage')) {
+          try { await deleteObject(ref(storage, btn.dataset.url)); } catch (_) {}
+        }
+        await setTreinamentoLink({ itemId: btn.dataset.item, url: '', tipo: 'link' });
+        carregarMateriais();
+      } catch (e) { alert('Erro: ' + e.message); }
+    });
+  });
+}
+
+// Upload via input de arquivo
+document.getElementById('materialFileInput').addEventListener('change', async () => {
+  const file = document.getElementById('materialFileInput').files[0];
+  document.getElementById('materialFileInput').value = '';
+  if (!file || !materialUploadTarget) return;
+
+  const { itemId, urlAnterior } = materialUploadTarget;
+  materialUploadTarget = null;
+
+  // Detecta tipo pelo nome
+  const ext = file.name.split('.').pop().toLowerCase();
+  const tipo = ext === 'pdf' ? 'pdf' : ['mp4','mov','avi'].includes(ext) ? 'video' : 'link';
+
+  // Mostra barra de progresso
+  const progEl = document.getElementById(`prog-${itemId}`);
+  const barEl  = document.getElementById(`bar-${itemId}`);
+  const pctEl  = document.getElementById(`pct-${itemId}`);
+  if (progEl) { progEl.hidden = false; }
+
+  try {
+    // Apaga arquivo anterior do Storage se existia
+    if (urlAnterior && urlAnterior.includes('firebasestorage')) {
+      try { await deleteObject(ref(storage, urlAnterior)); } catch (_) {}
+    }
+
+    // Faz upload pro Firebase Storage
+    const storageRef = ref(storage, `treinamentos/${itemId}/${Date.now()}_${file.name}`);
+    const task = uploadBytesResumable(storageRef, file);
+
+    await new Promise((resolve, reject) => {
+      task.on('state_changed',
+        snap => {
+          const pct = Math.round((snap.bytesTransferred / snap.totalBytes) * 100);
+          if (barEl) barEl.style.width = pct + '%';
+          if (pctEl) pctEl.textContent = pct + '%';
+        },
+        reject,
+        resolve
+      );
+    });
+
+    const downloadURL = await getDownloadURL(task.snapshot.ref);
+    await setTreinamentoLink({ itemId, url: downloadURL, tipo });
+    carregarMateriais();
+  } catch (e) {
+    if (progEl) progEl.hidden = true;
+    alert('Erro no upload: ' + e.message);
+  }
+});
+
+// ─── Banner principal ─────────────────────────────────────────────────────────
+let bannerPendente = null; // null = sem mudança, '' = remover, string = nova imagem
+
+async function carregarBanner() {
+  const el = document.getElementById('bannerAdmin');
+  el.innerHTML = '<p class="muted">carregando...</p>';
+  let imagemAtual = '';
+  try {
+    const r = await getBanner();
+    imagemAtual = r.data.imagem || '';
+  } catch (e) {
+    el.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; return;
+  }
+  bannerPendente = null;
+  renderBannerAdmin(el, imagemAtual);
+}
+
+function renderBannerAdmin(el, imagemAtual) {
+  el.innerHTML = `
+    <div class="banner-admin-preview">
+      ${imagemAtual
+        ? `<img id="bannerPreviewImg" src="${imagemAtual}" class="banner-preview-img" alt="Banner atual">`
+        : `<div class="banner-preview-vazio"><span>Nenhum banner cadastrado</span></div>`}
+    </div>
+    <div class="banner-admin-acoes">
+      <button class="topbar-btn primario" id="bannerEscolher"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>${imagemAtual ? 'Trocar imagem' : 'Enviar imagem'}</button>
+      ${imagemAtual ? '<button class="topbar-btn perigo" id="bannerRemover">✕ Remover banner</button>' : ''}
+      <span id="bannerMsg" class="muted" style="font-size:11px"></span>
+    </div>`;
+
+  document.getElementById('bannerEscolher').addEventListener('click', () => {
+    document.getElementById('bannerFileInput').click();
+  });
+  document.getElementById('bannerRemover')?.addEventListener('click', async () => {
+    if (!(await confirmar('Remover o banner atual?'))) return;
+    try {
+      await setBanner({ imagem: '' });
+      carregarBanner();
+    } catch (e) { alert('Erro: ' + e.message); }
+  });
+}
+
+document.getElementById('bannerFileInput').addEventListener('change', async () => {
+  const f = document.getElementById('bannerFileInput').files[0];
+  document.getElementById('bannerFileInput').value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onerror = () => alert('Não consegui ler essa imagem. Tente PNG ou JPG.');
+    img.onload = async () => {
+      // Redimensiona e recorta na proporção 6:1 (900×150 base, 1800×300 @2x)
+      const MAX_W = 1800, MAX_H = 300;
+      let sw = img.width, sh = img.height;
+      const escala = Math.min(MAX_W / sw, MAX_H / sh, 1);
+      const w = Math.round(sw * escala), h = Math.round(sh * escala);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataURL = canvas.toDataURL('image/jpeg', 0.88);
+      if (dataURL.length > 600000) { alert('Imagem ainda muito grande após compressão. Use JPEG em menor resolução.'); return; }
+      const el = document.getElementById('bannerAdmin');
+      const msg = document.getElementById('bannerMsg');
+      const btn = document.getElementById('bannerEscolher');
+      btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        await setBanner({ imagem: dataURL });
+        carregarBanner();
+      } catch (e) {
+        msg.textContent = 'Erro: ' + e.message;
+        btn.disabled = false; btn.textContent = 'Trocar imagem';
+      }
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(f);
+});
 
 // ─── Status dos apps (avisos de instabilidade) ───────────────────────────────
 function escHtml(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

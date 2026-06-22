@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Baixar Artes — VENDIDO · REMAX Smart</title>
+<link rel="stylesheet" href="art.css"/>
+<link rel="stylesheet" href="style-a.css"/>
+<link rel="stylesheet" href="style-b.css"/>
+<style>
+  :root{ --remax-blue:#003DA5; --remax-red:#DC1C2E; --ink:#002749; }
+  html,body{ margin:0; background:#E9ECF1; font-family:"Gotham","Montserrat",system-ui,sans-serif; color:var(--ink); }
+  .wrap{ max-width:1120px; margin:0 auto; padding:48px 32px 80px; }
+  .head{ text-align:center; margin-bottom:40px; }
+  .head h1{ font-weight:900; font-size:34px; letter-spacing:-.01em; margin:0 0 8px; }
+  .head p{ font-weight:500; font-size:17px; color:#5B6877; margin:0; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:48px; }
+  @media (max-width:880px){ .grid{ grid-template-columns:1fr; } }
+  .item{ display:flex; flex-direction:column; align-items:center; gap:20px; }
+  .frame{ width:100%; aspect-ratio:1080/1440; background:#fff; border-radius:14px; overflow:hidden;
+    box-shadow:0 18px 50px rgba(0,39,73,.18), 0 4px 12px rgba(0,39,73,.10); position:relative; }
+  .frame .scaler{ position:absolute; top:0; left:0; width:1080px; height:1440px; transform-origin:top left; }
+  .label{ font-weight:700; font-size:15px; letter-spacing:.14em; text-transform:uppercase; color:#5B6877; }
+  .dl{ appearance:none; border:0; cursor:pointer; font-family:inherit;
+    background:var(--remax-blue); color:#fff; font-weight:700; font-size:17px; letter-spacing:.01em;
+    padding:16px 30px; border-radius:10px; display:inline-flex; align-items:center; gap:10px;
+    transition:background .18s, transform .12s; box-shadow:0 8px 20px rgba(0,61,165,.28); }
+  .dl:hover{ background:#00318a; }
+  .dl:active{ transform:scale(.98); }
+  .dl svg{ width:20px; height:20px; }
+  .dl[disabled]{ opacity:.6; cursor:wait; }
+  .stagewrap{ position:fixed; left:-99999px; top:0; width:1080px; height:1440px; }
+  .stagewrap .vendido{ position:relative; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>Artes “Vendido” — prontas para baixar</h1>
+    <p>Feed Instagram · 1080 × 1440 px · PNG alta resolução</p>
+  </div>
+  <div class="grid">
+    <div class="item">
+      <div class="label">V1 · Faixa Diagonal</div>
+      <div class="frame" id="frame-a"></div>
+      <button class="dl" data-v="a" data-name="VENDIDO V1 - Faixa Diagonal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Baixar PNG
+      </button>
+    </div>
+    <div class="item">
+      <div class="label">V2 · Editorial Premium</div>
+      <div class="frame" id="frame-b"></div>
+      <button class="dl" data-v="b" data-name="VENDIDO V2 - Editorial Premium">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Baixar PNG
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="stagewrap"><div id="stage-a"></div></div>
+<div class="stagewrap"><div id="stage-b"></div></div>
+
+<script src="vendido-data.js"></script>
+<script type="text/babel" src="vendido-a.jsx"></script>
+<script type="text/babel" src="vendido-b.jsx"></script>
+<script type="text/babel">
+// render hidden full-size stages (for export) + scaled previews
+ReactDOM.createRoot(document.getElementById('stage-a')).render(<window.VendidoA/>);
+ReactDOM.createRoot(document.getElementById('stage-b')).render(<window.VendidoB/>);
+
+function mountPreview(frameId, Comp){
+  const frame = document.getElementById(frameId);
+  const inner = document.createElement('div');
+  inner.className = 'scaler';
+  frame.appendChild(inner);
+  ReactDOM.createRoot(inner).render(<Comp/>);
+  const fit = () => { inner.style.transform = `scale(${frame.clientWidth / 1080})`; };
+  fit();
+  new ResizeObserver(fit).observe(frame);
+  requestAnimationFrame(fit); setTimeout(fit, 300);
+}
+mountPreview('frame-a', window.VendidoA);
+mountPreview('frame-b', window.VendidoB);
+
+async function exportPNG(stageId){
+  const node = document.getElementById(stageId).querySelector('.vendido');
+  await document.fonts.ready;
+  const imgs = Array.from(node.querySelectorAll('img'));
+  await Promise.all(imgs.map(im => im.complete ? Promise.resolve() : new Promise(r=>{im.onload=im.onerror=r;})));
+  await new Promise(r=>setTimeout(r,150));
+  return await window.htmlToImage.toPng(node, { width:1080, height:1440, pixelRatio:2, cacheBust:true });
+}
+
+document.querySelectorAll('.dl').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    const v = btn.dataset.v;
+    const label = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Gerando…';
+    try{
+      const url = await exportPNG('stage-' + v);
+      const a = document.createElement('a');
+      a.href = url; a.download = btn.dataset.name + '.png';
+      document.body.appendChild(a); a.click(); a.remove();
+    }catch(e){ alert('Erro ao gerar: ' + e.message); }
+    finally{ btn.disabled = false; btn.innerHTML = label; }
+  });
+});
+</script>
+</body>
+</html>

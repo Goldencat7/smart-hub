@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Versão Final Editável — VENDIDO · REMAX Smart</title>
+<link rel="stylesheet" href="art.css"/>
+<link rel="stylesheet" href="style-a.css"/>
+<link rel="stylesheet" href="style-b.css"/>
+<style>
+  :root{ --remax-blue:#003DA5; --remax-red:#DC1C2E; --ink:#002749; --line:#DCE2EA; --muted:#5B6877; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; background:#EAEDF2; font-family:"Gotham","Montserrat",system-ui,sans-serif; color:var(--ink); }
+  .app{ display:grid; grid-template-columns:380px 1fr; min-height:100vh; }
+  @media (max-width:900px){ .app{ grid-template-columns:1fr; } }
+
+  /* ---- form panel ---- */
+  .panel{ background:#fff; border-right:1px solid var(--line); padding:28px 26px 60px; overflow-y:auto; max-height:100vh; }
+  .panel h1{ font-size:21px; font-weight:900; margin:0 0 4px; letter-spacing:-.01em; }
+  .panel .sub{ font-size:13px; color:var(--muted); margin:0 0 26px; font-weight:500; }
+  .group{ margin-bottom:24px; }
+  .group > .gtitle{ font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--remax-blue); margin:0 0 12px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px; }
+  .field input[type=text]{ width:100%; font-family:inherit; font-size:15px; font-weight:500; color:var(--ink);
+    padding:11px 13px; border:1.5px solid var(--line); border-radius:9px; background:#fff; transition:border-color .15s, box-shadow .15s; }
+  .field input[type=text]:focus{ outline:none; border-color:var(--remax-blue); box-shadow:0 0 0 3px rgba(0,61,165,.13); }
+  .two{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+  /* upload */
+  .upload{ display:flex; align-items:center; gap:12px; padding:10px; border:1.5px dashed #C3CCD8; border-radius:11px; cursor:pointer; transition:border-color .15s, background .15s; }
+  .upload:hover{ border-color:var(--remax-blue); background:#F6F9FE; }
+  .upload .thumb{ width:54px; height:54px; border-radius:8px; background:#EEF2F7 center/cover no-repeat; flex:0 0 auto; border:1px solid var(--line); }
+  .upload .utext{ font-size:12.5px; line-height:1.35; }
+  .upload .utext b{ display:block; font-size:13px; font-weight:700; color:var(--ink); }
+  .upload .utext span{ color:var(--muted); }
+  .upload input{ display:none; }
+  .hint{ font-size:11px; color:var(--muted); margin-top:6px; line-height:1.4; }
+  .slider{ margin-top:10px; }
+  .slider label{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); margin-bottom:5px; font-weight:600; }
+  .slider input[type=range]{ width:100%; accent-color:var(--remax-blue); }
+  .reset{ appearance:none; border:1.5px solid var(--line); background:#fff; color:var(--muted); font-family:inherit;
+    font-size:13px; font-weight:600; padding:10px 16px; border-radius:9px; cursor:pointer; transition:border-color .15s, color .15s; }
+  .reset:hover{ border-color:var(--remax-red); color:var(--remax-red); }
+
+  /* ---- stage area ---- */
+  .stage{ padding:30px 32px 60px; display:flex; flex-direction:column; align-items:center; gap:22px; }
+  .toolbar{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:center; width:100%; }
+  .seg{ display:inline-flex; background:#fff; border:1.5px solid var(--line); border-radius:11px; padding:4px; gap:4px; }
+  .seg button{ appearance:none; border:0; background:transparent; font-family:inherit; font-size:14px; font-weight:700;
+    color:var(--muted); padding:9px 18px; border-radius:8px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+  .seg button.active{ background:var(--remax-blue); color:#fff; }
+  .spacer{ flex:1; }
+  .dl{ appearance:none; border:0; cursor:pointer; font-family:inherit; background:var(--remax-blue); color:#fff;
+    font-weight:700; font-size:15px; padding:13px 24px; border-radius:10px; display:inline-flex; align-items:center; gap:9px;
+    transition:background .18s, transform .12s; box-shadow:0 8px 20px rgba(0,61,165,.26); }
+  .dl:hover{ background:#00318a; } .dl:active{ transform:scale(.98); } .dl[disabled]{ opacity:.6; cursor:wait; }
+  .dl svg{ width:18px; height:18px; }
+  .ghost{ background:#fff; color:var(--remax-blue); box-shadow:none; border:1.5px solid #C7D4E8; }
+  .ghost:hover{ background:#F6F9FE; }
+
+  .frame{ width:min(540px, 70vh); aspect-ratio:1080/1440; background:#fff; border-radius:16px; overflow:hidden; position:relative;
+    box-shadow:0 24px 60px rgba(0,39,73,.22), 0 6px 16px rgba(0,39,73,.12); }
+  .frame .scaler{ position:absolute; top:0; left:0; width:1080px; height:1440px; transform-origin:top left; }
+  .exportwrap{ position:fixed; left:-99999px; top:0; width:1080px; height:1440px; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js"></script>
+<script src="vendido-data.js"></script>
+</head>
+<body>
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#002749"/>
+    <path d="M30 52 L50 36 L70 52 L70 70 L30 70 Z" fill="none" stroke="#ffffff" stroke-width="3.4" stroke-linejoin="round"/>
+    <path d="M44 56 l5 5 l10 -12" fill="none" stroke="#DC1C2E" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</template>
+<div id="root"></div>
+<script type="text/babel" src="vendido-a.jsx"></script>
+<script type="text/babel" src="vendido-b.jsx"></script>
+<script type="text/babel" src="editor.jsx"></script>
+</body>
+</html>

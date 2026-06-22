@@ -1,0 +1,37 @@
+# Arte VENDIDO — Deploy no Firebase Hosting
+
+Esta pasta já está pronta para publicar o editor "Versão Final Editável"
+no Firebase Hosting. O corretor abre o link, troca dados/fotos e baixa o PNG.
+
+## O que tem aqui
+- `public/index.html` — o editor completo (arquivo único, autossuficiente)
+- `firebase.json` — configuração do Hosting (já aponta para a pasta `public`)
+
+## Pré-requisitos (uma vez só)
+1. Tenha uma conta Google e um projeto no console: https://console.firebase.google.com
+   (Plano Blaze pode estar ativo — o Hosting tem cota grátis generosa mesmo no Blaze.)
+2. Instale o Node.js: https://nodejs.org
+3. Instale a CLI do Firebase (no terminal):
+       npm install -g firebase-tools
+
+## Publicar (passo a passo)
+No terminal, entre nesta pasta `deploy` e rode:
+
+    firebase login
+    firebase use --add        # escolha o seu projeto Firebase e dê um apelido (ex.: default)
+    firebase deploy --only hosting
+
+No final, o terminal mostra o link público, algo como:
+    https://SEU-PROJETO.web.app
+
+Esse link é fixo: envie para todos os corretores. Toda vez que você quiser
+atualizar a arte, gere o arquivo novo, substitua `public/index.html` e rode
+`firebase deploy --only hosting` de novo.
+
+## Domínio próprio (opcional)
+No console do Firebase → Hosting → "Adicionar domínio personalizado",
+você pode usar algo como `artes.suaimobiliaria.com.br`.
+
+## Dica
+Para a foto do corretor, use sempre PNG com fundo removido (recortado).
+A foto do imóvel pode ser JPG em alta resolução.
