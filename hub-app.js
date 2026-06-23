@@ -455,6 +455,7 @@ function atualizarBanner() {
   bannerEl.hidden = !mostrar;
   if (mostrar && !bannerEl.children.length) {
     bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
+    agendarProximoBanner(); // DOM já tem o elemento — listener de 'ended' vai funcionar
   }
 }
 
@@ -489,7 +490,7 @@ function agendarProximoBanner() {
 
 function iniciarRotacaoBanner() {
   bannerIdx = 0;
-  agendarProximoBanner();
+  // agendarProximoBanner é chamado por atualizarBanner após renderizar o DOM
 }
 
 // ─── Status dos apps (avisos de instabilidade postados pelo admin) ────────

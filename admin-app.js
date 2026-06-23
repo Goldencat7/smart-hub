@@ -367,7 +367,10 @@ function renderBannerAdmin(el, banners) {
       ${banners.map((b, i) => `
         <div class="banner-admin-item">
           <span class="banner-admin-num">${i + 1}</span>
-          <img src="${b.imagem}" class="banner-preview-img" alt="Banner ${i+1}">
+          ${b.tipo === 'video'
+            ? `<video src="${b.mediaUrl}" class="banner-preview-img" muted preload="metadata"></video>`
+            : `<img src="${b.imagem || b.mediaUrl}" class="banner-preview-img" alt="Banner ${i+1}">`}
+          <span class="muted" style="font-size:10px;flex-shrink:0">${b.tipo?.toUpperCase() || 'IMG'}</span>
           <button class="topbar-btn perigo banner-rm" data-id="${b.id}">✕ Remover</button>
         </div>`).join('')}
       ${!banners.length ? '<div class="banner-preview-vazio"><span>Nenhum banner cadastrado</span></div>' : ''}
