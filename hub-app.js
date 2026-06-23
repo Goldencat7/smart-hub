@@ -111,6 +111,11 @@ const APPS = [
     url: 'https://motivatech-app.web.app', autologin: false
   },
   {
+    key: 'gemini', categoria: '_',
+    titulo: 'Gemini', icone: 'GM', desc: 'Assistente de IA do Google',
+    url: 'https://gemini.google.com/', autologin: false
+  },
+  {
     key: 'universidade', categoria: 'treinamento',
     titulo: 'Universidade REMAX', icone: 'UR', desc: 'Treinamento e cursos',
     url: 'https://universidaderemax.studionmx.com/', autologin: false
@@ -142,6 +147,7 @@ const ICN = {
   fotografia:  svgIcone('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   reuniao:     svgIcone('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
   clicksign:   svgIcone('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
+  ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -193,6 +199,7 @@ const CATEGORIAS = [
   { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',     nome: 'Reunião',     icone: ICN.reuniao, reuniao: true },
+  { id: 'ia',          nome: 'IA',           icone: ICN.ia, ia: true },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
 
@@ -227,6 +234,7 @@ const secaoMarketing      = document.getElementById('secaoMarketing');
 const secaoDocs           = document.getElementById('secaoDocumentos');
 const secaoFotografia     = document.getElementById('secaoFotografia');
 const secaoReuniao        = document.getElementById('secaoReuniao');
+const secaoIA             = document.getElementById('secaoIA');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -318,6 +326,7 @@ function renderCentro() {
   secaoMarketing.hidden = true;
   secaoFotografia.hidden = true;
   secaoReuniao.hidden = true;
+  secaoIA.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
@@ -389,6 +398,18 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarFotografia();
+    return;
+  }
+
+  // Aba IA
+  if (cat.ia) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoIA.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarIA();
     return;
   }
 
@@ -472,7 +493,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'ia']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -1579,6 +1600,54 @@ function carregarReuniao() {
       </h3>
       <iframe class="foto-agendar-frame" src="${AGENDA_REUNIAO_URL}" title="Agendar reunião"></iframe>
     </div>`;
+}
+
+// ─── IA ──────────────────────────────────────────────────────────────────────
+function carregarIA() {
+  const MODELOS = [
+    {
+      key: 'gemini', nome: 'Gemini', empresa: 'Google',
+      desc: 'Analisa texto, imagens e código com IA multimodal do Google',
+      url: 'https://gemini.google.com/',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="ia-gm" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4285F4"/><stop offset="100%" stop-color="#00BCD4"/></linearGradient></defs><path fill="url(#ia-gm)" d="M24 4C24 15 33 23 44 24C33 25 24 34 24 44C24 34 15 25 4 24C15 23 24 15 24 4Z"/></svg>`
+    },
+    {
+      key: 'chatgpt', nome: 'ChatGPT', empresa: 'OpenAI',
+      desc: 'O modelo de IA mais usado no mundo para conversas e tarefas',
+      url: 'https://chatgpt.com/',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#10a37f"/><path fill="white" transform="translate(8,8) scale(0.667)" d="M32.5 12.7a9 9 0 0 0-1.7-5.5 9.3 9.3 0 0 0-17.4 2A6.4 6.4 0 0 0 9.5 21a6.4 6.4 0 0 0 .8 3.1 6.4 6.4 0 0 0 1.3 7.5A9.3 9.3 0 0 0 29.1 29a6.4 6.4 0 0 0 3.4-5.6 6.4 6.4 0 0 0-.9-3.1 6.4 6.4 0 0 0 .9-7.6zM24 31a6.9 6.9 0 0 1-3.7-1.1l.2-.1 6.1-3.5a1 1 0 0 0 .5-.9V18l2.6 1.5v7.1A6.9 6.9 0 0 1 24 31zm-13-6.3a6.9 6.9 0 0 1-.8-4.6l.2.1 6.1 3.5a1 1 0 0 0 1 0l7.5-4.3v3L17.5 27a6.9 6.9 0 0 1-6.5-2.3zm-1-9.5a6.9 6.9 0 0 1 3.6-3v7.2a1 1 0 0 0 .5.9l7.5 4.3-2.6 1.5-6.1-3.6a6.9 6.9 0 0 1-2.9-7.3zm18.6 5.9-7.5-4.3 2.6-1.5 6.1 3.5A6.9 6.9 0 0 1 28.7 27v-7.2a1 1 0 0 0-.1-.7zm2.3-4.7-.2-.1-6.1-3.5a1 1 0 0 0-1 0l-7.5 4.3v-3L24 9.7a6.9 6.9 0 0 1 6.9 7.7z"/></svg>`
+    },
+    {
+      key: 'claude', nome: 'Claude', empresa: 'Anthropic',
+      desc: 'IA da Anthropic, destaque em redação, análise e raciocínio',
+      url: 'https://claude.ai/',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#D97757"/><text x="24" y="33" text-anchor="middle" font-size="28" font-weight="700" fill="white" font-family="Georgia,serif">C</text></svg>`
+    },
+    {
+      key: 'copilot', nome: 'Copilot', empresa: 'Microsoft',
+      desc: 'IA da Microsoft integrada ao ecossistema Office e Windows',
+      url: 'https://copilot.microsoft.com/',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#0078D4"/><path fill="white" d="M24 10a14 14 0 1 0 0 28 14 14 0 0 0 0-28zm0 4a10 10 0 0 1 9.9 8.7L24 24l-9.9-1.3A10 10 0 0 1 24 14zm0 20a10 10 0 0 1-9.9-8.7L24 24l9.9 1.3A10 10 0 0 1 24 34z"/></svg>`
+    },
+  ];
+
+  secaoIA.innerHTML = `
+    <div class="ia-grid">
+      ${MODELOS.map(m => `
+        <button class="ia-card" data-url="${m.url}">
+          <div class="ia-icone">${m.icone}</div>
+          <div class="ia-nome">${m.nome}</div>
+          <div class="ia-empresa">${m.empresa}</div>
+          <p class="ia-desc">${m.desc}</p>
+        </button>
+      `).join('')}
+    </div>`;
+
+  secaoIA.querySelectorAll('.ia-card').forEach(card => {
+    card.addEventListener('click', () => {
+      window.hubApi.abrirApp({ siteKey: card.dataset.url, url: card.dataset.url, credenciais: null });
+    });
+  });
 }
 
 // ─── Suporte (botão flutuante + modal) ────────────────────────────────────
