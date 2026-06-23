@@ -101,7 +101,7 @@ const APPS = [
     url: 'https://app.alude.com.br/', autologin: true
   },
   {
-    key: 'clicksign', categoria: 'locacao',
+    key: 'clicksign', categoria: '_',
     titulo: 'ClickSign', icone: 'CS', desc: 'Assinatura digital',
     url: 'https://app.clicksign.com/', autologin: true, restrito: true
   },
@@ -141,6 +141,7 @@ const ICN = {
   documentos:  svgIcone('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
   fotografia:  svgIcone('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   reuniao:     svgIcone('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  clicksign:   svgIcone('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -184,6 +185,7 @@ const CATEGORIAS = [
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
   { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
   { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao },
+  { id: 'clicksign',  nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'performance', nome: 'Performance', icone: ICN.performance },
   { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
@@ -280,7 +282,11 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 
 // ─── Render sidebar ──────────────────────────────────────────────────────
 function renderSidebar() {
-  navCategorias.innerHTML = CATEGORIAS.map(c => `
+  const visiveis = CATEGORIAS.filter(c =>
+    !c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))
+  );
+
+  navCategorias.innerHTML = visiveis.map(c => `
     <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''} ${c.config ? 'nav-item-fim' : ''}" data-cat="${c.id}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
@@ -288,7 +294,12 @@ function renderSidebar() {
   `).join('');
 
   navCategorias.querySelectorAll('.nav-item').forEach(b => {
+    const cat = CATEGORIAS.find(c => c.id === b.dataset.cat);
     b.addEventListener('click', () => {
+      if (cat && cat.appDireto) {
+        abrirApp(cat.appDireto);
+        return;
+      }
       categoriaAtiva = b.dataset.cat;
       termoBusca = '';
       inputBusca.value = '';
@@ -1124,7 +1135,7 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
 });
 
 // Abrir a pasta no Drive (pra admin gerenciar / ou visualizar completo)
-btnAbrirDrive.addEventListener('click', () => window.open(DRIVE_FOLDER_URL, '_blank'));
+if (btnAbrirDrive) btnAbrirDrive.addEventListener('click', () => window.open(DRIVE_FOLDER_URL, '_blank'));
 
 // Abrir template de marketing numa janela dedicada
 document.getElementById('secaoMarketing').addEventListener('click', (e) => {
