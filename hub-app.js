@@ -444,7 +444,9 @@ const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
-    return `<video class="banner-video" autoplay loop muted playsinline src="${banner.mediaUrl}"></video>`;
+    // loop SÓ quando é o único banner; com vários, sem loop pra o evento 'ended' disparar e avançar
+    const loop = bannerImagens.length <= 1 ? 'loop' : '';
+    return `<video class="banner-video" autoplay ${loop} muted playsinline src="${banner.mediaUrl}"></video>`;
   }
   const src = banner.mediaUrl || banner.imagem;
   return `<img src="${src}" class="banner-img" alt="Banner">`;
