@@ -353,6 +353,9 @@ function abrirJanelaSimples(url) {
     width: 1200, height: 800, autoHideMenuBar: true,
     webPreferences: { devTools: DEVTOOLS_HABILITADO }
   });
+  const ua = win.webContents.getUserAgent().replace(/\s*Electron\/[\d.]+/, '');
+  win.webContents.setUserAgent(ua);
+  win.webContents.session.setUserAgent(ua);
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
 }
 

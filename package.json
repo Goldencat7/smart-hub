@@ -12,6 +12,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
     "publish": "electron-builder --publish always"
   },
   "devDependencies": {
@@ -46,6 +47,15 @@
       "!firebase.json",
       "!.firebaserc"
     ],
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns",
+      "artifactName": "Remax-Smart-Hub-${version}.${ext}",
+      "category": "public.app-category.business"
+    },
+    "dmg": {
+      "title": "Remax Smart Hub"
+    },
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
