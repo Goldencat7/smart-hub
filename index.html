@@ -104,7 +104,6 @@
                 </svg>
               </div>
               <div class="mkt-info">
-                <span class="mkt-nome">Vendido · V1</span>
                 <span class="mkt-desc">Selo central · fundo navy</span>
               </div>
               <button class="mkt-btn">Abrir editor ↗</button>
@@ -160,7 +159,6 @@
                 </svg>
               </div>
               <div class="mkt-info">
-                <span class="mkt-nome">Vendido · V2</span>
                 <span class="mkt-desc">Faixa diagonal · fundo claro</span>
               </div>
               <button class="mkt-btn">Abrir editor ↗</button>
@@ -239,8 +237,62 @@
                 </svg>
               </div>
               <div class="mkt-info">
-                <span class="mkt-nome">Anúncio · Galeria com Corretor</span>
                 <span class="mkt-desc">Imóvel à venda — 3 fotos + preço + corretor</span>
+              </div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>
+
+            <!-- Anúncio V4 — Galeria 3 Fotos (sem corretor) -->
+            <div class="mkt-card" data-template="anuncio-v4-galeria-semfoto.html">
+              <div class="mkt-thumb">
+                <svg viewBox="0 0 1080 1440" xmlns="http://www.w3.org/2000/svg" font-family="'Gotham',Montserrat,Arial,sans-serif">
+                  <!-- fundo navy -->
+                  <rect width="1080" height="1440" fill="#001f3f"/>
+                  <!-- título -->
+                  <text x="52" y="108" font-size="96" font-weight="900" fill="#fff" letter-spacing="-2">IMÓVEL</text>
+                  <text x="52" y="204" font-size="96" font-weight="900" fill="#fff" letter-spacing="-2">EXCLUSIVO</text>
+                  <text x="52" y="252" font-size="24" font-weight="700" fill="#A4D7F4" letter-spacing="6">SEU NOVO LAR PARA VIVER BEM</text>
+                  <!-- col esquerda: 3 fotos -->
+                  <rect x="40" y="288" width="468" height="196" rx="10" fill="#0a1828"/>
+                  <text x="274" y="346" text-anchor="middle" font-size="16" fill="rgba(255,255,255,0.25)">Imagem 1</text>
+                  <rect x="40" y="498" width="468" height="196" rx="10" fill="#0a1828"/>
+                  <text x="274" y="556" text-anchor="middle" font-size="16" fill="rgba(255,255,255,0.25)">Imagem 2</text>
+                  <rect x="40" y="708" width="468" height="196" rx="10" fill="#0a1828"/>
+                  <text x="274" y="766" text-anchor="middle" font-size="16" fill="rgba(255,255,255,0.25)">Imagem 3</text>
+                  <!-- col direita: preço -->
+                  <rect x="532" y="288" width="508" height="120" rx="10" fill="rgba(255,255,255,0.07)" stroke="#A4D7F4" stroke-width="1"/>
+                  <text x="552" y="330" font-size="16" font-weight="700" fill="#A4D7F4" letter-spacing="3">A PARTIR DE</text>
+                  <text x="552" y="392" font-size="56" font-weight="900" fill="#fff" letter-spacing="-1">R$ 650.000</text>
+                  <!-- bullets -->
+                  <rect x="540" y="434" width="14" height="14" rx="2" fill="#DC1C2E" transform="rotate(45 547 441)"/>
+                  <text x="566" y="448" font-size="22" fill="#fff" font-weight="500">3 dormitórios (1 suíte)</text>
+                  <rect x="540" y="482" width="14" height="14" rx="2" fill="#DC1C2E" transform="rotate(45 547 489)"/>
+                  <text x="566" y="496" font-size="22" fill="#fff" font-weight="500">Piscina e área de lazer</text>
+                  <rect x="540" y="530" width="14" height="14" rx="2" fill="#DC1C2E" transform="rotate(45 547 537)"/>
+                  <text x="566" y="544" font-size="22" fill="#fff" font-weight="500">2 vagas de garagem</text>
+                  <rect x="540" y="578" width="14" height="14" rx="2" fill="#DC1C2E" transform="rotate(45 547 585)"/>
+                  <text x="566" y="592" font-size="22" fill="#fff" font-weight="500">Cozinha planejada</text>
+                  <rect x="540" y="626" width="14" height="14" rx="2" fill="#DC1C2E" transform="rotate(45 547 633)"/>
+                  <text x="566" y="640" font-size="22" fill="#fff" font-weight="500">92 m² de área útil</text>
+                  <!-- destaque vermelho -->
+                  <rect x="532" y="676" width="508" height="140" rx="10" fill="#DC1C2E"/>
+                  <text x="552" y="718" font-size="18" font-weight="700" fill="rgba(255,255,255,0.75)" letter-spacing="4">DESTAQUE</text>
+                  <text x="552" y="768" font-size="46" font-weight="900" fill="#fff" letter-spacing="-1">Excelente</text>
+                  <text x="552" y="808" font-size="46" font-weight="900" fill="#fff" letter-spacing="-1">localização</text>
+                  <!-- localização -->
+                  <text x="540" y="960" text-anchor="middle" font-size="20" fill="rgba(255,255,255,0.6)" letter-spacing="2">Penha de França · Zona Leste · São Paulo</text>
+                  <!-- rodapé: logo + botão -->
+                  <rect x="0" y="1300" width="1080" height="140" fill="#001226"/>
+                  <image href="marketing/assets/remax-balloon.png" x="52" y="1310" width="56" height="56"/>
+                  <text x="120" y="1342" font-size="32" font-weight="900" fill="#fff">RE/MAX <tspan font-weight="400" fill="#A4D7F4">Smart</tspan></text>
+                  <text x="120" y="1366" font-size="13" fill="#A4D7F4" letter-spacing="2">IMÓVEIS · CRECI 40431-J</text>
+                  <rect x="680" y="1315" width="360" height="56" rx="28" fill="#DC1C2E"/>
+                  <text x="860" y="1353" text-anchor="middle" font-size="18" font-weight="700" fill="#fff" letter-spacing="2">AGENDE UMA VISITA</text>
+                  <text x="860" y="1415" text-anchor="middle" font-size="32" font-weight="800" fill="#fff">(11) 9 9999-9999</text>
+                </svg>
+              </div>
+              <div class="mkt-info">
+                <span class="mkt-desc">Galeria 3 fotos · sem corretor</span>
               </div>
               <button class="mkt-btn">Abrir editor ↗</button>
             </div>
@@ -268,6 +320,9 @@
 
         <!-- ──── Aba Fotografia ──── -->
         <section id="secaoFotografia" class="foto-wrap" hidden></section>
+
+        <!-- ──── Aba Reunião ──── -->
+        <section id="secaoReuniao" class="foto-wrap" hidden></section>
 
         <!-- ──── Aba Agenda (calendário completo) ──── -->
         <section id="secaoAgenda" class="agenda-full" hidden>

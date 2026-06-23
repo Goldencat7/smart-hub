@@ -35,6 +35,7 @@ const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
 const listarStatusApps        = httpsCallable(fns, 'listarStatusApps');
 const listarNotificacoesAdmin = httpsCallable(fns, 'listarNotificacoesAdmin');
+const excluirNotificacao      = httpsCallable(fns, 'excluirNotificacao');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
 const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 const setStatusApp     = httpsCallable(fns, 'setStatusApp');
@@ -765,7 +766,7 @@ function renderAvisosEnviados(lista) {
   if (!lista.length) { el.innerHTML = '<p class="muted">Nenhum aviso enviado ainda.</p>'; return; }
   el.innerHTML = `
     <table class="users-table">
-      <thead><tr><th>Título / Mensagem</th><th>Enviado em</th><th>Confirmações</th></tr></thead>
+      <thead><tr><th>Título / Mensagem</th><th>Enviado em</th><th>Confirmações</th><th></th></tr></thead>
       <tbody>
         ${lista.map(n => {
           const total = n.todos ? '(todos)' : (Array.isArray(n.destinatarios) ? n.destinatarios.length : 0);
@@ -787,10 +788,19 @@ function renderAvisosEnviados(lista) {
                   <span style="font-size:12px;white-space:nowrap">${lidos}${typeof total === 'number' ? '/'+total : ''} ${pct !== null ? '('+pct+'%)' : ''}</span>
                 </div>
               </td>
+              <td><button class="topbar-btn perigo aviso-excluir" data-id="${n.id}">Excluir</button></td>
             </tr>`;
         }).join('')}
       </tbody>
     </table>`;
+
+  el.querySelectorAll('.aviso-excluir').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!(await confirmar('Excluir este aviso? Ele sumirá de quem ainda não confirmou.'))) return;
+      try { await excluirNotificacao({ id: btn.dataset.id }); }
+      catch (e) { alert('Erro: ' + e.message); }
+    });
+  });
 }
 
 // ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────

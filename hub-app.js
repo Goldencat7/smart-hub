@@ -140,6 +140,7 @@ const ICN = {
   agenda:      svgIcone('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/>'),
   documentos:  svgIcone('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
   fotografia:  svgIcone('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
+  reuniao:     svgIcone('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -189,6 +190,7 @@ const CATEGORIAS = [
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
+  { id: 'reuniao',     nome: 'Reunião',     icone: ICN.reuniao, reuniao: true },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
 
@@ -216,11 +218,13 @@ let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verif
 const navCategorias  = document.getElementById('navCategorias');
 const tituloCategoria = document.getElementById('tituloCategoria');
 const inputBusca     = document.getElementById('inputBusca');
+const searchWrap     = document.querySelector('.search-wrap');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
 const secaoMarketing      = document.getElementById('secaoMarketing');
 const secaoDocs           = document.getElementById('secaoDocumentos');
 const secaoFotografia     = document.getElementById('secaoFotografia');
+const secaoReuniao        = document.getElementById('secaoReuniao');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -233,6 +237,8 @@ const DRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${DRIVE_FOLDER_
 
 // Agendamento de sessão de fotografia (Google Agenda — booking page)
 const AGENDA_FOTOGRAFIA_URL = 'https://calendar.app.google/xXv4jHQee8Q9zAoR6';
+// Agendamento de reunião
+const AGENDA_REUNIAO_URL = 'https://calendar.app.google/nNon8YNJjC39Rj4b9';
 
 const usuarioInfo    = document.getElementById('usuarioInfo');
 const topAvatar      = document.getElementById('topAvatar');
@@ -300,7 +306,9 @@ function renderCentro() {
   secaoAgenda.hidden = true;
   secaoMarketing.hidden = true;
   secaoFotografia.hidden = true;
+  secaoReuniao.hidden = true;
   secaoTreinamento.hidden = true;
+  searchWrap.hidden = true;
   atualizarBanner();
   // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
@@ -373,6 +381,18 @@ function renderCentro() {
     return;
   }
 
+  // Aba Reunião
+  if (cat.reuniao) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoReuniao.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarReuniao();
+    return;
+  }
+
   // Documentos (embed do Google Drive)
   if (cat.placeholder) {
     appsGrid.hidden = true;
@@ -385,6 +405,7 @@ function renderCentro() {
   }
   inputBusca.disabled = false;
   inputBusca.placeholder = `Buscar em ${cat.nome.toLowerCase()}...`;
+  searchWrap.hidden = false;
   secaoDocs.hidden = true;
   appsGrid.hidden = false;
 
@@ -440,7 +461,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -518,12 +539,6 @@ async function abrirApp(siteKey) {
 
   // Registra o acesso (não bloqueia a abertura)
   registrarAcesso({ siteKey, titulo: app.titulo }).catch(() => {});
-
-  // ClickSign: admin entra com o próprio login (sem autologin compartilhado)
-  if (siteKey === 'clicksign' && isAdmin) {
-    window.hubApi.abrirApp({ siteKey, url: app.url, credenciais: null });
-    return;
-  }
 
   if (!app.autologin) {
     window.hubApi.abrirApp({ siteKey, url: app.url, credenciais: null });
@@ -1540,6 +1555,19 @@ function renderFotoGerenciar(pessoas) {
       }
     });
   });
+}
+
+// ─── Reunião ─────────────────────────────────────────────────────────────────
+function carregarReuniao() {
+  secaoReuniao.innerHTML = `
+    <div class="foto-agendar">
+      <h3 class="foto-agendar-titulo">
+        <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>
+        Agende uma reunião
+        <span class="muted" style="font-weight:400;font-size:12px">— escolha um horário disponível abaixo</span>
+      </h3>
+      <iframe class="foto-agendar-frame" src="${AGENDA_REUNIAO_URL}" title="Agendar reunião"></iframe>
+    </div>`;
 }
 
 // ─── Suporte (botão flutuante + modal) ────────────────────────────────────

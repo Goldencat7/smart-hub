@@ -315,8 +315,6 @@ ipcMain.on('abrir-app', (_evt, payload) => {
       seletorUser: 'input[name="user[email]"], #user_email, input[type="email"], input[name*="email" i], input[autocomplete="username"]',
       seletorPass: 'input[name="user[password]"], #user_password, input[type="password"], input[name*="password" i]',
       seletorBtn:  'button[type="submit"], input[type="submit"]',
-      // ClickSign tem reCAPTCHA: preenche tudo mas NÃO clica em Entrar
-      // (evita tentativa falha/bloqueio). A pessoa clica e resolve o captcha.
       naoEnviar: true
     },
     cadastro_imobiliario: {
@@ -372,6 +370,12 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
     }
   });
 
+  // Remove o "Electron/x.x.x" do User-Agent — sites de bot detection bloqueiam esse UA
+  const uaChrome = pwaWindow.webContents.getUserAgent()
+    .replace(/\s*Electron\/[\d.]+/, '');
+  pwaWindow.webContents.setUserAgent(uaChrome);
+  pwaWindow.webContents.session.setUserAgent(uaChrome);
+
   // Páginas com muitos iframes (reCAPTCHA etc.) podem estourar o limite padrão de listeners
   pwaWindow.webContents.setMaxListeners(50);
 
@@ -381,6 +385,18 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
   });
 
   pwaWindow.loadURL(url).catch(() => {}); // falhas reais já vêm pelo did-fail-load
+
+  // Injeta CSS de loading imediatamente quando a página começa a carregar
+  // (antes do React inicializar) — garante feedback visual desde o início
+  pwaWindow.webContents.on('did-start-loading', () => {
+    pwaWindow.webContents.insertCSS(
+      `#__hub-overlay{position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.72);` +
+      `display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;pointer-events:all}` +
+      `@keyframes __hub-spin{to{transform:rotate(360deg)}}` +
+      `#__hub-spin{width:44px;height:44px;border:3px solid rgba(255,255,255,.18);border-top-color:#fff;` +
+      `border-radius:50%;animation:__hub-spin .8s linear infinite}`
+    ).catch(() => {});
+  });
 
   // Injeta no dom-ready (cedo, e uma vez por carregamento — não por frame)
   pwaWindow.webContents.on('dom-ready', () => {
@@ -510,16 +526,78 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           });
         }
 
+        // ── Overlay de loading ──────────────────────────────────────────────
+        function _criarOv(){
+          const ov = document.createElement('div');
+          ov.id = '__hub-overlay';
+          ov.innerHTML =
+            '<div id="__hub-spin"></div>' +
+            '<div style="color:#fff;font:600 13px/1.4 system-ui,Segoe UI,Arial;letter-spacing:.3px">Preenchendo credenciais...</div>';
+          return ov;
+        }
+        function mostrarOverlayLoading(){
+          if(window.__hubOverlayAtivo) return;
+          window.__hubOverlayAtivo = true;
+          const style = document.createElement('style');
+          style.id = '__hub-overlay-style';
+          style.textContent = '@keyframes __hub-spin{to{transform:rotate(360deg)}}';
+          if(!document.getElementById('__hub-overlay-style')) document.head.appendChild(style);
+          document.documentElement.appendChild(_criarOv());
+          // Mantém o overlay mesmo se o SPA React re-renderizar o DOM
+          const obs = new MutationObserver(() => {
+            if(!document.getElementById('__hub-overlay'))
+              document.documentElement.appendChild(_criarOv());
+          });
+          obs.observe(document.documentElement, { childList: true });
+          window.__hubOverlayObs = obs;
+        }
+        function removerOverlayLoading(){
+          window.__hubOverlayAtivo = false;
+          if(window.__hubOverlayObs){ window.__hubOverlayObs.disconnect(); window.__hubOverlayObs = null; }
+          const ov = document.getElementById('__hub-overlay');
+          if(ov) ov.remove();
+        }
+        // Bloqueia interação com os campos preenchidos (email, senha, botão olho)
+        // mas deixa o reCAPTCHA e o botão Entrar acessíveis
+        function bloquearCampos(user, pass){
+          [user, pass].forEach(el => {
+            if(el) el.style.pointerEvents = 'none';
+          });
+          document.querySelectorAll('button, [role="button"], label, span').forEach(el => {
+            if(ehMostrarSenha(el)) el.style.pointerEvents = 'none';
+          });
+        }
+        // Fecha notificações de erro que o site exibiu (ex: tentativa anterior)
+        function fecharNotificacoesErro(){
+          const seletores = [
+            'button[aria-label*="fechar" i]', 'button[aria-label*="close" i]',
+            'button[aria-label*="dismiss" i]', 'button[title*="fechar" i]',
+            '[class*="notification"] button', '[class*="alert"] button',
+            '[class*="toast"] button', '[class*="snack"] button',
+            '[class*="flash"] button', '[class*="error"] button',
+            '[role="alert"] button', '[role="status"] button'
+          ];
+          seletores.forEach(sel => {
+            document.querySelectorAll(sel).forEach(btn => {
+              const txt = (btn.textContent || btn.getAttribute('aria-label') || '').trim();
+              if(!txt || txt === '×' || txt === '✕' || txt === 'X' || txt.length <= 2) {
+                try { btn.click(); } catch(e){}
+              }
+            });
+          });
+        }
+
         const precisaSenha = cfg.senha !== '';
         let etapa = 'aguardando-usuario';
         let tentativas = 0;
         const max = 40;
-        banner('procurando campos de login...');
+        mostrarOverlayLoading();
 
         const intervalo = setInterval(() => {
           tentativas++;
           if(tentativas > max){
             clearInterval(intervalo);
+            removerOverlayLoading();
             banner('campos não encontrados. Login manual.', '#8a0e1c');
             return;
           }
@@ -535,6 +613,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             const sinalLogin = inputPass || acharPorTexto(['continuar','próximo','proximo','avançar','avancar','prosseguir']);
             if(!sinalLogin){
               clearInterval(intervalo);
+              removerOverlayLoading();
               banner('parece já logado — pulando autologin.', '#0a7a3a', 3000);
               return;
             }
@@ -563,12 +642,18 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             // Sites com reCAPTCHA: preenche mas não envia (a pessoa clica + resolve)
             if(cfg.naoEnviar){
               clearInterval(intervalo);
-              banner('Senha preenchida. Clique em Entrar e resolva o CAPTCHA.', '#0043ff', 20000);
+              setTimeout(() => {
+                fecharNotificacoesErro();
+                removerOverlayLoading();
+                bloquearCampos(inputUser, inputPass);
+                banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 25000);
+              }, 400);
               return;
             }
 
             if(temCaptchaVisivel()){
               clearInterval(intervalo);
+              removerOverlayLoading();
               banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 9000);
               return;
             }
@@ -605,6 +690,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
               }
 
               try { sessionStorage.setItem('__hubLogadoOk','1'); } catch(e){}
+              removerOverlayLoading();
               banner(enviou ? 'login enviado.' : 'tentativa de submit.', '#0a7a3a', 3000);
             }, 700);
 
@@ -622,13 +708,19 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             // clica em Entrar e resolve o captcha (evita tentativa falha/bloqueio).
             if(cfg.naoEnviar){
               clearInterval(intervalo);
-              banner('Senha preenchida. Clique em Entrar e resolva o CAPTCHA.', '#0043ff', 20000);
+              setTimeout(() => {
+                fecharNotificacoesErro();
+                removerOverlayLoading();
+                bloquearCampos(inputUser, inputPass);
+                banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 25000);
+              }, 400);
               return;
             }
 
             // CAPTCHA já visível antes de enviar (alguns sites): para e deixa resolver.
             if(temCaptchaVisivel()){
               clearInterval(intervalo);
+              removerOverlayLoading();
               banner('CAPTCHA detectado — resolva e clique em Entrar.', '#b8860b', 15000);
               return;
             }
@@ -641,6 +733,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
               if(btn2 && !btn2.disabled) btn2.click();
               else inputPass.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', keyCode:13, bubbles:true }));
               try { sessionStorage.setItem('__hubLogadoOk','1'); } catch(e){}
+              removerOverlayLoading();
               // ClickSign mostra o reCAPTCHA SÓ DEPOIS de clicar em Entrar — checa de novo
               setTimeout(() => {
                 if(temCaptchaVisivel())
