@@ -347,15 +347,44 @@ ipcMain.on('abrir-app', (_evt, payload) => {
                       credenciais.login || '', credenciais.password || '', { naoEnviar: !!cfg.naoEnviar });
 });
 
+// ─── Disfarça a janela como Chrome real (anti bot-detection) ─────────────────
+// Sites como ClickSign e ChatGPT bloqueiam clientes Electron. Não basta tirar
+// "Electron/x" da User-Agent: o Electron ainda (a) deixa o nome do app na UA e
+// (b) anuncia "Electron" nos Client Hints (Sec-CH-UA), que a detecção moderna lê.
+// Aqui reconstruímos uma User-Agent Chrome padrão e reescrevemos os Client Hints.
+function disfarcarComoChrome(win) {
+  const wc = win.webContents;
+  const uaOrig     = wc.getUserAgent();
+  const chromeVer  = (uaOrig.match(/Chrome\/([\d.]+)/) || [, '131.0.0.0'])[1];
+  const chromeMaj  = chromeVer.split('.')[0];
+  const plataforma = (uaOrig.match(/\(([^)]*)\)/) || [, 'Windows NT 10.0; Win64; x64'])[1];
+  const ua = `Mozilla/5.0 (${plataforma}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVer} Safari/537.36`;
+  wc.setUserAgent(ua);
+  wc.session.setUserAgent(ua);
+
+  const secUa     = `"Chromium";v="${chromeMaj}", "Google Chrome";v="${chromeMaj}", "Not_A Brand";v="24"`;
+  const secUaFull = `"Chromium";v="${chromeVer}", "Google Chrome";v="${chromeVer}", "Not_A Brand";v="24.0.0.0"`;
+  wc.session.webRequest.onBeforeSendHeaders((details, cb) => {
+    const h = details.requestHeaders;
+    for (const k of Object.keys(h)) {
+      const kl = k.toLowerCase();
+      if (kl === 'sec-ch-ua') h[k] = secUa;
+      else if (kl === 'sec-ch-ua-full-version-list') h[k] = secUaFull;
+    }
+    cb({ requestHeaders: h });
+  });
+}
+
 // ─── Janela simples (sem autologin) ──────────────────────────────────────────
 function abrirJanelaSimples(url) {
   const win = new BrowserWindow({
     width: 1200, height: 800, autoHideMenuBar: true,
-    webPreferences: { devTools: DEVTOOLS_HABILITADO }
+    webPreferences: {
+      partition: 'persist:apps', // sessão isolada do Hub, mas que SALVA o login
+      devTools: DEVTOOLS_HABILITADO
+    }
   });
-  const ua = win.webContents.getUserAgent().replace(/\s*Electron\/[\d.]+/, '');
-  win.webContents.setUserAgent(ua);
-  win.webContents.session.setUserAgent(ua);
+  disfarcarComoChrome(win);
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
 }
 
@@ -373,11 +402,9 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
     }
   });
 
-  // Remove o "Electron/x.x.x" do User-Agent — sites de bot detection bloqueiam esse UA
-  const uaChrome = pwaWindow.webContents.getUserAgent()
-    .replace(/\s*Electron\/[\d.]+/, '');
-  pwaWindow.webContents.setUserAgent(uaChrome);
-  pwaWindow.webContents.session.setUserAgent(uaChrome);
+  // Disfarça como Chrome real (UA padrão + Client Hints) — ClickSign e afins
+  // bloqueiam clientes Electron mesmo com o "Electron/x" removido da UA.
+  disfarcarComoChrome(pwaWindow);
 
   // Páginas com muitos iframes (reCAPTCHA etc.) podem estourar o limite padrão de listeners
   pwaWindow.webContents.setMaxListeners(50);
@@ -593,7 +620,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
         const precisaSenha = cfg.senha !== '';
         let etapa = 'aguardando-usuario';
         let tentativas = 0;
-        const max = 40;
+        const max = 60; // ~30s — margem pra net lenta renderizar o form (SPA)
         mostrarOverlayLoading();
 
         const intervalo = setInterval(() => {
@@ -612,8 +639,11 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           // Blinda a senha assim que o campo existir (nunca deixa revelar)
           if(inputPass) blindarSenha(inputPass);
 
-          if(etapa === 'aguardando-usuario' && tentativas > 8){
-            const sinalLogin = inputPass || acharPorTexto(['continuar','próximo','proximo','avançar','avancar','prosseguir']);
+          // Só conclui "já logado" se NÃO houver NENHUM campo de login na tela.
+          // Se o campo de email/usuário (inputUser) está visível, é a página de
+          // login ainda carregando (net lenta) — nunca desistir nesse caso.
+          if(etapa === 'aguardando-usuario' && tentativas > 16){
+            const sinalLogin = inputUser || inputPass || acharPorTexto(['continuar','próximo','proximo','avançar','avancar','prosseguir']);
             if(!sinalLogin){
               clearInterval(intervalo);
               removerOverlayLoading();

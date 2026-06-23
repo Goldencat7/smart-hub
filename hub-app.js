@@ -191,10 +191,10 @@ const CATEGORIAS = [
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
   { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
   { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao },
-  { id: 'clicksign',  nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'performance', nome: 'Performance', icone: ICN.performance },
   { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
+  { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
@@ -725,6 +725,7 @@ onAuthStateChanged(auth, async (user) => {
     appsPermitidos = [];
   }
   await Promise.all([carregarStatusApps(), carregarBanner()]); // carrega dados antes de renderizar
+  renderSidebar(); // re-render: agora que isAdmin/permissões chegaram, itens restritos (ClickSign) aparecem
   renderCentro();
   carregarPerfil(); // popula o avatar no topo
 
