@@ -1132,13 +1132,16 @@ exports.listarFichasLocador = onCall(async (req) => {
   const uid = req.auth.uid;
   const isAdmin = req.auth.token.admin;
 
+  // Sem orderBy aqui: where + orderBy em campos diferentes exigiria índice composto.
+  // Ordenamos em memória (mais novo primeiro).
   let query = db.collection('fichas_locador');
   if (!isAdmin) query = query.where('corretorUid', '==', uid);
-  query = query.orderBy('criadoEm', 'desc').limit(50);
 
-  const snap = await query.get();
-  // id: d.id (Firestore doc ID) tem que vir DEPOIS do spread pra não ser sobrescrito pelo campo interno 'id'
-  return snap.docs.map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() }));
+  const snap = await query.limit(100).get();
+  // id: d.id (Firestore doc ID) vem DEPOIS do spread pra não ser sobrescrito pelo campo interno 'id'
+  return snap.docs
+    .map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() }))
+    .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
 });
 
 // Corretor envia a ficha revisada para o administrativo.
@@ -1271,4 +1274,99 @@ exports.reenviarFichaParaCliente = onCall(async (req) => {
   const dados = fichaSnap.data();
   const link = `https://remax-smart-hub.web.app/ficha-locador.html?modo=edicao&idFicha=${fichaId}&corretor=${dados.corretorUid}&nome=${encodeURIComponent(dados.corretorNome || '')}`;
   return { ok: true, link };
+});
+
+// ─── Fichas genéricas (pf, pj, vendedor, locacao_fiador, proposta) ───────────
+// Usa a coleção `fichas` com campo `tipo` para diferenciar os formulários.
+
+const TIPOS_VALIDOS = ['pf','pj','locacao_fiador','vendedor','proposta'];
+
+function assertTipo(tipo) {
+  if (!TIPOS_VALIDOS.includes(tipo)) throw new HttpsError('invalid-argument', 'Tipo de ficha inválido.');
+}
+
+async function assertDono(fichaSnap, uid, isAdm) {
+  if (!fichaSnap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  if (!isAdm && fichaSnap.data().corretorUid !== uid) throw new HttpsError('permission-denied', 'Sem permissão.');
+}
+
+exports.listarFichasTipo = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { tipo } = req.data || {};
+  assertTipo(tipo);
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+
+  let q = db.collection('fichas').where('tipo', '==', tipo);
+  if (!isAdm) q = q.where('corretorUid', '==', uid);
+  const snap = await q.limit(100).get();
+  return snap.docs
+    .map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() }))
+    .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+});
+
+exports.enviarFichaTipoAdmin = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+  const ref = db.collection('fichas').doc(fichaId);
+  const snap = await ref.get();
+  await assertDono(snap, req.auth.uid, req.auth.token.admin);
+  await ref.update({ status: 'enviado_admin', enviadoAdminEm: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true };
+});
+
+exports.excluirFichaTipo = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+  const ref = db.collection('fichas').doc(fichaId);
+  let snap = await ref.get();
+  if (!snap.exists) {
+    const q = await db.collection('fichas').where('id', '==', fichaId).limit(1).get();
+    if (q.empty) throw new HttpsError('not-found', 'Ficha não encontrada.');
+    snap = q.docs[0]; await q.docs[0].ref.delete(); return { ok: true };
+  }
+  await assertDono(snap, req.auth.uid, req.auth.token.admin);
+  await ref.delete();
+  return { ok: true };
+});
+
+exports.reenviarFichaTipoCliente = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId, observacao } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+  const ref = db.collection('fichas').doc(fichaId);
+  const snap = await ref.get();
+  await assertDono(snap, req.auth.uid, req.auth.token.admin);
+  const d = snap.data();
+  await ref.update({ status: 'aguardando_edicao_cliente', observacaoCorretor: observacao || '', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  const arquivo = `ficha-${d.tipo === 'locacao_fiador' ? 'locacao-fiador' : d.tipo}.html`;
+  const link = `https://remax-smart-hub.web.app/${arquivo}?modo=edicao&idFicha=${fichaId}&corretor=${d.corretorUid}&nome=${encodeURIComponent(d.corretorNome||'')}`;
+  return { ok: true, link };
+});
+
+exports.listarFichasTipoAnalise = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { tipo } = req.data || {};
+  assertTipo(tipo);
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+  if (!isAdm) {
+    const perm = await db.collection('user_access').doc(uid).get();
+    if (!(perm.exists && (perm.data().apps||[]).includes('analise_locador'))) throw new HttpsError('permission-denied', 'Sem permissão.');
+  }
+  const snap = await db.collection('fichas').where('tipo','==',tipo).where('status','==','enviado_admin').limit(100).get();
+  return snap.docs.map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString(), enviadoAdminEm: d.data().enviadoAdminEm?.toDate?.()?.toISOString() }));
+});
+
+exports.finalizarFichaTipo = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+  const ref = db.collection('fichas').doc(fichaId);
+  const snap = await ref.get();
+  await assertDono(snap, req.auth.uid, req.auth.token.admin);
+  await ref.update({ status: 'finalizado', finalizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true };
 });

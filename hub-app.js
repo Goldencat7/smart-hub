@@ -62,8 +62,14 @@ const listarFichasLocador      = httpsCallable(fns, 'listarFichasLocador');
 const enviarFichaParaAdmin     = httpsCallable(fns, 'enviarFichaParaAdmin');
 const excluirFichaLocador      = httpsCallable(fns, 'excluirFichaLocador');
 const reenviarFichaParaCliente = httpsCallable(fns, 'reenviarFichaParaCliente');
-const listarFichasParaAnalise  = httpsCallable(fns, 'listarFichasParaAnalise');
-const finalizarFichaLocador    = httpsCallable(fns, 'finalizarFichaLocador');
+const listarFichasParaAnalise   = httpsCallable(fns, 'listarFichasParaAnalise');
+const finalizarFichaLocador     = httpsCallable(fns, 'finalizarFichaLocador');
+const listarFichasTipo          = httpsCallable(fns, 'listarFichasTipo');
+const enviarFichaTipoAdmin      = httpsCallable(fns, 'enviarFichaTipoAdmin');
+const excluirFichaTipo          = httpsCallable(fns, 'excluirFichaTipo');
+const reenviarFichaTipoCliente  = httpsCallable(fns, 'reenviarFichaTipoCliente');
+const listarFichasTipoAnalise   = httpsCallable(fns, 'listarFichasTipoAnalise');
+const finalizarFichaTipo        = httpsCallable(fns, 'finalizarFichaTipo');
 const listarStatusApps = httpsCallable(fns, 'listarStatusApps');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
@@ -1639,14 +1645,25 @@ function carregarReuniao() {
 async function carregarFichasAnalise(fichaKey = 'locador') {
   const lista = document.getElementById(`lista-${fichaKey}`);
   if (!lista) return;
+
+  const config = FICHAS_CONFIG.find(f => f.key === fichaKey);
+  if (!config?.temFirebase) {
+    lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px 0">
+      Integração de recebimento em breve para esta ficha.<br>
+      <span style="font-size:11px">Por enquanto o cliente preenche e salva no próprio dispositivo.</span>
+    </p>`;
+    return;
+  }
+
   lista.innerHTML = '<p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando fichas para análise...</p>';
 
-  // Destaca o botão de análise como ativo
-  document.getElementById('btnAbaAnalise')?.classList.add('primario');
-  document.getElementById('btnCopiarLink')?.classList.remove('primario');
+  const ehLocadorAn = fichaKey === 'locador';
+  const fnFinalizar = ehLocadorAn ? finalizarFichaLocador : finalizarFichaTipo;
 
   try {
-    const res = await listarFichasParaAnalise({});
+    const res = ehLocadorAn
+      ? await listarFichasParaAnalise({})
+      : await listarFichasTipoAnalise({ tipo: fichaKey });
     const fichas = res.data || [];
     const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
     const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
@@ -1713,7 +1730,7 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
         if (!confirm('Marcar esta ficha como analisada? Ela sairá da lista.')) return;
         btn.disabled = true; btn.textContent = 'Salvando...';
         try {
-          await finalizarFichaLocador({ fichaId: btn.dataset.id });
+          await fnFinalizar({ fichaId: btn.dataset.id });
           const card = btn.closest('.ficha-card');
           card.style.opacity = '0';
           card.style.transition = 'opacity .3s';
@@ -1803,12 +1820,47 @@ const FICHAS_CONFIG = [
   {
     key: 'locador',
     nome: 'Ficha Cadastral do Locador',
-    desc: 'Cadastro para locação de imóveis',
+    desc: 'Cadastro do proprietário para locação de imóveis',
     arquivo: 'ficha-locador.html',
     geraLink: true,
-    temAnalise: true  // botão "Para análise" (requer permissão analise_locador)
+    temAnalise: true,   // botão "Para análise" (requer permissão analise_locador)
+    temFirebase: true   // tem integração com Firestore (lista fichas recebidas)
   },
-  // { key: 'locatario', nome: 'Ficha do Locatário', arquivo: 'ficha-locatario.html', geraLink: true, temAnalise: false },
+  {
+    key: 'pf',
+    nome: 'Ficha Cadastral Pessoa Física',
+    desc: 'Cadastro de locatário pessoa física',
+    arquivo: 'ficha-pf.html',
+    geraLink: true, temAnalise: true, temFirebase: true
+  },
+  {
+    key: 'pj',
+    nome: 'Ficha Cadastral Pessoa Jurídica',
+    desc: 'Cadastro de locatário pessoa jurídica',
+    arquivo: 'ficha-pj.html',
+    geraLink: true, temAnalise: true, temFirebase: true
+  },
+  {
+    key: 'locacao_fiador',
+    nome: 'Ficha Cadastral Locação com Fiador',
+    desc: 'Cadastro com fiador para locação',
+    arquivo: 'ficha-locacao-fiador.html',
+    geraLink: true, temAnalise: true, temFirebase: true
+  },
+  {
+    key: 'vendedor',
+    nome: 'Ficha Cadastral Vendedor',
+    desc: 'Cadastro de vendedor para transação de venda',
+    arquivo: 'ficha-vendedor.html',
+    geraLink: true, temAnalise: true, temFirebase: true
+  },
+  {
+    key: 'proposta',
+    nome: 'Ficha Proposta',
+    desc: 'Proposta de compra ou locação de imóvel',
+    arquivo: 'ficha-proposta.html',
+    geraLink: true, temAnalise: true, temFirebase: true
+  },
 ];
 
 async function carregarDocumentos() {
@@ -1823,7 +1875,7 @@ async function carregarDocumentos() {
       <div class="docs-accordion" id="acc-${f.key}">
         <div class="docs-acc-head" data-key="${f.key}">
           <div style="display:flex;align-items:center;gap:8px;min-width:0">
-            <span class="acc-chevron">▼</span>
+            <span class="acc-chevron">►</span>
             <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
             <div>
               <div style="font-weight:700;font-size:13px">${f.nome}</div>
@@ -1835,10 +1887,9 @@ async function carregarDocumentos() {
             ${f.geraLink   ? `<button class="topbar-btn primario btn-link-${f.key}" data-link="${link}" style="font-size:11px">📋 Copiar link</button>` : ''}
           </div>
         </div>
-        <div class="docs-acc-body" id="body-${f.key}">
+        <div class="docs-acc-body" id="body-${f.key}" style="display:none">
           <div class="docs-acc-aviso">
             Clique em <strong>Copiar link</strong> e envie ao cliente pelo WhatsApp. As fichas recebidas aparecem abaixo.
-            <span id="copiado-${f.key}" style="display:none;color:var(--accent);font-weight:600;margin-left:8px">✓ Copiado!</span>
           </div>
           <div id="lista-${f.key}" style="padding:12px 16px">
             <p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando...</p>
@@ -1849,57 +1900,92 @@ async function carregarDocumentos() {
 
   // Inicializa cada ficha
   FICHAS_CONFIG.forEach(f => {
-    const head  = secaoDocs.querySelector(`.docs-acc-head[data-key="${f.key}"]`);
-    const body  = document.getElementById(`body-${f.key}`);
+    const head    = secaoDocs.querySelector(`.docs-acc-head[data-key="${f.key}"]`);
+    const body    = document.getElementById(`body-${f.key}`);
     const chevron = head.querySelector('.acc-chevron');
+    const btnLink    = secaoDocs.querySelector(`.btn-link-${f.key}`);
+    const btnAnalise = secaoDocs.querySelector(`.btn-analise-${f.key}`);
 
-    // Toggle accordion
+    let aberto = false;       // estado do accordion
+    let analiseAtiva = false; // estamos vendo "para análise"?
+
+    function abrir() {
+      if (aberto) return;
+      aberto = true;
+      body.style.display = 'block';
+      chevron.textContent = '▼';
+    }
+    function fechar() {
+      aberto = false;
+      body.style.display = 'none';
+      chevron.textContent = '►';
+    }
+    function mostrarLista() {
+      analiseAtiva = false;
+      btnAnalise?.classList.remove('primario');
+      btnLink?.classList.add('primario');
+      carregarListaFichas(f.key);
+    }
+    function mostrarAnalise() {
+      analiseAtiva = true;
+      btnAnalise?.classList.add('primario');
+      btnLink?.classList.remove('primario');
+      carregarFichasAnalise(f.key);
+    }
+
+    // Toggle pelo cabeçalho (ignora cliques nos botões)
     head.addEventListener('click', e => {
-      // Evita fechar ao clicar nos botões
       if (e.target.closest('button')) return;
-      const aberto = body.style.display !== 'none';
-      body.style.display = aberto ? 'none' : 'block';
-      chevron.textContent = aberto ? '►' : '▼';
+      if (aberto) { fechar(); return; }
+      abrir();
+      // Carrega a visão atual ao abrir
+      if (analiseAtiva) mostrarAnalise(); else mostrarLista();
     });
 
-    // Botão copiar link
-    const btnLink = secaoDocs.querySelector(`.btn-link-${f.key}`);
+    // Copiar link — feedback no próprio botão (visível mesmo com accordion fechado)
     if (btnLink) {
       btnLink.addEventListener('click', () => {
         const link = btnLink.dataset.link;
-        navigator.clipboard.writeText(link)
-          .catch(() => prompt('Copie o link:', link));
-        const aviso = document.getElementById(`copiado-${f.key}`);
-        aviso.style.display = 'inline';
-        setTimeout(() => { aviso.style.display = 'none'; }, 3000);
+        navigator.clipboard.writeText(link).catch(() => prompt('Copie o link:', link));
+        const txtOrig = btnLink.textContent;
+        btnLink.textContent = '✓ Copiado!';
+        setTimeout(() => { btnLink.textContent = txtOrig; }, 2000);
       });
     }
 
-    // Botão análise
-    const btnAnalise = secaoDocs.querySelector(`.btn-analise-${f.key}`);
+    // Para análise — sempre abre o accordion e mostra a lista de análise
     if (btnAnalise) {
-      let analiseAtiva = false;
       btnAnalise.addEventListener('click', () => {
-        analiseAtiva = !analiseAtiva;
-        btnAnalise.classList.toggle('primario', analiseAtiva);
-        if (btnLink) btnLink.classList.toggle('primario', !analiseAtiva);
-        if (analiseAtiva) carregarFichasAnalise(f.key);
-        else carregarListaFichas(f.key);
+        if (analiseAtiva && aberto) { mostrarLista(); return; } // 2º clique volta pra lista
+        abrir();
+        mostrarAnalise();
       });
     }
 
-    // Carrega fichas da lista ao iniciar
-    carregarListaFichas(f.key);
   });
 }
 
 async function carregarListaFichas(fichaKey = 'locador') {
   const lista = document.getElementById(`lista-${fichaKey}`);
   if (!lista) return;
+
+  const config = FICHAS_CONFIG.find(f => f.key === fichaKey);
+  if (!config?.temFirebase) {
+    lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px 0">
+      Envie o link ao cliente pelo botão acima.<br>
+      <span style="font-size:11px">As fichas preenchidas ficam salvas no dispositivo do cliente.</span>
+    </p>`;
+    return;
+  }
+
   lista.innerHTML = '<p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando fichas...</p>';
 
+  const ehLocador = fichaKey === 'locador';
+
   try {
-    const res = await listarFichasLocador({});
+    const res = ehLocador
+      ? await listarFichasLocador({})
+      : await listarFichasTipo({ tipo: fichaKey });
     const fichas = res.data || [];
 
     if (fichas.length === 0) {
@@ -1959,12 +2045,16 @@ async function carregarListaFichas(fichaKey = 'locador') {
         </div>`;
     }).join('');
 
+    const fnEnviar   = ehLocador ? enviarFichaParaAdmin    : enviarFichaTipoAdmin;
+    const fnReenviar = ehLocador ? reenviarFichaParaCliente : reenviarFichaTipoCliente;
+    const fnExcluir  = ehLocador ? excluirFichaLocador      : excluirFichaTipo;
+
     // Enviar ao admin
     lista.querySelectorAll('.btn-enviar-admin').forEach(btn => {
       btn.addEventListener('click', async () => {
         if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
         btn.disabled = true; btn.textContent = 'Enviando...';
-        try { await enviarFichaParaAdmin({ fichaId: btn.dataset.id }); carregarDocumentos(); }
+        try { await fnEnviar({ fichaId: btn.dataset.id }); carregarListaFichas(fichaKey); }
         catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '✓ Enviar ao admin'; }
       });
     });
@@ -1972,15 +2062,15 @@ async function carregarListaFichas(fichaKey = 'locador') {
     // Reenviar ao cliente
     lista.querySelectorAll('.btn-reenviar').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const obs = prompt('Observação para o cliente (opcional) — o que falta ou precisa corrigir:') ?? '';
+        const obs = prompt('Observação para o cliente (opcional):') ?? '';
         if (obs === null) return;
         btn.disabled = true; btn.textContent = 'Gerando link...';
         try {
-          const res = await reenviarFichaParaCliente({ fichaId: btn.dataset.id, observacao: obs });
+          const res = await fnReenviar({ fichaId: btn.dataset.id, observacao: obs });
           const link = res.data.link;
           await navigator.clipboard.writeText(link).catch(() => prompt('Copie o link:', link));
           alert('Link copiado! Envie ao cliente pelo WhatsApp.');
-          carregarDocumentos();
+          carregarListaFichas(fichaKey);
         } catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '↩ Reenviar ao cliente'; }
       });
     });
@@ -1990,10 +2080,8 @@ async function carregarListaFichas(fichaKey = 'locador') {
       btn.addEventListener('click', async () => {
         if (!confirm('Excluir esta ficha permanentemente?')) return;
         btn.disabled = true; btn.textContent = 'Excluindo...';
-        try {
-          await excluirFichaLocador({ fichaId: btn.dataset.id });
-        } catch(e) {
-          // Se já foi excluída, trata como sucesso e remove o card mesmo assim
+        try { await fnExcluir({ fichaId: btn.dataset.id }); }
+        catch(e) {
           if (!e.message?.includes('não encontrada') && !e.message?.includes('not-found')) {
             alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '🗑 Excluir'; return;
           }
@@ -2002,9 +2090,8 @@ async function carregarListaFichas(fichaKey = 'locador') {
         card.style.opacity = '0'; card.style.transition = 'opacity .3s';
         setTimeout(() => {
           card.remove();
-          const lista2 = document.getElementById('listaFichas');
-          if (lista2 && !lista2.querySelector('.ficha-card'))
-            lista2.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha recebida ainda.</p>';
+          if (!lista.querySelector('.ficha-card'))
+            lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha recebida ainda.</p>';
         }, 300);
       });
     });

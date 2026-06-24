@@ -16,5 +16,10 @@ service firebase.storage {
       allow create: if true && request.resource.size < 20 * 1024 * 1024;
       allow read:   if request.auth != null;
     }
+    // Documentos das fichas genéricas (pf, pj, etc.)
+    match /fichas/{tipo}/{fichaId}/{arquivo} {
+      allow create: if true && request.resource.size < 20 * 1024 * 1024;
+      allow read:   if request.auth != null;
+    }
   }
 }
