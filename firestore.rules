@@ -16,5 +16,12 @@ service cloud.firestore {
     match /notifications/{id} {
       allow read: if request.auth != null && request.auth.token.admin == true;
     }
+
+    // Fichas do locador: qualquer um pode criar (formulário público), só o corretor dono lê/atualiza.
+    match /fichas_locador/{id} {
+      allow create: if true;
+      allow read, update: if request.auth != null &&
+        (request.auth.uid == resource.data.corretorUid || request.auth.token.admin == true);
+    }
   }
 }

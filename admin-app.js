@@ -82,7 +82,8 @@ const TREINAMENTO_CATS = [
 
 // Apps restritos (aparecem só pra quem o admin liberar)
 const APPS_RESTRITOS = [
-  { key: 'clicksign', nome: 'ClickSign' }
+  { key: 'clicksign',      nome: 'ClickSign' },
+  { key: 'analise_locador', nome: 'Análise de Fichas do Locador' }
 ];
 
 // Todos os apps do Hub (espelha o array APPS do hub-app.js) — pro controle de status
@@ -231,7 +232,7 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
 });
 
 async function carregarTudo() {
-  await Promise.all([carregarMateriais(), carregarBanner(), carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
+  await Promise.all([carregarBanner(), carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
 }
 
 // ─── Materiais de Treinamento ─────────────────────────────────────────────────
@@ -509,8 +510,9 @@ async function carregarStatusApps() {
               <td><strong>${escHtml(a.nome)}</strong></td>
               <td>
                 <select class="foto-input status-msg">
-                  <option value="Indisponível" ${msg === 'Indisponível' ? 'selected' : ''}>Indisponível</option>
-                  <option value="Em manutenção" ${msg === 'Em manutenção' ? 'selected' : ''}>Em manutenção</option>
+                  <option value="Instável"      ${msg === 'Instável'      ? 'selected' : ''}>⚠ Instável (abre com aviso)</option>
+                  <option value="Em manutenção" ${msg === 'Em manutenção' ? 'selected' : ''}>🔧 Em manutenção (bloqueia)</option>
+                  <option value="Indisponível"  ${msg === 'Indisponível'  ? 'selected' : ''}>⛔ Indisponível (bloqueia)</option>
                 </select>
               </td>
               <td>${ativo ? '<span class="badge falta">⚠ Com aviso</span>' : '<span class="badge ok">OK</span>'}</td>
@@ -733,7 +735,7 @@ async function abrirModalPermissoes(uid, email) {
   }
 }
 
-document.getElementById('cancelarPermissoes').addEventListener('click', () => modalPermissoes.close());
+document.getElementById('cancelarPermissoes').addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); modalPermissoes.close(); });
 document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const uid = document.getElementById('permUid').value;

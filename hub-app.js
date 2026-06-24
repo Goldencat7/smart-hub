@@ -58,6 +58,12 @@ const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 const getFotoDrives = httpsCallable(fns, 'getFotoDrives');
 const setFotoDrive = httpsCallable(fns, 'setFotoDrive');
 const enviarSuporte = httpsCallable(fns, 'enviarSuporte');
+const listarFichasLocador      = httpsCallable(fns, 'listarFichasLocador');
+const enviarFichaParaAdmin     = httpsCallable(fns, 'enviarFichaParaAdmin');
+const excluirFichaLocador      = httpsCallable(fns, 'excluirFichaLocador');
+const reenviarFichaParaCliente = httpsCallable(fns, 'reenviarFichaParaCliente');
+const listarFichasParaAnalise  = httpsCallable(fns, 'listarFichasParaAnalise');
+const finalizarFichaLocador    = httpsCallable(fns, 'finalizarFichaLocador');
 const listarStatusApps = httpsCallable(fns, 'listarStatusApps');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
@@ -96,7 +102,7 @@ const APPS = [
     url: 'https://checkvisto-app.web.app', autologin: false
   },
   {
-    key: 'alude', categoria: 'locacao',
+    key: 'alude', categoria: 'captacao',
     titulo: 'Alude', icone: 'AL', desc: 'Análise de crédito',
     url: 'https://app.alude.com.br/', autologin: true
   },
@@ -114,6 +120,11 @@ const APPS = [
     key: 'gemini', categoria: '_',
     titulo: 'Gemini', icone: 'GM', desc: 'Assistente de IA do Google',
     url: 'https://gemini.google.com/', autologin: false
+  },
+  {
+    key: 'whatsapp', categoria: '_',
+    titulo: 'WhatsApp', icone: 'WA', desc: 'WhatsApp Web',
+    url: 'https://web.whatsapp.com/', autologin: false
   },
   {
     key: 'universidade', categoria: 'treinamento',
@@ -146,6 +157,7 @@ const ICN = {
   documentos:  svgIcone('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
   fotografia:  svgIcone('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   reuniao:     svgIcone('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  whatsapp:    svgIcone('<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'),
   clicksign:   svgIcone('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
@@ -190,7 +202,7 @@ const CATEGORIAS = [
   { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
   { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
-  { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao },
+  { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao, oculto: true },
   { id: 'performance', nome: 'Performance', icone: ICN.performance },
   { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
@@ -200,6 +212,7 @@ const CATEGORIAS = [
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',     nome: 'Reunião',     icone: ICN.reuniao, reuniao: true },
   { id: 'ia',          nome: 'IA',           icone: ICN.ia, ia: true },
+  { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp' },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
 
@@ -291,7 +304,8 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 // ─── Render sidebar ──────────────────────────────────────────────────────
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
-    !c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))
+    !c.oculto &&
+    (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
   );
 
   navCategorias.innerHTML = visiveis.map(c => `
@@ -425,14 +439,14 @@ function renderCentro() {
     return;
   }
 
-  // Documentos (embed do Google Drive)
+  // Documentos (ficha cadastral + fichas recebidas)
   if (cat.placeholder) {
     appsGrid.hidden = true;
     estadoVazio.hidden = true;
     secaoDocs.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
-    if (driveFrame && !driveFrame.getAttribute('src')) driveFrame.src = DRIVE_EMBED_URL;
+    carregarDocumentos();
     return;
   }
   inputBusca.disabled = false;
@@ -464,7 +478,7 @@ function renderCentro() {
       </span>
       <span class="card-title">${a.titulo}</span>
       <span class="card-desc">${a.desc}</span>
-      ${statusApps[a.key] ? `<span class="card-aviso" title="${escapeHtml(statusApps[a.key])}">⚠ Instável</span>` : ''}
+      ${statusApps[a.key] ? badgeStatus(statusApps[a.key]) : ''}
     </button>
   `).join('');
 
@@ -564,9 +578,16 @@ async function abrirApp(siteKey) {
   const app = APPS.find(a => a.key === siteKey);
   if (!app) return;
 
-  // Aviso de instabilidade (marcado por um admin): confirma antes de abrir
-  if (statusApps[siteKey]) {
-    if (!confirm(`⚠️ ${statusApps[siteKey]}\n\nEsse app pode estar instável agora. Abrir mesmo assim?`)) return;
+  // Status: bloqueia (Indisponível/Em manutenção) ou avisa (Instável)
+  const statusAtual = statusApps[siteKey];
+  if (statusAtual) {
+    if (statusAtual === 'Indisponível' || statusAtual === 'Em manutenção') {
+      const icone = statusAtual === 'Em manutenção' ? '🔧' : '⛔';
+      alert(`${icone} ${statusAtual}\n\nEste sistema está ${statusAtual.toLowerCase()} no momento. Tente novamente mais tarde.`);
+      return;
+    }
+    // Instável: avisa mas permite abrir
+    if (!confirm(`⚠️ Instável\n\nEste sistema pode apresentar instabilidade agora. Deseja abrir mesmo assim?`)) return;
   }
 
   // Registra o acesso (não bloqueia a abertura)
@@ -759,6 +780,17 @@ const DIAS_SEM = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function badgeStatus(status) {
+  if (!status) return '';
+  const cfg = {
+    'Instável':       { icone: '⚠', cor: '#b45309', bg: '#fef3c7' },
+    'Em manutenção':  { icone: '🔧', cor: '#9a3412', bg: '#ffedd5' },
+    'Indisponível':   { icone: '⛔', cor: '#991b1b', bg: '#fee2e2' }
+  };
+  const c = cfg[status] || { icone: '⚠', cor: '#6b7280', bg: '#f3f4f6' };
+  return `<span class="card-aviso" style="color:${c.cor};background:${c.bg};border:1px solid ${c.cor}40">${c.icone} ${escapeHtml(status)}</span>`;
+}
 // Padroniza nome: "ALEXANDRE gutierres" → "Alexandre Gutierres". Email/uid ficam como estão.
 function formatarNome(nome){
   const s = String(nome || '').trim();
@@ -1315,7 +1347,7 @@ function renderTreinamento() {
   const iconesTipo = { video: '▶', pdf: '📄', drive: '📁', link: '🔗' };
 
   const appUniv = APPS.find(a => a.key === 'universidade');
-  const statusUniv = statusApps['universidade'] ? `<span class="card-aviso" title="${escapeHtml(statusApps['universidade'])}">⚠ Instável</span>` : '';
+  const statusUniv = statusApps['universidade'] ? badgeStatus(statusApps['universidade']) : '';
 
   secaoTreinamento.innerHTML = `
     <div class="trein-wrap">
@@ -1603,9 +1635,113 @@ function carregarReuniao() {
     </div>`;
 }
 
+// ─── Fichas para análise administrativa ─────────────────────────────────────
+async function carregarFichasAnalise(fichaKey = 'locador') {
+  const lista = document.getElementById(`lista-${fichaKey}`);
+  if (!lista) return;
+  lista.innerHTML = '<p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando fichas para análise...</p>';
+
+  // Destaca o botão de análise como ativo
+  document.getElementById('btnAbaAnalise')?.classList.add('primario');
+  document.getElementById('btnCopiarLink')?.classList.remove('primario');
+
+  try {
+    const res = await listarFichasParaAnalise({});
+    const fichas = res.data || [];
+    const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
+    const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
+
+    if (fichas.length === 0) {
+      lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha aguardando análise.</p>';
+      return;
+    }
+
+    lista.innerHTML = `
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${fichas.length} ficha(s) aguardando análise</p>
+      ${fichas.map(f => {
+        const dataEnvio = f.enviadoAdminEm ? new Date(f.enviadoAdminEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+        const pends = (f.pendentes || []).length;
+        const docs = Object.entries(f.documentos || {});
+        const d = f.dados || {};
+        return `
+          <div class="ficha-card" data-id="${f.id}">
+            <div class="ficha-card-head">
+              <div>
+                <strong style="font-size:13px">${d.nome || 'Sem nome'}</strong>
+                <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Corretor: ${f.corretorNome || '—'}</span>
+              </div>
+              <span style="font-size:11px;color:var(--text-muted)">${dataEnvio}</span>
+            </div>
+            ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p=>nomePend[p]||p).join(', ')}</div>` : ''}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+              <button class="topbar-btn primario btn-baixar-docs" data-id="${f.id}" style="font-size:11px;padding:4px 10px">📥 Baixar documentos</button>
+              <button class="topbar-btn btn-ver-dados" data-id="${f.id}" style="font-size:11px;padding:4px 10px">Ver dados ▾</button>
+              <button class="topbar-btn btn-finalizar" data-id="${f.id}" style="font-size:11px;padding:4px 10px;background:#16a34a;color:#fff;border:none;border-radius:var(--radius-btn)">✓ Marcar analisado</button>
+            </div>
+            <div id="dados-${f.id}" style="display:none;margin-top:10px;font-size:12px;border-top:1px solid var(--border);padding-top:10px">
+              <div class="row-dados" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">
+                ${[['Nome',d.nome],['CPF',d.cpf],['RG',d.rg],['Nascimento',d.dataNasc],['Estado civil',d.estadoCivil],['Profissão',d.profissao],['Renda',d.renda],['WhatsApp',d.whatsapp],['E-mail',d.email],['CEP',d.cep],['Endereço',`${d.logradouro||''} ${d.numero||''} ${d.complemento||''}`],['Bairro',d.bairro],['Cidade',`${d.cidade||''}/${d.estado||''}`],['Banco',d.banco],['Agência',d.agencia],['Conta',`${d.conta||''} (${d.tipoConta||''})`],['Pix',d.pix]].filter(([,v])=>v).map(([k,v])=>`<div style="margin-bottom:3px"><span style="color:var(--text-muted)">${k}:</span> ${v}</div>`).join('')}
+              </div>
+              ${docs.length > 0 ? `<div style="margin-top:8px;font-weight:600;font-size:12px;margin-bottom:4px">Documentos:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${docs.map(([k,url])=>`<a href="${url}" target="_blank" class="topbar-btn" style="font-size:11px;padding:4px 10px">${nomesDoc[k]||k} ↗</a>`).join('')}</div>` : '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">Nenhum documento enviado.</p>'}
+            </div>
+          </div>`;
+      }).join('')}`;
+
+    // Baixar todos os documentos (abre cada um numa aba)
+    lista.querySelectorAll('.btn-baixar-docs').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ficha = fichas.find(f => f.id === btn.dataset.id);
+        const docs = Object.entries(ficha?.documentos || {});
+        if (docs.length === 0) { alert('Nenhum documento disponível para download.'); return; }
+        docs.forEach(([, url]) => window.open(url, '_blank'));
+      });
+    });
+
+    // Ver / ocultar dados
+    lista.querySelectorAll('.btn-ver-dados').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const el = document.getElementById(`dados-${btn.dataset.id}`);
+        const aberto = el.style.display !== 'none';
+        el.style.display = aberto ? 'none' : 'block';
+        btn.textContent = aberto ? 'Ver dados ▾' : 'Ocultar ▴';
+      });
+    });
+
+    // Marcar como analisado
+    lista.querySelectorAll('.btn-finalizar').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Marcar esta ficha como analisada? Ela sairá da lista.')) return;
+        btn.disabled = true; btn.textContent = 'Salvando...';
+        try {
+          await finalizarFichaLocador({ fichaId: btn.dataset.id });
+          const card = btn.closest('.ficha-card');
+          card.style.opacity = '0';
+          card.style.transition = 'opacity .3s';
+          setTimeout(() => {
+            card.remove();
+            if (!lista.querySelector('.ficha-card')) {
+              lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha aguardando análise.</p>';
+            }
+          }, 300);
+        } catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '✓ Marcar analisado'; }
+      });
+    });
+
+  } catch(e) {
+    lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro: ${e.message}</p>`;
+  }
+}
+
 // ─── IA ──────────────────────────────────────────────────────────────────────
 function carregarIA() {
   const MODELOS = [
+    {
+      key: 'martina', nome: 'Martina', empresa: 'RE/MAX Smart',
+      desc: 'Assistente virtual da RE/MAX Smart — precisa estar logado no ChatGPT para usar',
+      url: 'https://chatgpt.com/g/g-68b2625b33f481918039b79f11b5c713-martina-assistente-virtual',
+      avisoLogin: true,
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><rect x="0" y="36" width="48" height="12" rx="0" fill="#DC1C2E"/><rect x="0" y="36" width="48" height="4" fill="#DC1C2E"/><text x="24" y="30" text-anchor="middle" font-size="22" font-weight="900" fill="white" font-family="Arial,sans-serif">M</text><text x="24" y="44" text-anchor="middle" font-size="8" font-weight="700" fill="white" font-family="Arial,sans-serif" letter-spacing="1">RE/MAX</text></svg>`
+    },
     {
       key: 'gemini', nome: 'Gemini', empresa: 'Google',
       desc: 'Analisa texto, imagens e código com IA multimodal do Google',
@@ -1646,9 +1782,245 @@ function carregarIA() {
 
   secaoIA.querySelectorAll('.ia-card').forEach(card => {
     card.addEventListener('click', () => {
+      const modelo = MODELOS.find(m => m.url === card.dataset.url);
+      if (modelo?.avisoLogin) {
+        const chave = `ia_login_${modelo.key}`;
+        if (!localStorage.getItem(chave)) {
+          alert(`💡 Para usar a ${modelo.nome} você precisa estar logado no ChatGPT.\n\nSe ainda não fez login, entre com sua conta na janela que vai abrir.`);
+          localStorage.setItem(chave, '1');
+        }
+      }
       window.hubApi.abrirApp({ siteKey: card.dataset.url, url: card.dataset.url, credenciais: null });
     });
   });
+}
+
+// ─── Documentos ──────────────────────────────────────────────────────────────
+const BASE_HOSTING = 'https://remax-smart-hub.web.app';
+
+// Catálogo de fichas — para adicionar nova: inclua um objeto aqui e hospede o HTML
+const FICHAS_CONFIG = [
+  {
+    key: 'locador',
+    nome: 'Ficha Cadastral do Locador',
+    desc: 'Cadastro para locação de imóveis',
+    arquivo: 'ficha-locador.html',
+    geraLink: true,
+    temAnalise: true  // botão "Para análise" (requer permissão analise_locador)
+  },
+  // { key: 'locatario', nome: 'Ficha do Locatário', arquivo: 'ficha-locatario.html', geraLink: true, temAnalise: false },
+];
+
+async function carregarDocumentos() {
+  const nomeCorretor = encodeURIComponent(document.getElementById('usuarioInfo')?.textContent?.trim() || '');
+  const temAnalise   = isAdmin || appsPermitidos.includes('analise_locador');
+
+  // Gera um accordion para cada ficha no catálogo
+  secaoDocs.innerHTML = FICHAS_CONFIG.map(f => {
+    const link = `${BASE_HOSTING}/${f.arquivo}?corretor=${currentUid}&nome=${nomeCorretor}`;
+    const mostraAnalise = f.temAnalise && temAnalise;
+    return `
+      <div class="docs-accordion" id="acc-${f.key}">
+        <div class="docs-acc-head" data-key="${f.key}">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <span class="acc-chevron">▼</span>
+            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
+            <div>
+              <div style="font-weight:700;font-size:13px">${f.nome}</div>
+              <div style="font-size:11px;color:var(--text-muted)">${f.desc}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            ${mostraAnalise ? `<button class="topbar-btn btn-analise-${f.key}" style="font-size:11px">📥 Para análise</button>` : ''}
+            ${f.geraLink   ? `<button class="topbar-btn primario btn-link-${f.key}" data-link="${link}" style="font-size:11px">📋 Copiar link</button>` : ''}
+          </div>
+        </div>
+        <div class="docs-acc-body" id="body-${f.key}">
+          <div class="docs-acc-aviso">
+            Clique em <strong>Copiar link</strong> e envie ao cliente pelo WhatsApp. As fichas recebidas aparecem abaixo.
+            <span id="copiado-${f.key}" style="display:none;color:var(--accent);font-weight:600;margin-left:8px">✓ Copiado!</span>
+          </div>
+          <div id="lista-${f.key}" style="padding:12px 16px">
+            <p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando...</p>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Inicializa cada ficha
+  FICHAS_CONFIG.forEach(f => {
+    const head  = secaoDocs.querySelector(`.docs-acc-head[data-key="${f.key}"]`);
+    const body  = document.getElementById(`body-${f.key}`);
+    const chevron = head.querySelector('.acc-chevron');
+
+    // Toggle accordion
+    head.addEventListener('click', e => {
+      // Evita fechar ao clicar nos botões
+      if (e.target.closest('button')) return;
+      const aberto = body.style.display !== 'none';
+      body.style.display = aberto ? 'none' : 'block';
+      chevron.textContent = aberto ? '►' : '▼';
+    });
+
+    // Botão copiar link
+    const btnLink = secaoDocs.querySelector(`.btn-link-${f.key}`);
+    if (btnLink) {
+      btnLink.addEventListener('click', () => {
+        const link = btnLink.dataset.link;
+        navigator.clipboard.writeText(link)
+          .catch(() => prompt('Copie o link:', link));
+        const aviso = document.getElementById(`copiado-${f.key}`);
+        aviso.style.display = 'inline';
+        setTimeout(() => { aviso.style.display = 'none'; }, 3000);
+      });
+    }
+
+    // Botão análise
+    const btnAnalise = secaoDocs.querySelector(`.btn-analise-${f.key}`);
+    if (btnAnalise) {
+      let analiseAtiva = false;
+      btnAnalise.addEventListener('click', () => {
+        analiseAtiva = !analiseAtiva;
+        btnAnalise.classList.toggle('primario', analiseAtiva);
+        if (btnLink) btnLink.classList.toggle('primario', !analiseAtiva);
+        if (analiseAtiva) carregarFichasAnalise(f.key);
+        else carregarListaFichas(f.key);
+      });
+    }
+
+    // Carrega fichas da lista ao iniciar
+    carregarListaFichas(f.key);
+  });
+}
+
+async function carregarListaFichas(fichaKey = 'locador') {
+  const lista = document.getElementById(`lista-${fichaKey}`);
+  if (!lista) return;
+  lista.innerHTML = '<p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando fichas...</p>';
+
+  try {
+    const res = await listarFichasLocador({});
+    const fichas = res.data || [];
+
+    if (fichas.length === 0) {
+      lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha recebida ainda.</p>';
+      return;
+    }
+
+    const statusLabel = {
+      aguardando_corretor:      'Aguardando revisão',
+      aguardando_edicao_cliente:'Aguardando cliente',
+      enviado_admin:            'Enviado ao admin'
+    };
+    const statusCor = {
+      aguardando_corretor:      '#b45309',
+      aguardando_edicao_cliente:'#6366f1',
+      enviado_admin:            '#16a34a'
+    };
+    const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
+    const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
+
+    lista.innerHTML = fichas.map(f => {
+      const data = f.criadoEm ? new Date(f.criadoEm).toLocaleDateString('pt-BR') : '—';
+      const pends = (f.pendentes || []).length;
+      const label = statusLabel[f.status] || f.status;
+      const cor   = statusCor[f.status]   || '#6b7280';
+      const obs   = f.observacaoCorretor  || '';
+      const podeMexer = ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
+
+      return `
+        <div class="ficha-card" data-id="${f.id}">
+          <div class="ficha-card-head">
+            <div>
+              <strong style="font-size:13px">${f.dados?.nome || 'Sem nome'}</strong>
+              <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${data}</span>
+            </div>
+            <span style="font-size:11px;font-weight:600;color:${cor};background:${cor}18;padding:3px 8px;border-radius:6px">${label}</span>
+          </div>
+
+          ${obs ? `<div style="font-size:11px;color:#6366f1;margin-top:6px;background:#eef2ff;padding:5px 8px;border-radius:6px">📝 Obs. ao cliente: ${obs}</div>` : ''}
+          ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p => nomePend[p]||p).join(', ')}</div>` : ''}
+
+          <!-- Ações -->
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            ${podeMexer ? `<button class="topbar-btn primario btn-enviar-admin" data-id="${f.id}" style="font-size:11px;padding:4px 10px">✓ Enviar ao admin</button>` : ''}
+            ${podeMexer ? `<button class="topbar-btn btn-reenviar" data-id="${f.id}" style="font-size:11px;padding:4px 10px">↩ Reenviar ao cliente</button>` : ''}
+            <button class="topbar-btn perigo btn-excluir" data-id="${f.id}" style="font-size:11px;padding:4px 10px">🗑 Excluir</button>
+            <button class="ficha-ver-btn topbar-btn" data-id="${f.id}" style="font-size:11px;padding:4px 10px">Ver detalhes ▾</button>
+          </div>
+
+          <div class="ficha-detalhes" id="det-${f.id}" style="display:none;margin-top:10px;font-size:12px;border-top:1px solid var(--border);padding-top:10px">
+            ${Object.entries(f.dados || {}).filter(([,v])=>v).map(([k,v]) => `<div style="margin-bottom:3px"><strong>${k}:</strong> ${v}</div>`).join('')}
+            ${Object.keys(f.documentos||{}).length > 0
+              ? '<div style="margin-top:8px;font-weight:600;margin-bottom:4px">Documentos:</div>'
+                + Object.entries(f.documentos).map(([k,url]) => `<a href="${url}" target="_blank" style="display:inline-block;font-size:11px;color:var(--accent);margin-right:8px;margin-bottom:4px">${nomesDoc[k]||k} ↗</a>`).join('')
+              : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    // Enviar ao admin
+    lista.querySelectorAll('.btn-enviar-admin').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        try { await enviarFichaParaAdmin({ fichaId: btn.dataset.id }); carregarDocumentos(); }
+        catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '✓ Enviar ao admin'; }
+      });
+    });
+
+    // Reenviar ao cliente
+    lista.querySelectorAll('.btn-reenviar').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const obs = prompt('Observação para o cliente (opcional) — o que falta ou precisa corrigir:') ?? '';
+        if (obs === null) return;
+        btn.disabled = true; btn.textContent = 'Gerando link...';
+        try {
+          const res = await reenviarFichaParaCliente({ fichaId: btn.dataset.id, observacao: obs });
+          const link = res.data.link;
+          await navigator.clipboard.writeText(link).catch(() => prompt('Copie o link:', link));
+          alert('Link copiado! Envie ao cliente pelo WhatsApp.');
+          carregarDocumentos();
+        } catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '↩ Reenviar ao cliente'; }
+      });
+    });
+
+    // Excluir
+    lista.querySelectorAll('.btn-excluir').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Excluir esta ficha permanentemente?')) return;
+        btn.disabled = true; btn.textContent = 'Excluindo...';
+        try {
+          await excluirFichaLocador({ fichaId: btn.dataset.id });
+        } catch(e) {
+          // Se já foi excluída, trata como sucesso e remove o card mesmo assim
+          if (!e.message?.includes('não encontrada') && !e.message?.includes('not-found')) {
+            alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '🗑 Excluir'; return;
+          }
+        }
+        const card = btn.closest('.ficha-card');
+        card.style.opacity = '0'; card.style.transition = 'opacity .3s';
+        setTimeout(() => {
+          card.remove();
+          const lista2 = document.getElementById('listaFichas');
+          if (lista2 && !lista2.querySelector('.ficha-card'))
+            lista2.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha recebida ainda.</p>';
+        }, 300);
+      });
+    });
+
+    // Ver detalhes
+    lista.querySelectorAll('.ficha-ver-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const det = document.getElementById(`det-${btn.dataset.id}`);
+        const aberto = det.style.display !== 'none';
+        det.style.display = aberto ? 'none' : 'block';
+        btn.textContent = aberto ? 'Ver detalhes ▾' : 'Ocultar ▴';
+      });
+    });
+  } catch(e) {
+    document.getElementById('listaFichas').innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro ao carregar fichas: ${e.message}</p>`;
+  }
 }
 
 // ─── Suporte (botão flutuante + modal) ────────────────────────────────────

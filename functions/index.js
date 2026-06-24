@@ -1123,3 +1123,152 @@ exports.criarContaComCodigo = onCall(async (req) => {
 
   return { ok: true, uid: user.uid, fazAdmin: !!dadosCodigo.fazAdmin };
 });
+
+// ─── Fichas do Locador ───────────────────────────────────────────────────────
+
+// Lista as fichas recebidas pelo corretor autenticado.
+exports.listarFichasLocador = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const uid = req.auth.uid;
+  const isAdmin = req.auth.token.admin;
+
+  let query = db.collection('fichas_locador');
+  if (!isAdmin) query = query.where('corretorUid', '==', uid);
+  query = query.orderBy('criadoEm', 'desc').limit(50);
+
+  const snap = await query.get();
+  // id: d.id (Firestore doc ID) tem que vir DEPOIS do spread pra não ser sobrescrito pelo campo interno 'id'
+  return snap.docs.map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() }));
+});
+
+// Corretor envia a ficha revisada para o administrativo.
+exports.enviarFichaParaAdmin = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+
+  const ref = db.collection('fichas_locador').doc(fichaId);
+  const doc = await ref.get();
+  if (!doc.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+
+  const uid = req.auth.uid;
+  const isAdmin = req.auth.token.admin;
+  if (!isAdmin && doc.data().corretorUid !== uid) throw new HttpsError('permission-denied', 'Sem permissão.');
+
+  await ref.update({ status: 'enviado_admin', enviadoAdminEm: admin.firestore.FieldValue.serverTimestamp() });
+
+  // Notifica admins no Hub (reutiliza a coleção de notificações)
+  const adminsSnap = await db.collection('user_profiles').where('isAdmin', '==', true).get();
+  const batch = db.batch();
+  adminsSnap.docs.forEach(a => {
+    const notifRef = db.collection('notifications').doc();
+    batch.set(notifRef, {
+      para: a.id,
+      titulo: 'Ficha do Locador',
+      mensagem: `Nova ficha enviada por ${doc.data().corretorNome || 'um corretor'} para análise.`,
+      lido: false,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+  });
+  await batch.commit();
+
+  return { ok: true };
+});
+
+// Lista fichas enviadas para análise administrativa (requer permissão analise_locador ou admin).
+exports.listarFichasParaAnalise = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+
+  // Verifica permissão se não for admin
+  if (!isAdm) {
+    const permSnap = await db.collection('user_access').doc(uid).get();
+    const apps = permSnap.exists ? (permSnap.data().apps || []) : [];
+    if (!apps.includes('analise_locador')) throw new HttpsError('permission-denied', 'Sem permissão.');
+  }
+
+  const snap = await db.collection('fichas_locador')
+    .where('status', '==', 'enviado_admin')
+    .limit(100)
+    .get();
+
+  return snap.docs.map(d => ({
+    id: d.id,
+    ...d.data(),
+    criadoEm:        d.data().criadoEm?.toDate?.()?.toISOString(),
+    enviadoAdminEm:  d.data().enviadoAdminEm?.toDate?.()?.toISOString()
+  }));
+});
+
+// Marca ficha como finalizada (analisada pelo admin).
+exports.finalizarFichaLocador = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+  if (!isAdm) {
+    const permSnap = await db.collection('user_access').doc(uid).get();
+    const apps = permSnap.exists ? (permSnap.data().apps || []) : [];
+    if (!apps.includes('analise_locador')) throw new HttpsError('permission-denied', 'Sem permissão.');
+  }
+
+  await db.collection('fichas_locador').doc(fichaId).update({
+    status: 'finalizado',
+    finalizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    finalizadoPor: uid
+  });
+  return { ok: true };
+});
+
+// Exclui uma ficha (corretor dono ou admin).
+exports.excluirFichaLocador = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+
+  // Tenta pelo doc ID direto; se não achar, busca pelo campo 'id' interno (fichas antigas)
+  let fichaRef = db.collection('fichas_locador').doc(fichaId);
+  let fichaSnap = await fichaRef.get();
+  if (!fichaSnap.exists) {
+    const q = await db.collection('fichas_locador').where('id', '==', fichaId).limit(1).get();
+    if (q.empty) throw new HttpsError('not-found', 'Ficha não encontrada.');
+    fichaRef  = q.docs[0].ref;
+    fichaSnap = q.docs[0];
+  }
+
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+  if (!isAdm && fichaSnap.data().corretorUid !== uid) throw new HttpsError('permission-denied', 'Sem permissão.');
+
+  await fichaRef.delete();
+  return { ok: true };
+});
+
+// Devolve ficha ao cliente para edição — retorna o link de edição.
+exports.reenviarFichaParaCliente = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const { fichaId, observacao } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+
+  const fichaRef = db.collection('fichas_locador').doc(fichaId);
+  const fichaSnap = await fichaRef.get();
+  if (!fichaSnap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+  if (!isAdm && fichaSnap.data().corretorUid !== uid) throw new HttpsError('permission-denied', 'Sem permissão.');
+
+  await fichaRef.update({
+    status: 'aguardando_edicao_cliente',
+    observacaoCorretor: observacao || '',
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  const dados = fichaSnap.data();
+  const link = `https://remax-smart-hub.web.app/ficha-locador.html?modo=edicao&idFicha=${fichaId}&corretor=${dados.corretorUid}&nome=${encodeURIComponent(dados.corretorNome || '')}`;
+  return { ok: true, link };
+});

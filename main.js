@@ -315,7 +315,8 @@ ipcMain.on('abrir-app', (_evt, payload) => {
       seletorUser: 'input[name="user[email]"], #user_email, input[type="email"], input[name*="email" i], input[autocomplete="username"]',
       seletorPass: 'input[name="user[password]"], #user_password, input[type="password"], input[name*="password" i]',
       seletorBtn:  'button[type="submit"], input[type="submit"]',
-      naoEnviar: true
+      naoEnviar: true,
+      partition: 'persist:clicksign' // sessão salva no disco → histórico de visitas → menos suspeito
     },
     cadastro_imobiliario: {
       seletorUser: 'input[type="text"], input[name="username"], input[name="login"]',
@@ -344,7 +345,8 @@ ipcMain.on('abrir-app', (_evt, payload) => {
 
   // Bug 11: garante que login/senha nunca sejam undefined (evita string literal "undefined" no site)
   abrirPwaComAutologin(url, cfg.seletorUser, cfg.seletorPass, cfg.seletorBtn,
-                      credenciais.login || '', credenciais.password || '', { naoEnviar: !!cfg.naoEnviar });
+                      credenciais.login || '', credenciais.password || '',
+                      { naoEnviar: !!cfg.naoEnviar, partition: cfg.partition || null });
 });
 
 // ─── Disfarça a janela como Chrome real (anti bot-detection) ─────────────────
@@ -390,7 +392,9 @@ function abrirJanelaSimples(url) {
 
 // ─── Janela com autologin ────────────────────────────────────────────────────
 function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario, senha, opcoes = {}) {
-  const partition = `inmem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  // ClickSign usa sessão persistente (cookies salvos = histórico de visitas = menos suspeito).
+  // Outros sites usam in-memory pra evitar vazamento de sessão entre usuários.
+  const partition = opcoes.partition || `inmem-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const pwaWindow = new BrowserWindow({
     width: 1200, height: 800, autoHideMenuBar: true,
@@ -398,6 +402,8 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
       webSecurity: false,
       allowRunningInsecureContent: true,
       partition,
+      contextIsolation: false, // permite preload modificar window/navigator da página
+      preload: path.join(__dirname, 'autologin-preload.js'),
       devTools: DEVTOOLS_HABILITADO
     }
   });

@@ -2,8 +2,16 @@
   "firestore": {
     "rules": "firestore.rules"
   },
-  "storage": {
-    "rules": "storage.rules"
+  "storage": [
+    {
+      "rules": "storage.rules",
+      "bucket": "remax-smart-hub.firebasestorage.app"
+    }
+  ],
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
   },
   "functions": [
     {

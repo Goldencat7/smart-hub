@@ -701,10 +701,33 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .config-msg { font-size: 12px; font-weight: 600; }
 
 /* ── Documentos ─────────────────────────────────────────────────── */
-.docs-wrap { min-height: 70vh; }
+.docs-wrap { min-height: 70vh; display: flex; flex-direction: column; gap: 12px; }
+
+/* Accordion de fichas */
+.docs-accordion {
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  background: var(--surface); overflow: hidden;
+}
+.docs-acc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; cursor: pointer; user-select: none;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  transition: background .15s;
+}
+.docs-acc-head:hover { background: color-mix(in srgb, var(--bg) 85%, var(--accent) 15%); }
+.acc-chevron {
+  font-size: 11px; color: var(--text-muted); flex-shrink: 0;
+  transition: transform .2s; line-height: 1;
+}
+.docs-acc-body { display: block; }
+.docs-acc-aviso {
+  padding: 10px 16px; font-size: 12px; color: var(--text-secondary);
+  border-bottom: 1px solid var(--border); background: var(--surface);
+}
+
+/* Compat — mantém o painel antigo caso algum lugar ainda use */
 .docs-painel {
   display: flex; flex-direction: column;
-  height: 72vh;
   border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden;
   background: var(--surface);
 }
@@ -713,11 +736,12 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   padding: 10px 14px; border-bottom: 1px solid var(--border);
   background: var(--bg); font-weight: 600; font-size: 12px; color: var(--text-primary);
 }
-/* Espaço entre o ícone e o texto no rótulo do cabeçalho (câmera/pasta + título) */
 .docs-painel-head > span:first-child { display: inline-flex; align-items: center; gap: 6px; }
 .drive-frame { flex: 1; width: 100%; border: none; background: #fff; }
 
 .docs-placeholder { padding: 24px 0; }
+.ficha-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px 14px; margin-bottom: 10px; }
+.ficha-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .docs-card {
   max-width: 480px; padding: 24px;
   background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-card);
