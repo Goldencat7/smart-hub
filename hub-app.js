@@ -2188,7 +2188,11 @@ btnNotif.addEventListener('click', (e) => {
   e.stopPropagation();
   const abrindo = notifPanel.hidden;
   notifPanel.hidden = !abrindo;
-  if (abrindo) renderNotifPanel();
+  if (abrindo) {
+    renderNotifPanel();
+    // Esconde o badge ao abrir — volta a aparecer no próximo ciclo de 3 min se ainda houver pendentes
+    notifBadge.hidden = true;
+  }
 });
 
 document.addEventListener('click', (e) => {
