@@ -164,6 +164,7 @@ const ICN = {
   documentos:  svgIcone('<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>'),
   fotografia:  svgIcone('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'),
   reuniao:     svgIcone('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
+  salaReuniao: svgIcone('<polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>'),
   whatsapp:    svgIcone('<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'),
   clicksign:   svgIcone('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
@@ -217,8 +218,9 @@ const CATEGORIAS = [
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
-  { id: 'reuniao',     nome: 'Reunião',     icone: ICN.reuniao, reuniao: true },
-  { id: 'ia',          nome: 'IA',           icone: ICN.ia, ia: true },
+  { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
+  { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
+  { id: 'ia',           nome: 'IA',              icone: ICN.ia, ia: true },
   { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp' },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
@@ -254,6 +256,7 @@ const secaoMarketing      = document.getElementById('secaoMarketing');
 const secaoDocs           = document.getElementById('secaoDocumentos');
 const secaoFotografia     = document.getElementById('secaoFotografia');
 const secaoReuniao        = document.getElementById('secaoReuniao');
+const secaoSalaReuniao    = document.getElementById('secaoSalaReuniao');
 const secaoIA             = document.getElementById('secaoIA');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
@@ -350,6 +353,7 @@ function renderCentro() {
   secaoMarketing.hidden = true;
   secaoFotografia.hidden = true;
   secaoReuniao.hidden = true;
+  secaoSalaReuniao.hidden = true;
   secaoIA.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
@@ -438,6 +442,17 @@ function renderCentro() {
   }
 
   // Aba Reunião
+  if (cat.salaReuniao) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoSalaReuniao.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarSalaReuniao();
+    return;
+  }
+
   if (cat.reuniao) {
     appsGrid.hidden = true;
     estadoVazio.hidden = true;
@@ -517,7 +532,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'ia']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -1682,6 +1697,19 @@ function renderFotoGerenciar(pessoas) {
       }
     });
   });
+}
+
+// ─── Sala de Reunião ─────────────────────────────────────────────────────────
+function carregarSalaReuniao() {
+  secaoSalaReuniao.innerHTML = `
+    <div class="foto-agendar">
+      <h3 class="foto-agendar-titulo">
+        <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+        Reservar Sala de Reunião
+        <span class="muted" style="font-weight:400;font-size:12px">— escolha um horário disponível abaixo</span>
+      </h3>
+      <iframe class="foto-agendar-frame" src="https://calendar.app.google/yhXBzwJAWq7NkJN2A" title="Sala de Reunião"></iframe>
+    </div>`;
 }
 
 // ─── Reunião ─────────────────────────────────────────────────────────────────

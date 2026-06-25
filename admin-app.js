@@ -461,12 +461,16 @@ document.getElementById('bannerFileInput').addEventListener('change', async () =
           const img = new Image();
           img.onerror = () => reject(new Error('Não consegui ler a imagem.'));
           img.onload = async () => {
-            const MAX_W = 1800, MAX_H = 300;
-            const escala = Math.min(MAX_W / img.width, MAX_H / img.height, 1);
-            const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
+            // Força exatamente 1800×300 com corte central (cover), garantindo resolução fixa
+            const TARGET_W = 1800, TARGET_H = 300;
+            const scale = Math.max(TARGET_W / img.width, TARGET_H / img.height);
+            const scaledW = Math.round(img.width * scale);
+            const scaledH = Math.round(img.height * scale);
+            const offsetX = Math.round((scaledW - TARGET_W) / 2);
+            const offsetY = Math.round((scaledH - TARGET_H) / 2);
             const canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+            canvas.width = TARGET_W; canvas.height = TARGET_H;
+            canvas.getContext('2d').drawImage(img, -offsetX, -offsetY, scaledW, scaledH);
             const dataURL = canvas.toDataURL('image/jpeg', 0.88);
             if (dataURL.length > 600000) { reject(new Error('Imagem muito grande após compressão.')); return; }
             await adicionarBanner({ imagem: dataURL, tipo: 'imagem' });
