@@ -589,6 +589,21 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 .modal::backdrop { background: rgba(0,0,0,0.6); }
 
+/* Modal grande para prévia/edição de ficha */
+.modal-ficha {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text-primary);
+  padding: 0; width: min(860px, 96vw); height: 88vh;
+  display: flex; flex-direction: column;
+}
+.modal-ficha::backdrop { background: rgba(0,0,0,0.75); }
+.modal-ficha-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.modal-ficha-head span { font-size: 13px; font-weight: 600; }
+.modal-ficha iframe { flex: 1; border: none; border-radius: 0 0 8px 8px; width: 100%; }
+
 .modal-form {
   position: relative;
   padding: 18px 18px 14px;

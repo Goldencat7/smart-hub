@@ -59,3 +59,10 @@ firebase deploy --only functions --project remax-smart-hub
 - Trabalhar entre máquinas: `git pull` antes de mexer, `git push` ao terminar.
 
 ## Pendências / ideias futuras
+
+- **Notificação WhatsApp via Meta Cloud API**: quando corretor recebe uma ficha, mandar mensagem automática no WhatsApp pessoal dele.
+  - Precisa de: chip novo (qualquer operadora) para ser o número remetente da RE/MAX Smart.
+  - Fluxo: Firestore `onCreate` em `fichas` → Cloud Function → Meta Cloud API → WhatsApp do corretor.
+  - Corretor salva número pessoal nas Configurações do Hub.
+  - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).
+  - Setup: Meta for Developers → Meta Business Account → cadastrar número → aprovar template de mensagem (~24h) → token na Cloud Function.

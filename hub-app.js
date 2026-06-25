@@ -1865,12 +1865,10 @@ const FICHAS_CONFIG = [
 
 async function carregarDocumentos() {
   const nomeCorretor = encodeURIComponent(document.getElementById('usuarioInfo')?.textContent?.trim() || '');
-  const temAnalise   = isAdmin || appsPermitidos.includes('analise_locador');
 
   // Gera um accordion para cada ficha no catálogo
   secaoDocs.innerHTML = FICHAS_CONFIG.map(f => {
     const link = `${BASE_HOSTING}/${f.arquivo}?corretor=${currentUid}&nome=${nomeCorretor}`;
-    const mostraAnalise = f.temAnalise && temAnalise;
     return `
       <div class="docs-accordion" id="acc-${f.key}">
         <div class="docs-acc-head" data-key="${f.key}">
@@ -1883,8 +1881,7 @@ async function carregarDocumentos() {
             </div>
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
-            ${mostraAnalise ? `<button class="topbar-btn btn-analise-${f.key}" style="font-size:11px">📥 Para análise</button>` : ''}
-            ${f.geraLink   ? `<button class="topbar-btn primario btn-link-${f.key}" data-link="${link}" style="font-size:11px">📋 Copiar link</button>` : ''}
+            ${f.geraLink ? `<button class="topbar-btn primario btn-link-${f.key}" data-link="${link}" style="font-size:11px">📋 Copiar link</button>` : ''}
           </div>
         </div>
         <div class="docs-acc-body" id="body-${f.key}" style="display:none">
@@ -1903,11 +1900,9 @@ async function carregarDocumentos() {
     const head    = secaoDocs.querySelector(`.docs-acc-head[data-key="${f.key}"]`);
     const body    = document.getElementById(`body-${f.key}`);
     const chevron = head.querySelector('.acc-chevron');
-    const btnLink    = secaoDocs.querySelector(`.btn-link-${f.key}`);
-    const btnAnalise = secaoDocs.querySelector(`.btn-analise-${f.key}`);
+    const btnLink = secaoDocs.querySelector(`.btn-link-${f.key}`);
 
-    let aberto = false;       // estado do accordion
-    let analiseAtiva = false; // estamos vendo "para análise"?
+    let aberto = false;
 
     function abrir() {
       if (aberto) return;
@@ -1920,26 +1915,13 @@ async function carregarDocumentos() {
       body.style.display = 'none';
       chevron.textContent = '►';
     }
-    function mostrarLista() {
-      analiseAtiva = false;
-      btnAnalise?.classList.remove('primario');
-      btnLink?.classList.add('primario');
-      carregarListaFichas(f.key);
-    }
-    function mostrarAnalise() {
-      analiseAtiva = true;
-      btnAnalise?.classList.add('primario');
-      btnLink?.classList.remove('primario');
-      carregarFichasAnalise(f.key);
-    }
 
     // Toggle pelo cabeçalho (ignora cliques nos botões)
     head.addEventListener('click', e => {
       if (e.target.closest('button')) return;
       if (aberto) { fechar(); return; }
       abrir();
-      // Carrega a visão atual ao abrir
-      if (analiseAtiva) mostrarAnalise(); else mostrarLista();
+      carregarListaFichas(f.key);
     });
 
     // Copiar link — feedback no próprio botão (visível mesmo com accordion fechado)
@@ -1950,15 +1932,6 @@ async function carregarDocumentos() {
         const txtOrig = btnLink.textContent;
         btnLink.textContent = '✓ Copiado!';
         setTimeout(() => { btnLink.textContent = txtOrig; }, 2000);
-      });
-    }
-
-    // Para análise — sempre abre o accordion e mostra a lista de análise
-    if (btnAnalise) {
-      btnAnalise.addEventListener('click', () => {
-        if (analiseAtiva && aberto) { mostrarLista(); return; } // 2º clique volta pra lista
-        abrir();
-        mostrarAnalise();
       });
     }
 
@@ -2032,15 +2005,8 @@ async function carregarListaFichas(fichaKey = 'locador') {
             ${podeMexer ? `<button class="topbar-btn primario btn-enviar-admin" data-id="${f.id}" style="font-size:11px;padding:4px 10px">✓ Enviar ao admin</button>` : ''}
             ${podeMexer ? `<button class="topbar-btn btn-reenviar" data-id="${f.id}" style="font-size:11px;padding:4px 10px">↩ Reenviar ao cliente</button>` : ''}
             <button class="topbar-btn perigo btn-excluir" data-id="${f.id}" style="font-size:11px;padding:4px 10px">🗑 Excluir</button>
-            <button class="ficha-ver-btn topbar-btn" data-id="${f.id}" style="font-size:11px;padding:4px 10px">Ver detalhes ▾</button>
-          </div>
-
-          <div class="ficha-detalhes" id="det-${f.id}" style="display:none;margin-top:10px;font-size:12px;border-top:1px solid var(--border);padding-top:10px">
-            ${Object.entries(f.dados || {}).filter(([,v])=>v).map(([k,v]) => `<div style="margin-bottom:3px"><strong>${k}:</strong> ${v}</div>`).join('')}
-            ${Object.keys(f.documentos||{}).length > 0
-              ? '<div style="margin-top:8px;font-weight:600;margin-bottom:4px">Documentos:</div>'
-                + Object.entries(f.documentos).map(([k,url]) => `<a href="${url}" target="_blank" style="display:inline-block;font-size:11px;color:var(--accent);margin-right:8px;margin-bottom:4px">${nomesDoc[k]||k} ↗</a>`).join('')
-              : ''}
+            <button class="ficha-ver-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" style="font-size:11px;padding:4px 10px">👁 Visualizar</button>
+            <button class="ficha-editar-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" style="font-size:11px;padding:4px 10px">✏ Editar</button>
           </div>
         </div>`;
     }).join('');
@@ -2096,18 +2062,29 @@ async function carregarListaFichas(fichaKey = 'locador') {
       });
     });
 
-    // Ver detalhes
+    // Visualizar ficha (modo leitura)
     lista.querySelectorAll('.ficha-ver-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const det = document.getElementById(`det-${btn.dataset.id}`);
-        const aberto = det.style.display !== 'none';
-        det.style.display = aberto ? 'none' : 'block';
-        btn.textContent = aberto ? 'Ver detalhes ▾' : 'Ocultar ▴';
+        abrirModalFicha(btn.dataset.arquivo, btn.dataset.id, 'corretor', '👁 Visualizar ficha');
       });
     });
+
+    // Editar ficha (modo edição — para todos os corretores)
+    lista.querySelectorAll('.ficha-editar-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        abrirModalFicha(btn.dataset.arquivo, btn.dataset.id, 'edicao', '✏ Editar ficha');
+      });
+    });
+
   } catch(e) {
     document.getElementById('listaFichas').innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro ao carregar fichas: ${e.message}</p>`;
   }
+}
+
+// ─── Abrir ficha em janela dedicada ──────────────────────────────────────────
+function abrirModalFicha(arquivo, fichaId, modo, titulo) {
+  const url = `${BASE_HOSTING}/${arquivo}?modo=${modo}&idFicha=${fichaId}`;
+  hubApi.abrirFicha(url, titulo);
 }
 
 // ─── Suporte (botão flutuante + modal) ────────────────────────────────────

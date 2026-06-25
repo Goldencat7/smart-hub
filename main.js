@@ -234,6 +234,16 @@ ipcMain.on('abrir-template', async (_e, fileName) => {
   }
 });
 
+// ─── Abrir ficha em janela dedicada ──────────────────────────────────────────
+ipcMain.on('abrir-ficha', (_e, { url, titulo }) => {
+  const win = new BrowserWindow({
+    width: 900, height: 860, autoHideMenuBar: true,
+    title: titulo || 'Ficha',
+    webPreferences: { devTools: DEVTOOLS_HABILITADO }
+  });
+  win.loadURL(url).catch(err => console.error('Erro ao abrir ficha:', err));
+});
+
 // ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────
 // Devolve { ok, code, codeVerifier, redirectUri } pro renderer, que então chama
 // a Cloud Function pra finalizar. Usa PKCE (S256) por segurança.
