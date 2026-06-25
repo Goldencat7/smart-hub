@@ -3,7 +3,7 @@
 // - Verifica auth, busca credenciais via Cloud Function ao clicar
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signOut
+  getAuth, onAuthStateChanged, signOut, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   getFunctions, httpsCallable
@@ -70,7 +70,8 @@ const excluirFichaTipo          = httpsCallable(fns, 'excluirFichaTipo');
 const reenviarFichaTipoCliente  = httpsCallable(fns, 'reenviarFichaTipoCliente');
 const listarFichasTipoAnalise   = httpsCallable(fns, 'listarFichasTipoAnalise');
 const finalizarFichaTipo        = httpsCallable(fns, 'finalizarFichaTipo');
-const listarStatusApps = httpsCallable(fns, 'listarStatusApps');
+const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
+const contarNotifFichas   = httpsCallable(fns, 'contarNotifFichas');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -284,6 +285,9 @@ const cfgNome        = document.getElementById('cfgNome');
 const cfgEmail       = document.getElementById('cfgEmail');
 const cfgSalvar      = document.getElementById('cfgSalvar');
 const cfgMsg         = document.getElementById('cfgMsg');
+const cfgAlterarSenha    = document.getElementById('cfgAlterarSenha');
+const cfgVerificarUpdate = document.getElementById('cfgVerificarUpdate');
+const cfgVersaoInfo      = document.getElementById('cfgVersaoInfo');
 
 // Refs da Agenda
 const secaoAgenda    = document.getElementById('secaoAgenda');
@@ -700,6 +704,44 @@ cfgSalvar.addEventListener('click', async () => {
   }
 });
 
+// Alterar senha — envia link de redefinição para o email da conta
+cfgAlterarSenha.addEventListener('click', async () => {
+  const email = cfgEmail.value;
+  if (!email) { mostrarMsgCfg('Email não disponível.', false); return; }
+  if (!confirm(`Enviar um link de redefinição de senha para ${email}?`)) return;
+  cfgAlterarSenha.disabled = true;
+  try {
+    await sendPasswordResetEmail(auth, email);
+    mostrarMsgCfg('Link enviado! Verifique seu email.', true);
+  } catch (e) {
+    mostrarMsgCfg('Erro: ' + e.message, false);
+  } finally {
+    cfgAlterarSenha.disabled = false;
+  }
+});
+
+// Verificar atualização — força a checagem de update via main process
+cfgVerificarUpdate.addEventListener('click', async () => {
+  cfgVerificarUpdate.disabled = true;
+  const txtOrig = cfgVerificarUpdate.textContent;
+  cfgVerificarUpdate.textContent = 'Verificando...';
+  try {
+    const r = await window.hubApi.verificarAtualizacao();
+    if (r?.disponivel) {
+      mostrarMsgCfg(`Atualização ${r.versao} encontrada! Baixando...`, true);
+    } else if (r?.erro) {
+      mostrarMsgCfg('Não foi possível verificar agora.', false);
+    } else {
+      mostrarMsgCfg('Você já está na versão mais recente.', true);
+    }
+  } catch (e) {
+    mostrarMsgCfg('Não foi possível verificar agora.', false);
+  } finally {
+    cfgVerificarUpdate.disabled = false;
+    cfgVerificarUpdate.textContent = txtOrig;
+  }
+});
+
 // ─── Auth + topbar ───────────────────────────────────────────────────────
 btnAdmin.addEventListener('click', () => window.hubApi.abrirAdmin());
 btnSair.addEventListener('click', async () => {
@@ -707,10 +749,11 @@ btnSair.addEventListener('click', async () => {
   await signOut(auth);
 });
 
-// Exibe a versão do app ao lado da logo
+// Exibe a versão do app ao lado da logo (e na aba Configurações)
 window.hubApi.getAppVersion().then(v => {
   const el = document.getElementById('appVersion');
   if (el) el.textContent = 'v' + v;
+  if (cfgVersaoInfo) cfgVersaoInfo.textContent = 'Versão atual: v' + v;
 }).catch(() => {});
 
 onAuthStateChanged(auth, async (user) => {
@@ -779,6 +822,11 @@ onAuthStateChanged(auth, async (user) => {
   verificarNotificacoes();
   clearInterval(window.__notifTimer);
   window.__notifTimer = setInterval(verificarNotificacoes, 180000);
+
+  // Sininho de fichas: carrega ao entrar e atualiza a cada 3 min
+  atualizarNotifFichas();
+  clearInterval(window.__notifFichasTimer);
+  window.__notifFichasTimer = setInterval(atualizarNotifFichas, 180000);
 });
 
 // ─── Agenda ────────────────────────────────────────────────────────────────
@@ -2022,7 +2070,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
       btn.addEventListener('click', async () => {
         if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
         btn.disabled = true; btn.textContent = 'Enviando...';
-        try { await fnEnviar({ fichaId: btn.dataset.id }); carregarListaFichas(fichaKey); }
+        try { await fnEnviar({ fichaId: btn.dataset.id }); carregarListaFichas(fichaKey); atualizarNotifFichas(); }
         catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '✓ Enviar ao admin'; }
       });
     });
@@ -2082,6 +2130,72 @@ async function carregarListaFichas(fichaKey = 'locador') {
     document.getElementById('listaFichas').innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro ao carregar fichas: ${e.message}</p>`;
   }
 }
+
+// ─── Sininho de notificações de fichas ───────────────────────────────────────
+const btnNotif   = document.getElementById('btnNotif');
+const notifBadge = document.getElementById('notifBadge');
+const notifPanel = document.getElementById('notifPanel');
+const notifLista = document.getElementById('notifLista');
+
+let notifDados = [];  // cache dos itens para o painel
+
+async function atualizarNotifFichas() {
+  try {
+    const res = await contarNotifFichas();
+    notifDados = res.data?.items || [];
+    const total = res.data?.total || 0;
+    if (total > 0) {
+      notifBadge.textContent = total > 99 ? '99+' : total;
+      notifBadge.hidden = false;
+    } else {
+      notifBadge.hidden = true;
+    }
+  } catch(e) { console.warn('Notif fichas:', e); }
+}
+
+function renderNotifPanel() {
+  if (!notifDados.length) {
+    notifLista.innerHTML = '<p class="notif-vazio">Nenhuma ficha pendente</p>';
+    return;
+  }
+  notifLista.innerHTML = notifDados.map(n => {
+    const data = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '—';
+    const sub  = n.corretor ? `${n.corretor} · ${data}` : data;
+    return `<div class="notif-item" data-tipo="${n.tipo}">
+      <span class="notif-item-titulo">${escapeHtml(n.nome)}</span>
+      <span class="notif-item-sub">${escapeHtml(n.tipoLabel)} · ${escapeHtml(sub)}</span>
+    </div>`;
+  }).join('');
+
+  notifLista.querySelectorAll('.notif-item').forEach(item => {
+    item.addEventListener('click', () => {
+      notifPanel.hidden = true;
+      const secKey = item.dataset.tipo;
+      // Navega para Documentos
+      categoriaAtiva = 'documentos';
+      renderSidebar();
+      renderCentro();
+      // Abre o accordion da ficha correspondente
+      setTimeout(() => {
+        const head = document.querySelector(`.docs-acc-head[data-key="${secKey}"]`);
+        if (head) head.click();
+      }, 200);
+    });
+  });
+}
+
+btnNotif.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const abrindo = notifPanel.hidden;
+  notifPanel.hidden = !abrindo;
+  if (abrindo) renderNotifPanel();
+});
+
+document.addEventListener('click', (e) => {
+  if (!notifPanel.hidden && !notifPanel.contains(e.target) && e.target !== btnNotif) {
+    notifPanel.hidden = true;
+  }
+});
 
 // ─── Abrir ficha em janela dedicada ──────────────────────────────────────────
 function abrirModalFicha(arquivo, fichaId, modo, titulo) {

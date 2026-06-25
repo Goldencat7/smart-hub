@@ -211,6 +211,22 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());
 ipcMain.handle('set-iniciar-windows', (_e, ligar) => { definirIniciarComWindows(ligar); return { ok: true }; });
 
+// ─── Verificar atualização sob demanda (Configurações) ───────────────────────
+ipcMain.handle('verificar-atualizacao', async () => {
+  // Em desenvolvimento (npm start) o autoUpdater não funciona — não há release.
+  if (!app.isPackaged) return { disponivel: false, dev: true };
+  try {
+    const r = await autoUpdater.checkForUpdates();
+    const versaoAtual = app.getVersion();
+    const versaoRemota = r?.updateInfo?.version;
+    const disponivel = !!versaoRemota && versaoRemota !== versaoAtual;
+    return { disponivel, versao: versaoRemota };
+  } catch (err) {
+    console.warn('Verificar atualização:', err.message);
+    return { disponivel: false, erro: true };
+  }
+});
+
 // ─── Templates de Marketing ──────────────────────────────────────────────────
 ipcMain.on('abrir-template', async (_e, fileName) => {
   // Só nomes de arquivo simples (sem barras) — defesa extra contra path traversal

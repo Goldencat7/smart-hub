@@ -24,7 +24,10 @@ contextBridge.exposeInMainWorld('hubApi', {
   abrirTemplate: (fileName) => ipcRenderer.send('abrir-template', fileName),
 
   // Abrir ficha (visualização ou edição) em janela dedicada
-  abrirFicha: (url, titulo) => ipcRenderer.send('abrir-ficha', { url, titulo })
+  abrirFicha: (url, titulo) => ipcRenderer.send('abrir-ficha', { url, titulo }),
+
+  // Verificar atualização manualmente (Configurações)
+  verificarAtualizacao: () => ipcRenderer.invoke('verificar-atualizacao')
 });
 
 // API específica de login (chamada pelo auth-login.js depois do login Firebase)

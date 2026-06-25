@@ -16,6 +16,7 @@ const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
 // Senha de app (Google Workspace) da conta que envia/recebe os chamados de suporte.
 const SUPPORT_EMAIL_PASS = defineSecret('SUPPORT_EMAIL_PASS');
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
+const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
 const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
 const TZ = 'America/Sao_Paulo';
 
@@ -495,6 +496,39 @@ exports.setBanner = onCall(async (req) => {
 // ─── Suporte (chamado por email com anexo opcional) ──────────────────────────
 function escaparHtml(s) {
   return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+// Avisa o administrativo por email quando uma ficha é enviada ao admin.
+// Não lança erro: se o email falhar, a ficha já foi enviada (status mudou).
+async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
+  try {
+    const d = ficha.dados || {};
+    const linhas = [
+      ['Tipo', tipoLabel],
+      ['Cliente', d.nome || 'Sem nome'],
+      ['CPF/CNPJ', d.cpf || d.cnpj || '—'],
+      ['WhatsApp', d.whatsapp || '—'],
+      ['E-mail', d.email || '—'],
+      ['Corretor', ficha.corretorNome || '—'],
+      ['Pendências', (ficha.pendentes || []).length ? ficha.pendentes.join(', ') : 'nenhuma'],
+    ];
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+    });
+    await transporter.sendMail({
+      from: `Hub RE/MAX Smart <${SUPORTE_EMAIL}>`,
+      to: FICHAS_ADMIN_EMAIL,
+      subject: `[Hub] ${tipoLabel} — ${d.nome || 'Nova ficha'} (${ficha.corretorNome || 'corretor'})`,
+      text: linhas.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n\nAcesse o Hub para revisar e baixar os documentos.',
+      html: `<p>Uma ficha foi enviada ao administrativo:</p>`
+          + `<table style="border-collapse:collapse;font-size:14px">`
+          + linhas.map(([k, v]) => `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>${escaparHtml(k)}</strong></td><td style="padding:3px 0">${escaparHtml(v)}</td></tr>`).join('')
+          + `</table><p style="margin-top:12px;color:#444">Acesse o Hub para revisar e baixar os documentos.</p>`
+    });
+  } catch (e) {
+    console.error('Falha ao avisar ficha por email:', e.message);
+  }
 }
 
 exports.enviarSuporte = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
@@ -1145,7 +1179,7 @@ exports.listarFichasLocador = onCall(async (req) => {
 });
 
 // Corretor envia a ficha revisada para o administrativo.
-exports.enviarFichaParaAdmin = onCall(async (req) => {
+exports.enviarFichaParaAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
   const { fichaId } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
@@ -1159,6 +1193,9 @@ exports.enviarFichaParaAdmin = onCall(async (req) => {
   if (!isAdmin && doc.data().corretorUid !== uid) throw new HttpsError('permission-denied', 'Sem permissão.');
 
   await ref.update({ status: 'enviado_admin', enviadoAdminEm: admin.firestore.FieldValue.serverTimestamp() });
+
+  // Avisa o administrativo por email
+  await avisarFichaAdminPorEmail(doc.data(), 'Ficha do Locador');
 
   // Notifica admins no Hub (reutiliza a coleção de notificações)
   const adminsSnap = await db.collection('user_profiles').where('isAdmin', '==', true).get();
@@ -1305,7 +1342,7 @@ exports.listarFichasTipo = onCall(async (req) => {
     .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
 });
 
-exports.enviarFichaTipoAdmin = onCall(async (req) => {
+exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
   const { fichaId } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
@@ -1313,6 +1350,12 @@ exports.enviarFichaTipoAdmin = onCall(async (req) => {
   const snap = await ref.get();
   await assertDono(snap, req.auth.uid, req.auth.token.admin);
   await ref.update({ status: 'enviado_admin', enviadoAdminEm: admin.firestore.FieldValue.serverTimestamp() });
+
+  // Avisa o administrativo por email
+  const nomesFicha = { pf:'Ficha Pessoa Física', pj:'Ficha Pessoa Jurídica', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
+  const ficha = snap.data();
+  await avisarFichaAdminPorEmail(ficha, nomesFicha[ficha.tipo] || 'Ficha');
+
   return { ok: true };
 });
 
@@ -1358,6 +1401,31 @@ exports.listarFichasTipoAnalise = onCall(async (req) => {
   }
   const snap = await db.collection('fichas').where('tipo','==',tipo).where('status','==','enviado_admin').limit(100).get();
   return snap.docs.map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString(), enviadoAdminEm: d.data().enviadoAdminEm?.toDate?.()?.toISOString() }));
+});
+
+// ─── Notificações do sininho: fichas que precisam de atenção ─────────────────
+exports.contarNotifFichas = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
+  const uid    = req.auth.uid;
+  const isAdm  = ehAdminAuth(req.auth);
+  const nomesFicha = { locador:'Ficha do Locador', pf:'Ficha Pessoa Física', pj:'Ficha Pessoa Jurídica', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
+  const items = [];
+
+  if (isAdm) {
+    // Admin vê tudo que foi enviado ao admin (aguardando análise)
+    const snapLoc = await db.collection('fichas_locador').where('status','==','enviado_admin').limit(50).get();
+    snapLoc.forEach(d => { const f = d.data(); items.push({ tipo:'locador', nome:f.dados?.nome||'Sem nome', corretor:f.corretorNome||'—', data:f.enviadoAdminEm?.toDate?.()?.toISOString()||null }); });
+    const snapGen = await db.collection('fichas').where('status','==','enviado_admin').limit(50).get();
+    snapGen.forEach(d => { const f = d.data(); items.push({ tipo:f.tipo||'pf', nome:f.dados?.nome||'Sem nome', corretor:f.corretorNome||'—', data:f.enviadoAdminEm?.toDate?.()?.toISOString()||null }); });
+  } else {
+    // Corretor vê as fichas que o cliente devolveu (aguardando revisão)
+    const snapLoc = await db.collection('fichas_locador').where('corretorUid','==',uid).where('status','==','aguardando_corretor').limit(50).get();
+    snapLoc.forEach(d => { const f = d.data(); items.push({ tipo:'locador', nome:f.dados?.nome||'Sem nome', data:f.atualizadoEm?.toDate?.()?.toISOString()||null }); });
+    const snapGen = await db.collection('fichas').where('corretorUid','==',uid).where('status','==','aguardando_corretor').limit(50).get();
+    snapGen.forEach(d => { const f = d.data(); items.push({ tipo:f.tipo||'pf', nome:f.dados?.nome||'Sem nome', data:f.atualizadoEm?.toDate?.()?.toISOString()||null }); });
+  }
+
+  return { total: items.length, items: items.map(i => ({ ...i, tipoLabel: nomesFicha[i.tipo]||i.tipo })) };
 });
 
 exports.finalizarFichaTipo = onCall(async (req) => {
