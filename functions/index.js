@@ -4,7 +4,8 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const https = require('https');
-const PDFDocument = require('pdfkit');
+// pdfkit carregado sob demanda (lazy) dentro de gerarPdfFicha
+// para não afetar o startup das outras Cloud Functions
 
 admin.initializeApp();
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
@@ -518,6 +519,7 @@ const LABELS_FICHA = {
 function gerarPdfFicha(ficha, tipoLabel) {
   return new Promise((resolve, reject) => {
     try {
+      const PDFDocument = require('pdfkit'); // lazy: só carrega quando gerar PDF
       const d = ficha.dados || {};
       const chunks = [];
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
