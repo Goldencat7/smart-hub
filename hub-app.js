@@ -1969,12 +1969,14 @@ async function carregarListaFichas(fichaKey = 'locador') {
     const statusLabel = {
       aguardando_corretor:      'Aguardando revisão',
       aguardando_edicao_cliente:'Aguardando cliente',
-      enviado_admin:            'Enviado ao admin'
+      enviado_admin:            'Enviado ao admin',
+      correcao_solicitada:      '⚠ Correção solicitada'
     };
     const statusCor = {
       aguardando_corretor:      '#b45309',
       aguardando_edicao_cliente:'#6366f1',
-      enviado_admin:            '#16a34a'
+      enviado_admin:            '#16a34a',
+      correcao_solicitada:      '#DC1C2E'
     };
     const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
     const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
@@ -2083,7 +2085,10 @@ async function carregarListaFichas(fichaKey = 'locador') {
 
 // ─── Abrir ficha em janela dedicada ──────────────────────────────────────────
 function abrirModalFicha(arquivo, fichaId, modo, titulo) {
-  const url = `${BASE_HOSTING}/${arquivo}?modo=${modo}&idFicha=${fichaId}`;
+  // origem=hub: marca que foi aberta pelo corretor dentro do app.
+  // Isso desativa a barra "Solicitar correção" (visualizar) e libera a edição
+  // mesmo quando o link de uso único do cliente já estaria inativo.
+  const url = `${BASE_HOSTING}/${arquivo}?modo=${modo}&idFicha=${fichaId}&origem=hub`;
   hubApi.abrirFicha(url, titulo);
 }
 

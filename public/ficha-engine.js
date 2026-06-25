@@ -24,6 +24,7 @@ const modo         = params.get('modo') || 'cliente';
 const corretorUid  = params.get('corretor') || '';
 const corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
 const idFicha      = params.get('idFicha') || '';
+const origemHub    = params.get('origem') === 'hub';
 
 const arquivos = {};
 const pendentes = new Set();
@@ -51,6 +52,14 @@ async function iniciarModoEdicao() {
     const snap = await getDoc(doc(db, 'fichas', idFicha));
     if (!snap.exists()) { mostrarErro('Ficha não encontrada.'); return; }
     const ficha = snap.data();
+
+    // Link de uso único: só vale enquanto a ficha está aguardando o cliente.
+    // O corretor abrindo pelo hub (origem=hub) edita livremente.
+    if (!origemHub && ficha.status !== 'aguardando_edicao_cliente') {
+      mostrarErro('Este link não está mais ativo. Caso precise fazer alterações, peça ao seu corretor um novo link.');
+      return;
+    }
+
     if (ficha.observacaoCorretor) {
       const intro = document.getElementById('introTexto');
       if (intro) intro.innerHTML = `<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p><p style="margin-top:8px;color:#444">Atualize as informações e clique em <strong>Salvar alterações</strong>.</p>`;
@@ -70,7 +79,7 @@ async function iniciarModoEdicao() {
 
 async function iniciarModoCorretor() {
   const barraCorretor = document.getElementById('barraCorretor');
-  if (barraCorretor) barraCorretor.style.display = 'flex';
+  if (barraCorretor) barraCorretor.style.display = origemHub ? 'none' : 'flex';
   const badge = document.getElementById('badgeModo');
   if (badge) { badge.style.display = 'inline'; badge.textContent = 'Revisão'; }
   const intro = document.getElementById('introTexto');
@@ -96,6 +105,7 @@ async function iniciarModoCorretor() {
     }
     window.__fichaId = idFicha;
   } catch(e) { mostrarErro('Erro: ' + e.message); }
+  atualizarBadges();
 }
 
 function configurarEventos() {
@@ -179,6 +189,29 @@ function atualizarProgresso() {
   const pct = total > 0 ? Math.round((ok/total)*100) : 0;
   const bar = document.getElementById('progressFill');
   if (bar) bar.style.width = pct + '%';
+  atualizarBadges();
+}
+
+function atualizarBadges() {
+  // Campos de texto / select
+  document.querySelectorAll('.field').forEach(field => {
+    const badge = field.querySelector('.badge-obrig, .badge-preen');
+    if (!badge) return;
+    const input = field.querySelector('input:not([type=checkbox]):not([type=file]), select, textarea');
+    if (!input) return;
+    const preenchido = input.value.trim() !== '';
+    badge.textContent = preenchido ? 'preenchido' : 'obrigatório';
+    badge.className   = preenchido ? 'badge-preen' : 'badge-obrig';
+  });
+  // Documentos
+  document.querySelectorAll('.doc-label').forEach(label => {
+    const badge = label.querySelector('.badge-obrig, .badge-preen');
+    if (!badge) return;
+    const area = label.closest('.doc-wrapper')?.querySelector('.doc-area');
+    const preenchido = area?.classList.contains('tem-arquivo');
+    badge.textContent = preenchido ? 'preenchido' : 'obrigatório';
+    badge.className   = preenchido ? 'badge-preen' : 'badge-obrig';
+  });
 }
 
 async function enviarFicha(e) {

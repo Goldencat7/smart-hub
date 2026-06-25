@@ -15,6 +15,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;ba
 .field-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:8px;flex-wrap:wrap}
 label{font-size:12px;font-weight:600;color:#374151}
 .badge-obrig{font-size:10px;color:#DC1C2E;font-weight:600}
+.badge-preen{font-size:10px;color:#16a34a;font-weight:600}
 .badge-opc{font-size:10px;color:#6b7280}
 .nao-tenho{display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-shrink:0}
 .nao-tenho input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:#002749}
