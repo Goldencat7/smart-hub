@@ -4,6 +4,7 @@ const admin = require('firebase-admin');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const https = require('https');
+const PDFDocument = require('pdfkit');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
@@ -499,22 +500,85 @@ function escaparHtml(s) {
   return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// Gera PDF da ficha a partir dos dados estruturados do Firestore
+const LABELS_FICHA = {
+  nome:'Nome', cpf:'CPF', cnpj:'CNPJ', rg:'RG', dataNasc:'Data de nascimento',
+  estadoCivil:'Estado civil', profissao:'Profissão', renda:'Renda mensal',
+  empresa:'Empresa / Empregador', whatsapp:'WhatsApp', email:'E-mail',
+  cep:'CEP', logradouro:'Logradouro', numero:'Número', complemento:'Complemento',
+  bairro:'Bairro', cidade:'Cidade', estado:'Estado',
+  banco:'Banco', tipoConta:'Tipo de conta', agencia:'Agência', conta:'Conta', pix:'Chave Pix',
+  razaoSocial:'Razão social', nomeFantasia:'Nome fantasia', inscricaoEstadual:'Insc. estadual',
+  nomeRepresentante:'Representante', cpfRepresentante:'CPF do representante',
+  nomeFiador:'Nome do fiador', cpfFiador:'CPF do fiador',
+  imovel:'Imóvel', valorProposta:'Valor da proposta', formaPagamento:'Forma de pagamento',
+  observacoes:'Observações',
+};
+
+function gerarPdfFicha(ficha, tipoLabel) {
+  return new Promise((resolve, reject) => {
+    try {
+      const d = ficha.dados || {};
+      const chunks = [];
+      const doc = new PDFDocument({ margin: 40, size: 'A4' });
+      doc.on('data', c => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // Cabeçalho
+      doc.fontSize(10).fillColor('#888').text('RE/MAX Smart — Imóveis');
+      doc.fontSize(18).fillColor('#002749').text(tipoLabel, { paragraphGap: 4 });
+      doc.fontSize(11).fillColor('#555').text(`Corretor: ${ficha.corretorNome || '—'}`);
+      doc.moveDown(1);
+
+      // Linha divisória
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#ddd').stroke();
+      doc.moveDown(0.5);
+
+      // Campos preenchidos
+      const colKey = 40, colVal = 200, lineH = 18;
+      Object.entries(d).filter(([, v]) => v).forEach(([k, v]) => {
+        const label = LABELS_FICHA[k] || k;
+        const y = doc.y;
+        doc.fontSize(10).fillColor('#555').text(label + ':', colKey, y, { width: 155, continued: false });
+        doc.fontSize(10).fillColor('#111').text(String(v), colVal, y, { width: 355 });
+        if (doc.y < y + lineH) doc.y = y + lineH;
+      });
+
+      // Pendências
+      const pendentes = ficha.pendentes || [];
+      if (pendentes.length) {
+        doc.moveDown(0.8);
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#ddd').stroke();
+        doc.moveDown(0.5);
+        doc.fontSize(11).fillColor('#b45309').text('Itens pendentes:');
+        doc.fontSize(10).fillColor('#b45309')
+          .text(pendentes.map(p => '• ' + (LABELS_FICHA[p] || p)).join('\n'));
+      }
+
+      doc.end();
+    } catch (e) { reject(e); }
+  });
+}
+
 // Busca um arquivo de URL remota como Buffer (limite 8 MB por arquivo)
 function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
     const MAX = 8 * 1024 * 1024;
+    let done = false;
+    const finish = (err, val) => { if (done) return; done = true; err ? reject(err) : resolve(val); };
     https.get(url, res => {
-      if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode)); return; }
+      if (res.statusCode !== 200) { finish(new Error('HTTP ' + res.statusCode)); return; }
       const chunks = [];
       let size = 0;
       res.on('data', c => {
         size += c.length;
-        if (size > MAX) { res.destroy(); reject(new Error('Arquivo muito grande')); return; }
+        if (size > MAX) { res.destroy(); finish(new Error('Arquivo muito grande')); return; }
         chunks.push(c);
       });
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-      res.on('error', reject);
-    }).on('error', reject);
+      res.on('end', () => finish(null, Buffer.concat(chunks)));
+      res.on('error', e => finish(e));
+    }).on('error', e => finish(e));
   });
 }
 
@@ -533,15 +597,32 @@ async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
       ['Pendências', (ficha.pendentes || []).length ? ficha.pendentes.join(', ') : 'nenhuma'],
     ];
 
-    // Anexa os documentos enviados pelo cliente (RG, comprovante, etc.)
+    // Gera PDF da ficha e anexa
     const nomesDoc = { rgFrente:'RG-frente', rgVerso:'RG-verso', compRenda:'Comp-renda', compEndereco:'Comp-endereco', matricula:'Matricula', iptu:'IPTU' };
     const attachments = [];
+    try {
+      const pdfBuf = await gerarPdfFicha(ficha, tipoLabel);
+      const nomeCliente = (ficha.dados?.nome || 'ficha').replace(/[^a-zA-ZÀ-ÿ\s]/g, '').trim();
+      attachments.push({ filename: `${tipoLabel} - ${nomeCliente}.pdf`, content: pdfBuf });
+    } catch (e) {
+      console.warn('PDF da ficha não gerado:', e.message);
+    }
+
+    // Anexa os documentos enviados pelo cliente (RG, comprovante, etc.)
+    // Limite acumulado de 20 MB para caber dentro dos 25 MB do Gmail
+    const LIMITE_TOTAL = 20 * 1024 * 1024;
+    let totalAnexos = attachments.reduce((s, a) => s + (a.content?.length || 0), 0);
     for (const [campo, url] of Object.entries(ficha.documentos || {})) {
+      if (totalAnexos >= LIMITE_TOTAL) {
+        console.warn(`Anexo ${campo} ignorado: limite de tamanho do email atingido`);
+        continue;
+      }
       try {
         const buf = await fetchBuffer(url);
         const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('%2fpdf');
         const nomeBase = nomesDoc[campo] || campo;
         attachments.push({ filename: `${nomeBase}.${isPdf ? 'pdf' : 'jpg'}`, content: buf });
+        totalAnexos += buf.length;
       } catch (e) {
         console.warn(`Anexo ${campo} ignorado:`, e.message);
       }

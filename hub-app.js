@@ -2136,7 +2136,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
         btn.disabled = true; btn.textContent = 'Gerando...';
         try {
           const r = await hubApi.baixarFichaPDF(url, `Ficha - ${nome}.pdf`);
-          if (!r?.ok && r?.erro) mostrarMsgCfg('Erro ao gerar PDF: ' + r.erro, false);
+          if (!r?.ok && r?.erro) alert('Erro ao gerar PDF: ' + r.erro);
         } catch(e) { console.warn('PDF:', e); }
         finally { btn.disabled = false; btn.textContent = txtOrig; }
       });
