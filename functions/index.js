@@ -1534,15 +1534,15 @@ exports.contarNotifFichas = onCall(async (req) => {
   if (isAdm) {
     // Admin vê tudo que foi enviado ao admin (aguardando análise)
     const snapLoc = await db.collection('fichas_locador').where('status','==','enviado_admin').limit(50).get();
-    snapLoc.forEach(d => { const f = d.data(); items.push({ tipo:'locador', nome:f.dados?.nome||'Sem nome', corretor:f.corretorNome||'—', data:f.enviadoAdminEm?.toDate?.()?.toISOString()||null }); });
+    snapLoc.forEach(d => { const f = d.data(); items.push({ id:d.id, tipo:'locador', nome:f.dados?.nome||'Sem nome', corretor:f.corretorNome||'—', data:f.enviadoAdminEm?.toDate?.()?.toISOString()||null }); });
     const snapGen = await db.collection('fichas').where('status','==','enviado_admin').limit(50).get();
-    snapGen.forEach(d => { const f = d.data(); items.push({ tipo:f.tipo||'pf', nome:f.dados?.nome||'Sem nome', corretor:f.corretorNome||'—', data:f.enviadoAdminEm?.toDate?.()?.toISOString()||null }); });
+    snapGen.forEach(d => { const f = d.data(); items.push({ id:d.id, tipo:f.tipo||'pf', nome:f.dados?.nome||'Sem nome', corretor:f.corretorNome||'—', data:f.enviadoAdminEm?.toDate?.()?.toISOString()||null }); });
   } else {
     // Corretor vê as fichas que o cliente devolveu (aguardando revisão)
     const snapLoc = await db.collection('fichas_locador').where('corretorUid','==',uid).where('status','==','aguardando_corretor').limit(50).get();
-    snapLoc.forEach(d => { const f = d.data(); items.push({ tipo:'locador', nome:f.dados?.nome||'Sem nome', data:f.atualizadoEm?.toDate?.()?.toISOString()||null }); });
+    snapLoc.forEach(d => { const f = d.data(); items.push({ id:d.id, tipo:'locador', nome:f.dados?.nome||'Sem nome', data:f.atualizadoEm?.toDate?.()?.toISOString()||null }); });
     const snapGen = await db.collection('fichas').where('corretorUid','==',uid).where('status','==','aguardando_corretor').limit(50).get();
-    snapGen.forEach(d => { const f = d.data(); items.push({ tipo:f.tipo||'pf', nome:f.dados?.nome||'Sem nome', data:f.atualizadoEm?.toDate?.()?.toISOString()||null }); });
+    snapGen.forEach(d => { const f = d.data(); items.push({ id:d.id, tipo:f.tipo||'pf', nome:f.dados?.nome||'Sem nome', data:f.atualizadoEm?.toDate?.()?.toISOString()||null }); });
   }
 
   return { total: items.length, items: items.map(i => ({ ...i, tipoLabel: nomesFicha[i.tipo]||i.tipo })) };

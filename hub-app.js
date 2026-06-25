@@ -807,6 +807,14 @@ onAuthStateChanged(auth, async (user) => {
     if (JSON.stringify(statusApps) !== antes) renderCentro();
   }, 180000);
 
+  // Atualiza banners a cada 3 min (para pegar banners novos sem relogar)
+  clearInterval(window.__bannerTimer2);
+  window.__bannerTimer2 = setInterval(async () => {
+    const antesLen = bannerImagens.length;
+    await carregarBanner();
+    if (bannerImagens.length !== antesLen) atualizarBanner();
+  }, 180000);
+
   // fix 2: busca status Google antes de carregar eventos para incluir eventos do Google no mini calendário desde o início
   await atualizarStatusGoogle();
   await carregarEventos(new Date(Date.now() - 86400000), new Date(Date.now() + 1000 * 60 * 60 * 24 * 90));
@@ -2155,13 +2163,25 @@ const notifLista = document.getElementById('notifLista');
 
 let notifDados = [];  // cache dos itens para o painel
 
+// Gerencia IDs "vistos" por usuário no localStorage
+function getVistos() {
+  try { return new Set(JSON.parse(localStorage.getItem(`notif_vistos_${currentUid}`) || '[]')); }
+  catch { return new Set(); }
+}
+function salvarVistos(set) {
+  try { localStorage.setItem(`notif_vistos_${currentUid}`, JSON.stringify([...set])); }
+  catch {}
+}
+
 async function atualizarNotifFichas() {
   try {
     const res = await contarNotifFichas();
     notifDados = res.data?.items || [];
-    const total = res.data?.total || 0;
-    if (total > 0) {
-      notifBadge.textContent = total > 99 ? '99+' : total;
+    const vistos = getVistos();
+    // Só conta fichas com ID ainda não visto pelo usuário
+    const novos = notifDados.filter(n => n.id && !vistos.has(n.id));
+    if (novos.length > 0) {
+      notifBadge.textContent = novos.length > 99 ? '99+' : novos.length;
       notifBadge.hidden = false;
     } else {
       notifBadge.hidden = true;
@@ -2206,7 +2226,14 @@ btnNotif.addEventListener('click', (e) => {
   notifPanel.hidden = !abrindo;
   if (abrindo) {
     renderNotifPanel();
-    // Esconde o badge ao abrir — volta a aparecer no próximo ciclo de 3 min se ainda houver pendentes
+    // Marca todas as fichas visíveis agora como "visto"
+    // Mantém apenas IDs que ainda estão na lista atual (limpa IDs de fichas já resolvidas)
+    const idsAtuais = new Set(notifDados.map(n => n.id).filter(Boolean));
+    const vistos = getVistos();
+    idsAtuais.forEach(id => vistos.add(id));
+    // Prune: remove IDs que não estão mais pendentes (ficha resolvida)
+    for (const id of [...vistos]) { if (!idsAtuais.has(id)) vistos.delete(id); }
+    salvarVistos(vistos);
     notifBadge.hidden = true;
   }
 });
