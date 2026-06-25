@@ -211,6 +211,30 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());
 ipcMain.handle('set-iniciar-windows', (_e, ligar) => { definirIniciarComWindows(ligar); return { ok: true }; });
 
+// ─── Baixar ficha como PDF ───────────────────────────────────────────────────
+ipcMain.handle('baixar-ficha-pdf', async (_e, { url, filename }) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath: filename || 'ficha.pdf',
+    filters: [{ name: 'PDF', extensions: ['pdf'] }]
+  });
+  if (result.canceled) return { ok: false };
+
+  const win = new BrowserWindow({ width: 900, height: 860, show: false, webPreferences: { devTools: false } });
+  try {
+    await win.loadURL(url);
+    await new Promise(r => setTimeout(r, 2500)); // aguarda render completo
+    const pdf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', marginsType: 1 });
+    await fs.promises.writeFile(result.filePath, pdf);
+    shell.openPath(result.filePath);
+    return { ok: true };
+  } catch (err) {
+    console.error('Erro ao gerar PDF:', err.message);
+    return { ok: false, erro: err.message };
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+  }
+});
+
 // ─── Verificar atualização sob demanda (Configurações) ───────────────────────
 ipcMain.handle('verificar-atualizacao', async () => {
   // Em desenvolvimento (npm start) o autoUpdater não funciona — não há release.

@@ -3,6 +3,7 @@ const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const https = require('https');
 
 admin.initializeApp();
 setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
@@ -498,6 +499,25 @@ function escaparHtml(s) {
   return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// Busca um arquivo de URL remota como Buffer (limite 8 MB por arquivo)
+function fetchBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const MAX = 8 * 1024 * 1024;
+    https.get(url, res => {
+      if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode)); return; }
+      const chunks = [];
+      let size = 0;
+      res.on('data', c => {
+        size += c.length;
+        if (size > MAX) { res.destroy(); reject(new Error('Arquivo muito grande')); return; }
+        chunks.push(c);
+      });
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
 // Avisa o administrativo por email quando uma ficha é enviada ao admin.
 // Não lança erro: se o email falhar, a ficha já foi enviada (status mudou).
 async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
@@ -512,6 +532,21 @@ async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
       ['Corretor', ficha.corretorNome || '—'],
       ['Pendências', (ficha.pendentes || []).length ? ficha.pendentes.join(', ') : 'nenhuma'],
     ];
+
+    // Anexa os documentos enviados pelo cliente (RG, comprovante, etc.)
+    const nomesDoc = { rgFrente:'RG-frente', rgVerso:'RG-verso', compRenda:'Comp-renda', compEndereco:'Comp-endereco', matricula:'Matricula', iptu:'IPTU' };
+    const attachments = [];
+    for (const [campo, url] of Object.entries(ficha.documentos || {})) {
+      try {
+        const buf = await fetchBuffer(url);
+        const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('%2fpdf');
+        const nomeBase = nomesDoc[campo] || campo;
+        attachments.push({ filename: `${nomeBase}.${isPdf ? 'pdf' : 'jpg'}`, content: buf });
+      } catch (e) {
+        console.warn(`Anexo ${campo} ignorado:`, e.message);
+      }
+    }
+
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
@@ -520,11 +555,13 @@ async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
       from: `Hub RE/MAX Smart <${SUPORTE_EMAIL}>`,
       to: FICHAS_ADMIN_EMAIL,
       subject: `[Hub] ${tipoLabel} — ${d.nome || 'Nova ficha'} (${ficha.corretorNome || 'corretor'})`,
-      text: linhas.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n\nAcesse o Hub para revisar e baixar os documentos.',
+      text: linhas.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n\nAcesse o Hub para revisar.',
       html: `<p>Uma ficha foi enviada ao administrativo:</p>`
           + `<table style="border-collapse:collapse;font-size:14px">`
           + linhas.map(([k, v]) => `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>${escaparHtml(k)}</strong></td><td style="padding:3px 0">${escaparHtml(v)}</td></tr>`).join('')
-          + `</table><p style="margin-top:12px;color:#444">Acesse o Hub para revisar e baixar os documentos.</p>`
+          + `</table>`
+          + (attachments.length ? `<p style="margin-top:12px;color:#444">${attachments.length} documento(s) anexado(s).</p>` : '<p style="margin-top:12px;color:#444">Nenhum documento enviado ainda.</p>'),
+      attachments
     });
   } catch (e) {
     console.error('Falha ao avisar ficha por email:', e.message);

@@ -2057,6 +2057,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
             <button class="topbar-btn perigo btn-excluir" data-id="${f.id}" style="font-size:11px;padding:4px 10px">🗑 Excluir</button>
             <button class="ficha-ver-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" style="font-size:11px;padding:4px 10px">👁 Visualizar</button>
             <button class="ficha-editar-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" style="font-size:11px;padding:4px 10px">✏ Editar</button>
+            <button class="ficha-pdf-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" data-nome="${escapeHtml(f.dados?.nome||'ficha')}" style="font-size:11px;padding:4px 10px">⬇ Baixar PDF</button>
           </div>
         </div>`;
     }).join('');
@@ -2123,6 +2124,21 @@ async function carregarListaFichas(fichaKey = 'locador') {
     lista.querySelectorAll('.ficha-editar-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         abrirModalFicha(btn.dataset.arquivo, btn.dataset.id, 'edicao', '✏ Editar ficha');
+      });
+    });
+
+    // Baixar ficha como PDF
+    lista.querySelectorAll('.ficha-pdf-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const url = `${BASE_HOSTING}/${btn.dataset.arquivo}?modo=corretor&idFicha=${btn.dataset.id}&origem=hub`;
+        const nome = (btn.dataset.nome || 'ficha').replace(/[^a-zA-Z0-9À-ɏ\s_-]/g, '').trim();
+        const txtOrig = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Gerando...';
+        try {
+          const r = await hubApi.baixarFichaPDF(url, `Ficha - ${nome}.pdf`);
+          if (!r?.ok && r?.erro) mostrarMsgCfg('Erro ao gerar PDF: ' + r.erro, false);
+        } catch(e) { console.warn('PDF:', e); }
+        finally { btn.disabled = false; btn.textContent = txtOrig; }
       });
     });
 

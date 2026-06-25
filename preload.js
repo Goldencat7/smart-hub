@@ -27,7 +27,10 @@ contextBridge.exposeInMainWorld('hubApi', {
   abrirFicha: (url, titulo) => ipcRenderer.send('abrir-ficha', { url, titulo }),
 
   // Verificar atualização manualmente (Configurações)
-  verificarAtualizacao: () => ipcRenderer.invoke('verificar-atualizacao')
+  verificarAtualizacao: () => ipcRenderer.invoke('verificar-atualizacao'),
+
+  // Gerar e baixar PDF da ficha
+  baixarFichaPDF: (url, filename) => ipcRenderer.invoke('baixar-ficha-pdf', { url, filename })
 });
 
 // API específica de login (chamada pelo auth-login.js depois do login Firebase)
