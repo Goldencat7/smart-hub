@@ -1,6 +1,17 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Pessoa Física — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Pessoa Física — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css">
+<style>
+.btn-add-bloco{margin-top:6px;width:100%;background:#fff;color:#002749;border:1.5px dashed #A4D7F4;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
+.btn-add-bloco:hover{background:#f0f7fc}
+.btn-remover-bloco{background:none;border:none;color:#9F1622;font-size:12px;font-weight:700;cursor:pointer;padding:0}
+.sub-bloco{margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0}
+.sub-bloco-titulo{font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.prop-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.prop-head .num{background:#DC1C2E;color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-right:8px}
+.prop-head strong{font-size:14px;color:#002749}
+</style>
+</head>
 <body>
 <div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
 <div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Cadastral Pessoa Física <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
@@ -9,39 +20,397 @@
 <div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
 <div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para itens indisponíveis no momento.</p></div>
 <form id="formFicha" novalidate>
-<div class="section"><div class="section-title"><span class="num">1</span> Dados Pessoais</div>
-<div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cpf"><span>Não tenho agora</span></label></div><input type="text" name="cpf" maxlength="14"><div class="pendente-tag" id="pend-cpf" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>RG <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="rg"><span>Não tenho agora</span></label></div><input type="text" name="rg"><div class="pendente-tag" id="pend-rg" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Data de nascimento <span class="badge-obrig">obrigatório</span></label></div><input type="date" name="dataNasc"></div><div class="field"><div class="field-header"><label>Estado civil <span class="badge-obrig">obrigatório</span></label></div><select name="estadoCivil"><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Profissão <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="profissao"><span>Não tenho agora</span></label></div><input type="text" name="profissao"><div class="pendente-tag" id="pend-profissao" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Renda mensal <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="renda"><span>Não tenho agora</span></label></div><input type="text" name="renda" placeholder="R$ 0.000,00"><div class="pendente-tag" id="pend-renda" style="display:none">Informação pendente</div></div></div>
-<div class="field"><div class="field-header"><label>Empresa / Empregador <span class="badge-opc">opcional</span></label></div><input type="text" name="empresa"></div>
+
+<!-- Proponentes (renderizados via JS — 1 a 4, cônjuge condicional por estado civil) -->
+<div id="proponentes"></div>
+
+<!-- 2. Imóvel de interesse -->
+<div class="section"><div class="section-title"><span class="num">2</span> Imóvel de interesse</div>
+<div class="row-2"><div class="field"><div class="field-header"><label>Tipo de imóvel <span class="badge-obrig">obrigatório</span></label></div><select data-key="im_tipo"><option value="">Selecione</option><option>Apartamento</option><option>Casa</option><option>Cobertura</option><option>Studio</option><option>Sala comercial</option><option>Terreno</option><option>Outro</option></select></div><div class="field"><div class="field-header"><label>Referência no site <span class="badge-opc">opcional</span></label></div><input type="text" data-key="im_ref" placeholder="Cód. do anúncio"></div></div>
+<div class="row-2"><div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_cep" data-cep maxlength="9" placeholder="00000-000"></div><div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_endereco" placeholder="Rua, Avenida..."></div></div>
+<div class="row-2"><div class="field"><div class="field-header"><label>Número <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_numero"></div><div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" data-key="im_complemento"></div></div>
+<div class="row-2"><div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_bairro"></div><div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_cidade"></div></div>
+<div class="row-2"><div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">obrigatório</span></label></div><select data-key="im_estado"></select></div><div class="field"><div class="field-header"><label>Nome do condomínio <span class="badge-opc">opcional</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_condominio"><span>Não tenho agora</span></label></div><input type="text" data-key="im_condominio"><div class="pendente-tag" id="pend-im_condominio" style="display:none">Informação pendente</div></div></div>
+<div class="row-2"><div class="field"><div class="field-header"><label>Valor do anúncio <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_anuncio" data-money placeholder="R$ 0,00"></div><div class="field"><div class="field-header"><label>Valor da proposta <span class="badge-obrig">obrigatório</span></label></div><input type="text" data-key="im_proposta" data-money placeholder="R$ 0,00"></div></div>
 </div>
-<div class="section"><div class="section-title"><span class="num">2</span> Contato</div>
-<div class="row-2"><div class="field"><div class="field-header"><label>WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 9 0000-0000"></div><div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">3</span> Endereço Atual</div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CEP</label></div><input type="text" name="cep" id="campoCep" maxlength="9"></div><div class="field"><div class="field-header"><label>Número</label></div><input type="text" name="numero"></div></div>
-<div class="field"><div class="field-header"><label>Logradouro</label></div><input type="text" name="logradouro" id="campoLogradouro"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" name="complemento"></div><div class="field"><div class="field-header"><label>Bairro</label></div><input type="text" name="bairro" id="campoBairro"></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Cidade</label></div><input type="text" name="cidade" id="campoCidade"></div><div class="field"><div class="field-header"><label>Estado</label></div><select name="estado" id="campoEstado"><option value="">UF</option><option>AC</option><option>AL</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option selected>SP</option><option>SE</option><option>TO</option></select></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">4</span> Dados Bancários</div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Banco <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="banco"><span>Não tenho agora</span></label></div><input type="text" name="banco"><div class="pendente-tag" id="pend-banco" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Tipo de conta</label><label class="nao-tenho"><input type="checkbox" data-campo="tipoConta"><span>Não tenho agora</span></label></div><select name="tipoConta"><option value="">Selecione</option><option>Corrente</option><option>Poupança</option></select><div class="pendente-tag" id="pend-tipoConta" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Agência</label><label class="nao-tenho"><input type="checkbox" data-campo="agencia"><span>Não tenho agora</span></label></div><input type="text" name="agencia"><div class="pendente-tag" id="pend-agencia" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Conta</label><label class="nao-tenho"><input type="checkbox" data-campo="conta"><span>Não tenho agora</span></label></div><input type="text" name="conta"><div class="pendente-tag" id="pend-conta" style="display:none">Informação pendente</div></div></div>
-<div class="field"><div class="field-header"><label>Chave Pix <span class="badge-opc">opcional</span></label><label class="nao-tenho"><input type="checkbox" data-campo="pix"><span>Não tenho agora</span></label></div><input type="text" name="pix"><div class="pendente-tag" id="pend-pix" style="display:none">Informação pendente</div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">5</span> Documentos</div>
+
+<!-- 3. Documentos -->
+<div class="section"><div class="section-title"><span class="num">3</span> Documentos</div>
 <div class="docs-grid">
-<div class="doc-wrapper"><div class="doc-area" id="area-rgFrente"><div class="doc-clickable" onclick="triggerFile('rgFrente')"><div class="doc-icon">🪪</div><div class="doc-label">RG ou CNH — frente <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgFrente">Toque para selecionar</div></div><input type="file" id="file-rgFrente" accept="image/*,.pdf" style="display:none" data-doc="rgFrente" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgFrente" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgFrente"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-rgVerso"><div class="doc-clickable" onclick="triggerFile('rgVerso')"><div class="doc-icon">🪪</div><div class="doc-label">RG ou CNH — verso <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgVerso">Toque para selecionar</div></div><input type="file" id="file-rgVerso" accept="image/*,.pdf" style="display:none" data-doc="rgVerso" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgVerso" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgVerso"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-compRenda"><div class="doc-clickable" onclick="triggerFile('compRenda')"><div class="doc-icon">💰</div><div class="doc-label">Comprovante de renda <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compRenda">Toque para selecionar</div></div><input type="file" id="file-compRenda" accept="image/*,.pdf" style="display:none" data-doc="compRenda" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compRenda" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRenda"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-compEndereco"><div class="doc-clickable" onclick="triggerFile('compEndereco')"><div class="doc-icon">🏠</div><div class="doc-label">Comprovante de endereço <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compEndereco">Toque para selecionar</div></div><input type="file" id="file-compEndereco" accept="image/*,.pdf" style="display:none" data-doc="compEndereco" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEndereco" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compEndereco"><span>Não tenho agora</span></label></div>
+<div class="doc-wrapper"><div class="doc-area" id="area-rgcpf"><div class="doc-clickable" onclick="triggerFile('rgcpf')"><div class="doc-icon">🪪</div><div class="doc-label">RG, CPF ou CNH <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgcpf">Toque para selecionar</div></div><input type="file" id="file-rgcpf" accept="image/*,.pdf" style="display:none" data-doc="rgcpf" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgcpf" style="display:none">Informação pendente</div></div>
+<div class="doc-wrapper"><div class="doc-area" id="area-compEndereco"><div class="doc-clickable" onclick="triggerFile('compEndereco')"><div class="doc-icon">🏠</div><div class="doc-label">Comprovante de endereço <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compEndereco">Toque para selecionar</div></div><input type="file" id="file-compEndereco" accept="image/*,.pdf" style="display:none" data-doc="compEndereco" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEndereco" style="display:none">Informação pendente</div></div>
+<div class="doc-wrapper"><div class="doc-area" id="area-compRenda"><div class="doc-clickable" onclick="triggerFile('compRenda')"><div class="doc-icon">💰</div><div class="doc-label">Comprovante de renda (90 dias) <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compRenda">Toque para selecionar</div></div><input type="file" id="file-compRenda" accept="image/*,.pdf" style="display:none" data-doc="compRenda" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compRenda" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRenda"><span>Não tenho agora</span></label></div>
+<div class="doc-wrapper"><div class="doc-area" id="area-compEstadoCivil"><div class="doc-clickable" onclick="triggerFile('compEstadoCivil')"><div class="doc-icon">📋</div><div class="doc-label">Comprovante de estado civil <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-compEstadoCivil">Toque para selecionar</div></div><input type="file" id="file-compEstadoCivil" accept="image/*,.pdf" style="display:none" data-doc="compEstadoCivil" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEstadoCivil" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compEstadoCivil"><span>Não tenho agora</span></label></div>
 </div></div>
+
 <div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
 <div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
 <button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
 </form>
 <div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p></div>
 </div>
-<script type="module" src="ficha-engine.js?tipo=pf"></script>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
+
+const app = initializeApp({
+  apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
+  authDomain: "remax-smart-hub.firebaseapp.com",
+  projectId: "remax-smart-hub",
+  storageBucket: "remax-smart-hub.firebasestorage.app",
+  messagingSenderId: "474454438949",
+  appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
+});
+const db = getFirestore(app);
+const storage = getStorage(app);
+const tipo = 'pf';
+
+const params = new URLSearchParams(location.search);
+const modo         = params.get('modo') || 'cliente';
+const corretorUid  = params.get('corretor') || '';
+const corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
+const idFicha      = params.get('idFicha') || '';
+const origemHub    = params.get('origem') === 'hub';
+
+// ── Constantes de domínio ──
+const UF = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+const CIVIL = ['Solteiro(a)','Casado(a)','Divorciado(a)','Viúvo(a)','União estável'];
+const REGIME = ['Comunhão parcial de bens','Comunhão universal de bens','Separação total de bens','Participação final nos aquestos'];
+const COM_CONJUGE = ['Casado(a)','União estável'];
+const MAX_PROP = 4;
+
+// ── Estado ──
+const valores   = {};        // chave -> valor
+const pendentes = new Set();
+const arquivos  = {};
+let nProponentes = 1;        // quantos blocos de proponente estão visíveis
+let somenteLeitura = false;
+
+// ── Helpers de UI ──
+function ufOptions(sel){ return ['<option value="">UF</option>'].concat(UF.map(u=>`<option${u===sel?' selected':(u==='SP'&&!sel?' ':'')}>${u}</option>`)).join(''); }
+function selOptions(arr, sel){ return ['<option value="">Selecione</option>'].concat(arr.map(o=>`<option${o===sel?' selected':''}>${o}</option>`)).join(''); }
+function v(k){ return valores[k]!=null ? valores[k] : ''; }
+function isPend(k){ return pendentes.has(k); }
+
+// Monta um campo de texto/select. opts: {label, key, type, badge, options, ph, money, cpf, cep, nta, id}
+function campo(o){
+  const val = v(o.key);
+  const pend = isPend(o.key);
+  const badge = o.badge==='opc' ? '<span class="badge-opc">opcional</span>'
+              : o.badge==='none' ? ''
+              : (val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>');
+  const nta = o.nta ? `<label class="nao-tenho"><input type="checkbox" data-campo="${o.key}"${pend?' checked':''}><span>Não tenho agora</span></label>` : '';
+  let input;
+  const dis = (pend || somenteLeitura) ? ' disabled' : '';
+  const attrs = `data-key="${o.key}"${o.cpf?' data-cpf':''}${o.money?' data-money':''}${o.cep?' data-cep':''}${o.id?` id="${o.id}"`:''}${o.ph?` placeholder="${o.ph}"`:''}`;
+  if(o.type==='select'){
+    input = `<select ${attrs}${dis}>${o.optsHtml}</select>`;
+  } else {
+    const t = o.type||'text';
+    const ml = o.cpf?' maxlength="14"':(o.cep?' maxlength="9"':'');
+    input = `<input type="${t}" ${attrs}${ml}${dis} value="${val.replace(/"/g,'&quot;')}">`;
+  }
+  const pendTag = `<div class="pendente-tag"${pend?'':' style="display:none"'}>Informação pendente</div>`;
+  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label>${nta}</div>${input}${o.nta?pendTag:''}</div>`;
+}
+function row(...campos){ return `<div class="row-2">${campos.join('')}</div>`; }
+
+// Bloco de cônjuge (prefixo c = `p{i}c_`)
+function blocoConjuge(i){
+  const p = `p${i}c_`;
+  return `<div class="sub-bloco"><div class="sub-bloco-titulo">💍 Cônjuge do proponente ${i}</div>
+    ${campo({label:'Nome completo',key:p+'nome',badge:'none'})}
+    ${row(
+      campo({label:'RG',key:p+'rg',badge:'none'}),
+      campo({label:'CPF',key:p+'cpf',cpf:true,ph:'000.000.000-00',badge:'none'})
+    )}
+    ${row(
+      campo({label:'Data de nascimento',key:p+'dataNasc',type:'date',badge:'none'}),
+      campo({label:'Profissão',key:p+'profissao',badge:'none'})
+    )}
+    ${row(
+      campo({label:'Regime de bens',key:p+'regimeBens',type:'select',optsHtml:selOptions(REGIME,v(p+'regimeBens')),badge:'none'}),
+      campo({label:'Renda mensal',key:p+'renda',money:true,ph:'R$ 0,00',badge:'none'})
+    )}
+  </div>`;
+}
+
+// Bloco de proponente i (1 = principal, usa chaves planas nome/email/whatsapp p/ compatibilidade)
+function blocoProponente(i){
+  const P = i===1 ? '' : `p${i}_`;
+  const kNome  = i===1 ? 'nome'     : P+'nome';
+  const kEmail = i===1 ? 'email'    : P+'email';
+  const kCel   = i===1 ? 'whatsapp' : P+'celular';
+  const kCivil = P+'estadoCivil';
+  const civilVal = v(kCivil);
+  const mostraConj = COM_CONJUGE.includes(civilVal);
+  const removivel = i>1 && i===nProponentes && !somenteLeitura;
+  return `<div class="section" data-prop="${i}">
+    <div class="prop-head"><div><span class="num">${i}</span><strong>${i===1?'Locador':'Locador '+i}</strong></div>${removivel?`<button type="button" class="btn-remover-bloco" data-remover="${i}">✕ Remover</button>`:''}</div>
+    ${campo({label:'Nome completo',key:kNome})}
+    ${row(
+      campo({label:'RG',key:P+'rg'}),
+      campo({label:'CPF',key:P+'cpf',cpf:true,ph:'000.000.000-00'})
+    )}
+    ${row(
+      campo({label:'Data de nascimento',key:P+'dataNasc',type:'date'}),
+      campo({label:'Estado civil',key:kCivil,type:'select',optsHtml:selOptions(CIVIL,civilVal)})
+    )}
+    ${row(
+      campo({label:'CEP',key:P+'cep',cep:true,ph:'00000-000'}),
+      campo({label:'Endereço',key:P+'endereco',ph:'Rua, Avenida...'})
+    )}
+    ${row(
+      campo({label:'Número',key:P+'numero'}),
+      campo({label:'Complemento',key:P+'complemento',badge:'opc',ph:'Apto, Bloco...'})
+    )}
+    ${row(
+      campo({label:'Bairro',key:P+'bairro'}),
+      campo({label:'Cidade',key:P+'cidade'})
+    )}
+    ${row(
+      campo({label:'Estado',key:P+'estado',type:'select',optsHtml:ufOptions(v(P+'estado'))}),
+      campo({label:'Profissão',key:P+'profissao',nta:true})
+    )}
+    ${row(
+      campo({label:'Renda mensal',key:P+'renda',money:true,nta:true,ph:'R$ 0,00'}),
+      campo({label:'E-mail',key:kEmail,type:'email'})
+    )}
+    ${row(
+      campo({label:'Celular / WhatsApp',key:kCel,type:'tel',ph:'(11) 90000-0000'}),
+      campo({label:'Telefone fixo',key:P+'telFixo',type:'tel',badge:'opc',ph:'(11) 0000-0000'})
+    )}
+    ${mostraConj ? blocoConjuge(i) : ''}
+  </div>`;
+}
+
+function renderProponentes(){
+  let html = '';
+  for(let i=1;i<=nProponentes;i++) html += blocoProponente(i);
+  if(!somenteLeitura && nProponentes < MAX_PROP)
+    html += `<button type="button" class="btn-add-bloco" id="btnAddProp">+ Adicionar locador (${nProponentes}/${MAX_PROP})</button>`;
+  document.getElementById('proponentes').innerHTML = html;
+  // popula o select de UF do imóvel (uma vez basta, mas é barato refazer)
+  const imEstado = document.querySelector('[data-key="im_estado"]');
+  if(imEstado && !imEstado.dataset.feito){ imEstado.innerHTML = ufOptions(v('im_estado')); imEstado.value = v('im_estado'); imEstado.dataset.feito='1'; }
+  atualizarProgresso();
+}
+
+// ── Máscaras ──
+function maskCPF(x){ let d=(''+x).replace(/\D/g,'').slice(0,11); if(d.length>9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; if(d.length>6) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; if(d.length>3) return `${d.slice(0,3)}.${d.slice(3)}`; return d; }
+function maskCEP(x){ let d=(''+x).replace(/\D/g,'').slice(0,8); return d.length>5?`${d.slice(0,5)}-${d.slice(5)}`:d; }
+function maskMoney(x){ let d=(''+x).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; const int=d.slice(0,-2),c=d.slice(-2); return 'R$ '+int.replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+c; }
+
+// ── CEP lookup (preenche os campos irmãos do mesmo bloco/imóvel) ──
+async function lookupCEP(input){
+  const key = input.dataset.key;
+  const cep = input.value.replace(/\D/g,'');
+  if(cep.length!==8) return;
+  // prefixo: '' (proponente 1), 'pN_' ou 'im_'
+  const prefix = key.replace(/cep$/,'');
+  try{
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    const d = await r.json();
+    if(d.erro) return;
+    const set=(k,val)=>{ if(val==null) return; valores[k]=val; const el=document.querySelector(`[data-key="${k}"]`); if(el) el.value=val; };
+    set(prefix+'endereco', d.logradouro);
+    set(prefix+'bairro',   d.bairro);
+    set(prefix+'cidade',   d.localidade);
+    set(prefix+'estado',   d.uf);
+    atualizarProgresso();
+  }catch(e){}
+}
+
+// ── Progresso e badges ──
+function atualizarProgresso(){
+  const campos = document.querySelectorAll('[data-key]');
+  let total=0, ok=0;
+  campos.forEach(el=>{ total++; const k=el.dataset.key; if(isPend(k) || (valores[k]&&(''+valores[k]).trim())) ok++; });
+  // documentos obrigatórios contam também
+  ['rgcpf','compEndereco','compRenda','compEstadoCivil'].forEach(k=>{ total++; if(isPend(k)||arquivos[k]) ok++; });
+  const pct = total? Math.round(ok/total*100):0;
+  const bar = document.getElementById('progressFill'); if(bar) bar.style.width = pct+'%';
+}
+
+// ── Delegação de eventos no formulário ──
+const form = document.getElementById('formFicha');
+
+form.addEventListener('input', e=>{
+  const el = e.target;
+  if(!el.dataset || el.dataset.key==null) return;
+  let val = el.value;
+  if(el.hasAttribute('data-cpf'))   val = maskCPF(val);
+  if(el.hasAttribute('data-cep'))   val = maskCEP(val);
+  if(el.hasAttribute('data-money')) val = maskMoney(val);
+  if(val!==el.value) el.value = val;
+  valores[el.dataset.key] = val;
+  // atualiza badge inline sem re-render
+  const fld = el.closest('.field'); const b = fld && fld.querySelector('.badge-obrig,.badge-preen');
+  if(b){ const ok = val.trim()!==''; b.textContent = ok?'preenchido':'obrigatório'; b.className = ok?'badge-preen':'badge-obrig'; }
+  atualizarProgresso();
+});
+
+form.addEventListener('change', e=>{
+  const el = e.target;
+  // "Não tenho agora" de campo
+  if(el.matches('[data-campo]')){
+    const k = el.dataset.campo;
+    if(el.checked){ pendentes.add(k); valores[k]=''; }
+    else pendentes.delete(k);
+    const inp = document.querySelector(`[data-key="${k}"]`);
+    if(inp){ inp.disabled = el.checked; if(el.checked) inp.value=''; }
+    const tag = document.getElementById('pend-'+k); if(tag) tag.style.display = el.checked?'inline-block':'none';
+    atualizarProgresso(); return;
+  }
+  // "Não tenho agora" de documento
+  if(el.matches('[data-doc-campo]')){
+    const k = el.dataset.docCampo;
+    const area = el.closest('.doc-wrapper').querySelector('.doc-area');
+    const st = document.getElementById('status-'+k);
+    const tag = document.getElementById('pend-'+k);
+    if(el.checked){ pendentes.add(k); delete arquivos[k]; area.classList.remove('tem-arquivo'); area.classList.add('pendente-doc'); if(st) st.textContent='Marcado como pendente'; if(tag) tag.style.display='inline-block'; }
+    else { pendentes.delete(k); area.classList.remove('pendente-doc'); if(st) st.textContent='Toque para selecionar'; if(tag) tag.style.display='none'; }
+    atualizarProgresso(); return;
+  }
+  // Estado civil -> mostra/esconde cônjuge (re-render do bloco de proponentes)
+  if(el.dataset.key && /estadoCivil$/.test(el.dataset.key)){
+    valores[el.dataset.key] = el.value;
+    renderProponentes(); return;
+  }
+});
+
+form.addEventListener('focusout', e=>{
+  const el = e.target;
+  if(el.dataset && el.hasAttribute('data-cep')) lookupCEP(el);
+});
+
+// Adicionar / remover proponente
+document.getElementById('proponentes').addEventListener('click', e=>{
+  if(e.target.id==='btnAddProp'){ if(nProponentes<MAX_PROP){ nProponentes++; renderProponentes(); } }
+  const rem = e.target.dataset && e.target.dataset.remover;
+  if(rem){
+    const i = parseInt(rem,10);
+    // limpa os valores do proponente i e do seu cônjuge
+    Object.keys(valores).forEach(k=>{ if(k.startsWith('p'+i+'_')||k.startsWith('p'+i+'c_')) delete valores[k]; });
+    // reindexa: como removemos sempre o último visível para simplificar, apenas decrementa
+    nProponentes = Math.max(1, nProponentes-1);
+    renderProponentes();
+  }
+});
+
+// ── Documentos (globais p/ onclick) ──
+window.triggerFile = function(k){ const cb=document.querySelector(`[data-doc-campo="${k}"]`); if(cb&&cb.checked) return; document.getElementById('file-'+k).click(); };
+window.docSelecionado = function(input){
+  const k = input.dataset.doc; const area = input.closest('.doc-area');
+  if(input.files[0]){ arquivos[k]=input.files[0]; area.classList.add('tem-arquivo'); area.classList.remove('pendente-doc'); const st=document.getElementById('status-'+k); if(st) st.textContent='✓ '+input.files[0].name; const lbl=area.querySelector('.doc-label'); const b=lbl&&lbl.querySelector('.badge-obrig,.badge-preen'); if(b){b.textContent='preenchido';b.className='badge-preen';} atualizarProgresso(); }
+};
+
+// ── Envio ──
+function mostrarErro(msg){ const el=document.getElementById('erroFinal'); el.textContent=msg; el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
+
+form.addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  const rigidos = [['nome','nome'],['whatsapp','WhatsApp'],['email','e-mail']];
+  const falta = rigidos.filter(([k])=> !(valores[k]&&(''+valores[k]).trim()));
+  if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do locador principal.'); return; }
+
+  const btn = document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
+  document.getElementById('erroFinal').style.display='none';
+
+  const dados = {};
+  Object.entries(valores).forEach(([k,val])=>{ if(val&&(''+val).trim()) dados[k]=val; });
+
+  const fichaId = Date.now().toString(36)+Math.random().toString(36).slice(2);
+  const urlsDocs = {};
+  const docsKeys = Object.keys(arquivos);
+  if(docsKeys.length){
+    const prog=document.getElementById('upload-progress'); const fill=document.getElementById('upload-progress-fill'); prog.style.display='block';
+    let n=0;
+    for(const k of docsKeys){
+      try{ const r=ref(storage,`fichas/${tipo}/${fichaId}/${k}`); await uploadBytes(r,arquivos[k]); urlsDocs[k]=await getDownloadURL(r); }
+      catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); }
+      fill.style.width = Math.round((++n/docsKeys.length)*100)+'%';
+    }
+  }
+
+  try{
+    if(modo==='edicao' && idFicha){
+      const ex = await getDoc(doc(db,'fichas',idFicha));
+      const docsAntigos = ex.exists()?(ex.data().documentos||{}):{};
+      await updateDoc(doc(db,'fichas',idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
+    } else {
+      await addDoc(collection(db,'fichas'),{ tipo, id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() });
+    }
+    form.style.display='none';
+    document.getElementById('tela-sucesso').style.display='block';
+    const t=document.getElementById('sucessoTitulo'), m=document.getElementById('sucessoMsg');
+    if(t) t.textContent = modo==='edicao'?'Alterações salvas!':'Ficha enviada!';
+    if(m) m.textContent = modo==='edicao'?'Suas informações foram atualizadas.':'Seu corretor receberá suas informações em breve.';
+    document.getElementById('progressFill').style.width='100%';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){ mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.'); btn.disabled=false; btn.textContent='Enviar ficha'; }
+});
+
+// ── Ações do corretor ──
+window.enviarParaAdmin = async function(){
+  if(!window.__fichaId) return;
+  if(!confirm('Confirma envio ao administrativo?')) return;
+  try{ const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js'); const fns=getFunctions(app,'southamerica-east1'); await httpsCallable(fns,'enviarFichaTipoAdmin')({ fichaId:window.__fichaId }); alert('Ficha enviada ao administrativo!'); window.close(); }
+  catch(e){ alert('Erro: '+e.message); }
+};
+window.solicitarCorrecao = function(){
+  const msg = prompt('Descreva o que precisa ser corrigido:'); if(!msg) return;
+  updateDoc(doc(db,'fichas',window.__fichaId),{ status:'correcao_solicitada', observacaoCorretor:msg, atualizadoEm:serverTimestamp() })
+    .then(()=>alert('Solicitação registrada.')).catch(e=>alert('Erro: '+e.message));
+};
+
+// ── Carregar dados existentes (edição / corretor) ──
+function aplicarFicha(ficha){
+  const d = ficha.dados||{};
+  Object.entries(d).forEach(([k,val])=>{ valores[k]=val; });
+  // descobre quantos proponentes vieram nos dados
+  for(let i=MAX_PROP;i>=2;i--){ if(Object.keys(d).some(k=>k.startsWith('p'+i+'_'))){ nProponentes=i; break; } }
+  (ficha.pendentes||[]).forEach(k=>pendentes.add(k));
+  renderProponentes();
+  // marca docs pendentes
+  (ficha.pendentes||[]).forEach(k=>{ const tag=document.getElementById('pend-'+k); if(tag) tag.style.display='inline-block'; });
+  atualizarProgresso();
+}
+
+async function init(){
+  if(modo==='corretor' && idFicha){
+    somenteLeitura = true;
+    document.getElementById('barraCorretor').style.display = origemHub?'none':'flex';
+    const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Revisão';
+    document.getElementById('introTexto').style.display='none';
+    document.getElementById('btnSubmit').style.display='none';
+    try{
+      const snap=await getDoc(doc(db,'fichas',idFicha));
+      if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; }
+      const ficha=snap.data(); aplicarFicha(ficha);
+      document.querySelectorAll('#formFicha input,#formFicha select,#formFicha textarea').forEach(el=>{ el.disabled=true; });
+      document.querySelectorAll('.nao-tenho,.doc-clickable').forEach(el=>{ el.style.pointerEvents='none'; el.style.opacity='.6'; });
+      window.__fichaId=idFicha;
+      if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>`<li>${p}</li>`).join(''); }
+    }catch(e){ mostrarErro('Erro: '+e.message); }
+  } else if(modo==='edicao' && idFicha){
+    const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Edição';
+    document.getElementById('btnSubmit').textContent='Salvar alterações';
+    try{
+      const snap=await getDoc(doc(db,'fichas',idFicha));
+      if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; }
+      const ficha=snap.data();
+      if(!origemHub && ficha.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; }
+      if(ficha.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p>`; }
+      aplicarFicha(ficha);
+    }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
+  } else {
+    renderProponentes();
+  }
+}
+init();
+</script>
 </body></html>

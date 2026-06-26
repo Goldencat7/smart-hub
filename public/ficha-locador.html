@@ -1,410 +1,44 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ficha Cadastral do Locador — RE/MAX Smart</title>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#f4f6fb;color:#1a1a2e;min-height:100vh}
-    .header{background:#002749;padding:18px 24px;display:flex;align-items:center;gap:14px}
-    .header h1{color:#fff;font-size:17px;font-weight:700;line-height:1.2}
-    .header p{color:#A4D7F4;font-size:12px}
-    .badge-modo{background:#DC1C2E;color:#fff;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-left:10px;vertical-align:middle}
-    .progress-bar{height:4px;background:#e2e8f0}
-    .progress-fill{height:100%;background:#DC1C2E;transition:width .4s ease}
-    .container{max-width:680px;margin:28px auto;padding:0 16px 60px}
-    .intro{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;border-left:4px solid #DC1C2E}
-    .intro p{font-size:13px;color:#444;line-height:1.6}
-    .section{background:#fff;border-radius:12px;padding:24px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
-    .section-title{font-size:14px;font-weight:700;color:#002749;margin-bottom:18px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #e8edf3;padding-bottom:10px}
-    .section-title .num{background:#DC1C2E;color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
-    .field{margin-bottom:16px}
-    .field-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;gap:8px;flex-wrap:wrap}
-    label{font-size:12px;font-weight:600;color:#374151}
-    .badge-obrig{font-size:10px;color:#DC1C2E;font-weight:600}
-    .badge-preen{font-size:10px;color:#16a34a;font-weight:600}
-    .badge-opc{font-size:10px;color:#6b7280}
-    .nao-tenho{display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;flex-shrink:0}
-    .nao-tenho input[type=checkbox]{width:13px;height:13px;cursor:pointer;accent-color:#002749}
-    .nao-tenho span{font-size:11px;color:#6b7280;white-space:nowrap}
-    input[type=text],input[type=email],input[type=tel],input[type=date],input[type=number],select,textarea{
-      width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;color:#111;
-      background:#fff;transition:border-color .2s}
-    input:focus,select:focus,textarea:focus{outline:none;border-color:#002749}
-    input:disabled,select:disabled,textarea:disabled{background:#f5f7fa;color:#9ca3af;cursor:not-allowed}
-    .pendente-tag{font-size:11px;color:#b45309;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:3px 8px;display:inline-block;margin-top:4px}
-    .row-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-    @media(max-width:480px){.row-2{grid-template-columns:1fr}}
-
-    /* ── Área de documento (FIX: file input não sobrepõe o checkbox) ── */
-    .doc-area{border:2px dashed #d1d5db;border-radius:10px;padding:12px;transition:border-color .2s}
-    .doc-area.tem-arquivo{border-color:#16a34a;border-style:solid;background:#f0fdf4}
-    .doc-area.pendente-doc{border-color:#d97706;border-style:solid;background:#fffbeb}
-    .doc-clickable{cursor:pointer;text-align:center;padding:8px 0;border-radius:8px;transition:background .15s}
-    .doc-clickable:hover{background:#f0f4ff}
-    .doc-icon{font-size:22px;margin-bottom:4px}
-    .doc-label{font-size:12px;font-weight:600;color:#374151}
-    .doc-status{font-size:11px;color:#6b7280;margin-top:2px}
-    .docs-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-    @media(max-width:480px){.docs-grid{grid-template-columns:1fr}}
-    .doc-wrapper{display:flex;flex-direction:column;gap:6px}
-    .doc-nao-tenho{justify-content:center;font-size:12px;padding:4px 0}
-
-    .btn-submit{width:100%;padding:14px;background:#DC1C2E;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;margin-top:24px;transition:background .2s}
-    .btn-submit:hover:not(:disabled){background:#c0151f}
-    .btn-submit:disabled{background:#9ca3af;cursor:not-allowed}
-    .erro-msg{font-size:12px;color:#DC1C2E;margin-top:4px;display:none}
-    #tela-sucesso{display:none;text-align:center;padding:60px 24px}
-    #tela-sucesso .check{width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px}
-    #tela-sucesso h2{font-size:22px;color:#002749;margin-bottom:10px}
-    #tela-sucesso p{font-size:14px;color:#555;line-height:1.6;max-width:420px;margin:0 auto}
-    #upload-progress{height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none}
-    #upload-progress-fill{height:100%;background:#002749;border-radius:2px;transition:width .3s}
-
-    /* ── Modo Corretor ── */
-    .corretor-bar{background:#002749;color:#fff;padding:10px 24px;font-size:13px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-    .corretor-bar strong{font-size:14px}
-    .corretor-acoes{display:flex;gap:8px;flex-wrap:wrap}
-    .btn-corretor{padding:7px 16px;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
-    .btn-aprovar{background:#16a34a;color:#fff}
-    .btn-aprovar:hover{background:#15803d}
-    .btn-devolver{background:#dc2626;color:#fff}
-    .btn-devolver:hover{background:#b91c1c}
-    .btn-solicitar{background:#d97706;color:#fff}
-    .btn-solicitar:hover{background:#b45309}
-    .campo-leitura{font-size:13px;color:#111;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;min-height:36px}
-    .pend-campo{background:#fff8e1;border-color:#f59e0b}
-    .resumo-pendencias{background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-bottom:16px}
-    .resumo-pendencias h4{font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px}
-    .resumo-pendencias ul{padding-left:16px;font-size:12px;color:#78350f}
-    .doc-link{display:flex;align-items:center;gap:6px;font-size:12px;color:#002749;font-weight:600;padding:6px 10px;background:#eff6ff;border-radius:8px;text-decoration:none}
-    .doc-link:hover{background:#dbeafe}
-    .docs-lista{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    @media(max-width:480px){.docs-lista{grid-template-columns:1fr}}
-  </style>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral do Locador — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css">
+<style>
+.btn-add-bloco{margin-top:6px;width:100%;background:#fff;color:#002749;border:1.5px dashed #A4D7F4;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
+.btn-add-bloco:hover{background:#f0f7fc}
+.btn-remover-bloco{background:none;border:none;color:#9F1622;font-size:12px;font-weight:700;cursor:pointer;padding:0}
+.sub-bloco{margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0}
+.sub-bloco-titulo{font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.prop-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.prop-head .num{background:#DC1C2E;color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-right:8px}
+.prop-head strong{font-size:14px;color:#002749}
+.radio-group{display:flex;gap:8px;flex-wrap:wrap}
+.radio-btn{padding:9px 16px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.radio-btn.ativo{background:#002749;color:#fff;border-color:#002749}
+.nao-existe span{color:#6b7280}
+.nao-existe input[type=checkbox]{accent-color:#6B7480}
+</style>
 </head>
 <body>
-
-<!-- ── Barra do corretor (só no modo corretor) ── -->
-<div class="corretor-bar" id="barraCorretor" style="display:none">
-  <div><strong>Modo Corretor</strong> — Revisão da ficha</div>
-  <div class="corretor-acoes">
-    <button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button>
-    <button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button>
-  </div>
-</div>
-
-<div class="header">
-  <svg width="38" height="38" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="50" cy="50" r="50" fill="#DC1C2E"/>
-    <text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text>
-  </svg>
-  <div>
-    <h1>Ficha Cadastral do Locador <span class="badge-modo" id="badgeModo" style="display:none"></span></h1>
-    <p>RE/MAX Smart — Imóveis</p>
-  </div>
-</div>
+<div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
+<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Cadastral do Locador <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
 <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-
 <div class="container">
-  <div class="intro" id="introTexto">
-    <p>Preencha o máximo de informações possíveis. Caso não tenha algum dado ou documento no momento, utilize a opção <strong>"Não tenho agora"</strong> — o item ficará marcado como <strong>Informação pendente</strong> e o processo não será travado.</p>
-  </div>
+<div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
+<div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para pendências e <strong>"Não existe"</strong> para itens que não se aplicam ao imóvel.</p></div>
+<form id="formFicha" novalidate>
+<div id="locadores"></div>
+<div id="imovel"></div>
+<div id="financeiro"></div>
+<div id="admin"></div>
 
-  <!-- ── Resumo de pendências (modo corretor) ── -->
-  <div class="resumo-pendencias" id="resumoPendencias" style="display:none">
-    <h4>⚠ Informações pendentes enviadas pelo cliente</h4>
-    <ul id="listaPendencias"></ul>
-  </div>
+<!-- Documentos -->
+<div class="section"><div class="section-title"><span class="num">5</span> Documentos</div>
+<div class="docs-grid" id="docs-grid"></div></div>
 
-  <form id="formFicha" novalidate>
-
-    <!-- 1. Dados Pessoais -->
-    <div class="section">
-      <div class="section-title"><span class="num">1</span> Dados Pessoais</div>
-
-      <div class="field">
-        <div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div>
-        <input type="text" name="nome" placeholder="Como consta no documento">
-      </div>
-
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header">
-            <label>CPF <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="cpf"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="cpf" placeholder="000.000.000-00" maxlength="14">
-          <div class="pendente-tag" id="pend-cpf" style="display:none">Informação pendente</div>
-        </div>
-        <div class="field">
-          <div class="field-header">
-            <label>RG <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="rg"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="rg" placeholder="00.000.000-0">
-          <div class="pendente-tag" id="pend-rg" style="display:none">Informação pendente</div>
-        </div>
-      </div>
-
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header"><label>Data de nascimento <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="date" name="dataNasc">
-        </div>
-        <div class="field">
-          <div class="field-header"><label>Estado civil <span class="badge-obrig">obrigatório</span></label></div>
-          <select name="estadoCivil">
-            <option value="">Selecione</option>
-            <option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option>
-            <option>Viúvo(a)</option><option>União estável</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header">
-            <label>Profissão <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="profissao"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="profissao" placeholder="Ex.: Empresário, CLT, Autônomo">
-          <div class="pendente-tag" id="pend-profissao" style="display:none">Informação pendente</div>
-        </div>
-        <div class="field">
-          <div class="field-header">
-            <label>Renda mensal <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="renda"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="renda" placeholder="R$ 0.000,00">
-          <div class="pendente-tag" id="pend-renda" style="display:none">Informação pendente</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 2. Contato -->
-    <div class="section">
-      <div class="section-title"><span class="num">2</span> Contato</div>
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header"><label>WhatsApp <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="tel" name="whatsapp" placeholder="(11) 9 0000-0000">
-        </div>
-        <div class="field">
-          <div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="email" name="email" placeholder="seu@email.com">
-        </div>
-      </div>
-    </div>
-
-    <!-- 3. Endereço Atual -->
-    <div class="section">
-      <div class="section-title"><span class="num">3</span> Endereço Atual</div>
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header"><label>CEP <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="text" name="cep" placeholder="00000-000" maxlength="9" id="campoCep">
-        </div>
-        <div class="field">
-          <div class="field-header"><label>Número <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="text" name="numero" placeholder="123">
-        </div>
-      </div>
-      <div class="field">
-        <div class="field-header"><label>Logradouro <span class="badge-obrig">obrigatório</span></label></div>
-        <input type="text" name="logradouro" placeholder="Rua, Avenida..." id="campoLogradouro">
-      </div>
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div>
-          <input type="text" name="complemento" placeholder="Apto, Bloco...">
-        </div>
-        <div class="field">
-          <div class="field-header"><label>Bairro <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="text" name="bairro" id="campoBairro">
-        </div>
-      </div>
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header"><label>Cidade <span class="badge-obrig">obrigatório</span></label></div>
-          <input type="text" name="cidade" id="campoCidade">
-        </div>
-        <div class="field">
-          <div class="field-header"><label>Estado <span class="badge-obrig">obrigatório</span></label></div>
-          <select name="estado" id="campoEstado">
-            <option value="">UF</option>
-            <option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option>
-            <option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option>
-            <option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option>
-            <option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option>
-            <option>RS</option><option>RO</option><option>RR</option><option selected>SP</option>
-            <option>SE</option><option>TO</option>
-          </select>
-        </div>
-      </div>
-    </div>
-
-    <!-- 4. Dados Bancários -->
-    <div class="section">
-      <div class="section-title"><span class="num">4</span> Dados Bancários <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento do aluguel)</small></div>
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header">
-            <label>Banco <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="banco"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="banco" placeholder="Nome do banco">
-          <div class="pendente-tag" id="pend-banco" style="display:none">Informação pendente</div>
-        </div>
-        <div class="field">
-          <div class="field-header">
-            <label>Tipo de conta <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="tipoConta"> <span>Não tenho agora</span></label>
-          </div>
-          <select name="tipoConta">
-            <option value="">Selecione</option>
-            <option>Corrente</option><option>Poupança</option>
-          </select>
-          <div class="pendente-tag" id="pend-tipoConta" style="display:none">Informação pendente</div>
-        </div>
-      </div>
-      <div class="row-2">
-        <div class="field">
-          <div class="field-header">
-            <label>Agência <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="agencia"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="agencia" placeholder="0000">
-          <div class="pendente-tag" id="pend-agencia" style="display:none">Informação pendente</div>
-        </div>
-        <div class="field">
-          <div class="field-header">
-            <label>Conta <span class="badge-obrig">obrigatório</span></label>
-            <label class="nao-tenho"><input type="checkbox" data-campo="conta"> <span>Não tenho agora</span></label>
-          </div>
-          <input type="text" name="conta" placeholder="00000-0">
-          <div class="pendente-tag" id="pend-conta" style="display:none">Informação pendente</div>
-        </div>
-      </div>
-      <div class="field">
-        <div class="field-header">
-          <label>Chave Pix <span class="badge-opc">opcional</span></label>
-          <label class="nao-tenho"><input type="checkbox" data-campo="pix"> <span>Não tenho agora</span></label>
-        </div>
-        <input type="text" name="pix" placeholder="CPF, e-mail, telefone ou chave aleatória">
-        <div class="pendente-tag" id="pend-pix" style="display:none">Informação pendente</div>
-      </div>
-    </div>
-
-    <!-- 5. Documentos -->
-    <div class="section">
-      <div class="section-title"><span class="num">5</span> Documentos</div>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:16px">Envie os documentos disponíveis. Para os que não tiver agora, marque "Não tenho agora".</p>
-      <div class="docs-grid" id="areaDocumentos">
-
-        <!-- RG frente -->
-        <div class="doc-wrapper">
-          <div class="doc-area" id="area-rgFrente">
-            <div class="doc-clickable" onclick="triggerFile('rgFrente')">
-              <div class="doc-icon">🪪</div>
-              <div class="doc-label">RG ou CNH — frente <span class="badge-obrig">obrigatório</span></div>
-              <div class="doc-status" id="status-rgFrente">Toque para selecionar</div>
-            </div>
-            <input type="file" id="file-rgFrente" accept="image/*,.pdf" style="display:none" data-doc="rgFrente" onchange="docSelecionado(this)">
-          </div>
-          <div class="pendente-tag" id="pend-rgFrente" style="display:none">Informação pendente</div>
-          <label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgFrente"> <span>Não tenho agora</span></label>
-        </div>
-
-        <!-- RG verso -->
-        <div class="doc-wrapper">
-          <div class="doc-area" id="area-rgVerso">
-            <div class="doc-clickable" onclick="triggerFile('rgVerso')">
-              <div class="doc-icon">🪪</div>
-              <div class="doc-label">RG ou CNH — verso <span class="badge-obrig">obrigatório</span></div>
-              <div class="doc-status" id="status-rgVerso">Toque para selecionar</div>
-            </div>
-            <input type="file" id="file-rgVerso" accept="image/*,.pdf" style="display:none" data-doc="rgVerso" onchange="docSelecionado(this)">
-          </div>
-          <div class="pendente-tag" id="pend-rgVerso" style="display:none">Informação pendente</div>
-          <label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgVerso"> <span>Não tenho agora</span></label>
-        </div>
-
-        <!-- Comprovante de renda -->
-        <div class="doc-wrapper">
-          <div class="doc-area" id="area-compRenda">
-            <div class="doc-clickable" onclick="triggerFile('compRenda')">
-              <div class="doc-icon">💰</div>
-              <div class="doc-label">Comprovante de renda <span class="badge-obrig">obrigatório</span></div>
-              <div class="doc-status" id="status-compRenda">Toque para selecionar</div>
-            </div>
-            <input type="file" id="file-compRenda" accept="image/*,.pdf" style="display:none" data-doc="compRenda" onchange="docSelecionado(this)">
-          </div>
-          <div class="pendente-tag" id="pend-compRenda" style="display:none">Informação pendente</div>
-          <label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRenda"> <span>Não tenho agora</span></label>
-        </div>
-
-        <!-- Comprovante de endereço -->
-        <div class="doc-wrapper">
-          <div class="doc-area" id="area-compEndereco">
-            <div class="doc-clickable" onclick="triggerFile('compEndereco')">
-              <div class="doc-icon">🏠</div>
-              <div class="doc-label">Comprovante de endereço <span class="badge-obrig">obrigatório</span></div>
-              <div class="doc-status" id="status-compEndereco">Toque para selecionar</div>
-            </div>
-            <input type="file" id="file-compEndereco" accept="image/*,.pdf" style="display:none" data-doc="compEndereco" onchange="docSelecionado(this)">
-          </div>
-          <div class="pendente-tag" id="pend-compEndereco" style="display:none">Informação pendente</div>
-          <label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compEndereco"> <span>Não tenho agora</span></label>
-        </div>
-
-        <!-- Matrícula -->
-        <div class="doc-wrapper">
-          <div class="doc-area" id="area-matricula">
-            <div class="doc-clickable" onclick="triggerFile('matricula')">
-              <div class="doc-icon">📋</div>
-              <div class="doc-label">Matrícula do imóvel <span class="badge-obrig">obrigatório</span></div>
-              <div class="doc-status" id="status-matricula">Toque para selecionar</div>
-            </div>
-            <input type="file" id="file-matricula" accept="image/*,.pdf" style="display:none" data-doc="matricula" onchange="docSelecionado(this)">
-          </div>
-          <div class="pendente-tag" id="pend-matricula" style="display:none">Informação pendente</div>
-          <label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="matricula"> <span>Não tenho agora</span></label>
-        </div>
-
-        <!-- IPTU -->
-        <div class="doc-wrapper">
-          <div class="doc-area" id="area-iptu">
-            <div class="doc-clickable" onclick="triggerFile('iptu')">
-              <div class="doc-icon">📄</div>
-              <div class="doc-label">IPTU <span class="badge-obrig">obrigatório</span></div>
-              <div class="doc-status" id="status-iptu">Toque para selecionar</div>
-            </div>
-            <input type="file" id="file-iptu" accept="image/*,.pdf" style="display:none" data-doc="iptu" onchange="docSelecionado(this)">
-          </div>
-          <div class="pendente-tag" id="pend-iptu" style="display:none">Informação pendente</div>
-          <label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="iptu"> <span>Não tenho agora</span></label>
-        </div>
-
-      </div>
-    </div>
-
-    <div id="erroFinal" class="erro-msg" style="text-align:center;font-size:13px;padding:10px"></div>
-    <div id="upload-progress"><div id="upload-progress-fill" style="width:0%"></div></div>
-    <button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
-
-  </form>
-
-  <!-- Tela de sucesso -->
-  <div id="tela-sucesso">
-    <div class="check">✓</div>
-    <h2>Ficha enviada com sucesso!</h2>
-    <p>Seu corretor receberá suas informações e entrará em contato em breve.</p>
-  </div>
-
-  <!-- Tela modo visualização corretor (carrega ficha existente) -->
-  <div id="tela-visualizacao" style="display:none"></div>
+<div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
+<div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
+<button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
+</form>
+<div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p></div>
 </div>
 
 <script type="module">
@@ -422,403 +56,302 @@ const app = initializeApp({
 });
 const db = getFirestore(app);
 const storage = getStorage(app);
+const COL = 'fichas_locador';   // coleção própria da Locador (não usa tipo)
 
-// ── Parâmetros da URL ──
 const params = new URLSearchParams(location.search);
-const modo       = params.get('modo') || 'cliente';
+const modo         = params.get('modo') || 'cliente';
 const corretorUid  = params.get('corretor') || '';
-const corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : 'corretor';
-const idFicha    = params.get('idFicha') || '';
-const origemHub  = params.get('origem') === 'hub';
+const corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
+const idFicha      = params.get('idFicha') || '';
+const origemHub    = params.get('origem') === 'hub';
 
-// ── Estado ──
-const arquivos = {};
-const pendentes = new Set();
+const UF = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+const CIVIL = ['Solteiro(a)','Casado(a)','Divorciado(a)','Viúvo(a)','União estável'];
+const REGIME = ['Comunhão parcial de bens','Comunhão universal de bens','Separação total de bens','Participação final nos aquestos'];
+const TIPOS = ['Apartamento','Casa','Cobertura','Studio','Sala comercial','Terreno','Outro'];
+const COM_CONJUGE = ['Casado(a)','União estável'];
+const MAX_LOC = 2, MAX_TIT = 2;
 
-// ── Inicialização por modo ──
-if (modo === 'corretor' && idFicha) {
-  iniciarModoCorretor();
-} else if (modo === 'edicao' && idFicha) {
-  iniciarModoEdicao();
-} else {
-  iniciarModoCliente();
+const valores   = {};
+const pendentes = new Set();   // "Não tenho agora"
+const naoExiste = new Set();   // "Não existe" (não se aplica)
+const arquivos  = {};
+let nLocadores = 1, nTitulares = 1;
+let somenteLeitura = false;
+valores['adm_taxa'] = '8%';
+
+// ── Documentos ──
+const DOCS = [
+  {key:'rgcpf',     icon:'🪪', label:'RG e CPF',           badge:'obrig'},
+  {key:'energia',   icon:'⚡', label:'Conta de energia',    badge:'obrig'},
+  {key:'agua',      icon:'💧', label:'Conta de água',        badge:'opc', ni:true, nta:true},
+  {key:'gas',       icon:'🔥', label:'Conta de gás',         badge:'opc', ni:true, nta:true},
+  {key:'iptu',      icon:'📄', label:'Documento do IPTU',    badge:'opc', ni:true, nta:true},
+  {key:'condominio',icon:'🏢', label:'Doc. do condomínio',   badge:'opc', ni:true, nta:true},
+];
+
+// ── Helpers ──
+function v(k){ return valores[k]!=null ? valores[k] : ''; }
+function selOptions(arr, sel){ return ['<option value="">Selecione</option>'].concat(arr.map(o=>`<option${o===sel?' selected':''}>${o}</option>`)).join(''); }
+function ufOptions(sel){ return ['<option value="">UF</option>'].concat(UF.map(u=>`<option${u===sel?' selected':''}>${u}</option>`)).join(''); }
+function esc(s){ return (''+s).replace(/"/g,'&quot;'); }
+
+// Campo de texto/select/date/email/tel/money — com NI/NTA opcionais
+function campo(o){
+  const val = v(o.key);
+  const ni  = naoExiste.has(o.key);
+  const nta = pendentes.has(o.key);
+  const badge = o.badge==='opc' ? '<span class="badge-opc">opcional</span>'
+              : o.badge==='none' ? ''
+              : (val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>');
+  let toggles = '';
+  if(o.ni)  toggles += `<label class="nao-tenho nao-existe"><input type="checkbox" data-ni="${o.key}"${ni?' checked':''}><span>Não existe</span></label>`;
+  if(o.nta) toggles += `<label class="nao-tenho"><input type="checkbox" data-campo="${o.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
+  const dis = (ni || nta || somenteLeitura) ? ' disabled' : '';
+  const attrs = `data-key="${o.key}"${o.cpf?' data-cpf':''}${o.money?' data-money':''}${o.cep?` data-cep data-prefix="${o.prefix||''}"`:''}${o.ph?` placeholder="${o.ph}"`:''}`;
+  let input;
+  if(o.type==='select'){
+    input = `<select ${attrs}${dis}>${o.optsHtml}</select>`;
+  } else {
+    const t = o.type||'text';
+    const ml = o.cpf?' maxlength="14"':(o.cep?' maxlength="9"':'');
+    input = `<input type="${t}" ${attrs}${ml}${dis} value="${esc(val)}">`;
+  }
+  const pendTag = (o.ni||o.nta) ? `<div class="pendente-tag" id="pend-${o.key}"${(ni||nta)?'':' style="display:none"'}>${ni?'Não se aplica':'Informação pendente'}</div>` : '';
+  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label>${toggles}</div>${input}${pendTag}</div>`;
 }
-
-function iniciarModoCliente() {
-  document.getElementById('barraCorretor').style.display = 'none';
-  configurarCampos(false);
-  configurarEventos();
+function campoRadio(o){
+  const val=v(o.key);
+  const badge = val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>';
+  const btns = o.options.map(op=>`<button type="button" class="radio-btn${val===op?' ativo':''}" data-radio="${o.key}" data-val="${esc(op)}"${somenteLeitura?' disabled':''}>${op}</button>`).join('');
+  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label></div><div class="radio-group">${btns}</div></div>`;
 }
+function campoTextarea(o){
+  return `<div class="field"><div class="field-header"><label>${o.label} <span class="badge-opc">opcional</span></label></div><textarea data-key="${o.key}"${somenteLeitura?' disabled':''} placeholder="${o.ph||''}">${esc(v(o.key))}</textarea></div>`;
+}
+function row(...c){ return `<div class="row-2">${c.join('')}</div>`; }
 
-async function iniciarModoEdicao() {
-  document.getElementById('badgeModo').style.display = 'inline';
-  document.getElementById('badgeModo').textContent = 'Edição';
-  document.getElementById('btnSubmit').textContent = 'Salvar alterações';
+// ── Blocos ──
+function blocoConjuge(p, titulo){
+  return `<div class="sub-bloco"><div class="sub-bloco-titulo">💍 ${titulo}</div>
+    ${campo({label:'Nome do cônjuge',key:p+'conj_nome',badge:'none'})}
+    ${row(campo({label:'RG',key:p+'conj_rg',badge:'none'}),campo({label:'CPF',key:p+'conj_cpf',cpf:true,ph:'000.000.000-00',badge:'none'}),campo({label:'Nascimento',key:p+'conj_nasc',type:'date',badge:'none'}))}
+    ${row(campo({label:'Profissão',key:p+'conj_profissao',badge:'none'}),campo({label:'Regime de bens',key:p+'conj_regime',type:'select',optsHtml:selOptions(REGIME,v(p+'conj_regime')),badge:'none'}))}
+  </div>`;
+}
+function blocoLocador(i){
+  // 1º locador usa chaves planas (nome/cpf/whatsapp/email) p/ compatibilidade com PDF, e-mail e admin
+  const P = i===1 ? '' : `loc${i}_`;
+  const kNome=i===1?'nome':P+'nome', kEmail=i===1?'email':P+'email', kCel=i===1?'whatsapp':P+'celular', kCivil=P+'estadoCivil';
+  const civilVal=v(kCivil), mostraConj=COM_CONJUGE.includes(civilVal), removivel=i>1 && i===nLocadores && !somenteLeitura;
+  return `<div class="section" data-loc="${i}">
+    <div class="prop-head"><div><span class="num">${i}</span><strong>${i===1?'Locador':'Locador '+i}</strong></div>${removivel?`<button type="button" class="btn-remover-bloco" data-rem-loc="${i}">✕ Remover</button>`:''}</div>
+    ${campo({label:'Nome completo',key:kNome})}
+    ${row(campo({label:'RG',key:P+'rg'}),campo({label:'CPF',key:P+'cpf',cpf:true,ph:'000.000.000-00'}),campo({label:'Nascimento',key:P+'dataNasc',type:'date'}))}
+    ${row(campo({label:'CEP',key:P+'cep',cep:true,prefix:P,ph:'00000-000'}),campo({label:'Endereço',key:P+'endereco',ph:'Rua, Avenida...'}))}
+    ${row(campo({label:'Número',key:P+'numero'}),campo({label:'Complemento',key:P+'complemento',badge:'opc'}),campo({label:'Bairro',key:P+'bairro'}))}
+    ${row(campo({label:'Cidade',key:P+'cidade'}),campo({label:'Estado',key:P+'estado',type:'select',optsHtml:ufOptions(v(P+'estado'))}))}
+    ${row(campo({label:'Profissão',key:P+'profissao',nta:true}),campo({label:'Estado civil',key:kCivil,type:'select',optsHtml:selOptions(CIVIL,civilVal)}))}
+    ${campo({label:'E-mail',key:kEmail,type:'email'})}
+    ${row(campo({label:'Celular / WhatsApp',key:kCel,type:'tel',ph:'(11) 90000-0000'}),campo({label:'Telefone fixo',key:P+'fixo',type:'tel',badge:'opc',ph:'(11) 0000-0000'}))}
+    ${mostraConj ? blocoConjuge(P, 'Cônjuge do '+(i===1?'1º':i+'º')+' locador') : ''}
+  </div>`;
+}
+function renderLocadores(){
+  let h='';
+  for(let i=1;i<=nLocadores;i++) h+=blocoLocador(i);
+  if(!somenteLeitura && nLocadores<MAX_LOC) h+=`<button type="button" class="btn-add-bloco" data-add-loc="1">+ Adicionar 2º locador</button>`;
+  document.getElementById('locadores').innerHTML=h;
+}
+function renderImovel(){
+  const h=`<div class="section"><div class="section-title"><span class="num">2</span> Imóvel</div>
+    ${row(campo({label:'Tipo de imóvel',key:'im_tipo',type:'select',optsHtml:selOptions(TIPOS,v('im_tipo'))}),campo({label:'Referência no site',key:'im_ref',badge:'opc'}))}
+    ${row(campo({label:'CEP',key:'im_cep',cep:true,prefix:'im_',ph:'00000-000'}),campo({label:'Endereço',key:'im_endereco',ph:'Rua, Avenida...'}))}
+    ${row(campo({label:'Número',key:'im_numero'}),campo({label:'Complemento',key:'im_complemento',badge:'opc'}),campo({label:'Bairro',key:'im_bairro'}))}
+    ${row(campo({label:'Cidade',key:'im_cidade'}),campo({label:'Estado',key:'im_estado',type:'select',optsHtml:ufOptions(v('im_estado'))}))}
+    ${row(campo({label:'Nome do condomínio',key:'im_condominio',badge:'opc',ni:true,nta:true}),campo({label:'Adm. condominial',key:'im_admcond',badge:'opc',ni:true,nta:true}))}
+    ${campo({label:'Contato da Adm.',key:'im_admcontato',badge:'opc',ni:true,nta:true,ph:'Telefone ou e-mail'})}
+    ${row(campo({label:'Valor IPTU',key:'im_iptu',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}),campo({label:'Valor condomínio',key:'im_valorcond',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}))}
+    ${row(campo({label:'Instalação ENEL',key:'im_enel',badge:'opc',ni:true,nta:true}),campo({label:'Instalação Sabesp',key:'im_sabesp',badge:'opc',ni:true,nta:true}))}
+    ${campo({label:'Instalação Comgás',key:'im_comgas',badge:'opc',ni:true,nta:true})}
+    ${row(campo({label:'Contribuinte IPTU',key:'im_contribuinte',badge:'opc',ni:true,nta:true}),campo({label:'Início do contrato',key:'im_inicio',type:'date'}))}
+    ${row(campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}),campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'}))}
+  </div>`;
+  document.getElementById('imovel').innerHTML=h;
+}
+function blocoFin(i){
+  const P=`fin${i}_`, removivel=i>1 && i===nTitulares && !somenteLeitura;
+  return `<div class="sub-bloco" data-tit="${i}" style="${i===1?'border:none;padding-top:0;margin-top:0':''}"><div class="sub-bloco-titulo">${i}ª Titular${removivel?` <button type="button" class="btn-remover-bloco" data-rem-tit="${i}" style="margin-left:auto">✕ Remover</button>`:''}</div>
+    ${row(campo({label:'Banco',key:P+'banco',badge:i===1?'obrig':'opc'}),campo({label:'Agência',key:P+'agencia',badge:i===1?'obrig':'opc'}),campo({label:'Conta corrente',key:P+'conta',badge:i===1?'obrig':'opc'}))}
+    ${campo({label:'Favorecido',key:P+'favorecido',badge:i===1?'obrig':'opc'})}
+    ${campo({label:'Chave PIX',key:P+'pix',badge:'opc'})}
+  </div>`;
+}
+function renderFinanceiro(){
+  let h=`<div class="section"><div class="section-title"><span class="num">3</span> Informações financeiras <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento do aluguel)</small></div>`;
+  for(let i=1;i<=nTitulares;i++) h+=blocoFin(i);
+  if(!somenteLeitura && nTitulares<MAX_TIT) h+=`<button type="button" class="btn-add-bloco" data-add-tit="1">+ Adicionar 2ª titular</button>`;
+  h+=`</div>`;
+  document.getElementById('financeiro').innerHTML=h;
+}
+function renderAdmin(){
+  const h=`<div class="section"><div class="section-title"><span class="num">4</span> Administração</div>
+    ${campoRadio({label:'A RE/MAX administra o imóvel?',key:'adm_resp',options:['Sim','Não']})}
+    ${campo({label:'Taxa negociada',key:'adm_taxa',badge:'opc'})}
+    ${campoRadio({label:'Repasse',key:'repasse',options:['Somente aluguel','Aluguel + condomínio + IPTU']})}
+    ${campoTextarea({label:'Outras informações',key:'outras',ph:'Anote acordos, prazos, condições especiais…'})}
+  </div>`;
+  document.getElementById('admin').innerHTML=h;
+}
+function renderDocs(){
+  const grid=document.getElementById('docs-grid');
+  grid.innerHTML = DOCS.map(d=>{
+    const ni=naoExiste.has(d.key), nta=pendentes.has(d.key);
+    const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">obrigatório</span>';
+    let toggles='';
+    if(d.ni)  toggles+=`<label class="nao-tenho nao-existe doc-nao-tenho"><input type="checkbox" data-doc-ni="${d.key}"${ni?' checked':''}><span>Não existe</span></label>`;
+    if(d.nta) toggles+=`<label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="${d.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
+    const statusTxt = arquivos[d.key]?('✓ '+arquivos[d.key].name):(nta?'Marcado como pendente':(ni?'Não se aplica':'Toque para selecionar'));
+    const areaCls = arquivos[d.key]?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
+    return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" onclick="triggerFile('${d.key}')"><div class="doc-icon">${d.icon}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}" onchange="docSelecionado(this)"></div>${toggles}</div>`;
+  }).join('');
+}
+function renderAll(){ renderLocadores(); renderImovel(); renderFinanceiro(); renderAdmin(); renderDocs(); atualizarProgresso(); }
 
-  try {
-    const snap = await getDoc(doc(db, 'fichas_locador', idFicha));
-    if (!snap.exists()) { mostrarErro('Ficha não encontrada.'); return; }
+// ── Máscaras ──
+function maskCPF(x){ let d=(''+x).replace(/\D/g,'').slice(0,11); if(d.length>9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; if(d.length>6) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; if(d.length>3) return `${d.slice(0,3)}.${d.slice(3)}`; return d; }
+function maskCEP(x){ let d=(''+x).replace(/\D/g,'').slice(0,8); return d.length>5?`${d.slice(0,5)}-${d.slice(5)}`:d; }
+function maskMoney(x){ let d=(''+x).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; const int=d.slice(0,-2),c=d.slice(-2); return 'R$ '+int.replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+c; }
 
-    const ficha = snap.data();
-
-    // Link de uso único: só vale enquanto a ficha aguarda o cliente.
-    // O corretor abrindo pelo hub (origem=hub) edita livremente.
-    if (!origemHub && ficha.status !== 'aguardando_edicao_cliente') {
-      mostrarErro('Este link não está mais ativo. Caso precise fazer alterações, peça ao seu corretor um novo link.');
-      return;
-    }
-
-    // Mostra observação do corretor se houver
-    if (ficha.observacaoCorretor) {
-      const intro = document.getElementById('introTexto');
-      intro.innerHTML = `<p>📝 <strong>Observação do seu corretor:</strong> ${ficha.observacaoCorretor}</p><p style="margin-top:8px;color:#444">Atualize as informações abaixo e clique em <strong>Salvar alterações</strong>.</p>`;
-    }
-
-    // Pré-preenche os campos com os dados existentes
-    const dados = ficha.dados || {};
-    Object.entries(dados).forEach(([k, v]) => {
-      const el = document.querySelector(`[name="${k}"]`);
-      if (el) el.value = v || '';
-    });
-
-    // Marca as pendentes existentes
-    (ficha.pendentes || []).forEach(campo => {
-      const cb = document.querySelector(`[data-campo="${campo}"], [data-doc-campo="${campo}"]`);
-      if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); }
-    });
-
+async function lookupCEP(input){
+  const prefix = input.dataset.prefix||'';
+  const cep = input.value.replace(/\D/g,'');
+  if(cep.length!==8) return;
+  try{
+    const r=await fetch(`https://viacep.com.br/ws/${cep}/json/`); const d=await r.json();
+    if(d.erro) return;
+    const set=(k,val)=>{ if(val==null) return; valores[k]=val; const el=document.querySelector(`[data-key="${k}"]`); if(el) el.value=val; };
+    set(prefix+'endereco',d.logradouro); set(prefix+'bairro',d.bairro); set(prefix+'cidade',d.localidade); set(prefix+'estado',d.uf);
     atualizarProgresso();
-  } catch(e) { mostrarErro('Erro ao carregar ficha: ' + e.message); }
-
-  configurarEventos();
+  }catch(e){}
 }
 
-async function iniciarModoCorretor() {
-  document.getElementById('barraCorretor').style.display = origemHub ? 'none' : 'flex';
-  document.getElementById('badgeModo').style.display = 'inline';
-  document.getElementById('badgeModo').textContent = 'Revisão';
-  document.getElementById('introTexto').style.display = 'none';
-  document.getElementById('btnSubmit').style.display = 'none';
-
-  try {
-    const snap = await getDoc(doc(db, 'fichas_locador', idFicha));
-    if (!snap.exists()) {
-      document.getElementById('tela-visualizacao').style.display = 'block';
-      document.getElementById('tela-visualizacao').innerHTML = '<p style="text-align:center;padding:40px;color:#666">Ficha não encontrada.</p>';
-      document.getElementById('formFicha').style.display = 'none';
-      return;
-    }
-
-    const ficha = snap.data();
-
-    // Preenche os campos com os dados do cliente (somente leitura)
-    configurarCampos(true);
-    const dados = ficha.dados || {};
-    Object.entries(dados).forEach(([k, v]) => {
-      const el = document.querySelector(`[name="${k}"]`);
-      if (el) el.value = v || '';
-    });
-
-    // Marca as pendentes
-    (ficha.pendentes || []).forEach(campo => {
-      pendentes.add(campo);
-      const el = document.querySelector(`[name="${campo}"]`);
-      if (el) el.parentElement.classList.add('pend-campo');
-      const tag = document.getElementById(`pend-${campo}`);
-      if (tag) tag.style.display = 'inline-block';
-    });
-
-    // Mostra resumo de pendências
-    if ((ficha.pendentes || []).length > 0) {
-      document.getElementById('resumoPendencias').style.display = 'block';
-      const nomesLegivel = {cpf:'CPF',rg:'RG',profissao:'Profissão',renda:'Renda mensal',banco:'Banco',tipoConta:'Tipo de conta',agencia:'Agência',conta:'Conta',pix:'Chave Pix',rgFrente:'RG/CNH frente',rgVerso:'RG/CNH verso',compRenda:'Comprovante de renda',compEndereco:'Comprovante de endereço',matricula:'Matrícula do imóvel',iptu:'IPTU'};
-      document.getElementById('listaPendencias').innerHTML = ficha.pendentes.map(p => `<li>${nomesLegivel[p] || p}</li>`).join('');
-    }
-
-    // Mostra links dos documentos
-    if (Object.keys(ficha.documentos || {}).length > 0) {
-      const nomesDoc = {rgFrente:'RG/CNH frente',rgVerso:'RG/CNH verso',compRenda:'Comp. renda',compEndereco:'Comp. endereço',matricula:'Matrícula',iptu:'IPTU'};
-      const docsHtml = Object.entries(ficha.documentos).map(([k,url]) =>
-        `<a class="doc-link" href="${url}" target="_blank">📄 ${nomesDoc[k]||k} ↗</a>`
-      ).join('');
-      const secDoc = document.querySelector('.section:last-of-type .docs-grid');
-      if (secDoc) secDoc.innerHTML = `<div class="docs-lista">${docsHtml}</div>`;
-    }
-
-    // Guarda referência para ações do corretor
-    window.__fichaId = idFicha;
-    window.__fichaCorretor = ficha.corretorUid;
-
-    atualizarBadges();
-
-  } catch(e) {
-    console.error(e);
-    document.getElementById('introTexto').innerHTML = `<p style="color:#dc2626">Erro ao carregar ficha: ${e.message}</p>`;
-    document.getElementById('introTexto').style.display = 'block';
-  }
+function atualizarProgresso(){
+  const campos=document.querySelectorAll('[data-key]');
+  let total=0, ok=0;
+  campos.forEach(el=>{ total++; const k=el.dataset.key; if(pendentes.has(k)||naoExiste.has(k)||(valores[k]&&(''+valores[k]).trim())) ok++; });
+  DOCS.forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]) ok++; });
+  const pct=total?Math.round(ok/total*100):0;
+  const bar=document.getElementById('progressFill'); if(bar) bar.style.width=pct+'%';
 }
 
-function configurarCampos(somenteLeitura) {
-  const inputs = document.querySelectorAll('input:not([type=checkbox]):not([type=file]), select, textarea');
-  inputs.forEach(el => { el.readOnly = somenteLeitura; el.disabled = somenteLeitura && el.tagName === 'SELECT'; });
-  // Esconde os checkboxes de "Não tenho agora" no modo corretor
-  if (somenteLeitura) {
-    document.querySelectorAll('.nao-tenho').forEach(el => el.style.display = 'none');
-    document.querySelectorAll('.doc-clickable').forEach(el => el.style.cursor = 'default');
-  }
-}
+const form=document.getElementById('formFicha');
 
-function configurarEventos() {
-  // "Não tenho agora" — campos de texto
-  document.querySelectorAll('[data-campo]').forEach(cb => {
-    const campo = cb.dataset.campo;
-    const input = document.querySelector(`[name="${campo}"]`);
-    const pend  = document.getElementById(`pend-${campo}`);
-    cb.addEventListener('change', () => {
-      if (cb.checked) {
-        pendentes.add(campo);
-        if (input) { input.disabled = true; input.value = ''; }
-        if (pend) pend.style.display = 'inline-block';
-      } else {
-        pendentes.delete(campo);
-        if (input) input.disabled = false;
-        if (pend) pend.style.display = 'none';
-      }
-      atualizarProgresso();
-    });
-  });
+form.addEventListener('input', e=>{
+  const el=e.target; if(!el.dataset||el.dataset.key==null) return;
+  let val=el.value;
+  if(el.hasAttribute('data-cpf')) val=maskCPF(val);
+  if(el.hasAttribute('data-cep')) val=maskCEP(val);
+  if(el.hasAttribute('data-money')) val=maskMoney(val);
+  if(val!==el.value) el.value=val;
+  valores[el.dataset.key]=val;
+  const fld=el.closest('.field'); const b=fld&&fld.querySelector('.badge-obrig,.badge-preen');
+  if(b){ const k=el.dataset.key; const ok=val.trim()!==''; if(!(pendentes.has(k)||naoExiste.has(k))){ b.textContent=ok?'preenchido':'obrigatório'; b.className=ok?'badge-preen':'badge-obrig'; } }
+  atualizarProgresso();
+});
 
-  // "Não tenho agora" — documentos
-  document.querySelectorAll('[data-doc-campo]').forEach(cb => {
-    const campo = cb.dataset.docCampo;
-    const area  = cb.closest('.doc-wrapper').querySelector('.doc-area');
-    const pend  = document.getElementById(`pend-${campo}`);
-    cb.addEventListener('change', () => {
-      if (cb.checked) {
-        pendentes.add(campo);
-        delete arquivos[campo];
-        area.classList.remove('tem-arquivo');
-        area.classList.add('pendente-doc');
-        document.getElementById(`status-${campo}`).textContent = 'Marcado como pendente';
-        if (pend) pend.style.display = 'inline-block';
-      } else {
-        pendentes.delete(campo);
-        area.classList.remove('pendente-doc');
-        document.getElementById(`status-${campo}`).textContent = 'Toque para selecionar';
-        if (pend) pend.style.display = 'none';
-      }
-      atualizarProgresso();
-    });
-  });
+form.addEventListener('change', e=>{
+  const el=e.target;
+  // "Não tenho agora" (campo)
+  if(el.matches('[data-campo]')){ const k=el.dataset.campo; if(el.checked){ pendentes.add(k); naoExiste.delete(k); valores[k]=''; } else pendentes.delete(k); renderImovel(); renderLocadores(); atualizarProgresso(); return; }
+  // "Não existe" (campo)
+  if(el.matches('[data-ni]')){ const k=el.dataset.ni; if(el.checked){ naoExiste.add(k); pendentes.delete(k); valores[k]='Não existe'; } else { naoExiste.delete(k); valores[k]=''; } renderImovel(); renderLocadores(); atualizarProgresso(); return; }
+  // Documentos
+  if(el.matches('[data-doc-campo]')){ const k=el.dataset.docCampo; if(el.checked){ pendentes.add(k); naoExiste.delete(k); delete arquivos[k]; } else pendentes.delete(k); renderDocs(); atualizarProgresso(); return; }
+  if(el.matches('[data-doc-ni]')){ const k=el.dataset.docNi; if(el.checked){ naoExiste.add(k); pendentes.delete(k); delete arquivos[k]; } else naoExiste.delete(k); renderDocs(); atualizarProgresso(); return; }
+  // Estado civil -> cônjuge condicional
+  if(el.dataset.key && /estadoCivil$/.test(el.dataset.key)){ valores[el.dataset.key]=el.value; renderLocadores(); return; }
+  // selects normais (im_tipo, im_estado, regime...) já tratados no input
+});
 
-  // CEP automático
-  document.getElementById('campoCep').addEventListener('blur', async function() {
-    const cep = this.value.replace(/\D/g,'');
-    if (cep.length !== 8) return;
-    try {
-      const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const d = await r.json();
-      if (!d.erro) {
-        document.getElementById('campoLogradouro').value = d.logradouro||'';
-        document.getElementById('campoBairro').value     = d.bairro||'';
-        document.getElementById('campoCidade').value     = d.localidade||'';
-        document.getElementById('campoEstado').value     = d.uf||'';
-        atualizarProgresso();
-      }
-    } catch(e){}
-  });
+form.addEventListener('focusout', e=>{ const el=e.target; if(el.dataset&&el.hasAttribute('data-cep')) lookupCEP(el); });
 
-  // CPF — máscara
-  document.querySelector('[name="cpf"]').addEventListener('input', function() {
-    let v = this.value.replace(/\D/g,'').slice(0,11);
-    if (v.length>9) v=v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6,9)+'-'+v.slice(9);
-    else if (v.length>6) v=v.slice(0,3)+'.'+v.slice(3,6)+'.'+v.slice(6);
-    else if (v.length>3) v=v.slice(0,3)+'.'+v.slice(3);
-    this.value=v; atualizarProgresso();
-  });
+form.addEventListener('click', e=>{
+  const t=e.target;
+  if(t.dataset.addLoc){ if(nLocadores<MAX_LOC){ nLocadores++; renderLocadores(); atualizarProgresso(); } return; }
+  if(t.dataset.remLoc){ const i=+t.dataset.remLoc; Object.keys(valores).forEach(k=>{ if(k.startsWith('loc'+i+'_')) delete valores[k]; }); nLocadores=Math.max(1,nLocadores-1); renderLocadores(); atualizarProgresso(); return; }
+  if(t.dataset.addTit){ if(nTitulares<MAX_TIT){ nTitulares++; renderFinanceiro(); atualizarProgresso(); } return; }
+  if(t.dataset.remTit){ const i=+t.dataset.remTit; Object.keys(valores).forEach(k=>{ if(k.startsWith('fin'+i+'_')) delete valores[k]; }); nTitulares=Math.max(1,nTitulares-1); renderFinanceiro(); atualizarProgresso(); return; }
+  if(t.dataset.radio){ valores[t.dataset.radio]=t.dataset.val; if(t.dataset.radio==='adm_resp') renderAdmin(); else renderAdmin(); atualizarProgresso(); return; }
+});
 
-  document.querySelectorAll('input,select').forEach(el => el.addEventListener('input', atualizarProgresso));
+// ── Documentos ──
+window.triggerFile=function(k){ const cb=document.querySelector(`[data-doc-campo="${k}"],[data-doc-ni="${k}"]`); if(somenteLeitura) return; const ni=naoExiste.has(k),nta=pendentes.has(k); if(ni||nta) return; document.getElementById('file-'+k).click(); };
+window.docSelecionado=function(input){ const k=input.dataset.doc; if(input.files[0]){ arquivos[k]=input.files[0]; renderDocs(); atualizarProgresso(); } };
 
-  // Submit
-  document.getElementById('formFicha').addEventListener('submit', enviarFicha);
-}
+function mostrarErro(msg){ const el=document.getElementById('erroFinal'); el.textContent=msg; el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
 
-// Exposta globalmente para onclick no HTML
-window.triggerFile = function(campo) {
-  const cb = document.querySelector(`[data-doc-campo="${campo}"]`);
-  if (cb && cb.checked) return; // pendente, não abre
-  document.getElementById(`file-${campo}`).click();
-};
-
-window.docSelecionado = function(input) {
-  const campo = input.dataset.doc;
-  const area  = input.closest('.doc-area');
-  if (input.files[0]) {
-    arquivos[campo] = input.files[0];
-    area.classList.add('tem-arquivo');
-    area.classList.remove('pendente-doc');
-    document.getElementById(`status-${campo}`).textContent = '✓ '+input.files[0].name;
-    atualizarProgresso();
-  }
-};
-
-function atualizarProgresso() {
-  const todos = ['nome','cpf','rg','dataNasc','estadoCivil','profissao','renda','whatsapp','email','cep','logradouro','numero','bairro','cidade','estado','banco','tipoConta','agencia','conta','rgFrente','rgVerso','compRenda','compEndereco','matricula','iptu'];
-  let ok = 0;
-  todos.forEach(c => {
-    const inp = document.querySelector(`[name="${c}"]`);
-    if (pendentes.has(c) || (inp && inp.value.trim()) || arquivos[c]) ok++;
-  });
-  document.getElementById('progressFill').style.width = Math.round((ok/todos.length)*100)+'%';
-  atualizarBadges();
-}
-
-function atualizarBadges() {
-  // Campos de texto / select: troca "obrigatório" por "preenchido" quando há valor
-  document.querySelectorAll('.field').forEach(field => {
-    const badge = field.querySelector('.badge-obrig, .badge-preen');
-    if (!badge) return;
-    const input = field.querySelector('input:not([type=checkbox]):not([type=file]), select, textarea');
-    if (!input) return;
-    const preenchido = input.value.trim() !== '';
-    badge.textContent = preenchido ? 'preenchido' : 'obrigatório';
-    badge.className   = preenchido ? 'badge-preen' : 'badge-obrig';
-  });
-  // Documentos: "preenchido" quando há arquivo selecionado
-  document.querySelectorAll('.doc-label').forEach(label => {
-    const badge = label.querySelector('.badge-obrig, .badge-preen');
-    if (!badge) return;
-    const area = label.closest('.doc-wrapper')?.querySelector('.doc-area');
-    const preenchido = area?.classList.contains('tem-arquivo');
-    badge.textContent = preenchido ? 'preenchido' : 'obrigatório';
-    badge.className   = preenchido ? 'badge-preen' : 'badge-obrig';
-  });
-}
-
-async function enviarFicha(e) {
+form.addEventListener('submit', async e=>{
   e.preventDefault();
-  if (!corretorUid) { mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  if(!corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  const falta=[['nome'],['whatsapp'],['email']].filter(([k])=>!(valores[k]&&(''+valores[k]).trim()));
+  if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do 1º locador.'); return; }
 
-  // Campos absolutamente obrigatórios (sem "Não tenho agora")
-  const rigidos = ['nome','dataNasc','estadoCivil','whatsapp','email','cep','logradouro','numero','bairro','cidade','estado'];
-  const faltando = rigidos.filter(c => {
-    const el = document.querySelector(`[name="${c}"]`);
-    return el && !el.value.trim();
-  });
+  const btn=document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
+  document.getElementById('erroFinal').style.display='none';
 
-  if (faltando.length > 0) {
-    mostrarErro('Preencha os campos obrigatórios marcados: nome, data de nascimento, estado civil, contato e endereço completo.');
-    document.querySelector(`[name="${faltando[0]}"]`)?.focus();
-    return;
+  const dados={}; Object.entries(valores).forEach(([k,val])=>{ if(val&&(''+val).trim()) dados[k]=val; });
+  const fichaId=Date.now().toString(36)+Math.random().toString(36).slice(2);
+  const urlsDocs={}; const docsKeys=Object.keys(arquivos);
+  if(docsKeys.length){
+    const prog=document.getElementById('upload-progress'),fill=document.getElementById('upload-progress-fill'); prog.style.display='block'; let n=0;
+    for(const k of docsKeys){ try{ const r=ref(storage,`fichas-locador/${fichaId}/${k}`); await uploadBytes(r,arquivos[k]); urlsDocs[k]=await getDownloadURL(r); }catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); } fill.style.width=Math.round((++n/docsKeys.length)*100)+'%'; }
   }
-
-  const btn = document.getElementById('btnSubmit');
-  btn.disabled = true;
-  btn.textContent = 'Enviando...';
-  document.getElementById('erroFinal').style.display = 'none';
-
-  // Coleta dados do formulário
-  const dados = {};
-  new FormData(e.target).forEach((v,k) => { if (v) dados[k] = v; });
-
-  // Upload de documentos
-  const fichaId = Date.now().toString(36)+Math.random().toString(36).slice(2);
-  const urlsDocs = {};
-  const docsKeys = Object.keys(arquivos);
-
-  if (docsKeys.length > 0) {
-    const prog = document.getElementById('upload-progress');
-    const fill = document.getElementById('upload-progress-fill');
-    prog.style.display = 'block';
-    let n = 0;
-    for (const campo of docsKeys) {
-      try {
-        const r = ref(storage, `fichas-locador/${fichaId}/${campo}`);
-        await uploadBytes(r, arquivos[campo]);
-        urlsDocs[campo] = await getDownloadURL(r);
-      } catch(err) {
-        console.warn('Upload falhou para', campo, err.message);
-        pendentes.add(campo);
-      }
-      fill.style.width = Math.round((++n/docsKeys.length)*100)+'%';
-    }
-  }
-
-  // Salva no Firestore (create ou update dependendo do modo)
-  try {
-    if (modo === 'edicao' && idFicha) {
-      // Modo edição: atualiza a ficha existente
-      const existente = await getDoc(doc(db, 'fichas_locador', idFicha));
-      const docsAntigos = existente.exists() ? (existente.data().documentos || {}) : {};
-      await updateDoc(doc(db, 'fichas_locador', idFicha), {
-        status: 'aguardando_corretor',
-        dados,
-        documentos: { ...docsAntigos, ...urlsDocs },
-        pendentes: Array.from(pendentes),
-        observacaoCorretor: '',
-        atualizadoEm: serverTimestamp()
-      });
+  try{
+    if(modo==='edicao'&&idFicha){
+      const ex=await getDoc(doc(db,COL,idFicha)); const docsAntigos=ex.exists()?(ex.data().documentos||{}):{};
+      await updateDoc(doc(db,COL,idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
     } else {
-      // Modo normal: cria nova ficha
-      await addDoc(collection(db, 'fichas_locador'), {
-        id: fichaId,
-        corretorUid,
-        corretorNome,
-        status: 'aguardando_corretor',
-        dados,
-        documentos: urlsDocs,
-        pendentes: Array.from(pendentes),
-        criadoEm: serverTimestamp()
-      });
+      await addDoc(collection(db,COL),{ id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() });
     }
-    document.getElementById('formFicha').style.display = 'none';
-    const telaSucesso = document.getElementById('tela-sucesso');
-    telaSucesso.querySelector('h2').textContent = modo === 'edicao' ? 'Alterações salvas!' : 'Ficha enviada com sucesso!';
-    telaSucesso.querySelector('p').textContent = modo === 'edicao'
-      ? 'Suas informações foram atualizadas. O corretor receberá a ficha revisada.'
-      : 'Seu corretor receberá suas informações e entrará em contato em breve.';
-    telaSucesso.style.display = 'block';
-    document.getElementById('progressFill').style.width = '100%';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  } catch(err) {
-    mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.');
-    btn.disabled = false;
-    btn.textContent = 'Enviar ficha';
+    form.style.display='none'; document.getElementById('tela-sucesso').style.display='block';
+    const t=document.getElementById('sucessoTitulo'),m=document.getElementById('sucessoMsg');
+    if(t) t.textContent=modo==='edicao'?'Alterações salvas!':'Ficha enviada!';
+    if(m) m.textContent=modo==='edicao'?'Suas informações foram atualizadas.':'Seu corretor receberá suas informações em breve.';
+    document.getElementById('progressFill').style.width='100%'; window.scrollTo({top:0,behavior:'smooth'});
+  }catch(err){ mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.'); btn.disabled=false; btn.textContent='Enviar ficha'; }
+});
+
+// ── Ações do corretor (usa funções da Locador: enviarFichaParaAdmin) ──
+window.enviarParaAdmin=async function(){ if(!window.__fichaId) return; if(!confirm('Confirma envio ao administrativo?')) return; try{ const {getFunctions,httpsCallable}=await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js'); const fns=getFunctions(app,'southamerica-east1'); await httpsCallable(fns,'enviarFichaParaAdmin')({fichaId:window.__fichaId}); alert('Ficha enviada ao administrativo!'); window.close(); }catch(e){ alert('Erro: '+e.message); } };
+window.solicitarCorrecao=function(){ const msg=prompt('Descreva o que precisa ser corrigido:'); if(!msg) return; updateDoc(doc(db,COL,window.__fichaId),{ status:'correcao_solicitada', observacaoCorretor:msg, atualizadoEm:serverTimestamp() }).then(()=>alert('Solicitação registrada.')).catch(e=>alert('Erro: '+e.message)); };
+
+// ── Carregar ficha existente ──
+function aplicarFicha(ficha){
+  const d=ficha.dados||{}; Object.entries(d).forEach(([k,val])=>{ valores[k]=val; });
+  if(Object.keys(d).some(k=>k.startsWith('loc2_'))) nLocadores=2;
+  if(Object.keys(d).some(k=>k.startsWith('fin2_'))) nTitulares=2;
+  (ficha.pendentes||[]).forEach(k=>pendentes.add(k));
+  // "Não existe" = valor salvo como 'Não existe'
+  Object.entries(d).forEach(([k,val])=>{ if(val==='Não existe') naoExiste.add(k); });
+  renderAll();
+}
+
+async function init(){
+  if(modo==='corretor'&&idFicha){
+    somenteLeitura=true;
+    document.getElementById('barraCorretor').style.display=origemHub?'none':'flex';
+    const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Revisão';
+    document.getElementById('introTexto').style.display='none'; document.getElementById('btnSubmit').style.display='none';
+    try{ const snap=await getDoc(doc(db,COL,idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const ficha=snap.data(); aplicarFicha(ficha); window.__fichaId=idFicha; if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>`<li>${p}</li>`).join(''); } }catch(e){ mostrarErro('Erro: '+e.message); }
+  } else if(modo==='edicao'&&idFicha){
+    const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Edição';
+    document.getElementById('btnSubmit').textContent='Salvar alterações';
+    try{ const snap=await getDoc(doc(db,COL,idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const ficha=snap.data(); if(!origemHub&&ficha.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(ficha.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p>`; } aplicarFicha(ficha); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
+  } else {
+    renderAll();
   }
 }
-
-function mostrarErro(msg) {
-  const el = document.getElementById('erroFinal');
-  el.textContent = msg;
-  el.style.display = 'block';
-  el.scrollIntoView({ behavior:'smooth', block:'center' });
-}
-
-// ── Ações do corretor ──
-window.enviarParaAdmin = async function() {
-  if (!window.__fichaId) return;
-  if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
-  try {
-    await updateDoc(doc(db, 'fichas_locador', window.__fichaId), {
-      status: 'enviado_admin',
-      enviadoAdminEm: serverTimestamp()
-    });
-    alert('Ficha enviada ao administrativo com sucesso!');
-    window.close();
-  } catch(e) { alert('Erro: '+e.message); }
-};
-
-window.solicitarCorrecao = function() {
-  const msg = prompt('Descreva o que precisa ser corrigido pelo cliente:');
-  if (!msg) return;
-  updateDoc(doc(db, 'fichas_locador', window.__fichaId), {
-    status: 'correcao_solicitada',
-    observacaoCorretor: msg,
-    atualizadoEm: serverTimestamp()
-  }).then(() => alert('Solicitação de correção registrada.'))
-    .catch(e => alert('Erro: '+e.message));
-};
-
+init();
 </script>
-</body>
-</html>
+</body></html>

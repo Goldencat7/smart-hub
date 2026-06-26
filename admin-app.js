@@ -114,6 +114,8 @@ const SITES = [
 
 // Estado de presença em tempo real (uid → { online, updatedAt })
 let presenceMap = {};
+let totalUsuariosAdmin = 0; // total de usuários (para calcular % dos avisos)
+let notificacoesCache = []; // cache para re-renderizar quando usuários carregarem
 
 const elListaCred  = document.getElementById('listaCredenciais');
 const elListaUser  = document.getElementById('listaUsuarios');
@@ -162,6 +164,7 @@ onAuthStateChanged(auth, async (user) => {
     const lista = [];
     snap.forEach(d => { lista.push({ id: d.id, ...d.data() }); });
     lista.sort((a, b) => (b.criadoEm?.toMillis?.() || 0) - (a.criadoEm?.toMillis?.() || 0));
+    notificacoesCache = lista;
     renderAvisosEnviados(lista);
   });
 });
@@ -658,6 +661,9 @@ async function carregarUsuarios() {
   try {
     const resp = await listUsers();
     const usuarios = resp.data;
+    // Salva o total para usar na barra de avisos e re-renderiza com o total correto
+    totalUsuariosAdmin = usuarios.length;
+    if (notificacoesCache.length) renderAvisosEnviados(notificacoesCache);
     elListaUser.innerHTML = `
       <table class="users-table">
         <thead>
@@ -671,7 +677,7 @@ async function carregarUsuarios() {
                 <input type="checkbox" ${u.isAdmin ? 'checked' : ''} data-uid="${u.uid}" class="toggle-admin">
               </td>
               <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-BR') : '—'}</td>
-              <td>${u.lastSignIn ? new Date(u.lastSignIn).toLocaleDateString('pt-BR') : 'nunca'}</td>
+              <td>${u.lastAppAt ? fmtDataHora(u.lastAppAt) : (u.lastSignIn ? new Date(u.lastSignIn).toLocaleDateString('pt-BR') : 'nunca')}</td>
               <td>${u.lastApp ? `${u.lastApp} · ${fmtDataHora(u.lastAppAt)}` : '<span class="muted">—</span>'}</td>
               <td class="acoes-user">
                 <button class="topbar-btn" data-perm="${u.uid}" data-email="${u.email || ''}">Permissões</button>
@@ -775,9 +781,10 @@ function renderAvisosEnviados(lista) {
       <thead><tr><th>Título / Mensagem</th><th>Enviado em</th><th>Confirmações</th><th></th></tr></thead>
       <tbody>
         ${lista.map(n => {
-          const total = n.todos ? '(todos)' : (Array.isArray(n.destinatarios) ? n.destinatarios.length : 0);
+          const total = n.totalDestinatarios
+            || (n.todos ? totalUsuariosAdmin : (Array.isArray(n.destinatarios) ? n.destinatarios.length : 0));
           const lidos = Array.isArray(n.lidoPor) ? n.lidoPor.length : 0;
-          const pct = typeof total === 'number' && total > 0 ? Math.round((lidos / total) * 100) : null;
+          const pct = total > 0 ? Math.round((lidos / total) * 100) : null;
           const data = n.criadoEm ? n.criadoEm.toDate().toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
           return `
             <tr>
@@ -791,7 +798,7 @@ function renderAvisosEnviados(lista) {
                   <div class="aviso-progresso">
                     <div class="aviso-progresso-bar" style="width:${pct ?? 0}%"></div>
                   </div>
-                  <span style="font-size:12px;white-space:nowrap">${lidos}${typeof total === 'number' ? '/'+total : ''} ${pct !== null ? '('+pct+'%)' : ''}</span>
+                  <span style="font-size:12px;white-space:nowrap">${lidos}${total > 0 ? '/'+total : ''} viram</span>
                 </div>
               </td>
               <td><button class="topbar-btn perigo aviso-excluir" data-id="${n.id}">Excluir</button></td>

@@ -1039,11 +1039,22 @@ exports.criarNotificacao = onCall(async (req) => {
   else if (Array.isArray(participantes) && participantes.length) parts = participantes.slice(0, 300);
   else throw new HttpsError('invalid-argument', 'Escolha "todos" ou pelo menos uma pessoa.');
 
+  // Para "todos": conta usuários ativos para exibir progresso de confirmações
+  let totalDestinatarios = parts.length;
+  if (paraTodos) {
+    try {
+      const users = await admin.auth().listUsers(1000);
+      // Exclui o próprio admin que enviou (ele não recebe o próprio aviso)
+      totalDestinatarios = users.users.filter(u => u.uid !== auth.uid && !u.disabled).length;
+    } catch (e) { totalDestinatarios = 0; }
+  }
+
   const ref = await db.collection('notifications').add({
     titulo: titulo ? String(titulo).slice(0, 120) : '',
     mensagem: String(mensagem).slice(0, 1000),
     todos: paraTodos,
     destinatarios: parts,
+    totalDestinatarios,
     criadoPor: auth.uid,
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
     lidoPor: []
