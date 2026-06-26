@@ -1,46 +1,93 @@
-﻿<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Vendedor — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head><body>
-<div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong></div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
-<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Cadastral Vendedor <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
-<div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-<div class="container">
-<div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
-<div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para itens indisponíveis.</p></div>
-<form id="formFicha" novalidate>
-<div class="section"><div class="section-title"><span class="num">1</span> Dados do Vendedor</div>
-<div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cpf"><span>Não tenho agora</span></label></div><input type="text" name="cpf" maxlength="14"><div class="pendente-tag" id="pend-cpf" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>RG <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="rg"><span>Não tenho agora</span></label></div><input type="text" name="rg"><div class="pendente-tag" id="pend-rg" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Data de nascimento</label></div><input type="date" name="dataNasc"></div><div class="field"><div class="field-header"><label>Estado civil</label></div><select name="estadoCivil"><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 9 0000-0000"></div><div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">2</span> Endereço do Vendedor</div>
-<div class="row-2"><div class="field"><label>CEP</label><input type="text" name="cep" id="campoCep" maxlength="9"></div><div class="field"><label>Número</label><input type="text" name="numero"></div></div>
-<div class="field"><label>Logradouro</label><input type="text" name="logradouro" id="campoLogradouro"></div>
-<div class="row-2"><div class="field"><label>Complemento</label><input type="text" name="complemento"></div><div class="field"><label>Bairro</label><input type="text" name="bairro" id="campoBairro"></div></div>
-<div class="row-2"><div class="field"><label>Cidade</label><input type="text" name="cidade" id="campoCidade"></div><div class="field"><label>Estado</label><select name="estado" id="campoEstado"><option value="">UF</option><option>AC</option><option>AL</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option selected>SP</option><option>SE</option><option>TO</option></select></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">3</span> Dados do Imóvel</div>
-<div class="field"><div class="field-header"><label>Endereço do imóvel <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="enderecoImovel"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Tipo do imóvel</label></div><select name="tipoImovel"><option value="">Selecione</option><option>Apartamento</option><option>Casa</option><option>Comercial</option><option>Terreno</option><option>Outro</option></select></div><div class="field"><div class="field-header"><label>Área (m²)</label></div><input type="text" name="areaImovel" placeholder="Ex.: 120"></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Matrícula nº <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="matriculaNum"><span>Não tenho agora</span></label></div><input type="text" name="matriculaNum"><div class="pendente-tag" id="pend-matriculaNum" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Cartório</label></div><input type="text" name="cartorio"></div></div>
-<div class="field"><div class="field-header"><label>Valor pretendido de venda <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="valorVenda"><span>Não tenho agora</span></label></div><input type="text" name="valorVenda" placeholder="R$ 0.000,00"><div class="pendente-tag" id="pend-valorVenda" style="display:none">Informação pendente</div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">4</span> Dados Bancários</div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Banco <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="banco"><span>Não tenho agora</span></label></div><input type="text" name="banco"><div class="pendente-tag" id="pend-banco" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Tipo de conta</label><label class="nao-tenho"><input type="checkbox" data-campo="tipoConta"><span>Não tenho agora</span></label></div><select name="tipoConta"><option value="">Selecione</option><option>Corrente</option><option>Poupança</option></select><div class="pendente-tag" id="pend-tipoConta" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Agência</label><label class="nao-tenho"><input type="checkbox" data-campo="agencia"><span>Não tenho agora</span></label></div><input type="text" name="agencia"><div class="pendente-tag" id="pend-agencia" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Conta</label><label class="nao-tenho"><input type="checkbox" data-campo="conta"><span>Não tenho agora</span></label></div><input type="text" name="conta"><div class="pendente-tag" id="pend-conta" style="display:none">Informação pendente</div></div></div>
-<div class="field"><div class="field-header"><label>Chave Pix <span class="badge-opc">opcional</span></label></div><input type="text" name="pix"></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">5</span> Documentos</div>
-<div class="docs-grid">
-<div class="doc-wrapper"><div class="doc-area" id="area-rgFrente"><div class="doc-clickable" onclick="triggerFile('rgFrente')"><div class="doc-icon">🪪</div><div class="doc-label">RG ou CNH — frente <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgFrente">Toque para selecionar</div></div><input type="file" id="file-rgFrente" accept="image/*,.pdf" style="display:none" data-doc="rgFrente" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgFrente" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgFrente"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-matricula"><div class="doc-clickable" onclick="triggerFile('matricula')"><div class="doc-icon">📋</div><div class="doc-label">Matrícula do imóvel <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-matricula">Toque para selecionar</div></div><input type="file" id="file-matricula" accept="image/*,.pdf" style="display:none" data-doc="matricula" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-matricula" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="matricula"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-iptu"><div class="doc-clickable" onclick="triggerFile('iptu')"><div class="doc-icon">📄</div><div class="doc-label">IPTU <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-iptu">Toque para selecionar</div></div><input type="file" id="file-iptu" accept="image/*,.pdf" style="display:none" data-doc="iptu" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-iptu" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="iptu"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-certidaoNeg"><div class="doc-clickable" onclick="triggerFile('certidaoNeg')"><div class="doc-icon">✅</div><div class="doc-label">Certidão negativa de ônus <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-certidaoNeg">Toque para selecionar</div></div><input type="file" id="file-certidaoNeg" accept="image/*,.pdf" style="display:none" data-doc="certidaoNeg" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-certidaoNeg" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="certidaoNeg"><span>Não tenho agora</span></label></div>
-</div></div>
-<div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
-<div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
-<button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
-</form>
-<div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p></div>
-</div>
-<script type="module" src="ficha-engine.js?tipo=vendedor"></script>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Vendedor — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
+<body>
+<script type="module">
+import * as FE from './ficha-comum.js';
+
+const st = { numVend: 1, numTit: 1 };
+const ordV = ['1º','2º','3º','4º'];
+const ordT = ['1ª','2ª','3ª','4ª'];
+
+function finBlock(i){
+  const P='fin'+i+'_';
+  const rem=(i>1&&i===st.numTit&&!FE.ehSomenteLeitura())?`<button type="button" class="btn-remover-bloco" data-action="remTit">✕ Remover</button>`:'';
+  const b=i===1?undefined:'opc';
+  return `<div class="sub-bloco"${i===1?' style="border:none;padding-top:0;margin-top:0"':''}><div class="sub-bloco-titulo">💳 ${ordT[i-1]} Titular${rem}</div>
+    ${FE.row(FE.campo({label:'Banco',key:P+'banco',badge:b}),FE.campo({label:'Agência',key:P+'agencia',badge:b}),FE.campo({label:'Conta corrente',key:P+'conta',badge:b}))}
+    ${FE.campo({label:'Favorecido',key:P+'favorecido',badge:b})}
+    ${FE.campo({label:'Chave PIX',key:P+'pix',badge:'opc'})}</div>`;
+}
+
+function render(){
+  // 1. Vendedores (1-4) com cônjuge condicional
+  let vend='';
+  for(let i=1;i<=st.numVend;i++){
+    const P=i===1?'':'loc'+i+'_';
+    const rem=(i>1&&i===st.numVend&&!FE.ehSomenteLeitura())?`<button type="button" class="btn-remover-bloco" data-action="remVend">✕ Remover</button>`:'';
+    vend += `<div class="sub-bloco"${i===1?' style="border:none;padding-top:0;margin-top:0"':''}><div class="sub-bloco-titulo">👤 ${st.numVend>1?ordV[i-1]+' Vendedor':'Vendedor'}${rem}</div>${FE.blocoPessoa(P,{principal:i===1})}${FE.ehCasado(P)?FE.subBloco('💍 Cônjuge do '+ordV[i-1]+' vendedor',FE.blocoConjuge(P)):''}</div>`;
+  }
+  if(!FE.ehSomenteLeitura() && st.numVend<4) vend+=`<button type="button" class="btn-add-bloco" data-action="addVend">+ Adicionar vendedor</button>`;
+  let h = FE.secao(1, 'Vendedor(es)', vend);
+
+  // 2. Imóvel
+  h += FE.secao(2, 'Imóvel',
+    FE.row(FE.campo({label:'Tipo de imóvel',key:'im_tipo',type:'select',optsHtml:FE.selOptions(FE.TIPOS,FE.v('im_tipo'))}), FE.campo({label:'Referência no site',key:'im_ref',badge:'opc'})) +
+    FE.row(FE.campo({label:'CEP',key:'im_cep',cep:true,prefix:'im_',ph:'00000-000'}), FE.campo({label:'Endereço',key:'im_endereco',ph:'Rua, Avenida...'})) +
+    FE.row(FE.campo({label:'Número',key:'im_numero'}), FE.campo({label:'Complemento',key:'im_complemento',badge:'opc'}), FE.campo({label:'Bairro',key:'im_bairro'})) +
+    FE.row(FE.campo({label:'Cidade',key:'im_cidade'}), FE.campo({label:'Estado',key:'im_estado',type:'select',optsHtml:FE.ufOptions(FE.v('im_estado'))})) +
+    FE.row(FE.campo({label:'Nome do condomínio',key:'im_condominio',badge:'opc',ni:true,nta:true}), FE.campo({label:'Adm. condominial',key:'im_admcond',badge:'opc',ni:true,nta:true})) +
+    FE.row(FE.campo({label:'Valor IPTU',key:'im_iptu',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'Valor condomínio',key:'im_valorcond',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'})) +
+    FE.row(FE.campo({label:'Instalação ENEL',key:'im_enel',badge:'opc',ni:true,nta:true}), FE.campo({label:'Instalação Sabesp',key:'im_sabesp',badge:'opc',ni:true,nta:true})) +
+    FE.row(FE.campo({label:'Instalação Comgás',key:'im_comgas',badge:'opc',ni:true,nta:true}), FE.campo({label:'Contribuinte IPTU',key:'im_contribuinte',badge:'opc',ni:true,nta:true})) +
+    FE.row(FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}), FE.campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'})) +
+    FE.row(FE.campo({label:'Valor da entrada',key:'im_entrada',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'Financiamento',key:'im_financiamento',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'FGTS',key:'im_fgts',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}))
+  );
+
+  // 3. Informações financeiras (1-4 titulares)
+  let fin='';
+  for(let i=1;i<=st.numTit;i++) fin+=finBlock(i);
+  if(!FE.ehSomenteLeitura() && st.numTit<4) fin+=`<button type="button" class="btn-add-bloco" data-action="addTit">+ Adicionar titular</button>`;
+  h += FE.secao(3, 'Informações financeiras', fin, ' <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento)</small>');
+
+  // 4. Comissões
+  h += FE.secao(4, 'Comissões',
+    FE.campo({label:'RE/MAX Smart — valor da comissão',key:'com_remax_valor',money:true,ph:'R$ 0,00'}) +
+    FE.subBloco('🤝 Imobiliária parceira (se houver)',
+      FE.row(FE.campo({label:'Imobiliária parceira',key:'com_parc_nome',badge:'opc',ni:true,nta:true}), FE.campo({label:'CNPJ',key:'com_parc_cnpj',cnpj:true,badge:'opc',ni:true,nta:true,ph:'00.000.000/0000-00'})) +
+      FE.row(FE.campo({label:'Banco',key:'com_parc_banco',badge:'opc',ni:true,nta:true}), FE.campo({label:'Agência',key:'com_parc_agencia',badge:'opc',ni:true,nta:true}), FE.campo({label:'Conta',key:'com_parc_conta',badge:'opc',ni:true,nta:true})) +
+      FE.campo({label:'Valor da comissão (parceira)',key:'com_parc_valor',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'})
+    ) +
+    FE.campoTextarea({label:'Outras informações',key:'outras',ph:'Acordos, prazos, condições especiais…'})
+  );
+  return h;
+}
+
+FE.iniciarFicha({
+  titulo:'Ficha Cadastral Vendedor', tipo:'vendedor', docsNum:5,
+  rigidos:['nome','whatsapp','email'],
+  msgRigidos:'Preencha pelo menos nome, WhatsApp e e-mail do 1º vendedor.',
+  intro:'Preencha os dados do(s) vendedor(es), imóvel e comissões. Use <strong>"Não tenho agora"</strong> para pendências e <strong>"Não existe"</strong> para o que não se aplica.',
+  docs:[
+    {key:'rgcpf',     icon:'🪪', label:'RG e CPF',                badge:'obrig'},
+    {key:'matricula', icon:'📋', label:'Matrícula / Escritura',   badge:'obrig'},
+    {key:'iptu',      icon:'📄', label:'Documento do IPTU',       badge:'obrig'},
+    {key:'energia',   icon:'⚡', label:'Conta de energia',        badge:'obrig'},
+    {key:'condominio',icon:'🏢', label:'Documento do condomínio', badge:'opc', ni:true, nta:true},
+    {key:'agua',      icon:'💧', label:'Conta de água',            badge:'opc', ni:true, nta:true},
+    {key:'gas',       icon:'🔥', label:'Conta de gás',             badge:'opc', ni:true, nta:true},
+  ],
+  render,
+  acoes:{
+    addVend:()=>{ if(st.numVend<4) st.numVend++; },
+    remVend:()=>{ const i=st.numVend; Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('loc'+i+'_')) delete FE.valores[k]; }); st.numVend=Math.max(1,st.numVend-1); },
+    addTit:()=>{ if(st.numTit<4) st.numTit++; },
+    remTit:()=>{ const i=st.numTit; Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('fin'+i+'_')) delete FE.valores[k]; }); st.numTit=Math.max(1,st.numTit-1); },
+  },
+  aoCarregar:(f)=>{ const d=f.dados||{};
+    for(let i=4;i>=2;i--){ if(Object.keys(d).some(k=>k.startsWith('loc'+i+'_'))){ st.numVend=i; break; } }
+    for(let i=4;i>=2;i--){ if(Object.keys(d).some(k=>k.startsWith('fin'+i+'_'))){ st.numTit=i; break; } }
+  },
+});
+</script>
 </body></html>

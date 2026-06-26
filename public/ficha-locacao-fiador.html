@@ -1,42 +1,82 @@
-﻿<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Locação com Fiador — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head><body>
-<div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
-<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Locação com Fiador <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
-<div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-<div class="container">
-<div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
-<div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para itens indisponíveis no momento.</p></div>
-<form id="formFicha" novalidate>
-<div class="section"><div class="section-title"><span class="num">1</span> Dados do Locatário</div>
-<div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cpf"><span>Não tenho agora</span></label></div><input type="text" name="cpf" maxlength="14"><div class="pendente-tag" id="pend-cpf" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>RG <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="rg"><span>Não tenho agora</span></label></div><input type="text" name="rg"><div class="pendente-tag" id="pend-rg" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Profissão <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="profissao"><span>Não tenho agora</span></label></div><input type="text" name="profissao"><div class="pendente-tag" id="pend-profissao" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Renda mensal <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="renda"><span>Não tenho agora</span></label></div><input type="text" name="renda" placeholder="R$ 0.000,00"><div class="pendente-tag" id="pend-renda" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 9 0000-0000"></div><div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">2</span> Dados do Fiador</div>
-<div class="field"><div class="field-header"><label>Nome do fiador <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nomeFiador"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CPF do fiador <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cpfFiador"><span>Não tenho agora</span></label></div><input type="text" name="cpfFiador" maxlength="14"><div class="pendente-tag" id="pend-cpfFiador" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>RG do fiador</label><label class="nao-tenho"><input type="checkbox" data-campo="rgFiador"><span>Não tenho agora</span></label></div><input type="text" name="rgFiador"><div class="pendente-tag" id="pend-rgFiador" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Profissão do fiador</label><label class="nao-tenho"><input type="checkbox" data-campo="profissaoFiador"><span>Não tenho agora</span></label></div><input type="text" name="profissaoFiador"><div class="pendente-tag" id="pend-profissaoFiador" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Renda do fiador</label><label class="nao-tenho"><input type="checkbox" data-campo="rendaFiador"><span>Não tenho agora</span></label></div><input type="text" name="rendaFiador" placeholder="R$ 0.000,00"><div class="pendente-tag" id="pend-rendaFiador" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>WhatsApp do fiador <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsappFiador" placeholder="(11) 9 0000-0000"></div><div class="field"><div class="field-header"><label>E-mail do fiador</label></div><input type="email" name="emailFiador"></div></div>
-<div class="row-2"><div class="field"><label>CEP do fiador</label><input type="text" name="cep" id="campoCep" maxlength="9"></div><div class="field"><label>Número</label><input type="text" name="numero"></div></div>
-<div class="field"><label>Logradouro</label><input type="text" name="logradouro" id="campoLogradouro"></div>
-<div class="row-2"><div class="field"><label>Bairro</label><input type="text" name="bairro" id="campoBairro"></div><div class="field"><label>Cidade / Estado</label><input type="text" name="cidade" id="campoCidade" placeholder="Cidade"><input type="text" name="estado" id="campoEstado" placeholder="UF" style="margin-top:4px;width:80px"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">3</span> Dados Bancários do Fiador</div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Banco</label><label class="nao-tenho"><input type="checkbox" data-campo="bancoFiador"><span>Não tenho agora</span></label></div><input type="text" name="bancoFiador"><div class="pendente-tag" id="pend-bancoFiador" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Tipo de conta</label><label class="nao-tenho"><input type="checkbox" data-campo="tipoContaFiador"><span>Não tenho agora</span></label></div><select name="tipoContaFiador"><option value="">Selecione</option><option>Corrente</option><option>Poupança</option></select><div class="pendente-tag" id="pend-tipoContaFiador" style="display:none">Informação pendente</div></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Agência</label><label class="nao-tenho"><input type="checkbox" data-campo="agenciaFiador"><span>Não tenho agora</span></label></div><input type="text" name="agenciaFiador"><div class="pendente-tag" id="pend-agenciaFiador" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Conta</label><label class="nao-tenho"><input type="checkbox" data-campo="contaFiador"><span>Não tenho agora</span></label></div><input type="text" name="contaFiador"><div class="pendente-tag" id="pend-contaFiador" style="display:none">Informação pendente</div></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">4</span> Documentos do Fiador</div>
-<div class="docs-grid">
-<div class="doc-wrapper"><div class="doc-area" id="area-rgFrenteFiador"><div class="doc-clickable" onclick="triggerFile('rgFrenteFiador')"><div class="doc-icon">🪪</div><div class="doc-label">RG/CNH fiador — frente <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgFrenteFiador">Toque para selecionar</div></div><input type="file" id="file-rgFrenteFiador" accept="image/*,.pdf" style="display:none" data-doc="rgFrenteFiador" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgFrenteFiador" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgFrenteFiador"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-compRendaFiador"><div class="doc-clickable" onclick="triggerFile('compRendaFiador')"><div class="doc-icon">💰</div><div class="doc-label">Comp. renda do fiador <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compRendaFiador">Toque para selecionar</div></div><input type="file" id="file-compRendaFiador" accept="image/*,.pdf" style="display:none" data-doc="compRendaFiador" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compRendaFiador" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRendaFiador"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-compEnderecoFiador"><div class="doc-clickable" onclick="triggerFile('compEnderecoFiador')"><div class="doc-icon">🏠</div><div class="doc-label">Comp. endereço do fiador <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compEnderecoFiador">Toque para selecionar</div></div><input type="file" id="file-compEnderecoFiador" accept="image/*,.pdf" style="display:none" data-doc="compEnderecoFiador" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEnderecoFiador" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compEnderecoFiador"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-matriculaImovelFiador"><div class="doc-clickable" onclick="triggerFile('matriculaImovelFiador')"><div class="doc-icon">📋</div><div class="doc-label">Matrícula do imóvel do fiador <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-matriculaImovelFiador">Toque para selecionar</div></div><input type="file" id="file-matriculaImovelFiador" accept="image/*,.pdf" style="display:none" data-doc="matriculaImovelFiador" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-matriculaImovelFiador" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="matriculaImovelFiador"><span>Não tenho agora</span></label></div>
-</div></div>
-<div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
-<div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
-<button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
-</form>
-<div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p></div>
-</div>
-<script type="module" src="ficha-engine.js?tipo=locacao_fiador"></script>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Locação com Fiador — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
+<body>
+<script type="module">
+import * as FE from './ficha-comum.js';
+
+const st = { has2Prop: false, numFiador: 1 };
+const ordF = ['1º','2º'];
+
+function render(){
+  // 1. Proponente(s)
+  let prop = `<div class="sub-bloco" style="border:none;padding-top:0;margin-top:0"><div class="sub-bloco-titulo">👤 ${st.has2Prop?'1ª Proponente':'Proponente'}</div>${FE.blocoPessoa('',{principal:true,renda:true})}</div>`;
+  if(st.has2Prop){
+    const rem=!FE.ehSomenteLeitura()?`<button type="button" class="btn-remover-bloco" data-action="remProp">✕ Remover</button>`:'';
+    prop += `<div class="sub-bloco"><div class="sub-bloco-titulo">👤 Cônjuge / 2ª Proponente${rem}</div>${FE.blocoPessoa('p2_',{renda:true})}</div>`;
+  }
+  if(!FE.ehSomenteLeitura() && !st.has2Prop) prop+=`<button type="button" class="btn-add-bloco" data-action="addProp">+ Adicionar cônjuge ou 2ª proponente</button>`;
+  let h = FE.secao(1, 'Proponente(s)', prop);
+
+  // 2. Imóvel de interesse
+  h += FE.secao(2, 'Imóvel de interesse',
+    FE.row(FE.campo({label:'Tipo de imóvel',key:'im_tipo',type:'select',optsHtml:FE.selOptions(FE.TIPOS,FE.v('im_tipo'))}), FE.campo({label:'Referência no site',key:'im_ref',badge:'opc'})) +
+    FE.row(FE.campo({label:'CEP',key:'im_cep',cep:true,prefix:'im_',ph:'00000-000'}), FE.campo({label:'Endereço',key:'im_endereco',ph:'Rua, Avenida...'})) +
+    FE.row(FE.campo({label:'Número',key:'im_numero'}), FE.campo({label:'Complemento',key:'im_complemento',badge:'opc'}), FE.campo({label:'Bairro',key:'im_bairro'})) +
+    FE.row(FE.campo({label:'Cidade',key:'im_cidade'}), FE.campo({label:'Estado',key:'im_estado',type:'select',optsHtml:FE.ufOptions(FE.v('im_estado'))})) +
+    FE.campo({label:'Nome do condomínio',key:'im_condominio',badge:'opc',ni:true,nta:true}) +
+    FE.row(FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}), FE.campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'}))
+  );
+
+  // 3. Fiador(es) (1-2)
+  let fia='';
+  for(let i=1;i<=st.numFiador;i++){
+    const P='f'+i+'_';
+    const rem=(i>1&&!FE.ehSomenteLeitura())?`<button type="button" class="btn-remover-bloco" data-action="remFiador">✕ Remover</button>`:'';
+    fia += `<div class="sub-bloco"${i===1?' style="border:none;padding-top:0;margin-top:0"':''}><div class="sub-bloco-titulo">👤 ${st.numFiador>1?ordF[i-1]+' Fiador':'Fiador'}${rem}</div>${FE.blocoPessoa(P,{renda:true})}</div>`;
+  }
+  if(!FE.ehSomenteLeitura() && st.numFiador<2) fia+=`<button type="button" class="btn-add-bloco" data-action="addFiador">+ Adicionar 2º fiador</button>`;
+  h += FE.secao(3, 'Fiador(es)', fia);
+
+  // 4. Imóvel garantia
+  h += FE.secao(4, 'Imóvel garantia',
+    FE.row(FE.campo({label:'Tipo de imóvel',key:'gar_tipo',type:'select',optsHtml:FE.selOptions(FE.TIPOS,FE.v('gar_tipo'))}), FE.campo({label:'Nº contribuinte IPTU',key:'gar_iptu',badge:'opc',ni:true,nta:true})) +
+    FE.row(FE.campo({label:'CEP',key:'gar_cep',cep:true,prefix:'gar_',ph:'00000-000'}), FE.campo({label:'Endereço',key:'gar_endereco',ph:'Rua, Avenida...'})) +
+    FE.row(FE.campo({label:'Número',key:'gar_numero'}), FE.campo({label:'Complemento',key:'gar_complemento',badge:'opc'}), FE.campo({label:'Bairro',key:'gar_bairro'})) +
+    FE.row(FE.campo({label:'Cidade',key:'gar_cidade'}), FE.campo({label:'Estado',key:'gar_estado',type:'select',optsHtml:FE.ufOptions(FE.v('gar_estado'))})) +
+    FE.campo({label:'Nome do condomínio',key:'gar_condominio',badge:'opc',ni:true,nta:true}) +
+    FE.row(FE.campo({label:'Matrícula',key:'gar_matricula'}), FE.campo({label:'Cartório',key:'gar_cartorio',nta:true}))
+  );
+  return h;
+}
+
+FE.iniciarFicha({
+  titulo:'Ficha Cadastral Locação com Fiador', tipo:'locacao_fiador', docsNum:5,
+  rigidos:['nome','whatsapp','email'],
+  msgRigidos:'Preencha pelo menos nome, WhatsApp e e-mail da 1ª proponente.',
+  intro:'Preencha proponente(s), imóvel de interesse, fiador(es) e o imóvel dado em garantia. Use <strong>"Não tenho agora"</strong> para pendências.',
+  docs:[
+    {key:'p_rgcpf',   icon:'🪪', label:'Proponente — RG, CPF ou CNH',          badge:'obrig'},
+    {key:'p_endereco',icon:'🏠', label:'Proponente — Comp. de endereço',       badge:'obrig'},
+    {key:'p_renda',   icon:'💰', label:'Proponente — Comp. de renda (90 dias)',badge:'opc', nta:true},
+    {key:'p_civil',   icon:'📋', label:'Proponente — Estado civil',            badge:'opc', ni:true, nta:true},
+    {key:'f_rgcpf',   icon:'🪪', label:'Fiador — RG, CPF ou CNH',              badge:'obrig'},
+    {key:'f_endereco',icon:'🏠', label:'Fiador — Comp. de endereço',           badge:'obrig'},
+    {key:'f_civil',   icon:'📋', label:'Fiador — Estado civil',                badge:'opc', ni:true, nta:true},
+    {key:'g_iptu',    icon:'📄', label:'Garantia — Nº contribuinte IPTU',      badge:'opc', ni:true, nta:true},
+    {key:'g_matricula',icon:'📋',label:'Garantia — Matrícula do imóvel',       badge:'obrig'},
+  ],
+  render,
+  acoes:{
+    addProp:()=>{ st.has2Prop=true; },
+    remProp:()=>{ Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('p2_')) delete FE.valores[k]; }); st.has2Prop=false; },
+    addFiador:()=>{ if(st.numFiador<2) st.numFiador=2; },
+    remFiador:()=>{ Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('f2_')) delete FE.valores[k]; }); st.numFiador=1; },
+  },
+  aoCarregar:(f)=>{ const d=f.dados||{};
+    if(Object.keys(d).some(k=>k.startsWith('p2_'))) st.has2Prop=true;
+    if(Object.keys(d).some(k=>k.startsWith('f2_'))) st.numFiador=2;
+  },
+});
+</script>
 </body></html>

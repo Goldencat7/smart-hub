@@ -1,34 +1,84 @@
-﻿<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Proposta — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head><body>
-<div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong></div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
-<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Proposta <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
-<div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-<div class="container">
-<div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
-<div class="intro" id="introTexto"><p>Preencha os dados da proposta. Use <strong>"Não tenho agora"</strong> para itens indisponíveis.</p></div>
-<form id="formFicha" novalidate>
-<div class="section"><div class="section-title"><span class="num">1</span> Dados do Proponente</div>
-<div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cpf"><span>Não tenho agora</span></label></div><input type="text" name="cpf" maxlength="14"><div class="pendente-tag" id="pend-cpf" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Estado civil</label></div><select name="estadoCivil"><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 9 0000-0000"></div><div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Profissão <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="profissao"></div><div class="field"><div class="field-header"><label>Renda mensal</label><label class="nao-tenho"><input type="checkbox" data-campo="renda"><span>Não tenho agora</span></label></div><input type="text" name="renda" placeholder="R$ 0.000,00"><div class="pendente-tag" id="pend-renda" style="display:none">Informação pendente</div></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">2</span> Dados da Proposta</div>
-<div class="field"><div class="field-header"><label>Tipo de negociação <span class="badge-obrig">obrigatório</span></label></div><select name="tipoNegociacao"><option value="">Selecione</option><option>Compra</option><option>Locação</option></select></div>
-<div class="field"><div class="field-header"><label>Endereço / referência do imóvel <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="enderecoImovel"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Valor proposto <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="valorProposto" placeholder="R$ 0.000,00"></div><div class="field"><div class="field-header"><label>Prazo de validade da proposta</label></div><input type="date" name="prazoValidade"></div></div>
-<div class="field"><div class="field-header"><label>Forma de pagamento / financiamento</label></div><select name="formaPagamento"><option value="">Selecione</option><option>À vista</option><option>Financiamento bancário</option><option>FGTS parcial</option><option>FGTS total</option><option>Consórcio</option><option>Outro</option></select></div>
-<div class="field"><div class="field-header"><label>Observações / condições especiais <span class="badge-opc">opcional</span></label></div><textarea name="observacoes" rows="3" placeholder="Ex.: dependente de venda de outro imóvel, prazo para mudança, etc."></textarea></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">3</span> Documentos</div>
-<div class="docs-grid">
-<div class="doc-wrapper"><div class="doc-area" id="area-rgFrente"><div class="doc-clickable" onclick="triggerFile('rgFrente')"><div class="doc-icon">🪪</div><div class="doc-label">RG ou CNH — frente <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgFrente">Toque para selecionar</div></div><input type="file" id="file-rgFrente" accept="image/*,.pdf" style="display:none" data-doc="rgFrente" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgFrente" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgFrente"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-compRenda"><div class="doc-clickable" onclick="triggerFile('compRenda')"><div class="doc-icon">💰</div><div class="doc-label">Comprovante de renda <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-compRenda">Toque para selecionar</div></div><input type="file" id="file-compRenda" accept="image/*,.pdf" style="display:none" data-doc="compRenda" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compRenda" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRenda"><span>Não tenho agora</span></label></div>
-</div></div>
-<div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
-<div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
-<button type="submit" class="btn-submit" id="btnSubmit">Enviar proposta</button>
-</form>
-<div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Proposta enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá a proposta em breve.</p></div>
-</div>
-<script type="module" src="ficha-engine.js?tipo=proposta"></script>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Proposta — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css">
+<style>
+.total-box{background:#002749;color:#fff;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;margin:4px 0 4px}
+.total-box span{font-size:13px;font-weight:600;color:#A4D7F4}
+.total-box strong{font-size:20px;font-weight:800}
+.sig-wrap{border:2px dashed #d1d5db;border-radius:10px;background:#fff;overflow:hidden}
+#sigCanvas{width:100%;height:180px;display:block;touch-action:none;cursor:crosshair}
+.sig-bar{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.sig-bar small{font-size:11px;color:#6b7280}
+.btn-limpar-sig{background:none;border:1px solid #d1d5db;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:600;color:#374151;cursor:pointer}
+.data-local{font-size:12px;color:#6b7280;margin-top:10px;text-align:center}
+</style>
+</head>
+<body>
+<script type="module">
+import * as FE from './ficha-comum.js';
+
+let sigDrawn = false;
+let sigData = '';   // assinatura salva (modo corretor/edição)
+
+function localData(){ const m=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']; const d=new Date(); return `São Paulo, ${d.getDate()} de ${m[d.getMonth()]} de ${d.getFullYear()}`; }
+
+function render(){
+  let h = FE.secao(1, 'Proposta',
+    FE.campo({label:'Nome do cliente',key:'nome'}) +
+    FE.campo({label:'CPF',key:'cpf',cpf:true,ph:'000.000.000-00'}) +
+    FE.campoTextarea({label:'Imóvel',key:'imovel',req:true,ph:'Endereço / identificação do imóvel'}) +
+    FE.row(FE.campo({label:'Sinal',key:'sinal',money:true,ph:'R$ 0,00'}), FE.campo({label:'Entrada',key:'entrada',money:true,ph:'R$ 0,00'})) +
+    FE.campo({label:'Saldo a pagar (financiamento ou escritura)',key:'saldo',money:true,ph:'R$ 0,00'}) +
+    `<div class="total-box"><span>Total da proposta</span><strong id="propTotal">R$ 0,00</strong></div>` +
+    FE.campoTextarea({label:'Observações',key:'obs',ph:'Anote tudo que foi combinado na negociação…'})
+  );
+  const ro = FE.ehSomenteLeitura();
+  h += FE.secao(2, 'Assinatura do cliente',
+    `<div class="sig-wrap"><canvas id="sigCanvas"></canvas></div>
+     <div class="sig-bar"><small>${ro?'Assinatura registrada pelo cliente.':'Assine no quadro acima com o dedo ou mouse.'}</small>${ro?'':`<button type="button" class="btn-limpar-sig" id="btnLimparSig">Limpar</button>`}</div>
+     <div class="data-local">${localData()}</div>`
+  );
+  return h;
+}
+
+function total(){ return FE.moneyToNum(FE.v('sinal'))+FE.moneyToNum(FE.v('entrada'))+FE.moneyToNum(FE.v('saldo')); }
+
+function wireCanvas(){
+  const c=document.getElementById('sigCanvas'); if(!c||c._wired) return;
+  const ro=FE.ehSomenteLeitura();
+  const ratio=window.devicePixelRatio||1; const rect=c.getBoundingClientRect(); if(!rect.width) return;
+  c.width=rect.width*ratio; c.height=rect.height*ratio;
+  const ctx=c.getContext('2d'); ctx.scale(ratio,ratio); ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#002749';
+  c._ctx=ctx; c._wired=true;
+  // modo corretor/edição: desenha assinatura salva
+  if(sigData){ const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,rect.width,rect.height); img.src=sigData; sigDrawn=true; }
+  if(ro) return;
+  let drawing=false;
+  const pos=e=>{ const r=c.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:t.clientX-r.left,y:t.clientY-r.top}; };
+  const start=e=>{ e.preventDefault(); drawing=true; const p=pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); };
+  const move=e=>{ if(!drawing) return; e.preventDefault(); const p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); sigDrawn=true; };
+  const end=()=>{ drawing=false; };
+  c.addEventListener('mousedown',start); c.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+  c.addEventListener('touchstart',start,{passive:false}); c.addEventListener('touchmove',move,{passive:false}); c.addEventListener('touchend',end);
+  const btn=document.getElementById('btnLimparSig');
+  if(btn) btn.addEventListener('click',()=>{ const r=c.getBoundingClientRect(); ctx.clearRect(0,0,r.width,r.height); sigDrawn=false; });
+}
+
+FE.iniciarFicha({
+  titulo:'Ficha Proposta', tipo:'proposta', docs:[],
+  rigidos:['nome','cpf','imovel','sinal','entrada','saldo'],
+  msgRigidos:'Preencha nome, CPF, imóvel e os valores (sinal, entrada e saldo).',
+  intro:'Preencha os dados da proposta e assine no quadro ao final.',
+  render,
+  aoRenderizar:()=>{ wireCanvas(); const t=document.getElementById('propTotal'); if(t) t.textContent='R$ '+FE.fmtMoney(total()); },
+  aoAtualizar:()=>{ const t=document.getElementById('propTotal'); if(t) t.textContent='R$ '+FE.fmtMoney(total()); },
+  validar:()=>{ if(!sigDrawn) return 'Assine no quadro antes de enviar a proposta.'; return null; },
+  antesDeEnviar:()=> new Promise(res=>{
+    const c=document.getElementById('sigCanvas');
+    if(!c || !sigDrawn){ res(); return; }
+    c.toBlob(b=>{ if(b) FE.arquivos['assinatura']=new File([b],'assinatura.png',{type:'image/png'}); res(); },'image/png');
+  }),
+  aoCarregar:(f)=>{ if(f.documentos && f.documentos.assinatura) sigData=f.documentos.assinatura; },
+});
+</script>
 </body></html>

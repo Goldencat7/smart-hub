@@ -51,3 +51,17 @@ input:disabled,select:disabled{background:#f5f7fa;color:#9ca3af;cursor:not-allow
 .resumo-pendencias h4{font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px}
 .resumo-pendencias ul{padding-left:16px;font-size:12px;color:#78350f}
 textarea{resize:vertical;min-height:80px}
+/* Blocos dinâmicos / rádios / sub-blocos (fichas reconstruídas) */
+.btn-add-bloco{margin-top:6px;width:100%;background:#fff;color:#002749;border:1.5px dashed #A4D7F4;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
+.btn-add-bloco:hover{background:#f0f7fc}
+.btn-remover-bloco{background:none;border:none;color:#9F1622;font-size:12px;font-weight:700;cursor:pointer;padding:0;margin-left:auto}
+.sub-bloco{margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0}
+.sub-bloco-titulo{font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.prop-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.prop-head .num{background:#DC1C2E;color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-right:8px}
+.prop-head strong{font-size:14px;color:#002749}
+.radio-group{display:flex;gap:8px;flex-wrap:wrap}
+.radio-btn{padding:9px 16px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.radio-btn.ativo{background:#002749;color:#fff;border-color:#002749}
+.nao-existe span{color:#6b7280}
+.nao-existe input[type=checkbox]{accent-color:#6B7480}

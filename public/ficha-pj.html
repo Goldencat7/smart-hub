@@ -1,44 +1,68 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Pessoa Jurídica — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
 <body>
-<div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
-<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Cadastral Pessoa Jurídica <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
-<div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-<div class="container">
-<div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
-<div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para itens indisponíveis no momento.</p></div>
-<form id="formFicha" novalidate>
-<div class="section"><div class="section-title"><span class="num">1</span> Dados da Empresa</div>
-<div class="field"><div class="field-header"><label>Razão Social <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CNPJ <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cnpj"><span>Não tenho agora</span></label></div><input type="text" name="cnpj" maxlength="18"><div class="pendente-tag" id="pend-cnpj" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Inscrição Estadual <span class="badge-opc">opcional</span></label></div><input type="text" name="ie"></div></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>Faturamento mensal <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="faturamento"><span>Não tenho agora</span></label></div><input type="text" name="faturamento" placeholder="R$ 0.000,00"><div class="pendente-tag" id="pend-faturamento" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Ramo de atividade</label></div><input type="text" name="ramoAtividade"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">2</span> Representante Legal</div>
-<div class="field"><div class="field-header"><label>Nome do representante <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nomeRepresentante"></div>
-<div class="row-2"><div class="field"><div class="field-header"><label>CPF do representante <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="cpfRepresentante"><span>Não tenho agora</span></label></div><input type="text" name="cpfRepresentante" maxlength="14"><div class="pendente-tag" id="pend-cpfRepresentante" style="display:none">Informação pendente</div></div><div class="field"><div class="field-header"><label>Cargo</label></div><input type="text" name="cargoRepresentante"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">3</span> Contato</div>
-<div class="row-2"><div class="field"><div class="field-header"><label>WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 9 0000-0000"></div><div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">4</span> Endereço da Empresa</div>
-<div class="row-2"><div class="field"><label>CEP</label><input type="text" name="cep" id="campoCep" maxlength="9"></div><div class="field"><label>Número</label><input type="text" name="numero"></div></div>
-<div class="field"><label>Logradouro</label><input type="text" name="logradouro" id="campoLogradouro"></div>
-<div class="row-2"><div class="field"><label>Complemento</label><input type="text" name="complemento"></div><div class="field"><label>Bairro</label><input type="text" name="bairro" id="campoBairro"></div></div>
-<div class="row-2"><div class="field"><label>Cidade</label><input type="text" name="cidade" id="campoCidade"></div><div class="field"><label>Estado</label><select name="estado" id="campoEstado"><option value="">UF</option><option>AC</option><option>AL</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option selected>SP</option><option>SE</option><option>TO</option></select></div></div>
-</div>
-<div class="section"><div class="section-title"><span class="num">5</span> Documentos</div>
-<div class="docs-grid">
-<div class="doc-wrapper"><div class="doc-area" id="area-contratoSocial"><div class="doc-clickable" onclick="triggerFile('contratoSocial')"><div class="doc-icon">📋</div><div class="doc-label">Contrato Social / Estatuto <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-contratoSocial">Toque para selecionar</div></div><input type="file" id="file-contratoSocial" accept="image/*,.pdf" style="display:none" data-doc="contratoSocial" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-contratoSocial" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="contratoSocial"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-cartaoCnpj"><div class="doc-clickable" onclick="triggerFile('cartaoCnpj')"><div class="doc-icon">🏢</div><div class="doc-label">Cartão CNPJ <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-cartaoCnpj">Toque para selecionar</div></div><input type="file" id="file-cartaoCnpj" accept="image/*,.pdf" style="display:none" data-doc="cartaoCnpj" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-cartaoCnpj" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="cartaoCnpj"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-rgRepresentante"><div class="doc-clickable" onclick="triggerFile('rgRepresentante')"><div class="doc-icon">🪪</div><div class="doc-label">RG/CNH do representante <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgRepresentante">Toque para selecionar</div></div><input type="file" id="file-rgRepresentante" accept="image/*,.pdf" style="display:none" data-doc="rgRepresentante" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgRepresentante" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="rgRepresentante"><span>Não tenho agora</span></label></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-balanco"><div class="doc-clickable" onclick="triggerFile('balanco')"><div class="doc-icon">📊</div><div class="doc-label">Balanço / Faturamento <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-balanco">Toque para selecionar</div></div><input type="file" id="file-balanco" accept="image/*,.pdf" style="display:none" data-doc="balanco" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-balanco" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="balanco"><span>Não tenho agora</span></label></div>
-</div></div>
-<div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
-<div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
-<button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
-</form>
-<div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p></div>
-</div>
-<script type="module" src="ficha-engine.js?tipo=pj"></script>
+<script type="module">
+import * as FE from './ficha-comum.js';
+
+const st = { numSocios: 1 };
+const ord = ['1º','2º','3º'];
+
+function render(){
+  // 1. Empresa
+  let h = FE.secao(1, 'Empresa',
+    FE.campo({label:'Razão social',key:'nome'}) +
+    FE.row(FE.campo({label:'CNPJ',key:'cnpj',cnpj:true,ph:'00.000.000/0000-00'}), FE.campo({label:'Data de abertura',key:'abertura',type:'date'})) +
+    FE.row(FE.campo({label:'CEP',key:'emp_cep',cep:true,prefix:'emp_',ph:'00000-000'}), FE.campo({label:'Endereço',key:'emp_endereco',ph:'Rua, Avenida...'})) +
+    FE.row(FE.campo({label:'Número',key:'emp_numero'}), FE.campo({label:'Complemento',key:'emp_complemento',badge:'opc'}), FE.campo({label:'Bairro',key:'emp_bairro'})) +
+    FE.row(FE.campo({label:'Cidade',key:'emp_cidade'}), FE.campo({label:'Estado',key:'emp_estado',type:'select',optsHtml:FE.ufOptions(FE.v('emp_estado'))})) +
+    FE.campo({label:'Ramo de atividade',key:'ramo'}) +
+    FE.row(FE.campo({label:'Faturamento atual',key:'faturamento',money:true,ph:'R$ 0,00'}), FE.campo({label:'Faturamento último ano',key:'faturamento_ano',money:true,ph:'R$ 0,00'})) +
+    FE.campo({label:'E-mail',key:'email',type:'email'}) +
+    FE.row(FE.campo({label:'Celular / WhatsApp',key:'whatsapp',type:'tel',ph:'(11) 90000-0000'}), FE.campo({label:'Telefone fixo',key:'emp_fixo',type:'tel',badge:'opc'}))
+  );
+
+  // 2. Sócios (1-3)
+  let soc='';
+  for(let i=1;i<=st.numSocios;i++){
+    const P='s'+i+'_';
+    const rem=(i>1&&i===st.numSocios&&!FE.ehSomenteLeitura())?`<button type="button" class="btn-remover-bloco" data-action="remSocio">✕ Remover</button>`:'';
+    soc += `<div class="sub-bloco"${i===1?' style="border:none;padding-top:0;margin-top:0"':''}><div class="sub-bloco-titulo">👤 ${st.numSocios>1?ord[i-1]+' Sócio':'Sócio'}${rem}</div>${FE.blocoPessoa(P,{renda:true})}</div>`;
+  }
+  if(!FE.ehSomenteLeitura() && st.numSocios<3) soc+=`<button type="button" class="btn-add-bloco" data-action="addSocio">+ Adicionar sócio</button>`;
+  h += FE.secao(2, 'Sócio(s)', soc);
+
+  // 3. Imóvel de interesse
+  h += FE.secao(3, 'Imóvel de interesse',
+    FE.row(FE.campo({label:'Tipo de imóvel',key:'im_tipo',type:'select',optsHtml:FE.selOptions(FE.TIPOS,FE.v('im_tipo'))}), FE.campo({label:'Referência no site',key:'im_ref',badge:'opc'})) +
+    FE.row(FE.campo({label:'CEP',key:'im_cep',cep:true,prefix:'im_',ph:'00000-000'}), FE.campo({label:'Endereço',key:'im_endereco',ph:'Rua, Avenida...'})) +
+    FE.row(FE.campo({label:'Número',key:'im_numero'}), FE.campo({label:'Complemento',key:'im_complemento',badge:'opc'}), FE.campo({label:'Bairro',key:'im_bairro'})) +
+    FE.row(FE.campo({label:'Cidade',key:'im_cidade'}), FE.campo({label:'Estado',key:'im_estado',type:'select',optsHtml:FE.ufOptions(FE.v('im_estado'))})) +
+    FE.campo({label:'Nome do condomínio',key:'im_condominio',badge:'opc',ni:true,nta:true}) +
+    FE.row(FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}), FE.campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'}))
+  );
+  return h;
+}
+
+FE.iniciarFicha({
+  titulo:'Ficha Cadastral Pessoa Jurídica', tipo:'pj', docsNum:4,
+  rigidos:['nome','cnpj','whatsapp','email'],
+  msgRigidos:'Preencha pelo menos razão social, CNPJ, WhatsApp e e-mail da empresa.',
+  intro:'Preencha os dados da empresa, sócios e imóvel. Use <strong>"Não tenho agora"</strong> para itens indisponíveis.',
+  docs:[
+    {key:'cnpj_card',   icon:'🏢', label:'Cartão CNPJ',                        badge:'obrig'},
+    {key:'contrato',    icon:'📜', label:'Contrato social',                     badge:'obrig'},
+    {key:'emp_renda',   icon:'💰', label:'Comprovante de renda (empresa)',      badge:'obrig'},
+    {key:'soc_rgcpf',   icon:'🪪', label:'RG, CPF ou CNH (sócios)',             badge:'obrig'},
+    {key:'soc_endereco',icon:'🏠', label:'Comprovante de endereço (sócios)',    badge:'obrig'},
+    {key:'soc_civil',   icon:'📋', label:'Comprovante de estado civil (sócios)',badge:'opc', ni:true, nta:true},
+  ],
+  render,
+  acoes:{
+    addSocio:()=>{ if(st.numSocios<3) st.numSocios++; },
+    remSocio:()=>{ const i=st.numSocios; Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('s'+i+'_')) delete FE.valores[k]; }); st.numSocios=Math.max(1,st.numSocios-1); },
+  },
+  aoCarregar:(f)=>{ const d=f.dados||{}; if(Object.keys(d).some(k=>k.startsWith('s3_'))) st.numSocios=3; else if(Object.keys(d).some(k=>k.startsWith('s2_'))) st.numSocios=2; },
+});
+</script>
 </body></html>
