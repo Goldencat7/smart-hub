@@ -1837,11 +1837,11 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
 function carregarIA() {
   const MODELOS = [
     {
-      key: 'martina', nome: 'Martina', empresa: 'RE/MAX Smart',
-      desc: 'Assistente virtual da RE/MAX Smart — precisa estar logado no ChatGPT para usar',
+      key: 'martina', nome: 'Martina', empresa: 'REMAX Smart',
+      desc: 'Assistente virtual da REMAX Smart — precisa estar logado no ChatGPT para usar',
       url: 'https://chatgpt.com/g/g-68b2625b33f481918039b79f11b5c713-martina-assistente-virtual',
       avisoLogin: true,
-      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><rect x="0" y="36" width="48" height="12" rx="0" fill="#DC1C2E"/><rect x="0" y="36" width="48" height="4" fill="#DC1C2E"/><text x="24" y="30" text-anchor="middle" font-size="22" font-weight="900" fill="white" font-family="Arial,sans-serif">M</text><text x="24" y="44" text-anchor="middle" font-size="8" font-weight="700" fill="white" font-family="Arial,sans-serif" letter-spacing="1">RE/MAX</text></svg>`
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><rect x="0" y="36" width="48" height="12" rx="0" fill="#DC1C2E"/><rect x="0" y="36" width="48" height="4" fill="#DC1C2E"/><text x="24" y="30" text-anchor="middle" font-size="22" font-weight="900" fill="white" font-family="Arial,sans-serif">M</text><text x="24" y="44" text-anchor="middle" font-size="8" font-weight="700" fill="white" font-family="Arial,sans-serif" letter-spacing="1">REMAX</text></svg>`
     },
     {
       key: 'gemini', nome: 'Gemini', empresa: 'Google',

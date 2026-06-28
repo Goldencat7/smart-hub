@@ -528,7 +528,7 @@ function gerarPdfFicha(ficha, tipoLabel) {
       doc.on('error', reject);
 
       // Cabeçalho
-      doc.fontSize(10).fillColor('#888').text('RE/MAX Smart — Imóveis');
+      doc.fontSize(10).fillColor('#888').text('REMAX Smart — Imóveis');
       doc.fontSize(18).fillColor('#002749').text(tipoLabel, { paragraphGap: 4 });
       doc.fontSize(11).fillColor('#555').text(`Corretor: ${ficha.corretorNome || '—'}`);
       doc.moveDown(1);
@@ -635,7 +635,7 @@ async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
       auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
     });
     await transporter.sendMail({
-      from: `Hub RE/MAX Smart <${SUPORTE_EMAIL}>`,
+      from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
       to: FICHAS_ADMIN_EMAIL,
       subject: `[Hub] ${tipoLabel} — ${d.nome || 'Nova ficha'} (${ficha.corretorNome || 'corretor'})`,
       text: linhas.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n\nAcesse o Hub para revisar.',
@@ -685,7 +685,7 @@ exports.enviarSuporte = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) =>
 
   try {
     await transporter.sendMail({
-      from: `Hub RE/MAX Smart <${SUPORTE_EMAIL}>`,
+      from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
       to: SUPORTE_EMAIL,
       replyTo: email || undefined,
       subject: `[Hub] Suporte — ${nome}`,

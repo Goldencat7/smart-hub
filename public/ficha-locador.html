@@ -1,44 +1,289 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral do Locador — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral do Locador — REMAX Smart</title><link rel="stylesheet" href="ficha.css">
 <style>
-.btn-add-bloco{margin-top:6px;width:100%;background:#fff;color:#002749;border:1.5px dashed #A4D7F4;border-radius:10px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
-.btn-add-bloco:hover{background:#f0f7fc}
-.btn-remover-bloco{background:none;border:none;color:#9F1622;font-size:12px;font-weight:700;cursor:pointer;padding:0}
-.sub-bloco{margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0}
-.sub-bloco-titulo{font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px;display:flex;align-items:center;gap:6px}
-.prop-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-.prop-head .num{background:#DC1C2E;color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-right:8px}
-.prop-head strong{font-size:14px;color:#002749}
-.radio-group{display:flex;gap:8px;flex-wrap:wrap}
+.sub-sec{background:#f8fafc;border-radius:10px;padding:18px;margin-top:8px;border:1px solid #e8edf3}
+.sub-sec-title{font-size:12px;font-weight:700;color:#003DA5;margin-bottom:14px;display:flex;align-items:center;gap:6px}
+.btn-toggle{width:100%;background:#fff;color:#002749;border:1.5px dashed #A4D7F4;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:6px;transition:background .15s;text-align:left}
+.btn-toggle:hover{background:#f0f7fc}
+.btn-toggle.rem{color:#9F1622;border-color:#F4C0C6}
+.btn-toggle.rem:hover{background:#fdf2f3}
+.radio-group{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .radio-btn{padding:9px 16px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
 .radio-btn.ativo{background:#002749;color:#fff;border-color:#002749}
-.nao-existe span{color:#6b7280}
-.nao-existe input[type=checkbox]{accent-color:#6B7480}
+.nao-existe-label{color:#6b7280}
+.nao-existe-label input{accent-color:#6B7480}
 </style>
 </head>
 <body>
-<div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
-<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Cadastral do Locador <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
+
+<div class="corretor-bar" id="barraCorretor" style="display:none">
+  <div><strong>Modo Corretor</strong> — Revisão</div>
+  <div class="corretor-acoes">
+    <button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button>
+    <button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button>
+  </div>
+</div>
+
+<div class="header">
+  <svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg>
+  <div><h1>Ficha Cadastral do Locador <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>REMAX Smart — Imóveis</p></div>
+</div>
 <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+
 <div class="container">
-<div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
-<div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para pendências e <strong>"Não existe"</strong> para itens que não se aplicam ao imóvel.</p></div>
-<form id="formFicha" novalidate>
-<div id="locadores"></div>
-<div id="imovel"></div>
-<div id="financeiro"></div>
-<div id="admin"></div>
+  <div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
+  <div class="intro" id="introTexto"><p>Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para pendências e <strong>"Não existe"</strong> para itens que não se aplicam ao imóvel.</p></div>
 
-<!-- Documentos -->
-<div class="section"><div class="section-title"><span class="num">5</span> Documentos</div>
-<div class="docs-grid" id="docs-grid"></div></div>
+  <form id="formFicha" novalidate>
 
-<div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
-<div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
-<button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
-</form>
-<div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px"><div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div><h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2><p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p></div>
+    <!-- ══ 1. Locador ══════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title"><span class="num">1</span> Locador</div>
+
+      <div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>RG <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="rg"></div>
+        <div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="cpf" data-cpf maxlength="14" placeholder="000.000.000-00"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Data de nascimento <span class="badge-obrig">obrigatório</span></label></div><input type="date" name="dataNasc"></div>
+        <div class="field"><div class="field-header"><label>Estado civil <span class="badge-obrig">obrigatório</span></label></div>
+          <select name="estadoCivil" id="civil1" onchange="toggleConjuge('sec-conj1',this.value)"><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select>
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="cep" data-cep data-fill="loc1" maxlength="9" placeholder="00000-000"></div>
+        <div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="endereco" id="loc1-endereco" placeholder="Rua, Avenida..."></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Número <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="numero"></div>
+        <div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" name="complemento" placeholder="Apto, Bloco..."></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="bairro" id="loc1-bairro"></div>
+        <div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="cidade" id="loc1-cidade"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">obrigatório</span></label></div>
+          <select name="estado" id="loc1-estado"><option value="">UF</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option selected>SP</option><option>SE</option><option>TO</option></select>
+        </div>
+        <div class="field"><div class="field-header"><label>Profissão <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="profissao"><span>Não tenho agora</span></label></div><input type="text" name="profissao"><div class="pendente-tag" id="pend-profissao" style="display:none">Informação pendente</div></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div>
+        <div class="field"><div class="field-header"><label>Celular / WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 90000-0000"></div>
+      </div>
+      <div class="field"><div class="field-header"><label>Telefone fixo <span class="badge-opc">opcional</span></label></div><input type="tel" name="fixo" placeholder="(11) 0000-0000"></div>
+
+      <!-- Cônjuge do 1º locador -->
+      <div id="sec-conj1" style="display:none">
+        <div class="sub-sec">
+          <div class="sub-sec-title">💍 Cônjuge do 1º locador</div>
+          <div class="field"><div class="field-header"><label>Nome do cônjuge</label></div><input type="text" name="conj_nome" disabled></div>
+          <div class="row-2">
+            <div class="field"><div class="field-header"><label>RG</label></div><input type="text" name="conj_rg" disabled></div>
+            <div class="field"><div class="field-header"><label>CPF</label></div><input type="text" name="conj_cpf" data-cpf maxlength="14" placeholder="000.000.000-00" disabled></div>
+          </div>
+          <div class="row-2">
+            <div class="field"><div class="field-header"><label>Data de nascimento</label></div><input type="date" name="conj_nasc" disabled></div>
+            <div class="field"><div class="field-header"><label>Profissão</label></div><input type="text" name="conj_profissao" disabled></div>
+          </div>
+          <div class="field"><div class="field-header"><label>Regime de bens</label></div>
+            <select name="conj_regime" disabled><option value="">Selecione</option><option>Comunhão parcial de bens</option><option>Comunhão universal de bens</option><option>Separação total de bens</option><option>Participação final nos aquestos</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2º Locador -->
+      <button type="button" id="btn-add-loc2" class="btn-toggle" onclick="toggleLoc2(true)">+ Adicionar 2º locador</button>
+      <button type="button" id="btn-rem-loc2" class="btn-toggle rem" onclick="toggleLoc2(false)" style="display:none">— Remover 2º locador</button>
+    </div>
+
+    <!-- Seção 2º Locador -->
+    <div id="sec-loc2" style="display:none">
+      <div class="section">
+        <div class="section-title" style="font-size:13px">2º Locador</div>
+        <div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="loc2_nome" disabled></div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>RG</label></div><input type="text" name="loc2_rg" disabled></div>
+          <div class="field"><div class="field-header"><label>CPF</label></div><input type="text" name="loc2_cpf" data-cpf maxlength="14" placeholder="000.000.000-00" disabled></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>Data de nascimento</label></div><input type="date" name="loc2_nasc" disabled></div>
+          <div class="field"><div class="field-header"><label>Estado civil</label></div>
+            <select name="loc2_estadoCivil" id="civil2" onchange="toggleConjuge('sec-conj2',this.value)" disabled><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select>
+          </div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>CEP</label></div><input type="text" name="loc2_cep" data-cep data-fill="loc2" maxlength="9" placeholder="00000-000" disabled></div>
+          <div class="field"><div class="field-header"><label>Endereço</label></div><input type="text" name="loc2_endereco" id="loc2-endereco" placeholder="Rua, Avenida..." disabled></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>Número</label></div><input type="text" name="loc2_numero" disabled></div>
+          <div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" name="loc2_complemento" disabled></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>Bairro</label></div><input type="text" name="loc2_bairro" id="loc2-bairro" disabled></div>
+          <div class="field"><div class="field-header"><label>Cidade</label></div><input type="text" name="loc2_cidade" id="loc2-cidade" disabled></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>Estado</label></div>
+            <select name="loc2_estado" id="loc2-estado" disabled><option value="">UF</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option selected>SP</option><option>SE</option><option>TO</option></select>
+          </div>
+          <div class="field"><div class="field-header"><label>Profissão</label></div><input type="text" name="loc2_profissao" disabled></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>E-mail</label></div><input type="email" name="loc2_email" disabled></div>
+          <div class="field"><div class="field-header"><label>Celular</label></div><input type="tel" name="loc2_celular" placeholder="(11) 90000-0000" disabled></div>
+        </div>
+
+        <!-- Cônjuge do 2º locador -->
+        <div id="sec-conj2" style="display:none">
+          <div class="sub-sec">
+            <div class="sub-sec-title">💍 Cônjuge do 2º locador</div>
+            <div class="field"><div class="field-header"><label>Nome do cônjuge</label></div><input type="text" name="loc2_conj_nome" disabled></div>
+            <div class="row-2">
+              <div class="field"><div class="field-header"><label>RG</label></div><input type="text" name="loc2_conj_rg" disabled></div>
+              <div class="field"><div class="field-header"><label>CPF</label></div><input type="text" name="loc2_conj_cpf" data-cpf maxlength="14" placeholder="000.000.000-00" disabled></div>
+            </div>
+            <div class="row-2">
+              <div class="field"><div class="field-header"><label>Data de nascimento</label></div><input type="date" name="loc2_conj_nasc" disabled></div>
+              <div class="field"><div class="field-header"><label>Profissão</label></div><input type="text" name="loc2_conj_profissao" disabled></div>
+            </div>
+            <div class="field"><div class="field-header"><label>Regime de bens</label></div>
+              <select name="loc2_conj_regime" disabled><option value="">Selecione</option><option>Comunhão parcial de bens</option><option>Comunhão universal de bens</option><option>Separação total de bens</option><option>Participação final nos aquestos</option></select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 2. Imóvel ════════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title"><span class="num">2</span> Imóvel</div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Tipo de imóvel <span class="badge-obrig">obrigatório</span></label></div>
+          <select name="im_tipo"><option value="">Selecione</option><option>Apartamento</option><option>Casa</option><option>Cobertura</option><option>Studio</option><option>Sala comercial</option><option>Terreno</option><option>Outro</option></select>
+        </div>
+        <div class="field"><div class="field-header"><label>Referência no site <span class="badge-opc">opcional</span></label></div><input type="text" name="im_ref" placeholder="Cód. do anúncio"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_cep" data-cep data-fill="im" maxlength="9" placeholder="00000-000"></div>
+        <div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_endereco" id="im-endereco" placeholder="Rua, Avenida..."></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Número <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_numero"></div>
+        <div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" name="im_complemento"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_bairro" id="im-bairro"></div>
+        <div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_cidade" id="im-cidade"></div>
+      </div>
+      <div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">obrigatório</span></label></div>
+        <select name="im_estado" id="im-estado"><option value="">UF</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option selected>SP</option><option>SE</option><option>TO</option></select>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Nome do condomínio <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_condominio"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_condominio"><span>Não tenho agora</span></label></div><input type="text" name="im_condominio"><div class="pendente-tag" id="pend-im_condominio" style="display:none">Informação pendente</div></div>
+        <div class="field"><div class="field-header"><label>Adm. condominial <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_admcond"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_admcond"><span>Não tenho agora</span></label></div><input type="text" name="im_admcond"><div class="pendente-tag" id="pend-im_admcond" style="display:none">Informação pendente</div></div>
+      </div>
+      <div class="field"><div class="field-header"><label>Contato da Adm. <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_admcontato"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_admcontato"><span>Não tenho agora</span></label></div><input type="text" name="im_admcontato" placeholder="Telefone ou e-mail"><div class="pendente-tag" id="pend-im_admcontato" style="display:none">Informação pendente</div></div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Valor IPTU <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_iptu"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_iptu"><span>Não tenho agora</span></label></div><input type="text" name="im_iptu" data-money placeholder="R$ 0,00"><div class="pendente-tag" id="pend-im_iptu" style="display:none">Informação pendente</div></div>
+        <div class="field"><div class="field-header"><label>Valor condomínio <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_valorcond"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_valorcond"><span>Não tenho agora</span></label></div><input type="text" name="im_valorcond" data-money placeholder="R$ 0,00"><div class="pendente-tag" id="pend-im_valorcond" style="display:none">Informação pendente</div></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Instalação ENEL <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_enel"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_enel"><span>Não tenho agora</span></label></div><input type="text" name="im_enel"><div class="pendente-tag" id="pend-im_enel" style="display:none">Informação pendente</div></div>
+        <div class="field"><div class="field-header"><label>Instalação Sabesp <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_sabesp"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_sabesp"><span>Não tenho agora</span></label></div><input type="text" name="im_sabesp"><div class="pendente-tag" id="pend-im_sabesp" style="display:none">Informação pendente</div></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Instalação Comgás <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_comgas"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_comgas"><span>Não tenho agora</span></label></div><input type="text" name="im_comgas"><div class="pendente-tag" id="pend-im_comgas" style="display:none">Informação pendente</div></div>
+        <div class="field"><div class="field-header"><label>Contribuinte IPTU <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_contribuinte"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_contribuinte"><span>Não tenho agora</span></label></div><input type="text" name="im_contribuinte"><div class="pendente-tag" id="pend-im_contribuinte" style="display:none">Informação pendente</div></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Início do contrato <span class="badge-obrig">obrigatório</span></label></div><input type="date" name="im_inicio"></div>
+        <div class="field"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Valor do anúncio <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_anuncio" data-money placeholder="R$ 0,00"></div>
+        <div class="field"><div class="field-header"><label>Valor da proposta <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_proposta" data-money placeholder="R$ 0,00"></div>
+      </div>
+    </div>
+
+    <!-- ══ 3. Financeiro ════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title"><span class="num">3</span> Informações financeiras <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento do aluguel)</small></div>
+      <div class="sub-sec-title" style="font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px">1ª Titular</div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Banco <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_banco"></div>
+        <div class="field"><div class="field-header"><label>Agência <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_agencia"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><div class="field-header"><label>Conta corrente <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_conta"></div>
+        <div class="field"><div class="field-header"><label>Favorecido <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_favorecido"></div>
+      </div>
+      <div class="field"><div class="field-header"><label>Chave PIX <span class="badge-opc">opcional</span></label></div><input type="text" name="fin1_pix"></div>
+
+      <button type="button" id="btn-add-tit2" class="btn-toggle" onclick="toggleTit2(true)" style="margin-top:14px">+ Adicionar 2ª titular</button>
+      <button type="button" id="btn-rem-tit2" class="btn-toggle rem" onclick="toggleTit2(false)" style="display:none">— Remover 2ª titular</button>
+      <div id="sec-tit2" style="display:none;margin-top:14px;padding-top:14px;border-top:1px dashed #e2e8f0">
+        <div class="sub-sec-title" style="font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px">2ª Titular</div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>Banco</label></div><input type="text" name="fin2_banco" disabled></div>
+          <div class="field"><div class="field-header"><label>Agência</label></div><input type="text" name="fin2_agencia" disabled></div>
+        </div>
+        <div class="row-2">
+          <div class="field"><div class="field-header"><label>Conta corrente</label></div><input type="text" name="fin2_conta" disabled></div>
+          <div class="field"><div class="field-header"><label>Favorecido</label></div><input type="text" name="fin2_favorecido" disabled></div>
+        </div>
+        <div class="field"><div class="field-header"><label>Chave PIX <span class="badge-opc">opcional</span></label></div><input type="text" name="fin2_pix" disabled></div>
+      </div>
+    </div>
+
+    <!-- ══ 4. Administração ════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title"><span class="num">4</span> Administração</div>
+      <div class="field"><div class="field-header"><label>A REMAX administra o imóvel? <span class="badge-obrig">obrigatório</span></label></div>
+        <div class="radio-group">
+          <button type="button" class="radio-btn" data-radio="adm_resp" data-val="Sim">Sim</button>
+          <button type="button" class="radio-btn" data-radio="adm_resp" data-val="Não">Não</button>
+        </div>
+        <input type="hidden" name="adm_resp">
+      </div>
+      <div class="field"><div class="field-header"><label>Taxa negociada <span class="badge-opc">opcional</span></label></div><input type="text" name="adm_taxa" value="8%"></div>
+      <div class="field"><div class="field-header"><label>Repasse <span class="badge-obrig">obrigatório</span></label></div>
+        <div class="radio-group">
+          <button type="button" class="radio-btn" data-radio="repasse" data-val="Somente aluguel">Somente aluguel</button>
+          <button type="button" class="radio-btn" data-radio="repasse" data-val="Aluguel + condomínio + IPTU">Aluguel + condomínio + IPTU</button>
+        </div>
+        <input type="hidden" name="repasse">
+      </div>
+      <div class="field"><div class="field-header"><label>Outras informações <span class="badge-opc">opcional</span></label></div><textarea name="outras" placeholder="Anote acordos, prazos, condições especiais…"></textarea></div>
+    </div>
+
+    <!-- ══ 5. Documentos ════════════════════════════════════════════ -->
+    <div class="section">
+      <div class="section-title"><span class="num">5</span> Documentos</div>
+      <div class="docs-grid">
+        <div class="doc-wrapper"><div class="doc-area" id="area-rgcpf"><div class="doc-clickable" onclick="triggerFile('rgcpf')"><div class="doc-icon">🪪</div><div class="doc-label">RG e CPF <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgcpf">Toque para selecionar</div></div><input type="file" id="file-rgcpf" accept="image/*,.pdf" style="display:none" data-doc="rgcpf" onchange="docSelecionado(this)"></div></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-energia"><div class="doc-clickable" onclick="triggerFile('energia')"><div class="doc-icon">⚡</div><div class="doc-label">Conta de energia <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-energia">Toque para selecionar</div></div><input type="file" id="file-energia" accept="image/*,.pdf" style="display:none" data-doc="energia" onchange="docSelecionado(this)"></div></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-agua"><div class="doc-clickable" onclick="triggerFile('agua')"><div class="doc-icon">💧</div><div class="doc-label">Conta de água <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-agua">Toque para selecionar</div></div><input type="file" id="file-agua" accept="image/*,.pdf" style="display:none" data-doc="agua" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-agua" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="agua"><span>Não tenho agora</span></label></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-gas"><div class="doc-clickable" onclick="triggerFile('gas')"><div class="doc-icon">🔥</div><div class="doc-label">Conta de gás <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-gas">Toque para selecionar</div></div><input type="file" id="file-gas" accept="image/*,.pdf" style="display:none" data-doc="gas" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-gas" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="gas"><span>Não tenho agora</span></label></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-iptu_doc"><div class="doc-clickable" onclick="triggerFile('iptu_doc')"><div class="doc-icon">📄</div><div class="doc-label">Documento do IPTU <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-iptu_doc">Toque para selecionar</div></div><input type="file" id="file-iptu_doc" accept="image/*,.pdf" style="display:none" data-doc="iptu_doc" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-iptu_doc" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="iptu_doc"><span>Não tenho agora</span></label></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-condominio_doc"><div class="doc-clickable" onclick="triggerFile('condominio_doc')"><div class="doc-icon">🏢</div><div class="doc-label">Doc. do condomínio <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-condominio_doc">Toque para selecionar</div></div><input type="file" id="file-condominio_doc" accept="image/*,.pdf" style="display:none" data-doc="condominio_doc" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-condominio_doc" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="condominio_doc"><span>Não tenho agora</span></label></div>
+      </div>
+    </div>
+
+    <div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
+    <div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
+    <button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
+  </form>
+
+  <div id="tela-sucesso" style="display:none;text-align:center;padding:60px 24px">
+    <div style="width:72px;height:72px;background:#16a34a;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:32px">✓</div>
+    <h2 id="sucessoTitulo" style="font-size:22px;color:#002749;margin-bottom:10px">Ficha enviada!</h2>
+    <p id="sucessoMsg" style="font-size:14px;color:#555">Seu corretor receberá suas informações em breve.</p>
+  </div>
 </div>
 
 <script type="module">
@@ -46,312 +291,319 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 
-const app = initializeApp({
-  apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
-  authDomain: "remax-smart-hub.firebaseapp.com",
-  projectId: "remax-smart-hub",
-  storageBucket: "remax-smart-hub.firebasestorage.app",
-  messagingSenderId: "474454438949",
-  appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
-});
+const app = initializeApp({ apiKey:"AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8", authDomain:"remax-smart-hub.firebaseapp.com", projectId:"remax-smart-hub", storageBucket:"remax-smart-hub.firebasestorage.app", messagingSenderId:"474454438949", appId:"1:474454438949:web:ba1e10e6b343af0408fbcc" });
 const db = getFirestore(app);
 const storage = getStorage(app);
-const COL = 'fichas_locador';   // coleção própria da Locador (não usa tipo)
+const COL = 'fichas_locador';
 
 const params = new URLSearchParams(location.search);
-const modo         = params.get('modo') || 'cliente';
-const corretorUid  = params.get('corretor') || '';
-const corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
-const idFicha      = params.get('idFicha') || '';
-const origemHub    = params.get('origem') === 'hub';
+const modo        = params.get('modo') || 'cliente';
+const corretorUid = params.get('corretor') || '';
+const corretorNome= params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
+const idFicha     = params.get('idFicha') || '';
+const origemHub   = params.get('origem') === 'hub';
 
-const UF = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
-const CIVIL = ['Solteiro(a)','Casado(a)','Divorciado(a)','Viúvo(a)','União estável'];
-const REGIME = ['Comunhão parcial de bens','Comunhão universal de bens','Separação total de bens','Participação final nos aquestos'];
-const TIPOS = ['Apartamento','Casa','Cobertura','Studio','Sala comercial','Terreno','Outro'];
-const COM_CONJUGE = ['Casado(a)','União estável'];
-const MAX_LOC = 2, MAX_TIT = 2;
-
-const valores   = {};
-const pendentes = new Set();   // "Não tenho agora"
-const naoExiste = new Set();   // "Não existe" (não se aplica)
+const pendentes = new Set();
 const arquivos  = {};
-let nLocadores = 1, nTitulares = 1;
-let somenteLeitura = false;
-valores['adm_taxa'] = '8%';
 
-// ── Documentos ──
-const DOCS = [
-  {key:'rgcpf',     icon:'🪪', label:'RG e CPF',           badge:'obrig'},
-  {key:'energia',   icon:'⚡', label:'Conta de energia',    badge:'obrig'},
-  {key:'agua',      icon:'💧', label:'Conta de água',        badge:'opc', ni:true, nta:true},
-  {key:'gas',       icon:'🔥', label:'Conta de gás',         badge:'opc', ni:true, nta:true},
-  {key:'iptu',      icon:'📄', label:'Documento do IPTU',    badge:'opc', ni:true, nta:true},
-  {key:'condominio',icon:'🏢', label:'Doc. do condomínio',   badge:'opc', ni:true, nta:true},
-];
+// ── Visibilidade de seções ──────────────────────────────────────────
+window.toggleConjuge = function(secId, civil) {
+  const casado = civil === 'Casado(a)' || civil === 'União estável';
+  const sec = document.getElementById(secId);
+  if (!sec) return;
+  sec.style.display = casado ? 'block' : 'none';
+  sec.querySelectorAll('input,select,textarea').forEach(el => {
+    if (!casado) { el.setAttribute('disabled',''); el.value = ''; }
+    else if (!somenteLeitura) el.removeAttribute('disabled');
+  });
+};
 
-// ── Helpers ──
-function v(k){ return valores[k]!=null ? valores[k] : ''; }
-function selOptions(arr, sel){ return ['<option value="">Selecione</option>'].concat(arr.map(o=>`<option${o===sel?' selected':''}>${o}</option>`)).join(''); }
-function ufOptions(sel){ return ['<option value="">UF</option>'].concat(UF.map(u=>`<option${u===sel?' selected':''}>${u}</option>`)).join(''); }
-function esc(s){ return (''+s).replace(/"/g,'&quot;'); }
-
-// Campo de texto/select/date/email/tel/money — com NI/NTA opcionais
-function campo(o){
-  const val = v(o.key);
-  const ni  = naoExiste.has(o.key);
-  const nta = pendentes.has(o.key);
-  const badge = o.badge==='opc' ? '<span class="badge-opc">opcional</span>'
-              : o.badge==='none' ? ''
-              : (val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>');
-  let toggles = '';
-  if(o.ni)  toggles += `<label class="nao-tenho nao-existe"><input type="checkbox" data-ni="${o.key}"${ni?' checked':''}><span>Não existe</span></label>`;
-  if(o.nta) toggles += `<label class="nao-tenho"><input type="checkbox" data-campo="${o.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
-  const dis = (ni || nta || somenteLeitura) ? ' disabled' : '';
-  const attrs = `data-key="${o.key}"${o.cpf?' data-cpf':''}${o.money?' data-money':''}${o.cep?` data-cep data-prefix="${o.prefix||''}"`:''}${o.ph?` placeholder="${o.ph}"`:''}`;
-  let input;
-  if(o.type==='select'){
-    input = `<select ${attrs}${dis}>${o.optsHtml}</select>`;
-  } else {
-    const t = o.type||'text';
-    const ml = o.cpf?' maxlength="14"':(o.cep?' maxlength="9"':'');
-    input = `<input type="${t}" ${attrs}${ml}${dis} value="${esc(val)}">`;
+window.toggleLoc2 = function(show) {
+  document.getElementById('sec-loc2').style.display = show ? 'block' : 'none';
+  document.getElementById('btn-add-loc2').style.display = show ? 'none' : '';
+  document.getElementById('btn-rem-loc2').style.display = show ? '' : 'none';
+  document.querySelectorAll('#sec-loc2 input[name^="loc2_"]:not([name*="conj"]), #sec-loc2 select[name^="loc2_"]:not([name*="conj"])').forEach(el => {
+    if (!show) { el.setAttribute('disabled',''); el.value = ''; }
+    else if (!somenteLeitura) el.removeAttribute('disabled');
+  });
+  if (!show) {
+    document.getElementById('sec-conj2').style.display = 'none';
+    document.querySelectorAll('#sec-conj2 input, #sec-conj2 select').forEach(el => { el.setAttribute('disabled',''); el.value = ''; });
+    document.getElementById('civil2').value = '';
   }
-  const pendTag = (o.ni||o.nta) ? `<div class="pendente-tag" id="pend-${o.key}"${(ni||nta)?'':' style="display:none"'}>${ni?'Não se aplica':'Informação pendente'}</div>` : '';
-  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label>${toggles}</div>${input}${pendTag}</div>`;
-}
-function campoRadio(o){
-  const val=v(o.key);
-  const badge = val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>';
-  const btns = o.options.map(op=>`<button type="button" class="radio-btn${val===op?' ativo':''}" data-radio="${o.key}" data-val="${esc(op)}"${somenteLeitura?' disabled':''}>${op}</button>`).join('');
-  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label></div><div class="radio-group">${btns}</div></div>`;
-}
-function campoTextarea(o){
-  return `<div class="field"><div class="field-header"><label>${o.label} <span class="badge-opc">opcional</span></label></div><textarea data-key="${o.key}"${somenteLeitura?' disabled':''} placeholder="${o.ph||''}">${esc(v(o.key))}</textarea></div>`;
-}
-function row(...c){ return `<div class="row-2">${c.join('')}</div>`; }
+};
 
-// ── Blocos ──
-function blocoConjuge(p, titulo){
-  return `<div class="sub-bloco"><div class="sub-bloco-titulo">💍 ${titulo}</div>
-    ${campo({label:'Nome do cônjuge',key:p+'conj_nome',badge:'none'})}
-    ${row(campo({label:'RG',key:p+'conj_rg',badge:'none'}),campo({label:'CPF',key:p+'conj_cpf',cpf:true,ph:'000.000.000-00',badge:'none'}),campo({label:'Nascimento',key:p+'conj_nasc',type:'date',badge:'none'}))}
-    ${row(campo({label:'Profissão',key:p+'conj_profissao',badge:'none'}),campo({label:'Regime de bens',key:p+'conj_regime',type:'select',optsHtml:selOptions(REGIME,v(p+'conj_regime')),badge:'none'}))}
-  </div>`;
-}
-function blocoLocador(i){
-  // 1º locador usa chaves planas (nome/cpf/whatsapp/email) p/ compatibilidade com PDF, e-mail e admin
-  const P = i===1 ? '' : `loc${i}_`;
-  const kNome=i===1?'nome':P+'nome', kEmail=i===1?'email':P+'email', kCel=i===1?'whatsapp':P+'celular', kCivil=P+'estadoCivil';
-  const civilVal=v(kCivil), mostraConj=COM_CONJUGE.includes(civilVal), removivel=i>1 && i===nLocadores && !somenteLeitura;
-  return `<div class="section" data-loc="${i}">
-    <div class="prop-head"><div><span class="num">${i}</span><strong>${i===1?'Locador':'Locador '+i}</strong></div>${removivel?`<button type="button" class="btn-remover-bloco" data-rem-loc="${i}">✕ Remover</button>`:''}</div>
-    ${campo({label:'Nome completo',key:kNome})}
-    ${row(campo({label:'RG',key:P+'rg'}),campo({label:'CPF',key:P+'cpf',cpf:true,ph:'000.000.000-00'}),campo({label:'Nascimento',key:P+'dataNasc',type:'date'}))}
-    ${row(campo({label:'CEP',key:P+'cep',cep:true,prefix:P,ph:'00000-000'}),campo({label:'Endereço',key:P+'endereco',ph:'Rua, Avenida...'}))}
-    ${row(campo({label:'Número',key:P+'numero'}),campo({label:'Complemento',key:P+'complemento',badge:'opc'}),campo({label:'Bairro',key:P+'bairro'}))}
-    ${row(campo({label:'Cidade',key:P+'cidade'}),campo({label:'Estado',key:P+'estado',type:'select',optsHtml:ufOptions(v(P+'estado'))}))}
-    ${row(campo({label:'Profissão',key:P+'profissao',nta:true}),campo({label:'Estado civil',key:kCivil,type:'select',optsHtml:selOptions(CIVIL,civilVal)}))}
-    ${campo({label:'E-mail',key:kEmail,type:'email'})}
-    ${row(campo({label:'Celular / WhatsApp',key:kCel,type:'tel',ph:'(11) 90000-0000'}),campo({label:'Telefone fixo',key:P+'fixo',type:'tel',badge:'opc',ph:'(11) 0000-0000'}))}
-    ${mostraConj ? blocoConjuge(P, 'Cônjuge do '+(i===1?'1º':i+'º')+' locador') : ''}
-  </div>`;
-}
-function renderLocadores(){
-  let h='';
-  for(let i=1;i<=nLocadores;i++) h+=blocoLocador(i);
-  if(!somenteLeitura && nLocadores<MAX_LOC) h+=`<button type="button" class="btn-add-bloco" data-add-loc="1">+ Adicionar 2º locador</button>`;
-  document.getElementById('locadores').innerHTML=h;
-}
-function renderImovel(){
-  const h=`<div class="section"><div class="section-title"><span class="num">2</span> Imóvel</div>
-    ${row(campo({label:'Tipo de imóvel',key:'im_tipo',type:'select',optsHtml:selOptions(TIPOS,v('im_tipo'))}),campo({label:'Referência no site',key:'im_ref',badge:'opc'}))}
-    ${row(campo({label:'CEP',key:'im_cep',cep:true,prefix:'im_',ph:'00000-000'}),campo({label:'Endereço',key:'im_endereco',ph:'Rua, Avenida...'}))}
-    ${row(campo({label:'Número',key:'im_numero'}),campo({label:'Complemento',key:'im_complemento',badge:'opc'}),campo({label:'Bairro',key:'im_bairro'}))}
-    ${row(campo({label:'Cidade',key:'im_cidade'}),campo({label:'Estado',key:'im_estado',type:'select',optsHtml:ufOptions(v('im_estado'))}))}
-    ${row(campo({label:'Nome do condomínio',key:'im_condominio',badge:'opc',ni:true,nta:true}),campo({label:'Adm. condominial',key:'im_admcond',badge:'opc',ni:true,nta:true}))}
-    ${campo({label:'Contato da Adm.',key:'im_admcontato',badge:'opc',ni:true,nta:true,ph:'Telefone ou e-mail'})}
-    ${row(campo({label:'Valor IPTU',key:'im_iptu',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}),campo({label:'Valor condomínio',key:'im_valorcond',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}))}
-    ${row(campo({label:'Instalação ENEL',key:'im_enel',badge:'opc',ni:true,nta:true}),campo({label:'Instalação Sabesp',key:'im_sabesp',badge:'opc',ni:true,nta:true}))}
-    ${campo({label:'Instalação Comgás',key:'im_comgas',badge:'opc',ni:true,nta:true})}
-    ${row(campo({label:'Contribuinte IPTU',key:'im_contribuinte',badge:'opc',ni:true,nta:true}),campo({label:'Início do contrato',key:'im_inicio',type:'date'}))}
-    ${row(campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}),campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'}))}
-  </div>`;
-  document.getElementById('imovel').innerHTML=h;
-}
-function blocoFin(i){
-  const P=`fin${i}_`, removivel=i>1 && i===nTitulares && !somenteLeitura;
-  return `<div class="sub-bloco" data-tit="${i}" style="${i===1?'border:none;padding-top:0;margin-top:0':''}"><div class="sub-bloco-titulo">${i}ª Titular${removivel?` <button type="button" class="btn-remover-bloco" data-rem-tit="${i}" style="margin-left:auto">✕ Remover</button>`:''}</div>
-    ${row(campo({label:'Banco',key:P+'banco',badge:i===1?'obrig':'opc'}),campo({label:'Agência',key:P+'agencia',badge:i===1?'obrig':'opc'}),campo({label:'Conta corrente',key:P+'conta',badge:i===1?'obrig':'opc'}))}
-    ${campo({label:'Favorecido',key:P+'favorecido',badge:i===1?'obrig':'opc'})}
-    ${campo({label:'Chave PIX',key:P+'pix',badge:'opc'})}
-  </div>`;
-}
-function renderFinanceiro(){
-  let h=`<div class="section"><div class="section-title"><span class="num">3</span> Informações financeiras <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento do aluguel)</small></div>`;
-  for(let i=1;i<=nTitulares;i++) h+=blocoFin(i);
-  if(!somenteLeitura && nTitulares<MAX_TIT) h+=`<button type="button" class="btn-add-bloco" data-add-tit="1">+ Adicionar 2ª titular</button>`;
-  h+=`</div>`;
-  document.getElementById('financeiro').innerHTML=h;
-}
-function renderAdmin(){
-  const h=`<div class="section"><div class="section-title"><span class="num">4</span> Administração</div>
-    ${campoRadio({label:'A RE/MAX administra o imóvel?',key:'adm_resp',options:['Sim','Não']})}
-    ${campo({label:'Taxa negociada',key:'adm_taxa',badge:'opc'})}
-    ${campoRadio({label:'Repasse',key:'repasse',options:['Somente aluguel','Aluguel + condomínio + IPTU']})}
-    ${campoTextarea({label:'Outras informações',key:'outras',ph:'Anote acordos, prazos, condições especiais…'})}
-  </div>`;
-  document.getElementById('admin').innerHTML=h;
-}
-function renderDocs(){
-  const grid=document.getElementById('docs-grid');
-  grid.innerHTML = DOCS.map(d=>{
-    const ni=naoExiste.has(d.key), nta=pendentes.has(d.key);
-    const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">obrigatório</span>';
-    let toggles='';
-    if(d.ni)  toggles+=`<label class="nao-tenho nao-existe doc-nao-tenho"><input type="checkbox" data-doc-ni="${d.key}"${ni?' checked':''}><span>Não existe</span></label>`;
-    if(d.nta) toggles+=`<label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="${d.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
-    const statusTxt = arquivos[d.key]?('✓ '+arquivos[d.key].name):(nta?'Marcado como pendente':(ni?'Não se aplica':'Toque para selecionar'));
-    const areaCls = arquivos[d.key]?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
-    return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" onclick="triggerFile('${d.key}')"><div class="doc-icon">${d.icon}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}" onchange="docSelecionado(this)"></div>${toggles}</div>`;
-  }).join('');
-}
-function renderAll(){ renderLocadores(); renderImovel(); renderFinanceiro(); renderAdmin(); renderDocs(); atualizarProgresso(); }
+window.toggleTit2 = function(show) {
+  document.getElementById('sec-tit2').style.display = show ? 'block' : 'none';
+  document.getElementById('btn-add-tit2').style.display = show ? 'none' : '';
+  document.getElementById('btn-rem-tit2').style.display = show ? '' : 'none';
+  document.querySelectorAll('#sec-tit2 input,#sec-tit2 select').forEach(el => {
+    if (!show) { el.setAttribute('disabled',''); el.value = ''; }
+    else if (!somenteLeitura) el.removeAttribute('disabled');
+  });
+};
 
-// ── Máscaras ──
-function maskCPF(x){ let d=(''+x).replace(/\D/g,'').slice(0,11); if(d.length>9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; if(d.length>6) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; if(d.length>3) return `${d.slice(0,3)}.${d.slice(3)}`; return d; }
-function maskCEP(x){ let d=(''+x).replace(/\D/g,'').slice(0,8); return d.length>5?`${d.slice(0,5)}-${d.slice(5)}`:d; }
-function maskMoney(x){ let d=(''+x).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; const int=d.slice(0,-2),c=d.slice(-2); return 'R$ '+int.replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+c; }
+// ── Máscaras ────────────────────────────────────────────────────────
+function maskCPF(v){ let d=(''+v).replace(/\D/g,'').slice(0,11); if(d.length>9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; if(d.length>6) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; if(d.length>3) return `${d.slice(0,3)}.${d.slice(3)}`; return d; }
+function maskMoney(v){ let d=(''+v).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; return 'R$ '+d.slice(0,-2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+d.slice(-2); }
 
-async function lookupCEP(input){
-  const prefix = input.dataset.prefix||'';
-  const cep = input.value.replace(/\D/g,'');
-  if(cep.length!==8) return;
-  try{
-    const r=await fetch(`https://viacep.com.br/ws/${cep}/json/`); const d=await r.json();
-    if(d.erro) return;
-    const set=(k,val)=>{ if(val==null) return; valores[k]=val; const el=document.querySelector(`[data-key="${k}"]`); if(el) el.value=val; };
-    set(prefix+'endereco',d.logradouro); set(prefix+'bairro',d.bairro); set(prefix+'cidade',d.localidade); set(prefix+'estado',d.uf);
-    atualizarProgresso();
-  }catch(e){}
-}
-
-function atualizarProgresso(){
-  const campos=document.querySelectorAll('[data-key]');
-  let total=0, ok=0;
-  campos.forEach(el=>{ total++; const k=el.dataset.key; if(pendentes.has(k)||naoExiste.has(k)||(valores[k]&&(''+valores[k]).trim())) ok++; });
-  DOCS.forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]) ok++; });
-  const pct=total?Math.round(ok/total*100):0;
-  const bar=document.getElementById('progressFill'); if(bar) bar.style.width=pct+'%';
-}
-
-const form=document.getElementById('formFicha');
-
-form.addEventListener('input', e=>{
-  const el=e.target; if(!el.dataset||el.dataset.key==null) return;
-  let val=el.value;
-  if(el.hasAttribute('data-cpf')) val=maskCPF(val);
-  if(el.hasAttribute('data-cep')) val=maskCEP(val);
-  if(el.hasAttribute('data-money')) val=maskMoney(val);
-  if(val!==el.value) el.value=val;
-  valores[el.dataset.key]=val;
-  const fld=el.closest('.field'); const b=fld&&fld.querySelector('.badge-obrig,.badge-preen');
-  if(b){ const k=el.dataset.key; const ok=val.trim()!==''; if(!(pendentes.has(k)||naoExiste.has(k))){ b.textContent=ok?'preenchido':'obrigatório'; b.className=ok?'badge-preen':'badge-obrig'; } }
-  atualizarProgresso();
+document.querySelectorAll('[data-cpf]').forEach(el => el.addEventListener('input', function(){ this.value = maskCPF(this.value); updateBadge(this); atualizarProgresso(); }));
+document.querySelectorAll('[data-money]').forEach(el => el.addEventListener('input', function(){ this.value = maskMoney(this.value); updateBadge(this); atualizarProgresso(); }));
+document.querySelectorAll('input:not([data-cpf]):not([data-money]),select,textarea').forEach(el => {
+  el.addEventListener('input', function(){ updateBadge(this); atualizarProgresso(); });
+  el.addEventListener('change', function(){ updateBadge(this); atualizarProgresso(); });
 });
 
-form.addEventListener('change', e=>{
-  const el=e.target;
-  // "Não tenho agora" (campo)
-  if(el.matches('[data-campo]')){ const k=el.dataset.campo; if(el.checked){ pendentes.add(k); naoExiste.delete(k); valores[k]=''; } else pendentes.delete(k); renderImovel(); renderLocadores(); atualizarProgresso(); return; }
-  // "Não existe" (campo)
-  if(el.matches('[data-ni]')){ const k=el.dataset.ni; if(el.checked){ naoExiste.add(k); pendentes.delete(k); valores[k]='Não existe'; } else { naoExiste.delete(k); valores[k]=''; } renderImovel(); renderLocadores(); atualizarProgresso(); return; }
-  // Documentos
-  if(el.matches('[data-doc-campo]')){ const k=el.dataset.docCampo; if(el.checked){ pendentes.add(k); naoExiste.delete(k); delete arquivos[k]; } else pendentes.delete(k); renderDocs(); atualizarProgresso(); return; }
-  if(el.matches('[data-doc-ni]')){ const k=el.dataset.docNi; if(el.checked){ naoExiste.add(k); pendentes.delete(k); delete arquivos[k]; } else naoExiste.delete(k); renderDocs(); atualizarProgresso(); return; }
-  // Estado civil -> cônjuge condicional
-  if(el.dataset.key && /estadoCivil$/.test(el.dataset.key)){ valores[el.dataset.key]=el.value; renderLocadores(); return; }
-  // selects normais (im_tipo, im_estado, regime...) já tratados no input
+function updateBadge(el) {
+  const fld = el.closest('.field'); if (!fld) return;
+  const b = fld.querySelector('.badge-obrig,.badge-preen'); if (!b) return;
+  const ok = el.value.trim() !== '';
+  if (!el.name || !pendentes.has(el.name)) { b.textContent = ok ? 'preenchido' : 'obrigatório'; b.className = ok ? 'badge-preen' : 'badge-obrig'; }
+}
+
+// ── CEP autofill ────────────────────────────────────────────────────
+document.querySelectorAll('[data-cep]').forEach(el => {
+  el.addEventListener('blur', async function() {
+    const cep = this.value.replace(/\D/g,''); if (cep.length !== 8) return;
+    const fill = this.dataset.fill;
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`); const d = await r.json(); if (d.erro) return;
+      const set = (id, val) => { const e = document.getElementById(id); if (e && val) { e.value = val; updateBadge(e); } };
+      set(`${fill}-endereco`, d.logradouro); set(`${fill}-bairro`, d.bairro); set(`${fill}-cidade`, d.localidade);
+      const sel = document.getElementById(`${fill}-estado`); if (sel && d.uf) { sel.value = d.uf; updateBadge(sel); }
+      atualizarProgresso();
+    } catch(e) {}
+  });
 });
 
-form.addEventListener('focusout', e=>{ const el=e.target; if(el.dataset&&el.hasAttribute('data-cep')) lookupCEP(el); });
-
-form.addEventListener('click', e=>{
-  const t=e.target;
-  if(t.dataset.addLoc){ if(nLocadores<MAX_LOC){ nLocadores++; renderLocadores(); atualizarProgresso(); } return; }
-  if(t.dataset.remLoc){ const i=+t.dataset.remLoc; Object.keys(valores).forEach(k=>{ if(k.startsWith('loc'+i+'_')) delete valores[k]; }); nLocadores=Math.max(1,nLocadores-1); renderLocadores(); atualizarProgresso(); return; }
-  if(t.dataset.addTit){ if(nTitulares<MAX_TIT){ nTitulares++; renderFinanceiro(); atualizarProgresso(); } return; }
-  if(t.dataset.remTit){ const i=+t.dataset.remTit; Object.keys(valores).forEach(k=>{ if(k.startsWith('fin'+i+'_')) delete valores[k]; }); nTitulares=Math.max(1,nTitulares-1); renderFinanceiro(); atualizarProgresso(); return; }
-  if(t.dataset.radio){ valores[t.dataset.radio]=t.dataset.val; if(t.dataset.radio==='adm_resp') renderAdmin(); else renderAdmin(); atualizarProgresso(); return; }
-});
-
-// ── Documentos ──
-window.triggerFile=function(k){ const cb=document.querySelector(`[data-doc-campo="${k}"],[data-doc-ni="${k}"]`); if(somenteLeitura) return; const ni=naoExiste.has(k),nta=pendentes.has(k); if(ni||nta) return; document.getElementById('file-'+k).click(); };
-window.docSelecionado=function(input){ const k=input.dataset.doc; if(input.files[0]){ arquivos[k]=input.files[0]; renderDocs(); atualizarProgresso(); } };
-
-function mostrarErro(msg){ const el=document.getElementById('erroFinal'); el.textContent=msg; el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
-
-form.addEventListener('submit', async e=>{
-  e.preventDefault();
-  if(!corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
-  const falta=[['nome'],['whatsapp'],['email']].filter(([k])=>!(valores[k]&&(''+valores[k]).trim()));
-  if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do 1º locador.'); return; }
-
-  const btn=document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
-  document.getElementById('erroFinal').style.display='none';
-
-  const dados={}; Object.entries(valores).forEach(([k,val])=>{ if(val&&(''+val).trim()) dados[k]=val; });
-  const fichaId=Date.now().toString(36)+Math.random().toString(36).slice(2);
-  const urlsDocs={}; const docsKeys=Object.keys(arquivos);
-  if(docsKeys.length){
-    const prog=document.getElementById('upload-progress'),fill=document.getElementById('upload-progress-fill'); prog.style.display='block'; let n=0;
-    for(const k of docsKeys){ try{ const r=ref(storage,`fichas-locador/${fichaId}/${k}`); await uploadBytes(r,arquivos[k]); urlsDocs[k]=await getDownloadURL(r); }catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); } fill.style.width=Math.round((++n/docsKeys.length)*100)+'%'; }
-  }
-  try{
-    if(modo==='edicao'&&idFicha){
-      const ex=await getDoc(doc(db,COL,idFicha)); const docsAntigos=ex.exists()?(ex.data().documentos||{}):{};
-      await updateDoc(doc(db,COL,idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
+// ── "Não tenho agora" ────────────────────────────────────────────────
+document.querySelectorAll('[data-campo]').forEach(cb => {
+  cb.addEventListener('change', function() {
+    const campo = this.dataset.campo;
+    const inp = document.querySelector(`[name="${campo}"]`);
+    const pend = document.getElementById(`pend-${campo}`);
+    if (this.checked) {
+      pendentes.add(campo); if (inp) { inp.disabled = true; inp.value = ''; } if (pend) pend.style.display = 'inline-block';
     } else {
-      await addDoc(collection(db,COL),{ id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() });
+      pendentes.delete(campo); if (inp) inp.disabled = false; if (pend) pend.style.display = 'none';
     }
-    form.style.display='none'; document.getElementById('tela-sucesso').style.display='block';
-    const t=document.getElementById('sucessoTitulo'),m=document.getElementById('sucessoMsg');
-    if(t) t.textContent=modo==='edicao'?'Alterações salvas!':'Ficha enviada!';
-    if(m) m.textContent=modo==='edicao'?'Suas informações foram atualizadas.':'Seu corretor receberá suas informações em breve.';
-    document.getElementById('progressFill').style.width='100%'; window.scrollTo({top:0,behavior:'smooth'});
-  }catch(err){ mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.'); btn.disabled=false; btn.textContent='Enviar ficha'; }
+    atualizarProgresso();
+  });
 });
 
-// ── Ações do corretor (usa funções da Locador: enviarFichaParaAdmin) ──
-window.enviarParaAdmin=async function(){ if(!window.__fichaId) return; if(!confirm('Confirma envio ao administrativo?')) return; try{ const {getFunctions,httpsCallable}=await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js'); const fns=getFunctions(app,'southamerica-east1'); await httpsCallable(fns,'enviarFichaParaAdmin')({fichaId:window.__fichaId}); alert('Ficha enviada ao administrativo!'); window.close(); }catch(e){ alert('Erro: '+e.message); } };
-window.solicitarCorrecao=function(){ const msg=prompt('Descreva o que precisa ser corrigido:'); if(!msg) return; updateDoc(doc(db,COL,window.__fichaId),{ status:'correcao_solicitada', observacaoCorretor:msg, atualizadoEm:serverTimestamp() }).then(()=>alert('Solicitação registrada.')).catch(e=>alert('Erro: '+e.message)); };
+// ── "Não existe" ─────────────────────────────────────────────────────
+document.querySelectorAll('[data-ni]').forEach(cb => {
+  cb.addEventListener('change', function() {
+    const campo = this.dataset.ni;
+    const inp = document.querySelector(`[name="${campo}"]`);
+    if (this.checked) {
+      if (inp) { inp.disabled = true; inp.value = 'Não existe'; }
+      // desmarca NTA se ativo
+      const ntaCb = document.querySelector(`[data-campo="${campo}"]`);
+      if (ntaCb && ntaCb.checked) { ntaCb.checked = false; ntaCb.dispatchEvent(new Event('change')); }
+    } else {
+      if (inp) { inp.disabled = false; inp.value = ''; }
+    }
+    atualizarProgresso();
+  });
+});
 
-// ── Carregar ficha existente ──
-function aplicarFicha(ficha){
-  const d=ficha.dados||{}; Object.entries(d).forEach(([k,val])=>{ valores[k]=val; });
-  if(Object.keys(d).some(k=>k.startsWith('loc2_'))) nLocadores=2;
-  if(Object.keys(d).some(k=>k.startsWith('fin2_'))) nTitulares=2;
-  (ficha.pendentes||[]).forEach(k=>pendentes.add(k));
-  // "Não existe" = valor salvo como 'Não existe'
-  Object.entries(d).forEach(([k,val])=>{ if(val==='Não existe') naoExiste.add(k); });
-  renderAll();
+// ── Documentos "Não tenho agora" ─────────────────────────────────────
+document.querySelectorAll('[data-doc-campo]').forEach(cb => {
+  cb.addEventListener('change', function() {
+    const campo = this.dataset.docCampo;
+    const area = document.getElementById(`area-${campo}`);
+    const pend = document.getElementById(`pend-doc-${campo}`);
+    const status = document.getElementById(`status-${campo}`);
+    if (this.checked) {
+      pendentes.add(campo); delete arquivos[campo];
+      if (area) { area.classList.remove('tem-arquivo'); area.classList.add('pendente-doc'); }
+      if (status) status.textContent = 'Marcado como pendente';
+      if (pend) pend.style.display = 'inline-block';
+    } else {
+      pendentes.delete(campo);
+      if (area) area.classList.remove('pendente-doc');
+      if (status) status.textContent = 'Toque para selecionar';
+      if (pend) pend.style.display = 'none';
+    }
+    atualizarProgresso();
+  });
+});
+
+// ── Botões de rádio ─────────────────────────────────────────────────
+document.querySelectorAll('.radio-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const radio = this.dataset.radio; const val = this.dataset.val;
+    document.querySelectorAll(`.radio-btn[data-radio="${radio}"]`).forEach(b => b.classList.remove('ativo'));
+    this.classList.add('ativo');
+    const inp = document.querySelector(`input[name="${radio}"]`);
+    if (inp) { inp.value = val; updateBadge(inp); }
+    atualizarProgresso();
+  });
+});
+
+// ── Documentos ──────────────────────────────────────────────────────
+window.triggerFile = function(campo) {
+  const cb = document.querySelector(`[data-doc-campo="${campo}"]`);
+  if (cb && cb.checked) return;
+  document.getElementById(`file-${campo}`).click();
+};
+window.docSelecionado = function(input) {
+  const campo = input.dataset.doc;
+  const area = document.getElementById(`area-${campo}`);
+  if (input.files[0]) {
+    arquivos[campo] = input.files[0];
+    if (area) { area.classList.add('tem-arquivo'); area.classList.remove('pendente-doc'); }
+    document.getElementById(`status-${campo}`).textContent = '✓ ' + input.files[0].name;
+    atualizarProgresso();
+  }
+};
+
+// ── Progresso ───────────────────────────────────────────────────────
+const CAMPOS_PROG = ['nome','rg','cpf','dataNasc','estadoCivil','cep','endereco','numero','bairro','cidade','estado','profissao','email','whatsapp','im_tipo','im_cep','im_endereco','im_numero','im_bairro','im_cidade','im_estado','im_inicio','im_anuncio','im_proposta','fin1_banco','fin1_agencia','fin1_conta','fin1_favorecido','adm_resp','repasse','rgcpf','energia'];
+function atualizarProgresso() {
+  let total = CAMPOS_PROG.length, ok = 0;
+  CAMPOS_PROG.forEach(c => {
+    const el = document.querySelector(`[name="${c}"]`);
+    if (pendentes.has(c) || arquivos[c] || (el && el.value.trim())) ok++;
+  });
+  const pct = Math.round(ok / total * 100);
+  const bar = document.getElementById('progressFill'); if (bar) bar.style.width = pct + '%';
 }
 
-async function init(){
-  if(modo==='corretor'&&idFicha){
-    somenteLeitura=true;
-    document.getElementById('barraCorretor').style.display=origemHub?'none':'flex';
-    const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Revisão';
-    document.getElementById('introTexto').style.display='none'; document.getElementById('btnSubmit').style.display='none';
-    try{ const snap=await getDoc(doc(db,COL,idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const ficha=snap.data(); aplicarFicha(ficha); window.__fichaId=idFicha; if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>`<li>${p}</li>`).join(''); } }catch(e){ mostrarErro('Erro: '+e.message); }
-  } else if(modo==='edicao'&&idFicha){
-    const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Edição';
-    document.getElementById('btnSubmit').textContent='Salvar alterações';
-    try{ const snap=await getDoc(doc(db,COL,idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const ficha=snap.data(); if(!origemHub&&ficha.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(ficha.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p>`; } aplicarFicha(ficha); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
-  } else {
-    renderAll();
+// ── Preencher ficha existente (modos edição/corretor) ───────────────
+function preencherFicha(ficha) {
+  const d = ficha.dados || {};
+  Object.entries(d).forEach(([k, v]) => {
+    const el = document.querySelector(`[name="${k}"]`);
+    if (!el) return;
+    el.value = v || '';
+    // Radio buttons
+    if (el.type === 'hidden') {
+      document.querySelectorAll(`.radio-btn[data-radio="${k}"]`).forEach(b => { b.classList.toggle('ativo', b.dataset.val === v); });
+    }
+  });
+  // Ativa cônjuge e 2º locador se dados existirem
+  if (d.estadoCivil) toggleConjuge('sec-conj1', d.estadoCivil);
+  if (Object.keys(d).some(k => k.startsWith('loc2_'))) toggleLoc2(true);
+  if (d.loc2_estadoCivil) toggleConjuge('sec-conj2', d.loc2_estadoCivil);
+  if (Object.keys(d).some(k => k.startsWith('fin2_'))) toggleTit2(true);
+  // Restaura "Não existe" (NI)
+  Object.entries(d).forEach(([k, val]) => {
+    if (val !== 'Não existe') return;
+    const cb = document.querySelector(`[data-ni="${k}"]`);
+    if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); }
+  });
+  // Marca pendentes (NTA)
+  (ficha.pendentes || []).forEach(campo => {
+    const cb = document.querySelector(`[data-campo="${campo}"]`) || document.querySelector(`[data-doc-campo="${campo}"]`);
+    if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); }
+  });
+  // Mostra links de docs existentes
+  if (modo === 'corretor') {
+    const nomesDoc = { rgcpf:'RG e CPF', energia:'Energia', agua:'Água', gas:'Gás', iptu_doc:'IPTU', condominio_doc:'Condomínio' };
+    Object.entries(ficha.documentos || {}).forEach(([k, url]) => {
+      const st = document.getElementById(`status-${k}`);
+      if (st) { st.innerHTML = `<a href="${url}" target="_blank" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`; const area = document.getElementById(`area-${k}`); if (area) area.classList.add('tem-arquivo'); }
+    });
+  }
+  atualizarProgresso();
+}
+
+// ── Inicialização ───────────────────────────────────────────────────
+async function init() {
+  if (modo === 'corretor' && idFicha) {
+    somenteLeituraOn();
+    document.getElementById('barraCorretor').style.display = origemHub ? 'none' : 'flex';
+    const b = document.getElementById('badgeModo'); b.style.display = 'inline'; b.textContent = 'Revisão';
+    document.getElementById('introTexto').style.display = 'none';
+    document.getElementById('btnSubmit').style.display = 'none';
+    try {
+      const snap = await getDoc(doc(db, COL, idFicha));
+      if (!snap.exists()) { mostrarErro('Ficha não encontrada.'); return; }
+      const ficha = snap.data(); preencherFicha(ficha); window.__fichaId = idFicha;
+      if ((ficha.pendentes || []).length) {
+        document.getElementById('resumoPendencias').style.display = 'block';
+        document.getElementById('listaPendencias').innerHTML = ficha.pendentes.map(p => `<li>${p}</li>`).join('');
+      }
+    } catch(e) { mostrarErro('Erro: ' + e.message); }
+
+  } else if (modo === 'edicao' && idFicha) {
+    const b = document.getElementById('badgeModo'); b.style.display = 'inline'; b.textContent = 'Edição';
+    document.getElementById('btnSubmit').textContent = 'Salvar alterações';
+    try {
+      const snap = await getDoc(doc(db, COL, idFicha));
+      if (!snap.exists()) { mostrarErro('Ficha não encontrada.'); return; }
+      const ficha = snap.data();
+      if (!origemHub && ficha.status !== 'aguardando_edicao_cliente') { mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; }
+      if (ficha.observacaoCorretor) { document.getElementById('introTexto').innerHTML = `<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p>`; }
+      preencherFicha(ficha);
+    } catch(e) { mostrarErro('Erro ao carregar: ' + e.message); }
   }
 }
+
+function somenteLeituraOn() {
+  somenteLeitura = true;
+  document.querySelectorAll('input:not([type=checkbox]):not([type=file]),select,textarea').forEach(el => {
+    el.readOnly = true; if (el.tagName === 'SELECT') el.disabled = true;
+  });
+  document.querySelectorAll('.nao-tenho,.btn-toggle').forEach(el => el.style.display = 'none');
+}
+
+// ── Envio ────────────────────────────────────────────────────────────
+document.getElementById('formFicha').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  if (!corretorUid) { mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  const rigidos = ['nome','dataNasc','estadoCivil','email','whatsapp','im_tipo','im_cep','im_endereco'];
+  const falta = rigidos.filter(c => { const el = document.querySelector(`[name="${c}"]`); return el && !el.value.trim(); });
+  if (falta.length) { mostrarErro('Preencha os campos obrigatórios: nome, data de nascimento, estado civil, contato, imóvel.'); document.querySelector(`[name="${falta[0]}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
+
+  const btn = document.getElementById('btnSubmit'); btn.disabled = true; btn.textContent = 'Enviando...';
+  document.getElementById('erroFinal').style.display = 'none';
+
+  const dados = {};
+  new FormData(this).forEach((v, k) => { if (v) dados[k] = v; });
+  // Inputs disabled (NI "Não existe") não entram no FormData — coleta manualmente
+  document.querySelectorAll('[data-ni]:checked').forEach(cb => { dados[cb.dataset.ni] = 'Não existe'; });
+
+  const fichaId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+  const urlsDocs = {}, docsKeys = Object.keys(arquivos);
+  if (docsKeys.length) {
+    const prog = document.getElementById('upload-progress'), fill = document.getElementById('upload-progress-fill');
+    prog.style.display = 'block'; let n = 0;
+    for (const k of docsKeys) {
+      try { const r = ref(storage, `fichas-locador/${fichaId}/${k}`); await uploadBytes(r, arquivos[k]); urlsDocs[k] = await getDownloadURL(r); }
+      catch(err) { pendentes.add(k); }
+      fill.style.width = Math.round((++n / docsKeys.length) * 100) + '%';
+    }
+  }
+  try {
+    if (modo === 'edicao' && idFicha) {
+      const ex = await getDoc(doc(db, COL, idFicha)); const docsAntigos = ex.exists() ? (ex.data().documentos || {}) : {};
+      await updateDoc(doc(db, COL, idFicha), { status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
+    } else {
+      await addDoc(collection(db, COL), { id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() });
+    }
+    this.style.display = 'none'; document.getElementById('tela-sucesso').style.display = 'block';
+    const t = document.getElementById('sucessoTitulo'), m = document.getElementById('sucessoMsg');
+    if (t) t.textContent = modo === 'edicao' ? 'Alterações salvas!' : 'Ficha enviada!';
+    if (m) m.textContent = modo === 'edicao' ? 'Suas informações foram atualizadas.' : 'Seu corretor receberá suas informações em breve.';
+    document.getElementById('progressFill').style.width = '100%'; window.scrollTo({top:0,behavior:'smooth'});
+  } catch(err) { mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.'); btn.disabled = false; btn.textContent = 'Enviar ficha'; }
+});
+
+// ── Ações do corretor ────────────────────────────────────────────────
+window.enviarParaAdmin = async function() {
+  if (!window.__fichaId) return; if (!confirm('Confirma envio ao administrativo?')) return;
+  try { const {getFunctions,httpsCallable} = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js'); const fns = getFunctions(app,'southamerica-east1'); await httpsCallable(fns,'enviarFichaParaAdmin')({fichaId:window.__fichaId}); alert('Ficha enviada ao administrativo!'); window.close(); } catch(e) { alert('Erro: '+e.message); }
+};
+window.solicitarCorrecao = function() {
+  const msg = prompt('Descreva o que precisa ser corrigido:'); if (!msg) return;
+  updateDoc(doc(db, COL, window.__fichaId), { status:'correcao_solicitada', observacaoCorretor:msg, atualizadoEm:serverTimestamp() }).then(() => alert('Solicitação registrada.')).catch(e => alert('Erro: '+e.message));
+};
+
+function mostrarErro(msg) { const el = document.getElementById('erroFinal'); el.textContent = msg; el.style.display = 'block'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
+
 init();
 </script>
 </body></html>

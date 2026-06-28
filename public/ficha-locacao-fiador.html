@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Locação com Fiador — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Locação com Fiador — REMAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
 <body>
 <script type="module">
 import * as FE from './ficha-comum.js';
@@ -9,14 +9,14 @@ const st = { has2Prop: false, numFiador: 1 };
 const ordF = ['1º','2º'];
 
 function render(){
-  // 1. Proponente(s)
-  let prop = `<div class="sub-bloco" style="border:none;padding-top:0;margin-top:0"><div class="sub-bloco-titulo">👤 ${st.has2Prop?'1ª Proponente':'Proponente'}</div>${FE.blocoPessoa('',{principal:true,renda:true})}</div>`;
+  // 1. Locador(es)
+  let prop = `<div class="sub-bloco" style="border:none;padding-top:0;margin-top:0"><div class="sub-bloco-titulo">👤 ${st.has2Prop?'1º Locador':'Locador'}</div>${FE.blocoPessoa('',{principal:true,renda:true})}</div>`;
   if(st.has2Prop){
     const rem=!FE.ehSomenteLeitura()?`<button type="button" class="btn-remover-bloco" data-action="remProp">✕ Remover</button>`:'';
-    prop += `<div class="sub-bloco"><div class="sub-bloco-titulo">👤 Cônjuge / 2ª Proponente${rem}</div>${FE.blocoPessoa('p2_',{renda:true})}</div>`;
+    prop += `<div class="sub-bloco"><div class="sub-bloco-titulo">👤 Cônjuge / 2º Locador${rem}</div>${FE.blocoPessoa('p2_',{renda:true})}</div>`;
   }
-  if(!FE.ehSomenteLeitura() && !st.has2Prop) prop+=`<button type="button" class="btn-add-bloco" data-action="addProp">+ Adicionar cônjuge ou 2ª proponente</button>`;
-  let h = FE.secao(1, 'Proponente(s)', prop);
+  if(!FE.ehSomenteLeitura() && !st.has2Prop) prop+=`<button type="button" class="btn-add-bloco" data-action="addProp">+ Adicionar cônjuge ou 2º locador</button>`;
+  let h = FE.secao(1, 'Locador(es)', prop);
 
   // 2. Imóvel de interesse
   h += FE.secao(2, 'Imóvel de interesse',
@@ -53,13 +53,13 @@ function render(){
 FE.iniciarFicha({
   titulo:'Ficha Cadastral Locação com Fiador', tipo:'locacao_fiador', docsNum:5,
   rigidos:['nome','whatsapp','email'],
-  msgRigidos:'Preencha pelo menos nome, WhatsApp e e-mail da 1ª proponente.',
-  intro:'Preencha proponente(s), imóvel de interesse, fiador(es) e o imóvel dado em garantia. Use <strong>"Não tenho agora"</strong> para pendências.',
+  msgRigidos:'Preencha pelo menos nome, WhatsApp e e-mail do 1º locador.',
+  intro:'Preencha o(s) locador(es), imóvel de interesse, fiador(es) e o imóvel dado em garantia. Use <strong>"Não tenho agora"</strong> para pendências.',
   docs:[
-    {key:'p_rgcpf',   icon:'🪪', label:'Proponente — RG, CPF ou CNH',          badge:'obrig'},
-    {key:'p_endereco',icon:'🏠', label:'Proponente — Comp. de endereço',       badge:'obrig'},
-    {key:'p_renda',   icon:'💰', label:'Proponente — Comp. de renda (90 dias)',badge:'opc', nta:true},
-    {key:'p_civil',   icon:'📋', label:'Proponente — Estado civil',            badge:'opc', ni:true, nta:true},
+    {key:'p_rgcpf',   icon:'🪪', label:'Locador — RG, CPF ou CNH',          badge:'obrig'},
+    {key:'p_endereco',icon:'🏠', label:'Locador — Comp. de endereço',       badge:'obrig'},
+    {key:'p_renda',   icon:'💰', label:'Locador — Comp. de renda (90 dias)',badge:'opc', nta:true},
+    {key:'p_civil',   icon:'📋', label:'Locador — Estado civil',            badge:'opc', ni:true, nta:true},
     {key:'f_rgcpf',   icon:'🪪', label:'Fiador — RG, CPF ou CNH',              badge:'obrig'},
     {key:'f_endereco',icon:'🏠', label:'Fiador — Comp. de endereço',           badge:'obrig'},
     {key:'f_civil',   icon:'📋', label:'Fiador — Estado civil',                badge:'opc', ni:true, nta:true},

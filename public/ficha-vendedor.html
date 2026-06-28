@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Vendedor — RE/MAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Cadastral Vendedor — REMAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
 <body>
 <script type="module">
 import * as FE from './ficha-comum.js';
@@ -52,7 +52,7 @@ function render(){
 
   // 4. Comissões
   h += FE.secao(4, 'Comissões',
-    FE.campo({label:'RE/MAX Smart — valor da comissão',key:'com_remax_valor',money:true,ph:'R$ 0,00'}) +
+    FE.campo({label:'REMAX Smart — valor da comissão',key:'com_remax_valor',money:true,ph:'R$ 0,00'}) +
     FE.subBloco('🤝 Imobiliária parceira (se houver)',
       FE.row(FE.campo({label:'Imobiliária parceira',key:'com_parc_nome',badge:'opc',ni:true,nta:true}), FE.campo({label:'CNPJ',key:'com_parc_cnpj',cnpj:true,badge:'opc',ni:true,nta:true,ph:'00.000.000/0000-00'})) +
       FE.row(FE.campo({label:'Banco',key:'com_parc_banco',badge:'opc',ni:true,nta:true}), FE.campo({label:'Agência',key:'com_parc_agencia',badge:'opc',ni:true,nta:true}), FE.campo({label:'Conta',key:'com_parc_conta',badge:'opc',ni:true,nta:true})) +

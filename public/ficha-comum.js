@@ -146,7 +146,7 @@ function mostrarErro(msg){ const el=document.getElementById('erroFinal'); el.tex
 function montarChrome(){
   document.body.innerHTML = `
   <div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" id="btnSolicitar">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" id="btnAprovar">✓ Aprovar e enviar ao admin</button></div></div>
-  <div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>${CFG.titulo} <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>RE/MAX Smart — Imóveis</p></div></div>
+  <div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>${CFG.titulo} <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>REMAX Smart — Imóveis</p></div></div>
   <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
   <div class="container">
     <div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
