@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ficha Fiança — REMAX Smart</title><link rel="stylesheet" href="ficha.css"></head>
+<body>
+<script type="module">
+import * as FE from './ficha-comum.js';
+
+function render(){
+  // 1. Dados do Solicitante
+  let h = FE.secao(1, 'Dados do Solicitante',
+    FE.campo({label:'Nome / Razão Social', key:'nome'}) +
+    FE.campo({label:'CPF / CNPJ', key:'cpf_cnpj', ph:'000.000.000-00 ou 00.000.000/0001-00'}) +
+    FE.row(
+      FE.campo({label:'Telefone', key:'telefone', type:'tel', ph:'(11) 90000-0000'}),
+      FE.campo({label:'E-mail', key:'email', type:'email'})
+    ) +
+    FE.campoRadio({label:'Tipo de imóvel', key:'tipo_imovel', options:['Residencial','Comercial']}) +
+    (FE.v('tipo_imovel') === 'Comercial'
+      ? FE.campo({label:'Atividade principal da empresa', key:'atividade', badge:'opc'})
+      : '') +
+    FE.campo({label:'Estrutura do imóvel', key:'estrutura', type:'select',
+      optsHtml: FE.selOptions(['Casa','Apartamento','Loja','Galpão','Sala'], FE.v('estrutura'))}) +
+    FE.row(
+      FE.campo({label:'CEP', key:'cep', cep:true, prefix:'', ph:'00000-000'}),
+      FE.campo({label:'Endereço', key:'endereco', ph:'Rua, Avenida...'})
+    ) +
+    FE.row(
+      FE.campo({label:'Número', key:'numero'}),
+      FE.campo({label:'Complemento', key:'complemento', badge:'opc'}),
+      FE.campo({label:'Bairro', key:'bairro'})
+    ) +
+    FE.row(
+      FE.campo({label:'Cidade', key:'cidade'}),
+      FE.campo({label:'Estado', key:'estado', type:'select', optsHtml: FE.ufOptions(FE.v('estado'))})
+    ) +
+    FE.campo({label:'Preço do aluguel ou do imóvel', key:'preco', money:true, ph:'R$ 0,00'})
+  );
+
+  // 2. Locador (Beneficiário)
+  h += FE.secao(2, 'Locador (Beneficiário)',
+    FE.campo({label:'Nome', key:'loc_nome'}) +
+    FE.row(
+      FE.campo({label:'CPF', key:'loc_cpf', cpf:true, ph:'000.000.000-00'}),
+      FE.campo({label:'Telefone', key:'loc_telefone', type:'tel', ph:'(11) 90000-0000'})
+    ) +
+    FE.campo({label:'E-mail', key:'loc_email', type:'email'})
+  );
+
+  // 3. Valores e Coberturas
+  h += FE.secao(3, 'Valores e Coberturas',
+    FE.row(
+      FE.campo({label:'Aluguel', key:'aluguel', money:true, ph:'R$ 0,00'}),
+      FE.campo({label:'IPTU', key:'iptu', money:true, ph:'R$ 0,00', badge:'opc', ni:true, nta:true})
+    ) +
+    FE.row(
+      FE.campo({label:'Água', key:'agua', money:true, ph:'R$ 0,00', badge:'opc', ni:true, nta:true}),
+      FE.campo({label:'Luz', key:'luz', money:true, ph:'R$ 0,00', badge:'opc', ni:true, nta:true})
+    ) +
+    FE.campo({label:'Condomínio', key:'condominio', money:true, ph:'R$ 0,00', badge:'opc', ni:true, nta:true}) +
+    FE.campoRadio({label:'Cobertura de Danos ao Imóvel?', key:'cob_danos', options:['Sim','Não']}) +
+    FE.campoRadio({label:'Cobertura de Pintura Interna?', key:'cob_pint_int', options:['Sim','Não']}) +
+    FE.campoRadio({label:'Cobertura de Pintura Externa?', key:'cob_pint_ext', options:['Sim','Não']}) +
+    FE.campoRadio({label:'Cobertura de Multa Contratual?', key:'cob_multa', options:['Sim','Não']})
+  );
+
+  // 4. Vigência da Locação
+  h += FE.secao(4, 'Vigência da Locação',
+    FE.row(
+      FE.campo({label:'Início', key:'vigencia_inicio', type:'date'}),
+      FE.campo({label:'Fim', key:'vigencia_fim', type:'date'})
+    )
+  );
+
+  return h;
+}
+
+FE.iniciarFicha({
+  titulo: 'Ficha Fiança',
+  tipo: 'fianca',
+  docs: [],
+  rigidos: ['nome','cpf_cnpj','email','aluguel'],
+  msgRigidos: 'Preencha pelo menos nome, CPF/CNPJ, e-mail e o valor do aluguel.',
+  intro: 'Preencha os dados do solicitante, do locador (beneficiário) e os valores para a cotação do seguro fiança.',
+  render,
+});
+</script>
+</body></html>

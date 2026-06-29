@@ -200,7 +200,7 @@ function atualizarBadges() {
     const input = field.querySelector('input:not([type=checkbox]):not([type=file]), select, textarea');
     if (!input) return;
     const preenchido = input.value.trim() !== '';
-    badge.textContent = preenchido ? 'preenchido' : 'obrigatório';
+    badge.textContent = preenchido ? 'Preenchido' : 'Obrigatório';
     badge.className   = preenchido ? 'badge-preen' : 'badge-obrig';
   });
   // Documentos
@@ -209,7 +209,7 @@ function atualizarBadges() {
     if (!badge) return;
     const area = label.closest('.doc-wrapper')?.querySelector('.doc-area');
     const preenchido = area?.classList.contains('tem-arquivo');
-    badge.textContent = preenchido ? 'preenchido' : 'obrigatório';
+    badge.textContent = preenchido ? 'Preenchido' : 'Obrigatório';
     badge.className   = preenchido ? 'badge-preen' : 'badge-obrig';
   });
 }

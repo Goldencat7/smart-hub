@@ -1945,6 +1945,13 @@ const FICHAS_CONFIG = [
     arquivo: 'ficha-proposta.html',
     geraLink: true, temAnalise: true, temFirebase: true
   },
+  {
+    key: 'fianca',
+    nome: 'Ficha Fiança',
+    desc: 'Cotação de seguro fiança — preenchida pelo corretor',
+    arquivo: 'ficha-fianca.html',
+    geraLink: false, abrirInterno: true, temAnalise: true, temFirebase: true
+  },
 ];
 
 async function carregarDocumentos() {
@@ -1966,11 +1973,14 @@ async function carregarDocumentos() {
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             ${f.geraLink ? `<button class="topbar-btn primario btn-link-${f.key}" data-link="${link}" style="font-size:11px">📋 Copiar link</button>` : ''}
+            ${f.abrirInterno ? `<button class="topbar-btn primario btn-preencher-${f.key}" data-link="${link}" style="font-size:11px">📝 Preencher ficha</button>` : ''}
           </div>
         </div>
         <div class="docs-acc-body" id="body-${f.key}" style="display:none">
           <div class="docs-acc-aviso">
-            Clique em <strong>Copiar link</strong> e envie ao cliente pelo WhatsApp. As fichas recebidas aparecem abaixo.
+            ${f.abrirInterno
+              ? 'Clique em <strong>Preencher ficha</strong> para abrir o formulário. As fichas enviadas ao admin aparecem abaixo.'
+              : 'Clique em <strong>Copiar link</strong> e envie ao cliente pelo WhatsApp. As fichas recebidas aparecem abaixo.'}
           </div>
           <div id="lista-${f.key}" style="padding:12px 16px">
             <p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando...</p>
@@ -2016,6 +2026,16 @@ async function carregarDocumentos() {
         const txtOrig = btnLink.textContent;
         btnLink.textContent = '✓ Copiado!';
         setTimeout(() => { btnLink.textContent = txtOrig; }, 2000);
+      });
+    }
+
+    // Preencher interno — abre em janela Electron local (sem precisar de deploy de hosting)
+    const btnPreencher = secaoDocs.querySelector(`.btn-preencher-${f.key}`);
+    if (btnPreencher) {
+      btnPreencher.addEventListener('click', () => {
+        const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
+        window.hubApi.abrirFichaLocal(f.arquivo, { corretor: currentUid, nome: encodeURIComponent(nomeCorretor) });
+        if (!aberto) { abrir(); carregarListaFichas(f.key); }
       });
     }
 
@@ -2179,7 +2199,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
     });
 
   } catch(e) {
-    document.getElementById('listaFichas').innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro ao carregar fichas: ${e.message}</p>`;
+    if (lista) lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro ao carregar fichas: ${e.message}</p>`;
   }
 }
 

@@ -284,6 +284,19 @@ ipcMain.on('abrir-ficha', (_e, { url, titulo }) => {
   win.loadURL(url).catch(err => console.error('Erro ao abrir ficha:', err));
 });
 
+// ─── Abrir ficha interna (corretor preenche ele mesmo) ────────────────────────
+// Carrega do disco local (public/) em vez do Firebase Hosting — funciona no
+// npm start e no .exe instalado sem precisar de deploy de hosting.
+ipcMain.on('abrir-ficha-local', (_e, { arquivo, params }) => {
+  const win = new BrowserWindow({
+    width: 940, height: 860, autoHideMenuBar: true,
+    webPreferences: { devTools: DEVTOOLS_HABILITADO }
+  });
+  const filePath = path.join(__dirname, 'public', arquivo);
+  win.loadFile(filePath, { query: params || {} })
+     .catch(err => console.error('Erro ao abrir ficha local:', err));
+});
+
 // ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────
 // Devolve { ok, code, codeVerifier, redirectUri } pro renderer, que então chama
 // a Cloud Function pra finalizar. Usa PKCE (S256) por segurança.

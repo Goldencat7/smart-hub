@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('hubApi', {
   // Abrir ficha (visualização ou edição) em janela dedicada
   abrirFicha: (url, titulo) => ipcRenderer.send('abrir-ficha', { url, titulo }),
 
+  // Abrir ficha interna do corretor (carrega do disco local, não do Hosting)
+  abrirFichaLocal: (arquivo, params) => ipcRenderer.send('abrir-ficha-local', { arquivo, params }),
+
   // Verificar atualização manualmente (Configurações)
   verificarAtualizacao: () => ipcRenderer.invoke('verificar-atualizacao'),
 

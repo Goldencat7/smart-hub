@@ -43,7 +43,7 @@ export function campo(o){
   const val = v(o.key), ni = naoExiste.has(o.key), nta = pendentes.has(o.key);
   const badge = o.badge==='opc' ? '<span class="badge-opc">opcional</span>'
               : o.badge==='none' ? ''
-              : (val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>');
+              : (val.trim()!=='' ? '<span class="badge-preen">Preenchido</span>' : '<span class="badge-obrig">Obrigatório</span>');
   let toggles = '';
   if(o.ni)  toggles += `<label class="nao-tenho nao-existe"><input type="checkbox" data-ni="${o.key}"${ni?' checked':''}><span>Não existe</span></label>`;
   if(o.nta) toggles += `<label class="nao-tenho"><input type="checkbox" data-campo="${o.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
@@ -58,13 +58,13 @@ export function campo(o){
 }
 export function campoRadio(o){
   const val=v(o.key);
-  const badge = val.trim()!=='' ? '<span class="badge-preen">preenchido</span>' : '<span class="badge-obrig">obrigatório</span>';
+  const badge = val.trim()!=='' ? '<span class="badge-preen">Preenchido</span>' : '<span class="badge-obrig">Obrigatório</span>';
   const btns = o.options.map(op=>`<button type="button" class="radio-btn${val===op?' ativo':''}" data-radio="${o.key}" data-val="${esc(op)}"${somenteLeitura?' disabled':''}>${op}</button>`).join('');
   return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label></div><div class="radio-group">${btns}</div></div>`;
 }
 export function campoTextarea(o){
   const filled=v(o.key).trim()!=='';
-  const badge = o.req ? (filled?'<span class="badge-preen">preenchido</span>':'<span class="badge-obrig">obrigatório</span>') : '<span class="badge-opc">opcional</span>';
+  const badge = o.req ? (filled?'<span class="badge-preen">Preenchido</span>':'<span class="badge-obrig">Obrigatório</span>') : '<span class="badge-opc">opcional</span>';
   return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label></div><textarea data-key="${o.key}"${somenteLeitura?' disabled':''} placeholder="${o.ph||''}">${esc(v(o.key))}</textarea></div>`;
 }
 // Bloco de pessoa padrão (nome/rg/cpf/nascimento/endereço/profissão/estado civil[/renda]/email/celular/fixo)
@@ -115,7 +115,7 @@ function renderDocs(){
   const grid=document.getElementById('docs-grid'); if(!grid) return;
   grid.innerHTML = (CFG.docs||[]).map(d=>{
     const ni=naoExiste.has(d.key), nta=pendentes.has(d.key);
-    const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">obrigatório</span>';
+    const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>';
     let toggles='';
     if(d.ni)  toggles+=`<label class="nao-tenho nao-existe doc-nao-tenho"><input type="checkbox" data-doc-ni="${d.key}"${ni?' checked':''}><span>Não existe</span></label>`;
     if(d.nta) toggles+=`<label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="${d.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
@@ -176,7 +176,7 @@ function wireEventos(){
     if(val!==el.value) el.value=val;
     valores[el.dataset.key]=val;
     const fld=el.closest('.field'); const b=fld&&fld.querySelector('.badge-obrig,.badge-preen');
-    if(b){ const k=el.dataset.key; const ok=val.trim()!==''; if(!(pendentes.has(k)||naoExiste.has(k))){ b.textContent=ok?'preenchido':'obrigatório'; b.className=ok?'badge-preen':'badge-obrig'; } }
+    if(b){ const k=el.dataset.key; const ok=val.trim()!==''; if(!(pendentes.has(k)||naoExiste.has(k))){ b.textContent=ok?'Preenchido':'Obrigatório'; b.className=ok?'badge-preen':'badge-obrig'; } }
     atualizarProgresso();
   });
 

@@ -1447,7 +1447,7 @@ exports.reenviarFichaParaCliente = onCall(async (req) => {
 // ─── Fichas genéricas (pf, pj, vendedor, locacao_fiador, proposta) ───────────
 // Usa a coleção `fichas` com campo `tipo` para diferenciar os formulários.
 
-const TIPOS_VALIDOS = ['pf','pj','locacao_fiador','vendedor','proposta'];
+const TIPOS_VALIDOS = ['pf','pj','locacao_fiador','vendedor','proposta','fianca'];
 
 function assertTipo(tipo) {
   if (!TIPOS_VALIDOS.includes(tipo)) throw new HttpsError('invalid-argument', 'Tipo de ficha inválido.');

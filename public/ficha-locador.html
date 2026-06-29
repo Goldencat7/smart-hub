@@ -41,38 +41,38 @@
     <div class="section">
       <div class="section-title"><span class="num">1</span> Locador</div>
 
-      <div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="nome"></div>
+      <div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="nome"></div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>RG <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="rg"></div>
-        <div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="cpf" data-cpf maxlength="14" placeholder="000.000.000-00"></div>
+        <div class="field"><div class="field-header"><label>RG <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="rg"></div>
+        <div class="field"><div class="field-header"><label>CPF <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="cpf" data-cpf maxlength="14" placeholder="000.000.000-00"></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Data de nascimento <span class="badge-obrig">obrigatório</span></label></div><input type="date" name="dataNasc"></div>
-        <div class="field"><div class="field-header"><label>Estado civil <span class="badge-obrig">obrigatório</span></label></div>
+        <div class="field"><div class="field-header"><label>Data de nascimento <span class="badge-obrig">Obrigatório</span></label></div><input type="date" name="dataNasc"></div>
+        <div class="field"><div class="field-header"><label>Estado civil <span class="badge-obrig">Obrigatório</span></label></div>
           <select name="estadoCivil" id="civil1" onchange="toggleConjuge('sec-conj1',this.value)"><option value="">Selecione</option><option>Solteiro(a)</option><option>Casado(a)</option><option>Divorciado(a)</option><option>Viúvo(a)</option><option>União estável</option></select>
         </div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="cep" data-cep data-fill="loc1" maxlength="9" placeholder="00000-000"></div>
-        <div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="endereco" id="loc1-endereco" placeholder="Rua, Avenida..."></div>
+        <div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="cep" data-cep data-fill="loc1" maxlength="9" placeholder="00000-000"></div>
+        <div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="endereco" id="loc1-endereco" placeholder="Rua, Avenida..."></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Número <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="numero"></div>
+        <div class="field"><div class="field-header"><label>Número <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="numero"></div>
         <div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" name="complemento" placeholder="Apto, Bloco..."></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="bairro" id="loc1-bairro"></div>
-        <div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="cidade" id="loc1-cidade"></div>
+        <div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="bairro" id="loc1-bairro"></div>
+        <div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="cidade" id="loc1-cidade"></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">obrigatório</span></label></div>
+        <div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">Obrigatório</span></label></div>
           <select name="estado" id="loc1-estado"><option value="">UF</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option selected>SP</option><option>SE</option><option>TO</option></select>
         </div>
-        <div class="field"><div class="field-header"><label>Profissão <span class="badge-obrig">obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="profissao"><span>Não tenho agora</span></label></div><input type="text" name="profissao"><div class="pendente-tag" id="pend-profissao" style="display:none">Informação pendente</div></div>
+        <div class="field"><div class="field-header"><label>Profissão <span class="badge-obrig">Obrigatório</span></label><label class="nao-tenho"><input type="checkbox" data-campo="profissao"><span>Não tenho agora</span></label></div><input type="text" name="profissao"><div class="pendente-tag" id="pend-profissao" style="display:none">Informação pendente</div></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">obrigatório</span></label></div><input type="email" name="email"></div>
-        <div class="field"><div class="field-header"><label>Celular / WhatsApp <span class="badge-obrig">obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 90000-0000"></div>
+        <div class="field"><div class="field-header"><label>E-mail <span class="badge-obrig">Obrigatório</span></label></div><input type="email" name="email"></div>
+        <div class="field"><div class="field-header"><label>Celular / WhatsApp <span class="badge-obrig">Obrigatório</span></label></div><input type="tel" name="whatsapp" placeholder="(11) 90000-0000"></div>
       </div>
       <div class="field"><div class="field-header"><label>Telefone fixo <span class="badge-opc">opcional</span></label></div><input type="tel" name="fixo" placeholder="(11) 0000-0000"></div>
 
@@ -104,7 +104,7 @@
     <div id="sec-loc2" style="display:none">
       <div class="section">
         <div class="section-title" style="font-size:13px">2º Locador</div>
-        <div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="loc2_nome" disabled></div>
+        <div class="field"><div class="field-header"><label>Nome completo <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="loc2_nome" disabled></div>
         <div class="row-2">
           <div class="field"><div class="field-header"><label>RG</label></div><input type="text" name="loc2_rg" disabled></div>
           <div class="field"><div class="field-header"><label>CPF</label></div><input type="text" name="loc2_cpf" data-cpf maxlength="14" placeholder="000.000.000-00" disabled></div>
@@ -163,24 +163,24 @@
     <div class="section">
       <div class="section-title"><span class="num">2</span> Imóvel</div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Tipo de imóvel <span class="badge-obrig">obrigatório</span></label></div>
+        <div class="field"><div class="field-header"><label>Tipo de imóvel <span class="badge-obrig">Obrigatório</span></label></div>
           <select name="im_tipo"><option value="">Selecione</option><option>Apartamento</option><option>Casa</option><option>Cobertura</option><option>Studio</option><option>Sala comercial</option><option>Terreno</option><option>Outro</option></select>
         </div>
         <div class="field"><div class="field-header"><label>Referência no site <span class="badge-opc">opcional</span></label></div><input type="text" name="im_ref" placeholder="Cód. do anúncio"></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_cep" data-cep data-fill="im" maxlength="9" placeholder="00000-000"></div>
-        <div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_endereco" id="im-endereco" placeholder="Rua, Avenida..."></div>
+        <div class="field"><div class="field-header"><label>CEP <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_cep" data-cep data-fill="im" maxlength="9" placeholder="00000-000"></div>
+        <div class="field"><div class="field-header"><label>Endereço <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_endereco" id="im-endereco" placeholder="Rua, Avenida..."></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Número <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_numero"></div>
+        <div class="field"><div class="field-header"><label>Número <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_numero"></div>
         <div class="field"><div class="field-header"><label>Complemento <span class="badge-opc">opcional</span></label></div><input type="text" name="im_complemento"></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_bairro" id="im-bairro"></div>
-        <div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_cidade" id="im-cidade"></div>
+        <div class="field"><div class="field-header"><label>Bairro <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_bairro" id="im-bairro"></div>
+        <div class="field"><div class="field-header"><label>Cidade <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_cidade" id="im-cidade"></div>
       </div>
-      <div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">obrigatório</span></label></div>
+      <div class="field"><div class="field-header"><label>Estado <span class="badge-obrig">Obrigatório</span></label></div>
         <select name="im_estado" id="im-estado"><option value="">UF</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option selected>SP</option><option>SE</option><option>TO</option></select>
       </div>
       <div class="row-2">
@@ -201,12 +201,12 @@
         <div class="field"><div class="field-header"><label>Contribuinte IPTU <span class="badge-opc">opcional</span></label><label class="nao-tenho nao-existe-label"><input type="checkbox" data-ni="im_contribuinte"><span>Não existe</span></label><label class="nao-tenho"><input type="checkbox" data-campo="im_contribuinte"><span>Não tenho agora</span></label></div><input type="text" name="im_contribuinte"><div class="pendente-tag" id="pend-im_contribuinte" style="display:none">Informação pendente</div></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Início do contrato <span class="badge-obrig">obrigatório</span></label></div><input type="date" name="im_inicio"></div>
+        <div class="field"><div class="field-header"><label>Início do contrato <span class="badge-obrig">Obrigatório</span></label></div><input type="date" name="im_inicio"></div>
         <div class="field"></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Valor do anúncio <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_anuncio" data-money placeholder="R$ 0,00"></div>
-        <div class="field"><div class="field-header"><label>Valor da proposta <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="im_proposta" data-money placeholder="R$ 0,00"></div>
+        <div class="field"><div class="field-header"><label>Valor do anúncio <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_anuncio" data-money placeholder="R$ 0,00"></div>
+        <div class="field"><div class="field-header"><label>Valor da proposta <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_proposta" data-money placeholder="R$ 0,00"></div>
       </div>
     </div>
 
@@ -215,12 +215,12 @@
       <div class="section-title"><span class="num">3</span> Informações financeiras <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento do aluguel)</small></div>
       <div class="sub-sec-title" style="font-size:12px;font-weight:700;color:#003DA5;margin-bottom:12px">1ª Titular</div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Banco <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_banco"></div>
-        <div class="field"><div class="field-header"><label>Agência <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_agencia"></div>
+        <div class="field"><div class="field-header"><label>Banco <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="fin1_banco"></div>
+        <div class="field"><div class="field-header"><label>Agência <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="fin1_agencia"></div>
       </div>
       <div class="row-2">
-        <div class="field"><div class="field-header"><label>Conta corrente <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_conta"></div>
-        <div class="field"><div class="field-header"><label>Favorecido <span class="badge-obrig">obrigatório</span></label></div><input type="text" name="fin1_favorecido"></div>
+        <div class="field"><div class="field-header"><label>Conta corrente <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="fin1_conta"></div>
+        <div class="field"><div class="field-header"><label>Favorecido <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="fin1_favorecido"></div>
       </div>
       <div class="field"><div class="field-header"><label>Chave PIX <span class="badge-opc">opcional</span></label></div><input type="text" name="fin1_pix"></div>
 
@@ -243,15 +243,15 @@
     <!-- ══ 4. Administração ════════════════════════════════════════ -->
     <div class="section">
       <div class="section-title"><span class="num">4</span> Administração</div>
-      <div class="field"><div class="field-header"><label>A REMAX administra o imóvel? <span class="badge-obrig">obrigatório</span></label></div>
+      <div class="field"><div class="field-header"><label>A REMAX administra o imóvel? <span class="badge-obrig">Obrigatório</span></label></div>
         <div class="radio-group">
           <button type="button" class="radio-btn" data-radio="adm_resp" data-val="Sim">Sim</button>
           <button type="button" class="radio-btn" data-radio="adm_resp" data-val="Não">Não</button>
         </div>
         <input type="hidden" name="adm_resp">
       </div>
-      <div class="field"><div class="field-header"><label>Taxa negociada <span class="badge-opc">opcional</span></label></div><input type="text" name="adm_taxa" value="8%"></div>
-      <div class="field"><div class="field-header"><label>Repasse <span class="badge-obrig">obrigatório</span></label></div>
+      <div class="field"><div class="field-header"><label>Taxa negociada <span class="badge-opc">opcional</span></label></div><input type="text" name="adm_taxa" value="8%" readonly style="opacity:.6;cursor:default"></div>
+      <div class="field"><div class="field-header"><label>Repasse <span class="badge-obrig">Obrigatório</span></label></div>
         <div class="radio-group">
           <button type="button" class="radio-btn" data-radio="repasse" data-val="Somente aluguel">Somente aluguel</button>
           <button type="button" class="radio-btn" data-radio="repasse" data-val="Aluguel + condomínio + IPTU">Aluguel + condomínio + IPTU</button>
@@ -265,8 +265,8 @@
     <div class="section">
       <div class="section-title"><span class="num">5</span> Documentos</div>
       <div class="docs-grid">
-        <div class="doc-wrapper"><div class="doc-area" id="area-rgcpf"><div class="doc-clickable" onclick="triggerFile('rgcpf')"><div class="doc-icon">🪪</div><div class="doc-label">RG e CPF <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-rgcpf">Toque para selecionar</div></div><input type="file" id="file-rgcpf" accept="image/*,.pdf" style="display:none" data-doc="rgcpf" onchange="docSelecionado(this)"></div></div>
-        <div class="doc-wrapper"><div class="doc-area" id="area-energia"><div class="doc-clickable" onclick="triggerFile('energia')"><div class="doc-icon">⚡</div><div class="doc-label">Conta de energia <span class="badge-obrig">obrigatório</span></div><div class="doc-status" id="status-energia">Toque para selecionar</div></div><input type="file" id="file-energia" accept="image/*,.pdf" style="display:none" data-doc="energia" onchange="docSelecionado(this)"></div></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-rgcpf"><div class="doc-clickable" onclick="triggerFile('rgcpf')"><div class="doc-icon">🪪</div><div class="doc-label">RG e CPF <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-rgcpf">Toque para selecionar</div></div><input type="file" id="file-rgcpf" accept="image/*,.pdf" style="display:none" data-doc="rgcpf" onchange="docSelecionado(this)"></div></div>
+        <div class="doc-wrapper"><div class="doc-area" id="area-energia"><div class="doc-clickable" onclick="triggerFile('energia')"><div class="doc-icon">⚡</div><div class="doc-label">Conta de energia <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-energia">Toque para selecionar</div></div><input type="file" id="file-energia" accept="image/*,.pdf" style="display:none" data-doc="energia" onchange="docSelecionado(this)"></div></div>
         <div class="doc-wrapper"><div class="doc-area" id="area-agua"><div class="doc-clickable" onclick="triggerFile('agua')"><div class="doc-icon">💧</div><div class="doc-label">Conta de água <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-agua">Toque para selecionar</div></div><input type="file" id="file-agua" accept="image/*,.pdf" style="display:none" data-doc="agua" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-agua" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="agua"><span>Não tenho agora</span></label></div>
         <div class="doc-wrapper"><div class="doc-area" id="area-gas"><div class="doc-clickable" onclick="triggerFile('gas')"><div class="doc-icon">🔥</div><div class="doc-label">Conta de gás <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-gas">Toque para selecionar</div></div><input type="file" id="file-gas" accept="image/*,.pdf" style="display:none" data-doc="gas" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-gas" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="gas"><span>Não tenho agora</span></label></div>
         <div class="doc-wrapper"><div class="doc-area" id="area-iptu_doc"><div class="doc-clickable" onclick="triggerFile('iptu_doc')"><div class="doc-icon">📄</div><div class="doc-label">Documento do IPTU <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-iptu_doc">Toque para selecionar</div></div><input type="file" id="file-iptu_doc" accept="image/*,.pdf" style="display:none" data-doc="iptu_doc" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-iptu_doc" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="iptu_doc"><span>Não tenho agora</span></label></div>
@@ -358,7 +358,7 @@ function updateBadge(el) {
   const fld = el.closest('.field'); if (!fld) return;
   const b = fld.querySelector('.badge-obrig,.badge-preen'); if (!b) return;
   const ok = el.value.trim() !== '';
-  if (!el.name || !pendentes.has(el.name)) { b.textContent = ok ? 'preenchido' : 'obrigatório'; b.className = ok ? 'badge-preen' : 'badge-obrig'; }
+  if (!el.name || !pendentes.has(el.name)) { b.textContent = ok ? 'Preenchido' : 'Obrigatório'; b.className = ok ? 'badge-preen' : 'badge-obrig'; }
 }
 
 // ── CEP autofill ────────────────────────────────────────────────────
