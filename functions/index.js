@@ -1,4 +1,5 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -1154,15 +1155,38 @@ exports.listarMinhasNotificacoes = onCall(async (req) => {
   return lista;
 });
 
-// Marca um aviso como visto (a pessoa clicou em "Vi").
+// Marca um aviso como visto (a pessoa clicou em "Vi"). Se com isso todo mundo já
+// confirmou, apaga o aviso na hora — não precisa esperar a limpeza dos 30 dias.
 exports.marcarNotificacaoLida = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const { id } = req.data || {};
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
-  await db.collection('notifications').doc(id).update({
-    lidoPor: admin.firestore.FieldValue.arrayUnion(auth.uid)
-  });
+  const ref = db.collection('notifications').doc(id);
+  await ref.update({ lidoPor: admin.firestore.FieldValue.arrayUnion(auth.uid) });
+
+  try {
+    const snap = await ref.get();
+    if (snap.exists) {
+      const x = snap.data();
+      const lidoPor = Array.isArray(x.lidoPor) ? x.lidoPor : [];
+      const total = x.totalDestinatarios || 0;
+      if (total > 0 && lidoPor.length >= total) await ref.delete();
+    }
+  } catch (e) { console.warn('Limpeza de aviso (todos confirmaram):', e.message); }
+
   return { ok: true };
+});
+
+// Limpeza automática: apaga avisos com mais de 30 dias (roda 1x por dia).
+// Cobre o caso de avisos que nunca foram confirmados por todo mundo.
+exports.limparAvisosAntigos = onSchedule('every 24 hours', async () => {
+  const limite = admin.firestore.Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const snap = await db.collection('notifications').where('criadoEm', '<', limite).get();
+  if (snap.empty) return;
+  const batch = db.batch();
+  snap.forEach(d => batch.delete(d.ref));
+  await batch.commit();
+  console.log(`Avisos antigos removidos: ${snap.size}`);
 });
 
 // (admin) Avisos enviados + quantos confirmaram.
