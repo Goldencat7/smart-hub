@@ -116,6 +116,7 @@ function criarJanelaPrincipal() {
   janelaPrincipal = new BrowserWindow({
     width: 1100,
     height: 760,
+    show: false, // só mostra depois de maximizar — evita o "pulo" da janela pequena pra cheia
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#0f1218', symbolColor: '#f5f7fa', height: 45 },
@@ -125,6 +126,11 @@ function criarJanelaPrincipal() {
       nodeIntegration: false,
       devTools: DEVTOOLS_HABILITADO
     }
+  });
+
+  janelaPrincipal.once('ready-to-show', () => {
+    janelaPrincipal.maximize();
+    janelaPrincipal.show();
   });
 
   // Impede fechar o Hub enquanto houver janelas de sistemas abertas (evita ficar

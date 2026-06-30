@@ -819,6 +819,76 @@ exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
   return { ok: true, id: ref.id };
 });
 
+// Edita um evento existente — só quem criou (ou admin). Não mexe em participantes/"todos"
+// (mudar isso exigiria resetar RSVP de quem já respondeu, fora do escopo aqui).
+exports.editarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { id, titulo, inicio, descricao, tipo, dataLocal } = req.data || {};
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  if (!titulo || !inicio) throw new HttpsError('invalid-argument', 'Título e data/hora são obrigatórios.');
+  const dataInicio = new Date(inicio);
+  if (isNaN(dataInicio.getTime())) throw new HttpsError('invalid-argument', 'Data/hora inválida.');
+  const tipoLimpo = ['evento', 'tarefa', 'lembrete'].includes(tipo) ? tipo : 'evento';
+
+  const ref = db.collection('events').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Compromisso não encontrado.');
+  const dados = snap.data();
+  if (dados.criadoPor !== auth.uid && !ehAdminAuth(auth)) {
+    throw new HttpsError('permission-denied', 'Só quem criou (ou admin) pode editar.');
+  }
+
+  const tituloLimpo = String(titulo).slice(0, 120);
+  const descricaoLimpa = descricao ? String(descricao).slice(0, 500) : '';
+
+  await ref.update({
+    titulo: tituloLimpo,
+    descricao: descricaoLimpa,
+    inicio: admin.firestore.Timestamp.fromDate(dataInicio),
+    tipo: tipoLimpo,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // Re-sincroniza com o Google: remove o item antigo (se existia) e insere de novo já
+  // atualizado — mais simples que um PATCH seletivo, e cobre troca de tipo (evento ↔ tarefa).
+  try {
+    const removerAntigo = async (mapa, ehTarefa) => {
+      if (!mapa) return;
+      for (const [uid, gid] of Object.entries(mapa)) {
+        try {
+          const tokSnap = await db.collection('google_tokens').doc(uid).get();
+          if (!tokSnap.exists || !tokSnap.data().refreshToken) continue;
+          const accessToken = await getAccessToken(tokSnap.data().refreshToken);
+          if (ehTarefa) await removerTarefaGoogle(accessToken, gid);
+          else await removerEventoGoogle(accessToken, gid);
+        } catch (e) {
+          console.warn(`Remover Google (editarEvento) falhou p/ ${uid}:`, e.message);
+        }
+      }
+    };
+    await removerAntigo(dados.googleEventIds, false);
+    await removerAntigo(dados.googleTaskIds, true);
+
+    const alvos = dados.todos ? await uidsConectados() : (dados.participantes || []);
+    const inicioISO = dataInicio.toISOString();
+    const fimISO = new Date(dataInicio.getTime() + 60 * 60 * 1000).toISOString();
+    const dueISO = (dataLocal && /^\d{4}-\d{2}-\d{2}$/.test(dataLocal))
+      ? `${dataLocal}T00:00:00.000Z` : inicioISO;
+    const ids = await sincronizarParaGoogle(alvos, {
+      titulo: tituloLimpo, descricao: descricaoLimpa, inicioISO, fimISO, dueISO
+    }, tipoLimpo);
+    const campoNovo   = (tipoLimpo === 'evento') ? 'googleEventIds' : 'googleTaskIds';
+    const campoAntigo = (tipoLimpo === 'evento') ? 'googleTaskIds' : 'googleEventIds';
+    const update = { [campoNovo]: ids };
+    if (dados[campoAntigo]) update[campoAntigo] = admin.firestore.FieldValue.delete();
+    await ref.update(update);
+  } catch (e) {
+    console.warn('Sync Google (editarEvento) falhou:', e.message);
+  }
+
+  return { ok: true };
+});
+
 // Lista os eventos do usuário num período (participante, "todos", ou criados por ele)
 exports.listarEventos = onCall(async (req) => {
   const auth = exigirAutenticado(req);

@@ -427,7 +427,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .ev-quando { font-size: 10px; color: var(--blue); font-weight: 700; white-space: nowrap; }
 .ev-corpo  { flex: 1; }
 .ev-titulo { font-size: 12px; font-weight: 600; color: var(--text-primary); }
-.ev-desc   { font-size: 11px; color: var(--text-muted); }
+.ev-desc   { font-size: 11px; color: var(--text-muted); white-space: pre-line; }
 .ev-tag    { font-size: 9px; background: var(--blue); color: #fff; border-radius: var(--radius-badge); padding: 1px 4px; vertical-align: middle; }
 
 .ev-tag-google {
@@ -437,8 +437,10 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   background: rgba(255,139,0,0.10); color: var(--warning); border: 1px solid rgba(255,139,0,0.3);
 }
 
-.ev-del { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; }
+.ev-acoes { display: flex; gap: 4px; flex-shrink: 0; }
+.ev-del, .ev-edit { background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; }
 .ev-del:hover { color: var(--danger); }
+.ev-edit:hover { color: var(--blue); }
 
 /* RSVP */
 .ev-rsvp-lista { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -463,7 +465,8 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .btn-rsvp-recusar:hover:not(:disabled) { background: rgba(255,128,117,0.18); }
 
 /* ── Calendário completo (aba Agenda) ────────────────────────────── */
-.agenda-full { width: 100%; }
+.agenda-full { width: 100%; display: flex; gap: 20px; align-items: flex-start; }
+.cal-coluna { flex: 1.3; min-width: 0; }
 .cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .cal-head h3 {
   margin: 0; font-size: 13px; font-weight: 700;
@@ -480,15 +483,19 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   border: none; border-radius: 0; color: var(--text-primary);
 }
 .cal-grade .cal-dia.hoje { background: var(--surface); box-shadow: inset 0 0 0 2px var(--blue); }
-.cal-grade .cal-dia.sel  { background: var(--blue-light); box-shadow: none; }
+.cal-grade .cal-dia.sel  { background: var(--blue); box-shadow: none; }
+.cal-grade .cal-dia.sel.hoje { box-shadow: inset 0 0 0 2px #fff; }
 .cal-grade .cal-dia:not(.vazio):hover { background: var(--blue-light); }
 .cal-grade .cal-num { font-weight: 600; color: var(--text-primary); }
 .cal-grade .cal-dia.hoje .cal-num { color: var(--blue); }
+.cal-grade .cal-dia.sel .cal-num { color: #fff; }
+.cal-grade .cal-dia.sel .cal-feriado { color: #ffe3b3; }
 
 .cal-dia-detalhe {
-  margin-top: 14px; padding: 14px;
+  flex: 1; min-width: 280px; max-width: 380px; padding: 14px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
-  max-width: 520px; display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column; gap: 8px;
+  position: sticky; top: 0; max-height: calc(100vh - 140px); overflow-y: auto;
 }
 .dia-det-head { display: flex; align-items: center; justify-content: space-between; }
 .dia-det-head h4 { margin: 0; font-size: 13px; font-weight: 600; text-transform: capitalize; color: var(--text-primary); }
@@ -1135,6 +1142,11 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 @media (max-width: 1040px) {
   .hub-layout { grid-template-columns: 160px 1fr; }
   .agenda-panel { display: none; }
+}
+
+@media (max-width: 900px) {
+  .agenda-full { flex-direction: column; }
+  .cal-dia-detalhe { max-width: none; width: 100%; position: static; max-height: none; }
 }
 
 @media (max-width: 720px) {

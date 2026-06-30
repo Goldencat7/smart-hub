@@ -37,6 +37,7 @@ const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 const criarEvento = httpsCallable(fns, 'criarEvento');
+const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
 const excluirEvento = httpsCallable(fns, 'excluirEvento');
 const listarPessoas = httpsCallable(fns, 'listarPessoas');
@@ -310,6 +311,7 @@ let fotoPendente = null; // null = sem mudança; string = nova foto (ou '' = rem
 let eventos = [];                 // {id, titulo, descricao, inicio:Date, todos, souDono}
 let calAno, calMes;               // mês exibido no calendário completo
 let diaSelecionado = null;        // 'YYYY-MM-DD' no calendário completo
+let eventoEditandoId = null;      // id do evento em edição no modal (null = modo criar)
 const alertados = new Set();      // ids já alertados (1h antes)
 let pessoasCache = null;          // lista de pessoas (admin) pro seletor
 let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5 min)
@@ -857,6 +859,8 @@ const DIAS_SEM = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+// Eventos do Google podem vir com HTML na descrição (ex: <b>, <br>) — limpa antes de exibir como texto puro.
+function stripHtml(s){ return String(s).replace(/<br\s*\/?>/gi,'\n').replace(/<\/(p|div)>/gi,'\n').replace(/<[^>]*>/g,'').trim(); }
 
 function badgeStatus(status) {
   if (!status) return '';
@@ -994,6 +998,7 @@ async function renderCalendarioCompleto(){
   await carregarFeriados(calAno);
   await carregarEventos(new Date(calAno, calMes-1, 1), new Date(calAno, calMes+2, 0));
   calTitulo.textContent = `${MESES[calMes]} ${calAno}`;
+  document.getElementById('calHoje').hidden = (diaSelecionado === chaveDia(new Date()));
   calGrade.innerHTML = montarGradeMes(calAno, calMes);
   calGrade.querySelectorAll('.cal-dia[data-dia]').forEach(b=>{
     b.addEventListener('click', ()=>{ diaSelecionado = b.dataset.dia; renderCalendarioCompleto(); });
@@ -1038,14 +1043,20 @@ function renderDetalheDia(){
         <div class="ev-quando">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>
         <div class="ev-corpo">
           <div class="ev-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)} ${e.todos?'<span class="ev-tag">todos</span>':''} ${e.origem==='google'?'<span class="ev-tag ev-tag-google">Google</span>':''}</div>
-          ${e.descricao?`<div class="ev-desc">${escapeHtml(e.descricao)}</div>`:''}
+          ${e.descricao?`<div class="ev-desc">${escapeHtml(stripHtml(e.descricao))}</div>`:''}
           ${rsvpLista}${rsvpBtns}
         </div>
-        ${(e.souDono||isAdmin) && e.origem!=='google'?`<button class="ev-del" data-id="${e.id}" title="Excluir">✕</button>`:''}
+        ${(e.souDono||isAdmin) && e.origem!=='google'?`<div class="ev-acoes"><button class="ev-edit" data-id="${e.id}" title="Editar">✎</button><button class="ev-del" data-id="${e.id}" title="Excluir">✕</button></div>`:''}
       </div>`;
     }).join('') : '<p class="muted">Nada nesse dia.</p>'}
   `;
   calDiaDetalhe.querySelector('#btnNovoNoDia')?.addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
+  calDiaDetalhe.querySelectorAll('.ev-edit').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const ev = eventos.find(x=>x.id===b.dataset.id);
+      if(ev) abrirModalEvento(diaSelecionado, ev);
+    });
+  });
   calDiaDetalhe.querySelectorAll('.ev-del').forEach(b=>{
     b.addEventListener('click', async ()=>{
       if(!confirm('Excluir este compromisso?')) return;
@@ -1078,15 +1089,26 @@ function iconeTipo(tipo){
   return `<svg class="ev-tipo-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
 }
 
-async function abrirModalEvento(diaPre) {
-  // 1. Limpa os campos iniciais
-  document.getElementById('evTitulo').value = '';
-  document.getElementById('evDesc').value = '';
-  document.getElementById('evHora').value = '09:00';
-  document.getElementById('evData').value = diaPre || chaveDia(new Date());
-  
-  const radioEvento = document.querySelector('input[name="evTipo"][value="evento"]');
-  if(radioEvento) radioEvento.checked = true;
+async function abrirModalEvento(diaPre, eventoEditar) {
+  eventoEditandoId = eventoEditar ? eventoEditar.id : null;
+  const titulo = document.getElementById('modalEventoTitulo');
+  const btnSalvar = modalEvento.querySelector('[type="submit"]');
+  if (titulo) titulo.textContent = eventoEditar ? 'Editar compromisso' : 'Criar';
+  if (btnSalvar) btnSalvar.textContent = eventoEditar ? 'Salvar alterações' : 'Salvar';
+
+  // 1. Preenche os campos (vazio pra criar, ou com os dados do evento pra editar)
+  document.getElementById('evTitulo').value = eventoEditar ? eventoEditar.titulo : '';
+  document.getElementById('evDesc').value = eventoEditar ? (eventoEditar.descricao || '') : '';
+  if (eventoEditar) {
+    document.getElementById('evHora').value = eventoEditar.inicio.toTimeString().slice(0,5);
+    document.getElementById('evData').value = chaveDia(eventoEditar.inicio);
+  } else {
+    document.getElementById('evHora').value = '09:00';
+    document.getElementById('evData').value = diaPre || chaveDia(new Date());
+  }
+
+  const radioTipo = document.querySelector(`input[name="evTipo"][value="${eventoEditar ? (eventoEditar.tipo||'evento') : 'evento'}"]`);
+  if(radioTipo) radioTipo.checked = true;
 
   // 2. ABRE O MODAL IMEDIATAMENTE (O usuário já vê a tela)
   modalEvento.showModal();
@@ -1096,13 +1118,18 @@ async function abrirModalEvento(diaPre) {
     document.getElementById('evTitulo').focus();
   }, 50);
 
-  // 4. Participantes — todos podem convidar; "Todos" só admin
+  // 4. Participantes — só no modo criar (editar participantes exigiria resetar RSVP, fora de escopo)
   const area = document.getElementById('evParticipantesArea');
   const todosLabel = document.getElementById('evTodosLabel');
   const chkTodos = document.getElementById('evTodos');
+  if (chkTodos) chkTodos.checked = false;
+
+  if (eventoEditar) {
+    area.hidden = true;
+    return;
+  }
   area.hidden = false;
   if (todosLabel) todosLabel.hidden = false;
-  if (chkTodos) chkTodos.checked = false;
 
   const cont = document.getElementById('evPessoas');
   if (!pessoasCache || (Date.now() - pessoasCacheAt) > 300000) {
@@ -1249,14 +1276,18 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
   btnSalvar.disabled = true;
   const tipo = (document.querySelector('input[name="evTipo"]:checked') || {}).value || 'evento';
   const payload = { titulo, inicio: new Date(data + 'T' + hora).toISOString(), descricao, tipo, dataLocal: data };
-  if(document.getElementById('evTodos').checked && isAdmin) {
-    payload.todos = true;
-  } else {
-    const selecionados = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c => c.value);
-    if(selecionados.length) payload.participantes = selecionados;
-  }
   try {
-    await criarEvento(payload);
+    if (eventoEditandoId) {
+      await editarEvento({ id: eventoEditandoId, ...payload });
+    } else {
+      if(document.getElementById('evTodos').checked && isAdmin) {
+        payload.todos = true;
+      } else {
+        const selecionados = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c => c.value);
+        if(selecionados.length) payload.participantes = selecionados;
+      }
+      await criarEvento(payload);
+    }
     modalEvento.close();
     await carregarEventos(new Date(Date.now()-86400000), new Date(Date.now()+1000*60*60*24*90));
     renderPainelAgenda();
