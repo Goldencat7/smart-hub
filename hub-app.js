@@ -2117,7 +2117,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
     const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
 
     lista.innerHTML = fichas.map(f => {
-      const data = f.criadoEm ? new Date(f.criadoEm).toLocaleDateString('pt-BR') : '—';
+      const data = f.criadoEm ? new Date(f.criadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
       const pends = (f.pendentes || []).length;
       const label = statusLabel[f.status] || f.status;
       const cor   = statusCor[f.status]   || '#6b7280';

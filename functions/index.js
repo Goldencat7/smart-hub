@@ -502,20 +502,62 @@ function escaparHtml(s) {
   return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-// Gera PDF da ficha a partir dos dados estruturados do Firestore
-const LABELS_FICHA = {
-  nome:'Nome', cpf:'CPF', cnpj:'CNPJ', rg:'RG', dataNasc:'Data de nascimento',
-  estadoCivil:'Estado civil', profissao:'Profissão', renda:'Renda mensal',
-  empresa:'Empresa / Empregador', whatsapp:'WhatsApp', email:'E-mail',
-  cep:'CEP', logradouro:'Logradouro', numero:'Número', complemento:'Complemento',
-  bairro:'Bairro', cidade:'Cidade', estado:'Estado',
-  banco:'Banco', tipoConta:'Tipo de conta', agencia:'Agência', conta:'Conta', pix:'Chave Pix',
-  razaoSocial:'Razão social', nomeFantasia:'Nome fantasia', inscricaoEstadual:'Insc. estadual',
-  nomeRepresentante:'Representante', cpfRepresentante:'CPF do representante',
-  nomeFiador:'Nome do fiador', cpfFiador:'CPF do fiador',
-  imovel:'Imóvel', valorProposta:'Valor da proposta', formaPagamento:'Forma de pagamento',
-  observacoes:'Observações',
+// Gera PDF da ficha a partir dos dados estruturados do Firestore.
+// As chaves das fichas seguem o padrão `prefixo_sufixo` (ex.: im_endereco, s1_cpf,
+// emp_cep, fin1_banco). Em vez de mapear cada chave (são dezenas e mudam), o rótulo
+// é montado: ROTULO_BASE traduz o sufixo, ROTULO_PREFIXO nomeia o bloco, e o que
+// não casar é "humanizado" (vira "Algo assim") — nunca pior que a chave crua.
+const ROTULO_BASE = {
+  // pessoa / empresa
+  nome:'Nome', razaoSocial:'Razão social', nomeFantasia:'Nome fantasia',
+  rg:'RG', cpf:'CPF', cnpj:'CNPJ', cnh:'CNH', inscricaoEstadual:'Insc. estadual',
+  nasc:'Nascimento', dataNasc:'Data de nascimento', abertura:'Data de abertura',
+  profissao:'Profissão', civil:'Estado civil', estadoCivil:'Estado civil', renda:'Renda mensal',
+  ramo:'Ramo de atividade', faturamento:'Faturamento atual', faturamento_ano:'Faturamento último ano',
+  email:'E-mail', whatsapp:'WhatsApp', celular:'Celular / WhatsApp', fixo:'Telefone fixo', telefone:'Telefone',
+  // endereço
+  cep:'CEP', endereco:'Endereço', logradouro:'Logradouro', numero:'Número',
+  complemento:'Complemento', bairro:'Bairro', cidade:'Cidade', estado:'Estado',
+  // financeiro
+  banco:'Banco', tipoConta:'Tipo de conta', agencia:'Agência', conta:'Conta',
+  pix:'Chave Pix', favorecido:'Favorecido',
+  // imóvel / proposta
+  tipo:'Tipo de imóvel', ref:'Referência', condominio:'Condomínio',
+  anuncio:'Valor do anúncio', proposta:'Valor da proposta', valor:'Valor',
+  valorProposta:'Valor da proposta', formaPagamento:'Forma de pagamento',
+  observacoes:'Observações', obs:'Observações',
+  // cônjuge
+  conj_nome:'Cônjuge — Nome', conj_rg:'Cônjuge — RG', conj_cpf:'Cônjuge — CPF',
+  conj_nasc:'Cônjuge — Nascimento', conj_profissao:'Cônjuge — Profissão',
+  conj_civil_regime:'Cônjuge — Regime de bens',
+  // documentos (aparecem em pendentes[])
+  cnpj_card:'Cartão CNPJ', contrato:'Contrato social', soc_rgcpf:'RG/CPF (sócios)',
+  soc_endereco:'Comp. endereço (sócios)', soc_civil:'Comp. estado civil (sócios)',
+  emp_renda:'Comp. renda (empresa)', rgFrente:'RG (frente)', rgVerso:'RG (verso)',
+  rgcpf:'RG/CPF', compRenda:'Comprovante de renda', compEndereco:'Comprovante de endereço',
+  matricula:'Matrícula', iptu:'IPTU',
 };
+const ROTULO_PREFIXO = {
+  emp:'Empresa', im:'Imóvel', imovel:'Imóvel',
+  s1:'Sócio 1', s2:'Sócio 2', s3:'Sócio 3',
+  loc2:'2º Locatário', tit2:'2º Titular', loc:'Locador',
+  fin1:'Dados bancários', fin2:'Dados bancários 2', fin:'Dados bancários',
+  gar:'Garantia', com:'Comercial', prop:'Proposta', fiador:'Fiador',
+};
+function humanizarChave(k) {
+  return String(k).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ').trim().replace(/^./, c => c.toUpperCase());
+}
+function rotuloFicha(k) {
+  if (ROTULO_BASE[k]) return ROTULO_BASE[k];           // chave exata (inclui conj_* e docs)
+  const m = String(k).match(/^([a-z]+\d*)_(.+)$/i);    // separa prefixo_sufixo
+  if (m && ROTULO_PREFIXO[m[1]] !== undefined) {
+    const pref = ROTULO_PREFIXO[m[1]];
+    const base = ROTULO_BASE[m[2]] || humanizarChave(m[2]);
+    return pref ? `${pref} · ${base}` : base;
+  }
+  return humanizarChave(k);
+}
 
 function gerarPdfFicha(ficha, tipoLabel) {
   return new Promise((resolve, reject) => {
@@ -541,7 +583,7 @@ function gerarPdfFicha(ficha, tipoLabel) {
       // Campos preenchidos
       const colKey = 40, colVal = 200, lineH = 18;
       Object.entries(d).filter(([, v]) => v).forEach(([k, v]) => {
-        const label = LABELS_FICHA[k] || k;
+        const label = rotuloFicha(k);
         const y = doc.y;
         doc.fontSize(10).fillColor('#555').text(label + ':', colKey, y, { width: 155, continued: false });
         doc.fontSize(10).fillColor('#111').text(String(v), colVal, y, { width: 355 });
@@ -556,7 +598,7 @@ function gerarPdfFicha(ficha, tipoLabel) {
         doc.moveDown(0.5);
         doc.fontSize(11).fillColor('#b45309').text('Itens pendentes:');
         doc.fontSize(10).fillColor('#b45309')
-          .text(pendentes.map(p => '• ' + (LABELS_FICHA[p] || p)).join('\n'));
+          .text(pendentes.map(p => '• ' + rotuloFicha(p)).join('\n'));
       }
 
       doc.end();
@@ -1590,13 +1632,15 @@ exports.excluirFichaTipo = onCall(async (req) => {
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
   const ref = db.collection('fichas').doc(fichaId);
   let snap = await ref.get();
+  let alvoRef = ref;
   if (!snap.exists) {
+    // Fichas antigas: busca pelo campo 'id' interno
     const q = await db.collection('fichas').where('id', '==', fichaId).limit(1).get();
     if (q.empty) throw new HttpsError('not-found', 'Ficha não encontrada.');
-    snap = q.docs[0]; await q.docs[0].ref.delete(); return { ok: true };
+    snap = q.docs[0]; alvoRef = q.docs[0].ref;
   }
-  await assertDono(snap, req.auth.uid, req.auth.token.admin);
-  await ref.delete();
+  await assertDono(snap, req.auth.uid, req.auth.token.admin); // checa posse nos DOIS caminhos
+  await alvoRef.delete();
   return { ok: true };
 });
 
@@ -1657,9 +1701,16 @@ exports.finalizarFichaTipo = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
   const { fichaId } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+  // Finalizar é ação de análise (admin ou quem tem analise_locador) — não do dono da ficha.
+  const uid = req.auth.uid;
+  const isAdm = req.auth.token.admin;
+  if (!isAdm) {
+    const perm = await db.collection('user_access').doc(uid).get();
+    if (!(perm.exists && (perm.data().apps||[]).includes('analise_locador'))) throw new HttpsError('permission-denied', 'Sem permissão.');
+  }
   const ref = db.collection('fichas').doc(fichaId);
   const snap = await ref.get();
-  await assertDono(snap, req.auth.uid, req.auth.token.admin);
-  await ref.update({ status: 'finalizado', finalizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  await ref.update({ status: 'finalizado', finalizadoEm: admin.firestore.FieldValue.serverTimestamp(), finalizadoPor: uid });
   return { ok: true };
 });
