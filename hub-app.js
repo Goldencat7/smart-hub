@@ -217,7 +217,7 @@ const CATEGORIAS = [
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
-  { id: 'documentos',  nome: 'Documentos',  icone: ICN.documentos, placeholder: true },
+  { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
