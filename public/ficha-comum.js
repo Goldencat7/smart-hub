@@ -97,6 +97,53 @@ function maskMoney(x){ let d=(''+x).replace(/\D/g,''); if(!d) return ''; d=d.rep
 export function moneyToNum(x){ const d=(''+(x||'')).replace(/\D/g,''); return d?parseFloat(d)/100:0; }
 export function fmtMoney(n){ return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
+// ── Validação de CPF/CNPJ (dígito verificador) ──
+function validarCPF(cpf){
+  const d=(''+cpf).replace(/\D/g,'');
+  if(d.length!==11||/^(\d)\1{10}$/.test(d)) return false;
+  let soma=0; for(let i=0;i<9;i++) soma+=parseInt(d[i])*(10-i);
+  let resto=soma%11, dv1=resto<2?0:11-resto;
+  if(dv1!==parseInt(d[9])) return false;
+  soma=0; for(let i=0;i<10;i++) soma+=parseInt(d[i])*(11-i);
+  resto=soma%11; const dv2=resto<2?0:11-resto;
+  return dv2===parseInt(d[10]);
+}
+function validarCNPJ(cnpj){
+  const d=(''+cnpj).replace(/\D/g,'');
+  if(d.length!==14||/^(\d)\1{13}$/.test(d)) return false;
+  const calc=base=>{
+    const pesos = base.length===12 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2];
+    let soma=0; for(let i=0;i<base.length;i++) soma+=parseInt(base[i])*pesos[i];
+    const resto=soma%11; return resto<2?0:11-resto;
+  };
+  if(calc(d.slice(0,12))!==parseInt(d[12])) return false;
+  return calc(d.slice(0,13))===parseInt(d[13]);
+}
+// Confere CPFs/CNPJs preenchidos e telefones duplicados. Devolve mensagem de erro ou null.
+function validarCpfsETelefones(){
+  for(const k of Object.keys(valores)){
+    if(naoExiste.has(k)||pendentes.has(k)) continue;
+    const val=(''+(valores[k]||'')).trim(); if(!val) continue;
+    if(k==='cpf_cnpj'){
+      const d=val.replace(/\D/g,'');
+      if(d.length===11 && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
+      if(d.length===14 && !validarCNPJ(val)) return 'CNPJ inválido. Confira os números digitados.';
+      continue;
+    }
+    if(/cpf$/i.test(k) && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
+    if(/cnpj$/i.test(k) && !validarCNPJ(val)) return 'CNPJ inválido. Confira os números digitados.';
+  }
+  const fonesVistos=new Map();
+  for(const k of Object.keys(valores)){
+    if(!/celular|whatsapp|fixo|telefone/i.test(k)) continue;
+    if(naoExiste.has(k)||pendentes.has(k)) continue;
+    const d=(''+(valores[k]||'')).replace(/\D/g,''); if(d.length<8) continue;
+    if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
+    fonesVistos.set(d,k);
+  }
+  return null;
+}
+
 async function lookupCEP(input){
   const prefix = input.dataset.prefix||'';
   const cep = input.value.replace(/\D/g,'');
@@ -215,6 +262,8 @@ async function enviar(e){
   const rig = CFG.rigidos || ['nome','whatsapp','email'];
   const falta = rig.filter(k=>!(valores[k]&&(''+valores[k]).trim()));
   if(falta.length){ mostrarErro(CFG.msgRigidos||'Preencha os campos obrigatórios principais.'); return; }
+  const erroCpfFone = validarCpfsETelefones();
+  if(erroCpfFone){ mostrarErro(erroCpfFone); return; }
 
   const btn=document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
   document.getElementById('erroFinal').style.display='none';

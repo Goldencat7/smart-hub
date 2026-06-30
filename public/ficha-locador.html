@@ -348,6 +348,34 @@ window.toggleTit2 = function(show) {
 function maskCPF(v){ let d=(''+v).replace(/\D/g,'').slice(0,11); if(d.length>9) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`; if(d.length>6) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6)}`; if(d.length>3) return `${d.slice(0,3)}.${d.slice(3)}`; return d; }
 function maskMoney(v){ let d=(''+v).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; return 'R$ '+d.slice(0,-2).replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+d.slice(-2); }
 
+// ── Validação de CPF (dígito verificador) ──
+function validarCPF(cpf){
+  const d=(''+cpf).replace(/\D/g,'');
+  if(d.length!==11||/^(\d)\1{10}$/.test(d)) return false;
+  let soma=0; for(let i=0;i<9;i++) soma+=parseInt(d[i])*(10-i);
+  let resto=soma%11, dv1=resto<2?0:11-resto;
+  if(dv1!==parseInt(d[9])) return false;
+  soma=0; for(let i=0;i<10;i++) soma+=parseInt(d[i])*(11-i);
+  resto=soma%11; const dv2=resto<2?0:11-resto;
+  return dv2===parseInt(d[10]);
+}
+// Confere CPFs preenchidos e telefones duplicados no objeto `dados` (já montado do FormData). Devolve mensagem ou null.
+function validarCpfsETelefones(dados){
+  for(const k of Object.keys(dados)){
+    if(dados[k]==='Não existe') continue;
+    const val=(''+dados[k]).trim(); if(!val) continue;
+    if(/cpf$/i.test(k) && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
+  }
+  const fonesVistos=new Map();
+  for(const k of Object.keys(dados)){
+    if(!/celular|whatsapp|fixo/i.test(k)) continue;
+    const d=(''+dados[k]).replace(/\D/g,''); if(d.length<8) continue;
+    if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
+    fonesVistos.set(d,k);
+  }
+  return null;
+}
+
 document.querySelectorAll('[data-cpf]').forEach(el => el.addEventListener('input', function(){ this.value = maskCPF(this.value); updateBadge(this); atualizarProgresso(); }));
 document.querySelectorAll('[data-money]').forEach(el => el.addEventListener('input', function(){ this.value = maskMoney(this.value); updateBadge(this); atualizarProgresso(); }));
 document.querySelectorAll('input:not([data-cpf]):not([data-money]),select,textarea').forEach(el => {
@@ -566,6 +594,9 @@ document.getElementById('formFicha').addEventListener('submit', async function(e
   new FormData(this).forEach((v, k) => { if (v) dados[k] = v; });
   // Inputs disabled (NI "Não existe") não entram no FormData — coleta manualmente
   document.querySelectorAll('[data-ni]:checked').forEach(cb => { dados[cb.dataset.ni] = 'Não existe'; });
+
+  const erroCpfFone = validarCpfsETelefones(dados);
+  if (erroCpfFone) { mostrarErro(erroCpfFone); btn.disabled = false; btn.textContent = 'Enviar ficha'; return; }
 
   const fichaId = Date.now().toString(36) + Math.random().toString(36).slice(2);
   const urlsDocs = {}, docsKeys = Object.keys(arquivos);

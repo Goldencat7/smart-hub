@@ -203,6 +203,35 @@ function maskCPF(x){ let d=(''+x).replace(/\D/g,'').slice(0,11); if(d.length>9) 
 function maskCEP(x){ let d=(''+x).replace(/\D/g,'').slice(0,8); return d.length>5?`${d.slice(0,5)}-${d.slice(5)}`:d; }
 function maskMoney(x){ let d=(''+x).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; const int=d.slice(0,-2),c=d.slice(-2); return 'R$ '+int.replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+c; }
 
+// ── Validação de CPF (dígito verificador) ──
+function validarCPF(cpf){
+  const d=(''+cpf).replace(/\D/g,'');
+  if(d.length!==11||/^(\d)\1{10}$/.test(d)) return false;
+  let soma=0; for(let i=0;i<9;i++) soma+=parseInt(d[i])*(10-i);
+  let resto=soma%11, dv1=resto<2?0:11-resto;
+  if(dv1!==parseInt(d[9])) return false;
+  soma=0; for(let i=0;i<10;i++) soma+=parseInt(d[i])*(11-i);
+  resto=soma%11; const dv2=resto<2?0:11-resto;
+  return dv2===parseInt(d[10]);
+}
+// Confere CPFs preenchidos e telefones duplicados. Devolve mensagem de erro ou null.
+function validarCpfsETelefones(){
+  for(const k of Object.keys(valores)){
+    if(isPend(k)) continue;
+    const val=(''+(valores[k]||'')).trim(); if(!val) continue;
+    if(/cpf$/i.test(k) && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
+  }
+  const fonesVistos=new Map();
+  for(const k of Object.keys(valores)){
+    if(!/celular|whatsapp|fixo|telefone/i.test(k)) continue;
+    if(isPend(k)) continue;
+    const d=(''+(valores[k]||'')).replace(/\D/g,''); if(d.length<8) continue;
+    if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
+    fonesVistos.set(d,k);
+  }
+  return null;
+}
+
 // ── CEP lookup (preenche os campos irmãos do mesmo bloco/imóvel) ──
 async function lookupCEP(input){
   const key = input.dataset.key;
@@ -316,6 +345,8 @@ form.addEventListener('submit', async e=>{
   const rigidos = [['nome','nome'],['whatsapp','WhatsApp'],['email','e-mail']];
   const falta = rigidos.filter(([k])=> !(valores[k]&&(''+valores[k]).trim()));
   if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do locador principal.'); return; }
+  const erroCpfFone = validarCpfsETelefones();
+  if(erroCpfFone){ mostrarErro(erroCpfFone); return; }
 
   const btn = document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
   document.getElementById('erroFinal').style.display='none';
