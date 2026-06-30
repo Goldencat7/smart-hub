@@ -1943,14 +1943,14 @@ const FICHAS_CONFIG = [
   },
   {
     key: 'pf',
-    nome: 'Ficha Cadastral Pessoa Física',
+    nome: 'Ficha Cadastral Locatário (Pessoa Física)',
     desc: 'Cadastro de locatário pessoa física',
     arquivo: 'ficha-pf.html',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
     key: 'pj',
-    nome: 'Ficha Cadastral Pessoa Jurídica',
+    nome: 'Ficha Cadastral Locatário (Pessoa Jurídica)',
     desc: 'Cadastro de locatário pessoa jurídica',
     arquivo: 'ficha-pj.html',
     geraLink: true, temAnalise: true, temFirebase: true
