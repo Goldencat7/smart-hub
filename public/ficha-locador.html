@@ -305,6 +305,7 @@ const origemHub   = params.get('origem') === 'hub';
 
 const pendentes = new Set();
 const arquivos  = {};
+let somenteLeitura = false;
 
 // ── Visibilidade de seções ──────────────────────────────────────────
 window.toggleConjuge = function(secId, civil) {
