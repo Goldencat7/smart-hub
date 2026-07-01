@@ -2166,8 +2166,8 @@ async function carregarListaFichas(fichaKey = 'locador') {
     // Reenviar ao cliente
     lista.querySelectorAll('.btn-reenviar').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const obs = prompt('Observação para o cliente (opcional):') ?? '';
-        if (obs === null) return;
+        const obs = prompt('Observação para o cliente (opcional):');
+        if (obs === null) return; // cancelou o prompt → não reenvia
         btn.disabled = true; btn.textContent = 'Gerando link...';
         try {
           const res = await fnReenviar({ fichaId: btn.dataset.id, observacao: obs });

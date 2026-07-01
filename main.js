@@ -27,8 +27,9 @@ function iniciarServidorMarketing() {
       try {
         const nome = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname).replace(/^\/+/, '');
         const alvo = path.join(baseDir, nome);
-        // Proteção contra path traversal: o arquivo tem que ficar dentro de marketing/
-        if (!alvo.startsWith(baseDir)) { res.writeHead(403); res.end('Forbidden'); return; }
+        // Proteção contra path traversal: o arquivo tem que ficar dentro de marketing/.
+        // Usa baseDir + separador pra não deixar passar pasta-irmã (ex.: marketing2/).
+        if (alvo !== baseDir && !alvo.startsWith(baseDir + path.sep)) { res.writeHead(403); res.end('Forbidden'); return; }
         fs.readFile(alvo, (err, data) => {
           if (err) { res.writeHead(404); res.end('Not found'); return; }
           const mime = MARKETING_MIME[path.extname(alvo).toLowerCase()] || 'application/octet-stream';
