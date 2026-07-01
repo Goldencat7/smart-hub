@@ -14,6 +14,19 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
 
 const db = admin.firestore();
 
+// ─── Monitoramento: log de erros no Firestore ──────────────────────────────
+async function logErro(funcao, erro, contexto = {}) {
+  try {
+    await db.collection('_erros').add({
+      funcao,
+      mensagem: erro.message || String(erro),
+      contexto,
+      timestamp: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (_) { /* fallback: Cloud Logging via console.error */ }
+  console.error(`[ERRO][${funcao}]`, erro.message || erro, contexto);
+}
+
 // ─── Google Agenda (OAuth + sincronização) ──────────────────────────────────
 // A chave secreta do cliente OAuth fica no cofre (Secret Manager), NUNCA no código.
 const { defineSecret } = require('firebase-functions/params');
@@ -1760,7 +1773,7 @@ async function avisarCorretorFichaRecebida(event) {
       text: `${tipo} recebida de ${nomeCliente}. Acesse o Hub para revisar.`
     });
   } catch (e) {
-    console.error('Falha ao notificar corretor:', e.message);
+    await logErro('avisarCorretorFichaRecebida', e, { corretorUid, tipo });
   }
 }
 
@@ -1773,3 +1786,92 @@ exports.onFichaTipoRecebida = onDocumentWritten({
   document: 'fichas/{fichaId}',
   secrets: [SUPPORT_EMAIL_PASS]
 }, avisarCorretorFichaRecebida);
+
+// ─── Backup diário do Firestore ───────────────────────────────────────────────
+// Exporta todas as coleções para gs://remax-smart-hub-backups/{data}.
+// Pré-requisitos (1x): criar o bucket e dar permissão ao service account.
+exports.backupFirestore = onSchedule({
+  schedule: '0 3 * * *',
+  timeZone: TZ
+}, async () => {
+  const { GoogleAuth } = require('google-auth-library');
+  const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
+  const client = await auth.getClient();
+  const { token } = await client.getAccessToken();
+
+  const projectId = 'remax-smart-hub';
+  const timestamp = new Date().toISOString().split('T')[0];
+
+  const resp = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outputUriPrefix: `gs://${projectId}-backups/${timestamp}` })
+    }
+  );
+
+  if (!resp.ok) {
+    const body = await resp.text();
+    await logErro('backupFirestore', new Error(`${resp.status}: ${body}`));
+    return;
+  }
+
+  console.log('Backup Firestore concluído para', `gs://${projectId}-backups/${timestamp}`);
+});
+
+// ─── Relatório diário de erros ────────────────────────────────────────────────
+// Roda às 8h: se houve erros nas últimas 24h, manda email pro suporte.
+// Limpa erros com mais de 7 dias.
+exports.relatorioErrosDiario = onSchedule({
+  schedule: '0 8 * * *',
+  timeZone: TZ,
+  secrets: [SUPPORT_EMAIL_PASS]
+}, async () => {
+  const ontem = new Date();
+  ontem.setDate(ontem.getDate() - 1);
+
+  const snap = await db.collection('_erros')
+    .where('timestamp', '>=', ontem)
+    .orderBy('timestamp', 'desc')
+    .get();
+
+  if (!snap.empty) {
+    const linhas = snap.docs.map(d => {
+      const e = d.data();
+      const ctx = e.contexto && Object.keys(e.contexto).length
+        ? ` (${JSON.stringify(e.contexto)})` : '';
+      return `• [${e.funcao}] ${e.mensagem}${ctx}`;
+    });
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+    });
+
+    await transporter.sendMail({
+      from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
+      to: SUPORTE_EMAIL,
+      subject: `[Hub] ${snap.size} erro(s) nas últimas 24h`,
+      html: `<div style="font-family:system-ui,sans-serif">`
+          + `<h3 style="color:#c00">Erros detectados no Hub</h3>`
+          + `<pre style="background:#f5f5f5;padding:12px;border-radius:6px;font-size:13px">${linhas.join('\n')}</pre>`
+          + `<p style="font-size:12px;color:#999">E-mail automático — Hub REMAX Smart</p></div>`,
+      text: `Erros nas últimas 24h:\n\n${linhas.join('\n')}`
+    });
+  }
+
+  // Limpa erros com mais de 7 dias
+  const seteDias = new Date();
+  seteDias.setDate(seteDias.getDate() - 7);
+  const antigos = await db.collection('_erros')
+    .where('timestamp', '<', seteDias)
+    .get();
+  if (!antigos.empty) {
+    const batch = db.batch();
+    antigos.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  console.log(`Relatório: ${snap.empty ? '0' : snap.size} erro(s); ${antigos?.size || 0} antigo(s) removido(s).`);
+});

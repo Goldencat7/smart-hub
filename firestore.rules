@@ -17,16 +17,29 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.admin == true;
     }
 
-    // Fichas do locador. O acesso do corretor/admin é via Cloud Functions (Admin SDK).
-    // Cliente é anônimo: cria pelo formulário e edita pelo link (o ID do doc é o segredo).
-    // get/update liberados por link; list (enumerar tudo) só admin.
+    // Fichas do locador — cliente anônimo cria/edita, mas com validação:
+    // - corretorUid obrigatório e imutável (impede trocar o dono)
+    // - status do client-side sempre 'aguardando_corretor' (Admin SDK muda pra outros)
     match /fichas_locador/{id} {
-      allow get, create, update: if true;
+      allow get: if true;
+      allow create: if request.resource.data.corretorUid is string
+                    && request.resource.data.corretorUid.size() > 0
+                    && request.resource.data.status == 'aguardando_corretor';
+      allow update: if request.resource.data.corretorUid == resource.data.corretorUid
+                    && request.resource.data.status == 'aguardando_corretor';
       allow list: if request.auth != null && request.auth.token.admin == true;
     }
-    // Fichas genéricas (pf, pj, vendedor, locacao_fiador, proposta) — mesmo modelo.
+
+    // Fichas genéricas (pf, pj, vendedor, locacao_fiador, proposta) — mesmo modelo + tipo imutável.
     match /fichas/{id} {
-      allow get, create, update: if true;
+      allow get: if true;
+      allow create: if request.resource.data.corretorUid is string
+                    && request.resource.data.corretorUid.size() > 0
+                    && request.resource.data.tipo is string
+                    && request.resource.data.status == 'aguardando_corretor';
+      allow update: if request.resource.data.corretorUid == resource.data.corretorUid
+                    && request.resource.data.tipo == resource.data.tipo
+                    && request.resource.data.status == 'aguardando_corretor';
       allow list: if request.auth != null && request.auth.token.admin == true;
     }
   }
