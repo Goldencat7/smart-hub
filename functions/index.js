@@ -1,5 +1,6 @@
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -1714,3 +1715,61 @@ exports.finalizarFichaTipo = onCall(async (req) => {
   await ref.update({ status: 'finalizado', finalizadoEm: admin.firestore.FieldValue.serverTimestamp(), finalizadoPor: uid });
   return { ok: true };
 });
+
+// ─── Trigger: avisa o corretor por email quando recebe ficha do cliente ───────
+const NOMES_FICHA = { locador:'Ficha do Locador', pf:'Ficha Locatário (PF)', pj:'Ficha Locatário (PJ)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
+
+async function avisarCorretorFichaRecebida(event) {
+  const before = event.data.before?.data();
+  const after  = event.data.after?.data();
+  if (!after || after.status !== 'aguardando_corretor') return;
+  if (before && before.status === 'aguardando_corretor') return;
+
+  const corretorUid = after.corretorUid;
+  if (!corretorUid) return;
+
+  let email;
+  try { email = (await admin.auth().getUser(corretorUid)).email; } catch (_) { return; }
+  if (!email) return;
+
+  const nomeCliente = after.dados?.nome || 'Cliente';
+  const tipo = after.tipo ? (NOMES_FICHA[after.tipo] || 'Ficha') : 'Ficha do Locador';
+  const reenvio = !!before;
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+  });
+  try {
+    await transporter.sendMail({
+      from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
+      to: email,
+      subject: `[Hub] ${tipo} recebida — ${nomeCliente}`,
+      html: `<div style="font-family:system-ui,sans-serif;max-width:520px">`
+          + `<p>Olá, ${escaparHtml(after.corretorNome || 'corretor')}!</p>`
+          + `<p>${reenvio ? 'O cliente <strong>reenviou</strong> a ficha após as correções' : 'Uma <strong>nova ficha</strong> foi preenchida pelo cliente'}.</p>`
+          + `<table style="border-collapse:collapse;font-size:14px;margin:12px 0">`
+          + `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>Tipo</strong></td><td>${escaparHtml(tipo)}</td></tr>`
+          + `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>Cliente</strong></td><td>${escaparHtml(nomeCliente)}</td></tr>`
+          + (after.dados?.whatsapp ? `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>WhatsApp</strong></td><td>${escaparHtml(after.dados.whatsapp)}</td></tr>` : '')
+          + `</table>`
+          + `<p>Acesse o <strong>Hub</strong> para revisar a ficha.</p>`
+          + `<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">`
+          + `<p style="font-size:12px;color:#999">E-mail automático do Hub REMAX Smart.</p>`
+          + `</div>`,
+      text: `${tipo} recebida de ${nomeCliente}. Acesse o Hub para revisar.`
+    });
+  } catch (e) {
+    console.error('Falha ao notificar corretor:', e.message);
+  }
+}
+
+exports.onFichaLocadorRecebida = onDocumentWritten({
+  document: 'fichas_locador/{fichaId}',
+  secrets: [SUPPORT_EMAIL_PASS]
+}, avisarCorretorFichaRecebida);
+
+exports.onFichaTipoRecebida = onDocumentWritten({
+  document: 'fichas/{fichaId}',
+  secrets: [SUPPORT_EMAIL_PASS]
+}, avisarCorretorFichaRecebida);
