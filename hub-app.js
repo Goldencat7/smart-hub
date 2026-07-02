@@ -38,6 +38,7 @@ const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
+const locObterImovel = httpsCallable(fns, 'locObterImovel');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -1925,6 +1926,67 @@ const IMOVEL_STATUS = [
 const imovelLabel = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).label || k;
 const imovelCor   = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).cor   || '#6b7280';
 const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
+const IMOVEL_NOMES_DOC = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio' };
+const IMOVEL_NOMES_PEND = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio', profissao:'Profissão', im_admcond:'Adm. condominial', im_admcontato:'Contato adm', im_condominio:'Condomínio', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU' };
+
+// Renderiza o detalhe completo de um imóvel (retorno de locObterImovel).
+function renderDetalheImovel(d) {
+  const lin = (r, v) => v ? `<div style="display:flex;gap:8px;padding:2px 0"><span style="color:var(--text-muted);min-width:130px;flex-shrink:0">${r}</span><span>${escapeHtml(v)}</span></div>` : '';
+  const sec = (t, corpo) => corpo ? `<div style="margin-top:12px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-primary);margin-bottom:4px">${t}</div>${corpo}</div>` : '';
+  const im = d.imovel || {};
+
+  const locHtml = (d.locadores || []).map((p, i) => {
+    const e = p.endereco || {};
+    const end = [e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.estado, e.cep].filter(Boolean).join(', ');
+    const conj = p.conjuge ? lin('Cônjuge', [p.conjuge.nome, p.conjuge.cpf].filter(Boolean).join(' · ')) : '';
+    return sec((d.locadores.length > 1 ? `Locador ${i + 1}` : 'Locador'),
+      lin('Nome', p.nome) + lin('CPF', p.cpf) + lin('RG', p.rg) + lin('Nascimento', p.dataNasc) + lin('Estado civil', p.estadoCivil) + lin('Profissão', p.profissao) + lin('E-mail', p.email) + lin('WhatsApp', p.whatsapp) + lin('Telefone', p.fixo) + lin('Endereço', end) + conj);
+  }).join('');
+
+  const e = im.endereco || {};
+  const endImovel = [e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.estado, e.cep].filter(Boolean).join(', ');
+  const inst = [im.instalacoes?.enel && 'ENEL ' + im.instalacoes.enel, im.instalacoes?.sabesp && 'Sabesp ' + im.instalacoes.sabesp, im.instalacoes?.comgas && 'Comgás ' + im.instalacoes.comgas].filter(Boolean).join(' · ');
+  const imovelHtml = sec('Imóvel',
+    lin('Tipo', im.tipo) + lin('Referência', im.referencia) + lin('Endereço', endImovel) + lin('Condomínio', im.condominio) + lin('Adm. condominial', im.admCondominial) + lin('Contato adm', im.admContato) + lin('Valor condomínio', im.valorCondominio) + lin('IPTU', im.iptu) + lin('Contribuinte IPTU', im.contribuinteIptu) + lin('Instalações', inst) + lin('Início pretendido', im.inicioPretendido) + lin('Valor anúncio', im.valorAnuncio) + lin('Valor proposta', im.valorProposta));
+
+  const t1 = im.repasse?.titular1 || {}, t2 = im.repasse?.titular2 || {};
+  const banc = t => [t.banco && 'Banco ' + t.banco, t.agencia && 'Ag ' + t.agencia, t.conta && 'Conta ' + t.conta, t.favorecido, t.pix && 'PIX ' + t.pix].filter(Boolean).join(' · ');
+  const repasseHtml = sec('Repasse (dados bancários)', lin('Titular 1', banc(t1)) + lin('Titular 2', banc(t2)));
+
+  const adm = im.administracao || {};
+  const admHtml = sec('Administração', lin('REMAX administra?', adm.remaxAdministra) + lin('Taxa', adm.taxa) + lin('Tipo de repasse', adm.tipoRepasse) + lin('Observações', adm.observacoes));
+
+  const docs = Object.entries(im.documentos || {}).filter(([, url]) => /^https?:/i.test(url));
+  const docsHtml = docs.length ? sec('Documentos', `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${docs.map(([k, url]) => `<a href="${escapeHtml(url)}" target="_blank" class="topbar-btn" style="font-size:11px;padding:4px 10px">${escapeHtml(IMOVEL_NOMES_DOC[k] || k)} ↗</a>`).join('')}</div>`) : '';
+
+  const pend = im.pendentes || [];
+  const pendHtml = pend.length ? sec('Pendências ("Não tenho agora")', `<div style="font-size:12px;color:#b45309">${pend.map(p => escapeHtml(IMOVEL_NOMES_PEND[p] || p)).join(', ')}</div>`) : '';
+
+  const hist = im.historico || [];
+  const histHtml = hist.length ? sec('Histórico de status', hist.map(h => {
+    const dt = h.em ? new Date(h.em).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+    return `<div style="font-size:11px;color:var(--text-muted);padding:1px 0">${imovelLabel(h.de)} → ${imovelLabel(h.para)} · ${escapeHtml(h.porNome || '—')} · ${dt}</div>`;
+  }).join('')) : '';
+
+  return locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml || '<p style="color:var(--text-muted)">Sem dados.</p>';
+}
+
+async function toggleDetalheImovel(btn) {
+  const id = btn.dataset.id;
+  const cont = document.getElementById('det-' + id);
+  if (!cont) return;
+  if (!cont.hidden) { cont.hidden = true; btn.textContent = 'Ver detalhes ▾'; return; }
+  cont.hidden = false; btn.textContent = 'Ocultar ▴';
+  if (cont.dataset.carregado) return;
+  cont.innerHTML = '<p style="color:var(--text-muted)">Carregando detalhes...</p>';
+  try {
+    const res = await locObterImovel({ imovelId: id });
+    cont.innerHTML = renderDetalheImovel(res.data || {});
+    cont.dataset.carregado = '1';
+  } catch (e) {
+    cont.innerHTML = `<p style="color:var(--text-muted)">Erro ao carregar: ${escapeHtml(e.message)}</p>`;
+  }
+}
 
 // Card de um imóvel. Se `role` for gestor/administrativo, inclui o controle de mover status.
 function cardImovelHtml(im, role) {
@@ -1954,6 +2016,8 @@ function cardImovelHtml(im, role) {
     </div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
     ${controle}
+    <div style="margin-top:8px"><button class="topbar-btn btn-det-imovel" data-id="${im.id}" style="font-size:11px;padding:4px 10px">Ver detalhes ▾</button></div>
+    <div class="imovel-det" id="det-${im.id}" hidden style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"></div>
   </div>`;
 }
 
@@ -2012,6 +2076,11 @@ async function carregarImoveis() {
           carregarImoveis();
         }
       });
+    });
+
+    // Ver detalhes do imóvel (busca sob demanda)
+    secaoImoveis.querySelectorAll('.btn-det-imovel').forEach(btn => {
+      btn.addEventListener('click', () => toggleDetalheImovel(btn));
     });
   } catch (e) {
     secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;

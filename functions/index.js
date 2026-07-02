@@ -453,6 +453,45 @@ exports.locListarImoveis = onCall(async (req) => {
   return { imoveis, veTudo, role };
 });
 
+// (autenticado, com posse) Detalhe de um imóvel + seus locadores (coleção pessoas).
+// Reúne o que a esteira precisa pra revisar antes de aprovar. Respeita a regra de ouro:
+// gestor/administrativo veem qualquer um; corretor só os seus (corretorUid).
+exports.locObterImovel = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+
+  const snap = await db.collection('imoveis').doc(imovelId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const imovel = snap.data();
+
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && imovel.corretorUid !== auth.uid) {
+    throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
+  }
+
+  // Locadores (pessoas ligadas ao imóvel)
+  const locadores = [];
+  for (const pid of (imovel.locadorIds || [])) {
+    const p = await db.collection('pessoas').doc(pid).get();
+    if (p.exists) locadores.push({ id: p.id, ...p.data(), atualizadoEm: p.data().atualizadoEm?.toDate?.()?.toISOString() || null });
+  }
+
+  const historico = (imovel.historico || []).map(h => ({
+    ...h, em: h.em?.toDate?.()?.toISOString() || null
+  }));
+
+  return {
+    imovel: {
+      id: snap.id, ...imovel,
+      criadoEm: imovel.criadoEm?.toDate?.()?.toISOString() || null,
+      atualizadoEm: imovel.atualizadoEm?.toDate?.()?.toISOString() || null,
+      historico
+    },
+    locadores
+  };
+});
+
 // (gestor/administrativo) Move um imóvel pela esteira, com trilha de auditoria.
 // Regra da spec: recepção/triagem (recebido<->em_analise) o administrativo pode;
 // decisões (aprovado) e contrato (em_contrato/ativo) são EXCLUSIVAS do gestor.
