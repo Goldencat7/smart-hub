@@ -40,8 +40,7 @@ function render(){
     FE.row(FE.campo({label:'Valor IPTU',key:'im_iptu',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'Valor condomínio',key:'im_valorcond',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'})) +
     FE.row(FE.campo({label:'Instalação ENEL',key:'im_enel',badge:'opc',ni:true,nta:true}), FE.campo({label:'Instalação Sabesp',key:'im_sabesp',badge:'opc',ni:true,nta:true})) +
     FE.row(FE.campo({label:'Instalação Comgás',key:'im_comgas',badge:'opc',ni:true,nta:true}), FE.campo({label:'Contribuinte IPTU',key:'im_contribuinte',badge:'opc',ni:true,nta:true})) +
-    FE.row(FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}), FE.campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'})) +
-    FE.row(FE.campo({label:'Valor da entrada',key:'im_entrada',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'Financiamento',key:'im_financiamento',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'FGTS',key:'im_fgts',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}))
+    FE.row(FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}), FE.campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'}))
   );
 
   // 3. Informações financeiras (1-4 titulares)
@@ -50,16 +49,6 @@ function render(){
   if(!FE.ehSomenteLeitura() && st.numTit<4) fin+=`<button type="button" class="btn-add-bloco" data-action="addTit">+ Adicionar titular</button>`;
   h += FE.secao(3, 'Informações financeiras', fin, ' <small style="font-weight:400;color:#6b7280;font-size:12px">(para recebimento)</small>');
 
-  // 4. Comissões
-  h += FE.secao(4, 'Comissões',
-    FE.campo({label:'REMAX Smart — valor da comissão',key:'com_remax_valor',money:true,ph:'R$ 0,00'}) +
-    FE.subBloco('🤝 Imobiliária parceira (se houver)',
-      FE.row(FE.campo({label:'Imobiliária parceira',key:'com_parc_nome',badge:'opc',ni:true,nta:true}), FE.campo({label:'CNPJ',key:'com_parc_cnpj',cnpj:true,badge:'opc',ni:true,nta:true,ph:'00.000.000/0000-00'})) +
-      FE.row(FE.campo({label:'Banco',key:'com_parc_banco',badge:'opc',ni:true,nta:true}), FE.campo({label:'Agência',key:'com_parc_agencia',badge:'opc',ni:true,nta:true}), FE.campo({label:'Conta',key:'com_parc_conta',badge:'opc',ni:true,nta:true})) +
-      FE.campo({label:'Valor da comissão (parceira)',key:'com_parc_valor',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'})
-    ) +
-    FE.campoTextarea({label:'Outras informações',key:'outras',ph:'Acordos, prazos, condições especiais…'})
-  );
   return h;
 }
 
