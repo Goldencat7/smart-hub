@@ -238,6 +238,7 @@ const LOC_APPS = [
   { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira',       icone: ICN.painel },
   { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Esteira das captações',         icone: ICN.imoveis },
   { id: 'financeiro', titulo: 'Financeiro', desc: 'Cobranças, repasses e alertas', icone: ICN.financeiro },
+  { id: 'fichas',     titulo: 'Fichas',     desc: 'Cadastros e propostas de locação', icone: ICN.documentos },
 ];
 
 const CATEGORIAS = [
@@ -554,6 +555,7 @@ function renderCentro() {
     if (locSub === 'painel')     { secaoPainel.hidden = false;     carregarPainel(); }
     if (locSub === 'imoveis')    { secaoImoveis.hidden = false;    carregarImoveis(); }
     if (locSub === 'financeiro') { secaoFinanceiro.hidden = false; carregarFinanceiro(); }
+    if (locSub === 'fichas')     { secaoDocs.hidden = false;       carregarDocumentos('locacao'); }
     return;
   }
 
@@ -587,7 +589,7 @@ function renderCentro() {
     secaoDocs.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
-    carregarDocumentos();
+    carregarDocumentos('cadastro');
     return;
   }
   inputBusca.disabled = false;
@@ -2743,6 +2745,7 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Cadastral do Locador',
     desc: 'Cadastro do proprietário para locação de imóveis',
     arquivo: 'ficha-locador.html',
+    grupo: 'locacao',
     geraLink: true,
     temAnalise: true,   // botão "Para análise" (requer permissão analise_locador)
     temFirebase: true   // tem integração com Firestore (lista fichas recebidas)
@@ -2752,6 +2755,7 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Cadastral (Pessoa Física)',
     desc: 'Cadastro de pessoa física',
     arquivo: 'ficha-pf.html',
+    grupo: 'locacao',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
@@ -2759,6 +2763,7 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Cadastral (Pessoa Jurídica)',
     desc: 'Cadastro de pessoa jurídica',
     arquivo: 'ficha-pj.html',
+    grupo: 'locacao',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
@@ -2766,6 +2771,7 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Cadastral Locação com Fiador',
     desc: 'Cadastro com fiador para locação',
     arquivo: 'ficha-locacao-fiador.html',
+    grupo: 'locacao',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
@@ -2773,6 +2779,7 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Cadastral Vendedor',
     desc: 'Cadastro de vendedor para transação de venda',
     arquivo: 'ficha-vendedor.html',
+    grupo: 'venda',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
@@ -2780,6 +2787,7 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Proposta',
     desc: 'Proposta de compra ou locação de imóvel',
     arquivo: 'ficha-proposta.html',
+    grupo: 'venda',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
@@ -2787,15 +2795,24 @@ const FICHAS_CONFIG = [
     nome: 'Ficha Fiança',
     desc: 'Cotação de seguro fiança — preenchida pelo corretor',
     arquivo: 'ficha-fianca.html',
+    grupo: 'locacao',
     geraLink: false, abrirInterno: true, temAnalise: true, temFirebase: true
   },
 ];
 
-async function carregarDocumentos() {
+// grupo: 'locacao' (aba Locação), 'cadastro' (aba Cadastro) ou undefined (tudo).
+// Com a Gestão de Locações ativa (tester ou publicado), as fichas de locação vão
+// pra aba Locação e a aba Cadastro fica só com Vendedor/Proposta. Sem isso, tudo
+// continua na aba Cadastro (comportamento legado).
+async function carregarDocumentos(grupo) {
   const nomeCorretor = encodeURIComponent(document.getElementById('usuarioInfo')?.textContent?.trim() || '');
+  const locAtivo = betaLocacoes || locacoesPublicado;
+  const fichas = grupo === 'locacao'
+    ? FICHAS_CONFIG.filter(f => f.grupo === 'locacao')
+    : (locAtivo ? FICHAS_CONFIG.filter(f => f.grupo === 'venda') : FICHAS_CONFIG);
 
   // Gera um accordion para cada ficha no catálogo
-  secaoDocs.innerHTML = FICHAS_CONFIG.map(f => {
+  secaoDocs.innerHTML = fichas.map(f => {
     const link = `${BASE_HOSTING}/${f.arquivo}?corretor=${currentUid}&nome=${nomeCorretor}`;
     return `
       <div class="docs-accordion" id="acc-${f.key}">
@@ -2827,7 +2844,7 @@ async function carregarDocumentos() {
   }).join('');
 
   // Inicializa cada ficha
-  FICHAS_CONFIG.forEach(f => {
+  fichas.forEach(f => {
     const head    = secaoDocs.querySelector(`.docs-acc-head[data-key="${f.key}"]`);
     const body    = document.getElementById(`body-${f.key}`);
     const chevron = head.querySelector('.acc-chevron');
@@ -3109,15 +3126,24 @@ function renderNotifPanel() {
     item.addEventListener('click', () => {
       notifPanel.hidden = true;
       const secKey = item.dataset.tipo;
-      // Navega para Documentos
-      categoriaAtiva = 'documentos';
+      // Com a Locação ativa, as fichas de locação ficam na aba Locação → Fichas;
+      // as de venda (vendedor/proposta) seguem na aba Cadastro.
+      const locAtivo = betaLocacoes || locacoesPublicado;
+      const ficha = FICHAS_CONFIG.find(f => f.key === secKey);
+      if (locAtivo && ficha && ficha.grupo === 'locacao') {
+        categoriaAtiva = 'locacoes';
+        locSub = 'fichas';
+      } else {
+        categoriaAtiva = 'documentos';
+        locSub = null;
+      }
       renderSidebar();
       renderCentro();
       // Abre o accordion da ficha correspondente
       setTimeout(() => {
         const head = document.querySelector(`.docs-acc-head[data-key="${secKey}"]`);
         if (head) head.click();
-      }, 200);
+      }, 250);
     });
   });
 }
