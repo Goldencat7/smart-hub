@@ -235,7 +235,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 }
 .nav-icone svg { width: 19px; height: 19px; }
 .nav-label  { flex: 1; }
-.nav-badge-fichas { width: 8px; height: 8px; border-radius: 50%; background: #DC1C2E; flex-shrink: 0; }
+.acc-notif-dot { width: 8px; height: 8px; border-radius: 50%; background: #DC1C2E; flex-shrink: 0; }
 
 /* ── Área central ────────────────────────────────────────────────── */
 .hub-main {
