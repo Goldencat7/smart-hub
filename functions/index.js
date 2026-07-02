@@ -428,10 +428,13 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       await db.collection('pessoas').doc(id1).set({ ...p1, corretorUid: after.corretorUid, fichaId, atualizadoEm: ts() }, { merge: true });
       locadorIds.push(id1);
     }
+    const id2 = `${fichaId}_loc2`;
     if (dados.loc2_nome) {
-      const id2 = `${fichaId}_loc2`;
       await db.collection('pessoas').doc(id2).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: after.corretorUid, fichaId, atualizadoEm: ts() }, { merge: true });
       locadorIds.push(id2);
+    } else {
+      // Se o 2º locador foi removido numa reedição, apaga o doc órfão (LGPD).
+      await db.collection('pessoas').doc(id2).delete().catch(() => {});
     }
     // Imóvel — id = fichaId
     const imovelRef = db.collection('imoveis').doc(fichaId);
@@ -560,16 +563,7 @@ exports.locMoverImovelStatus = onCall(async (req) => {
   if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
   if (!IMOVEL_STATUS_VALIDOS.includes(novoStatus)) throw new HttpsError('invalid-argument', 'Status inválido.');
   if (IMOVEL_STATUS_SO_GESTOR.includes(novoStatus) && !ehGestor) {
-    throw new HttpsError('permission-denied', 'Só o gestor pode aprovar, mandar pra contrato ou ativar.');
-  }
-
-  // Regra de negócio: pra ir a "em_contrato" precisa de análise + garantia aprovadas.
-  if (novoStatus === 'em_contrato') {
-    const gate = await locImovelPodeContratar(imovelId);
-    if (!gate.ok) {
-      const falta = [!gate.analiseOk && 'análise do locatário aprovada', !gate.garantiaOk && 'garantia aprovada'].filter(Boolean).join(' e ');
-      throw new HttpsError('failed-precondition', `Falta ${falta} antes de ir pra contrato.`);
-    }
+    throw new HttpsError('permission-denied', 'Só o gestor pode aprovar ou mandar pra contrato.');
   }
 
   const ref = db.collection('imoveis').doc(imovelId);
@@ -577,6 +571,23 @@ exports.locMoverImovelStatus = onCall(async (req) => {
   if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
   const atual = snap.data().status || 'recebido';
   if (atual === novoStatus) return { ok: true, status: novoStatus };
+
+  // Máquina de estados (a esteira só faz triagem + entrada em contrato):
+  // - 'ativo' NÃO é manual — só via locAtivarContrato (que valida vigência/valor e gera cobranças).
+  // - imóvel já 'ativo' não volta pela esteira (deixaria contrato/cobranças órfãos).
+  // - 'em_contrato' exige vir de 'aprovado' E o gate de análise + garantia.
+  if (novoStatus === 'ativo') throw new HttpsError('failed-precondition', "Pra ativar, use 'Ativar contrato' no detalhe do imóvel.");
+  if (atual === 'ativo') throw new HttpsError('failed-precondition', 'Imóvel ativo é controlado pelo contrato, não pela esteira.');
+  if (novoStatus === 'em_contrato') {
+    if (atual !== 'aprovado' && atual !== 'em_contrato') {
+      throw new HttpsError('failed-precondition', 'O imóvel precisa estar "Aprovado" antes de ir pra contrato.');
+    }
+    const gate = await locImovelPodeContratar(imovelId);
+    if (!gate.ok) {
+      const falta = [!gate.analiseOk && 'análise do locatário aprovada', !gate.garantiaOk && 'garantia aprovada'].filter(Boolean).join(' e ');
+      throw new HttpsError('failed-precondition', `Falta ${falta} antes de ir pra contrato.`);
+    }
+  }
 
   let porNome = '';
   try { porNome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
@@ -682,6 +693,7 @@ exports.locCriarContrato = onCall(async (req) => {
   const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
   if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
   const imovel = imovelSnap.data();
+  if (imovel.status === 'ativo') throw new HttpsError('failed-precondition', 'Imóvel já está ativo (contrato em vigor).');
 
   const gate = await locImovelPodeContratar(imovelId);
   if (!gate.ok) {
@@ -813,7 +825,10 @@ async function exigirFinanceiro(req) {
 async function gerarCobrancasDoContrato(c, contratoId) {
   const pi = String(c.vigenciaInicio || '').split('-').map(Number);
   const pf = String(c.vigenciaFim || '').split('-').map(Number);
-  if (!pi[0] || !pi[1] || !pf[0] || !pf[1]) return;
+  if (!pi[0] || !pi[1] || !pf[0] || !pf[1]) {
+    console.warn(`gerarCobrancasDoContrato: vigência inválida no contrato ${contratoId} (${c.vigenciaInicio}..${c.vigenciaFim}) — nenhuma cobrança gerada.`);
+    return;
+  }
   const dia = Math.min(28, Math.max(1, c.diaVencimento || 10));
   const valorAluguel = c.valorAluguel || 0, valorCond = c.valorCondominio || 0, valorIptu = c.valorIptu || 0;
   const valorCobranca = valorAluguel + valorCond + valorIptu;                 // o que o locatário paga
@@ -837,6 +852,9 @@ async function gerarCobrancasDoContrato(c, contratoId) {
       valorRepasse, status: 'pendente', dataRepasse: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
     }, { merge: true });
     count++; m++; if (m > 12) { m = 1; y++; }
+  }
+  if (count >= 60 && (y < pf[0] || (y === pf[0] && m <= pf[1]))) {
+    console.warn(`gerarCobrancasDoContrato: contrato ${contratoId} tem vigência > 60 meses; geradas só as 60 primeiras competências.`);
   }
   await batch.commit();
 }
@@ -888,6 +906,49 @@ exports.locListarFinanceiro = onCall(async (req) => {
   return { cobrancas, repasses, veTudo, podeBaixar };
 });
 
+// (autenticado) Painel/Dashboard: números agregados (T4/T11). Gestor/admin veem tudo;
+// corretor só os seus. Evita índice composto: filtra por 1 campo e agrega em memória
+// (volume pequeno — ~12 corretores, dezenas de imóveis/mês).
+exports.locDashboard = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const flt = coll => veTudo ? db.collection(coll) : db.collection(coll).where('corretorUid', '==', auth.uid);
+
+  const [imS, ctS, cobS, repS] = await Promise.all([
+    flt('imoveis').get(), flt('contratos').get(), flt('cobrancas').get(), flt('repasses').get()
+  ]);
+
+  const porStatus = {};
+  imS.forEach(d => { const s = d.data().status || 'recebido'; porStatus[s] = (porStatus[s] || 0) + 1; });
+
+  const contratosAtivos = ctS.docs.filter(d => d.data().status === 'ativo').length;
+
+  let inadimplenciaQtd = 0, inadimplenciaValor = 0;
+  cobS.forEach(d => { const x = d.data(); if (x.status === 'atrasado') { inadimplenciaQtd++; inadimplenciaValor += (x.valor || 0); } });
+
+  let repassePendQtd = 0, repassePendValor = 0, repassadoMesValor = 0;
+  const compAtual = admin.firestore.Timestamp.now().toDate().toISOString().slice(0, 7);
+  repS.forEach(d => {
+    const x = d.data();
+    if (x.status === 'pendente') { repassePendQtd++; repassePendValor += (x.valorRepasse || 0); }
+    if (x.status === 'repassado' && x.competencia === compAtual) repassadoMesValor += (x.valorRepasse || 0);
+  });
+
+  // Cadastros aguardando análise = imóveis em em_analise (proxy da esteira)
+  const aguardandoAnalise = porStatus['em_analise'] || 0;
+
+  return {
+    veTudo,
+    imoveisPorStatus: porStatus,
+    totalImoveis: imS.size,
+    contratosAtivos,
+    inadimplencia: { qtd: inadimplenciaQtd, valor: inadimplenciaValor },
+    repassePendente: { qtd: repassePendQtd, valor: repassePendValor },
+    repassadoMes: repassadoMesValor,
+    aguardandoAnalise
+  };
+});
+
 // (autenticado) Central de alertas: atrasos + repasses pendentes (dos seus, se corretor).
 exports.locListarAlertas = onCall(async (req) => {
   const auth = exigirAutenticado(req);
@@ -931,6 +992,14 @@ exports.locSalvarVistoria = onCall(async (req) => {
   if (!veTudo && imovelSnap.data().corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
 
   const ref = vistoriaId ? db.collection('vistorias').doc(vistoriaId) : db.collection('vistorias').doc();
+  // Ao editar (vistoriaId dado), a vistoria existente PRECISA pertencer a este imóvel —
+  // impede sobrescrever/sequestrar a vistoria de outro imóvel/corretor via id arbitrário (IDOR).
+  if (vistoriaId) {
+    const existente = await ref.get();
+    if (existente.exists && existente.data().imovelId !== imovelId) {
+      throw new HttpsError('permission-denied', 'Esta vistoria não pertence a este imóvel.');
+    }
+  }
   const base = {
     imovelId, contratoId: imovelId, corretorUid: imovelSnap.data().corretorUid,
     tipo, status, laudoUrl: laudoUrl || '', obs: obs || '',

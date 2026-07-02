@@ -53,6 +53,7 @@ const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
 const locListarPessoasPerfis = httpsCallable(fns, 'locListarPessoasPerfis');
 const locDefinirPerfil = httpsCallable(fns, 'locDefinirPerfil');
 const locMeuPerfil = httpsCallable(fns, 'locMeuPerfil');
+const locDashboard = httpsCallable(fns, 'locDashboard');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -191,6 +192,7 @@ const ICN = {
   imoveis:      svgIcone('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/>'),
   financeiro:   svgIcone('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.4"/>'),
   locadmin:     svgIcone('<path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="M9 12l2 2 4-4"/>'),
+  painel:       svgIcone('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -240,6 +242,7 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
+  { id: 'painel',      nome: 'Painel',    icone: ICN.painel, painel: true },
   { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true },
   { id: 'financeiro',  nome: 'Financeiro', icone: ICN.financeiro, financeiro: true },
   { id: 'locadmin',    nome: 'Locação',   icone: ICN.locadmin, locadmin: true, soGestor: true },
@@ -292,6 +295,7 @@ const secaoNotas          = document.getElementById('secaoNotas');
 const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
 const secaoLocAdmin       = document.getElementById('secaoLocAdmin');
+const secaoPainel         = document.getElementById('secaoPainel');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -396,6 +400,7 @@ function renderCentro() {
   secaoImoveis.hidden = true;
   secaoFinanceiro.hidden = true;
   secaoLocAdmin.hidden = true;
+  secaoPainel.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
@@ -503,6 +508,18 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarNotas();
+    return;
+  }
+
+  // Aba Painel (dashboard — Gestão de Locações)
+  if (cat.painel) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoPainel.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarPainel();
     return;
   }
 
@@ -633,7 +650,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis', 'financeiro', 'locadmin']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis', 'financeiro', 'locadmin', 'painel']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -2249,8 +2266,9 @@ function cardImovelHtml(im, role) {
     .filter(Boolean).map(escapeHtml).join(' · ');
 
   let controle = '';
-  if (admin) {
-    const opts = IMOVEL_STATUS.map(s => {
+  // 'ativo' não é movível pela esteira (só via "Ativar contrato"); imóvel já ativo não tem seletor.
+  if (admin && im.status !== 'ativo') {
+    const opts = IMOVEL_STATUS.filter(s => s.key !== 'ativo').map(s => {
       const dis = (role !== 'gestor' && IMOVEL_STATUS_SO_GESTOR.includes(s.key)) ? ' disabled' : '';
       return `<option value="${s.key}"${s.key === im.status ? ' selected' : ''}${dis}>${s.label}</option>`;
     }).join('');
@@ -2336,6 +2354,31 @@ async function carregarImoveis() {
     });
   } catch (e) {
     secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ─── Painel / Dashboard (Gestão de Locações — T4/T11) ────────────────────────
+async function carregarPainel() {
+  secaoPainel.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando painel...</p>';
+  try {
+    const res = await locDashboard({});
+    const d = res.data || {};
+    const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const card = (num, label, cor) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:14px 16px;min-width:120px;flex:1">
+      <div style="font-size:23px;font-weight:700;color:${cor || 'var(--text-primary)'}">${num}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${label}</div></div>`;
+    const st = d.imoveisPorStatus || {};
+    const etapas = [['recebido', 'Recebido', '#b45309'], ['em_analise', 'Em análise', '#6366f1'], ['aprovado', 'Aprovado', '#16a34a'], ['em_contrato', 'Em contrato', '#0ea5e9'], ['ativo', 'Ativo', '#002749']];
+    const titulo = t => `<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin:16px 0 10px">${t}</div>`;
+    secaoPainel.innerHTML =
+      titulo(`Visão geral${d.veTudo ? '' : ' (seus imóveis)'}`) +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(d.totalImoveis || 0, 'Imóveis')}${card(d.contratosAtivos || 0, 'Contratos ativos', '#16a34a')}${card(d.inadimplencia?.qtd || 0, 'Cobranças em atraso', '#DC1C2E')}${card(d.repassePendente?.qtd || 0, 'Repasses pendentes', '#b45309')}</div>` +
+      titulo('Valores') +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(fmt(d.inadimplencia?.valor), 'Inadimplência', '#DC1C2E')}${card(fmt(d.repassePendente?.valor), 'A repassar', '#b45309')}${card(fmt(d.repassadoMes), 'Repassado no mês', '#16a34a')}</div>` +
+      titulo('Imóveis por etapa') +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap">${etapas.map(([k, l, c]) => card(st[k] || 0, l, c)).join('')}</div>`;
+  } catch (e) {
+    secaoPainel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar painel: ${escapeHtml(e.message)}</p>`;
   }
 }
 
