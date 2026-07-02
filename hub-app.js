@@ -327,6 +327,7 @@ function renderSidebar() {
     <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''} ${c.config ? 'nav-item-fim' : ''}" data-cat="${c.id}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
+      ${c.id === 'documentos' ? '<span class="nav-badge-fichas" id="navBadgeFichas" hidden></span>' : ''}
     </button>
   `).join('');
 
@@ -1781,7 +1782,7 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
       : await listarFichasTipoAnalise({ tipo: fichaKey });
     const fichas = res.data || [];
     const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
-    const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
+    const nomePend = { cpf:'CPF', rg:'RG', rgcpf:'RG/CPF', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', compEstadoCivil:'Estado civil', matricula:'Matrícula', iptu:'IPTU', energia:'Energia', agua:'Água', gas:'Gás', condominio:'Condomínio', condominio_doc:'Condomínio', iptu_doc:'IPTU', im_condominio:'Condomínio', im_admcond:'Adm. condominial', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU', im_entrada:'Entrada', im_financiamento:'Financiamento', im_fgts:'FGTS', com_parc_nome:'Parceira', com_parc_cnpj:'CNPJ parceira', com_parc_banco:'Banco parceira', com_parc_agencia:'Agência parceira', com_parc_conta:'Conta parceira', com_parc_valor:'Comissão parceira' };
 
     if (fichas.length === 0) {
       lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha aguardando análise.</p>';
@@ -1943,15 +1944,15 @@ const FICHAS_CONFIG = [
   },
   {
     key: 'pf',
-    nome: 'Ficha Cadastral Locatário (Pessoa Física)',
-    desc: 'Cadastro de locatário pessoa física',
+    nome: 'Ficha Cadastral (Pessoa Física)',
+    desc: 'Cadastro de pessoa física',
     arquivo: 'ficha-pf.html',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
     key: 'pj',
-    nome: 'Ficha Cadastral Locatário (Pessoa Jurídica)',
-    desc: 'Cadastro de locatário pessoa jurídica',
+    nome: 'Ficha Cadastral (Pessoa Jurídica)',
+    desc: 'Cadastro de pessoa jurídica',
     arquivo: 'ficha-pj.html',
     geraLink: true, temAnalise: true, temFirebase: true
   },
@@ -2114,7 +2115,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
       correcao_solicitada:      '#DC1C2E'
     };
     const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
-    const nomePend = { cpf:'CPF', rg:'RG', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
+    const nomePend = { cpf:'CPF', rg:'RG', rgcpf:'RG/CPF', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', compEstadoCivil:'Estado civil', matricula:'Matrícula', iptu:'IPTU', energia:'Energia', agua:'Água', gas:'Gás', condominio:'Condomínio', condominio_doc:'Condomínio', iptu_doc:'IPTU', im_condominio:'Condomínio', im_admcond:'Adm. condominial', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU', im_entrada:'Entrada', im_financiamento:'Financiamento', im_fgts:'FGTS', com_parc_nome:'Parceira', com_parc_cnpj:'CNPJ parceira', com_parc_banco:'Banco parceira', com_parc_agencia:'Agência parceira', com_parc_conta:'Conta parceira', com_parc_valor:'Comissão parceira' };
 
     lista.innerHTML = fichas.map(f => {
       const data = f.criadoEm ? new Date(f.criadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
@@ -2266,6 +2267,8 @@ async function atualizarNotifFichas() {
     } else {
       notifBadge.hidden = true;
     }
+    const navBadge = document.getElementById('navBadgeFichas');
+    if (navBadge) navBadge.hidden = notifDados.length === 0;
   } catch(e) { console.warn('Notif fichas:', e); }
 }
 

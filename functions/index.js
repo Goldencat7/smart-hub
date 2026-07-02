@@ -1664,7 +1664,7 @@ exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (
   await ref.update({ status: 'enviado_admin', enviadoAdminEm: admin.firestore.FieldValue.serverTimestamp() });
 
   // Avisa o administrativo por email
-  const nomesFicha = { pf:'Ficha Locatário (Pessoa Física)', pj:'Ficha Locatário (Pessoa Jurídica)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
+  const nomesFicha = { pf:'Ficha (Pessoa Física)', pj:'Ficha (Pessoa Jurídica)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
   const ficha = snap.data();
   await avisarFichaAdminPorEmail(ficha, nomesFicha[ficha.tipo] || 'Ficha');
 
@@ -1722,7 +1722,7 @@ exports.contarNotifFichas = onCall(async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
   const uid    = req.auth.uid;
   const isAdm  = ehAdminAuth(req.auth);
-  const nomesFicha = { locador:'Ficha do Locador', pf:'Ficha Locatário (Pessoa Física)', pj:'Ficha Locatário (Pessoa Jurídica)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
+  const nomesFicha = { locador:'Ficha do Locador', pf:'Ficha (Pessoa Física)', pj:'Ficha (Pessoa Jurídica)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
   const items = [];
 
   if (isAdm) {

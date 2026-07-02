@@ -168,7 +168,12 @@ function renderDocs(){
     if(d.ni)  toggles+=`<label class="nao-tenho nao-existe doc-nao-tenho"><input type="checkbox" data-doc-ni="${d.key}"${ni?' checked':''}><span>Não existe</span></label>`;
     if(d.nta) toggles+=`<label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="${d.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
     const temExistente = !arquivos[d.key] && docsExistentes[d.key];
-    const statusTxt = arquivos[d.key]?('✓ '+arquivos[d.key].name):(temExistente?`<a href="${docsExistentes[d.key]}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a>${somenteLeitura?'':' <span style="color:#888;font-size:11px">(toque para trocar)</span>'}`):(nta?'Marcado como pendente':(ni?'Não se aplica':'Toque para selecionar'));
+    let statusTxt;
+    if(arquivos[d.key]) statusTxt='✓ '+arquivos[d.key].name;
+    else if(temExistente) statusTxt=`<a href="${docsExistentes[d.key]}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a>${somenteLeitura?'':' <span style="color:#888;font-size:11px">(toque para trocar)</span>'}`;
+    else if(nta) statusTxt='Marcado como pendente';
+    else if(ni) statusTxt='Não se aplica';
+    else statusTxt='Toque para selecionar';
     const areaCls = (arquivos[d.key]||temExistente)?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
     const imgInline = (somenteLeitura && temExistente && !docsExistentes[d.key].toLowerCase().endsWith('.pdf')) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0">` : '';
     return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" data-trigger="${d.key}"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}"></div>${toggles}${imgInline}</div>`;
