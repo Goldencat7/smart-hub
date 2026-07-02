@@ -36,6 +36,7 @@ const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
+const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -171,6 +172,7 @@ const ICN = {
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
   calculadoras: svgIcone('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
   notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
+  imoveis:      svgIcone('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -220,6 +222,7 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
+  { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -265,6 +268,7 @@ const secaoSalaReuniao    = document.getElementById('secaoSalaReuniao');
 const secaoIA             = document.getElementById('secaoIA');
 const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
+const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -365,6 +369,7 @@ function renderCentro() {
   secaoIA.hidden = true;
   secaoCalculadoras.hidden = true;
   secaoNotas.hidden = true;
+  secaoImoveis.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
@@ -475,6 +480,18 @@ function renderCentro() {
     return;
   }
 
+  // Aba Imóveis (esteira das captações — Gestão de Locações)
+  if (cat.imoveis) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoImoveis.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarImoveis();
+    return;
+  }
+
   // Aba Reunião
   if (cat.salaReuniao) {
     appsGrid.hidden = true;
@@ -566,7 +583,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -1893,6 +1910,62 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
 
   } catch(e) {
     lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro: ${e.message}</p>`;
+  }
+}
+
+// ─── Imóveis (esteira das captações — Gestão de Locações) ────────────────────
+const IMOVEL_STATUS = [
+  { key: 'recebido',    label: 'Recebido',    cor: '#b45309' },
+  { key: 'em_analise',  label: 'Em análise',  cor: '#6366f1' },
+  { key: 'aprovado',    label: 'Aprovado',    cor: '#16a34a' },
+  { key: 'em_contrato', label: 'Em contrato', cor: '#0ea5e9' },
+  { key: 'ativo',       label: 'Ativo',       cor: '#002749' }
+];
+const imovelLabel = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).label || k;
+const imovelCor   = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).cor   || '#6b7280';
+
+async function carregarImoveis() {
+  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando imóveis...</p>';
+  try {
+    const res = await locListarImoveis({});
+    const imoveis = res.data?.imoveis || [];
+    const veTudo  = !!res.data?.veTudo;
+
+    if (!imoveis.length) {
+      secaoImoveis.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">
+        Nenhum imóvel na esteira ainda.<br>
+        <span style="font-size:12px">Um imóvel aparece aqui automaticamente quando você aprova uma ficha do locador e <strong>envia ao administrativo</strong> (aba Cadastro).</span></div>`;
+      return;
+    }
+
+    // Resumo por status (painel)
+    const contagem = {};
+    imoveis.forEach(im => { contagem[im.status] = (contagem[im.status] || 0) + 1; });
+    const resumo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${IMOVEL_STATUS.map(s => `<div style="flex:1;min-width:88px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:10px 12px">
+        <div style="font-size:20px;font-weight:700;color:${s.cor}">${contagem[s.key] || 0}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${s.label}</div></div>`).join('')}</div>`;
+
+    // Cards
+    const cards = imoveis.map(im => {
+      const e = im.endereco || {};
+      const end = [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', ');
+      const data = im.atualizadoEm ? new Date(im.atualizadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+      const meta = [im.tipo, im.valorAnuncio ? 'Anúncio ' + im.valorAnuncio : '', veTudo && im.corretorNome ? 'Corretor: ' + im.corretorNome : '', data]
+        .filter(Boolean).map(escapeHtml).join(' · ');
+      return `<div class="ficha-card">
+        <div class="ficha-card-head">
+          <div><strong style="font-size:13px">${escapeHtml(end || im.tipo || 'Imóvel')}</strong>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${escapeHtml(im.locadorNome || '')}</span></div>
+          <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
+      </div>`;
+    }).join('');
+
+    secaoImoveis.innerHTML = resumo + `<div style="display:flex;flex-direction:column;gap:10px">${cards}</div>`;
+  } catch (e) {
+    secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
   }
 }
 

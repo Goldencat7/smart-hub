@@ -349,6 +349,108 @@ exports.locMeuPerfil = onCall(async (req) => {
   return { role, financeiro };
 });
 
+// ─── Gestão de Locações · Bloco 2 · Captação ────────────────────────────────
+// Quando o corretor aprova a ficha do locador e envia ao admin (status -> enviado_admin),
+// materializamos o IMÓVEL na esteira + as PESSOAS (locadores). Idempotente: o id do
+// imóvel = id da ficha (1 ficha do locador = 1 imóvel), então reenvio ATUALIZA em vez
+// de duplicar e nunca reseta o status da esteira que o admin já avançou.
+
+// Nomes de campo do locador na ficha são irregulares (loc1 usa chaves planas com
+// `dataNasc`/`whatsapp`; loc2 usa prefixo `loc2_` com `nasc`/`celular`), então mapeamos
+// explicitamente pra não perder dado.
+const LOC_KEYS_1 = { nome:'nome', rg:'rg', cpf:'cpf', nasc:'dataNasc', civil:'estadoCivil', prof:'profissao', email:'email', whats:'whatsapp', fixo:'fixo', cep:'cep', end:'endereco', num:'numero', compl:'complemento', bairro:'bairro', cidade:'cidade', estado:'estado', conj:{ nome:'conj_nome', rg:'conj_rg', cpf:'conj_cpf', nasc:'conj_nasc', prof:'conj_profissao', regime:'conj_regime' } };
+const LOC_KEYS_2 = { nome:'loc2_nome', rg:'loc2_rg', cpf:'loc2_cpf', nasc:'loc2_nasc', civil:'loc2_estadoCivil', prof:'loc2_profissao', email:'loc2_email', whats:'loc2_celular', fixo:'', cep:'loc2_cep', end:'loc2_endereco', num:'loc2_numero', compl:'loc2_complemento', bairro:'loc2_bairro', cidade:'loc2_cidade', estado:'loc2_estado', conj:{ nome:'loc2_conj_nome', rg:'loc2_conj_rg', cpf:'loc2_conj_cpf', nasc:'loc2_conj_nasc', prof:'loc2_conj_profissao', regime:'loc2_conj_regime' } };
+
+function loc_montarPessoa(dados, keys) {
+  const v = k => (k && dados[k]) ? dados[k] : '';
+  const p = {
+    papel: 'locador',
+    nome: v(keys.nome), rg: v(keys.rg), cpf: v(keys.cpf), dataNasc: v(keys.nasc), estadoCivil: v(keys.civil),
+    profissao: v(keys.prof), email: v(keys.email), whatsapp: v(keys.whats), fixo: v(keys.fixo),
+    endereco: { cep: v(keys.cep), logradouro: v(keys.end), numero: v(keys.num), complemento: v(keys.compl), bairro: v(keys.bairro), cidade: v(keys.cidade), estado: v(keys.estado) },
+    conjuge: null
+  };
+  if (keys.conj && dados[keys.conj.nome]) {
+    p.conjuge = { nome: v(keys.conj.nome), rg: v(keys.conj.rg), cpf: v(keys.conj.cpf), nasc: v(keys.conj.nasc), profissao: v(keys.conj.prof), regime: v(keys.conj.regime) };
+  }
+  return p;
+}
+
+function loc_montarImovel(dados) {
+  const v = k => dados[k] || '';
+  return {
+    tipo: v('im_tipo'), referencia: v('im_ref'),
+    endereco: { cep: v('im_cep'), logradouro: v('im_endereco'), numero: v('im_numero'), complemento: v('im_complemento'), bairro: v('im_bairro'), cidade: v('im_cidade'), estado: v('im_estado') },
+    condominio: v('im_condominio'), admCondominial: v('im_admcond'), admContato: v('im_admcontato'),
+    iptu: v('im_iptu'), valorCondominio: v('im_valorcond'), contribuinteIptu: v('im_contribuinte'),
+    instalacoes: { enel: v('im_enel'), sabesp: v('im_sabesp'), comgas: v('im_comgas') },
+    inicioPretendido: v('im_inicio'), valorAnuncio: v('im_anuncio'), valorProposta: v('im_proposta'),
+    repasse: {
+      titular1: { banco: v('fin1_banco'), agencia: v('fin1_agencia'), conta: v('fin1_conta'), favorecido: v('fin1_favorecido'), pix: v('fin1_pix') },
+      titular2: { banco: v('fin2_banco'), agencia: v('fin2_agencia'), conta: v('fin2_conta'), favorecido: v('fin2_favorecido'), pix: v('fin2_pix') }
+    },
+    administracao: { remaxAdministra: v('adm_resp'), taxa: v('adm_taxa'), tipoRepasse: v('repasse'), observacoes: v('outras') }
+  };
+}
+
+// Trigger de ingestão: ficha do locador -> imóvel + pessoas (na transição p/ enviado_admin).
+exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, async (event) => {
+  const after  = event.data.after?.data();
+  const before = event.data.before?.data();
+  if (!after || after.status !== 'enviado_admin') return;
+  if (before && before.status === 'enviado_admin') return;   // já processado nesta transição
+  const fichaId = event.params.fichaId;
+  const dados = after.dados || {};
+  const ts = () => admin.firestore.FieldValue.serverTimestamp();
+  try {
+    // Pessoas (locadores) — ids determinísticos p/ idempotência
+    const locadorIds = [];
+    const p1 = loc_montarPessoa(dados, LOC_KEYS_1);
+    if (p1.nome) {
+      const id1 = `${fichaId}_loc1`;
+      await db.collection('pessoas').doc(id1).set({ ...p1, corretorUid: after.corretorUid, fichaId, atualizadoEm: ts() }, { merge: true });
+      locadorIds.push(id1);
+    }
+    if (dados.loc2_nome) {
+      const id2 = `${fichaId}_loc2`;
+      await db.collection('pessoas').doc(id2).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: after.corretorUid, fichaId, atualizadoEm: ts() }, { merge: true });
+      locadorIds.push(id2);
+    }
+    // Imóvel — id = fichaId
+    const imovelRef = db.collection('imoveis').doc(fichaId);
+    const existente = await imovelRef.get();
+    const base = {
+      ...loc_montarImovel(dados),
+      corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
+      fichaId, fichaTipo: 'locador', locadorIds, locadorNome: p1.nome || '',
+      documentos: after.documentos || {}, pendentes: after.pendentes || [],
+      atualizadoEm: ts()
+    };
+    if (existente.exists) {
+      await imovelRef.set(base, { merge: true });          // preserva status + criadoEm
+    } else {
+      await imovelRef.set({ ...base, status: 'recebido', criadoEm: ts() });
+    }
+  } catch (e) {
+    await logErro('onFichaLocadorEnviadaAdmin', e, { fichaId });
+  }
+});
+
+// (autenticado) Lista imóveis: corretor vê só os seus; gestor/administrativo veem todos.
+exports.locListarImoveis = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  let q = db.collection('imoveis');
+  if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
+  const snap = await q.get();
+  const imoveis = snap.docs.map(d => ({
+    id: d.id, ...d.data(),
+    criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() || null,
+    atualizadoEm: d.data().atualizadoEm?.toDate?.()?.toISOString() || null
+  }));
+  return { imoveis, veTudo };
+});
+
 // Lista quais siteKeys têm credenciais cadastradas
 exports.listCredentials = onCall(async (req) => {
   await exigirAdmin(req);
