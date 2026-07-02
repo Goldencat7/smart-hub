@@ -216,6 +216,52 @@ exports.bootstrapAdmin = onCall(async (req) => {
   return { ok: true, mensagem: 'Você agora é admin. Faça logout/login pra atualizar o token.' };
 });
 
+// ─── Modo Cofre — proteção anti-dump de credenciais (flag em config/seguranca) ─
+// DESLIGADO por padrão (cofreAtivo=false): a getCredentials se comporta exatamente
+// como antes e o autologin fica intacto. LIGADO: bloqueia quem tenta baixar muitas
+// credenciais em pouco tempo (script-dump), sem atrapalhar o uso normal (1-2 apps).
+// Não toca no fluxo do autologin (nem Alude, nem ClickSign) — é só um guarda no servidor.
+let _cfgSegCache = { at: 0, val: null };
+async function lerConfigSeguranca() {
+  const agora = Date.now();
+  if (_cfgSegCache.val && agora - _cfgSegCache.at < 60000) return _cfgSegCache.val;
+  let val = { cofreAtivo: false, maxJanela: 8, janelaSeg: 120 };
+  try {
+    const snap = await db.collection('config').doc('seguranca').get();
+    if (snap.exists) val = { ...val, ...snap.data() };
+  } catch (_) { /* na dúvida, mantém o padrão desligado */ }
+  _cfgSegCache = { at: agora, val };
+  return val;
+}
+// Guarda anti-dump. Só age com cofreAtivo=true; admin isento. NUNCA lança por erro
+// interno (transação/rede) — só lança o bloqueio proposital — pra não derrubar o autologin.
+async function guardCofre(auth, siteKey) {
+  let cfg;
+  try { cfg = await lerConfigSeguranca(); } catch (_) { return; }
+  if (!cfg.cofreAtivo) return;
+  if (ehAdminAuth(auth)) return;
+  const janelaMs = (cfg.janelaSeg || 120) * 1000;
+  const max = cfg.maxJanela || 8;
+  const ref = db.collection('cred_acessos').doc(auth.uid);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const agora = Date.now();
+      const antigos = (snap.exists && Array.isArray(snap.data().eventos)) ? snap.data().eventos : [];
+      const eventos = antigos.filter(e => e && (agora - e.t) < janelaMs);
+      eventos.push({ s: siteKey, t: agora });
+      const distintos = new Set(eventos.map(e => e.s));
+      tx.set(ref, { eventos: eventos.slice(-50), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      if (distintos.size > max) {
+        throw new HttpsError('resource-exhausted', 'Muitas credenciais solicitadas em pouco tempo. Aguarde alguns minutos e tente de novo.');
+      }
+    });
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;  // bloqueio proposital
+    /* erro interno não bloqueia o autologin */
+  }
+}
+
 // ─── Credenciais dos sistemas (usado pelo autologin) ───────────────────────
 // Qualquer usuário autenticado pode pedir credenciais — elas voltam só na resposta,
 // nunca ficam no .exe nem no disco do cliente.
@@ -229,11 +275,35 @@ exports.getCredentials = onCall(async (req) => {
     throw new HttpsError('permission-denied', 'Você não tem acesso a este app.');
   }
 
+  // Modo Cofre (anti-dump). Inerte enquanto a flag está desligada.
+  await guardCofre(auth, siteKey);
+
   const snap = await db.collection('credentials').doc(siteKey).get();
   if (!snap.exists) throw new HttpsError('not-found', `Sem credenciais para ${siteKey}.`);
 
   const d = snap.data();
   return { login: d.login || '', password: d.password || '' };
+});
+
+// (admin) Liga/desliga o Modo Cofre e ajusta o limite. Grava em config/seguranca.
+exports.setModoCofre = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { ativo, maxJanela, janelaSeg } = req.data || {};
+  const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: req.auth.uid };
+  if (typeof ativo === 'boolean') patch.cofreAtivo = ativo;
+  if (Number.isFinite(maxJanela)) patch.maxJanela = Math.max(1, Math.floor(maxJanela));
+  if (Number.isFinite(janelaSeg)) patch.janelaSeg = Math.max(10, Math.floor(janelaSeg));
+  await db.collection('config').doc('seguranca').set(patch, { merge: true });
+  _cfgSegCache = { at: 0, val: null }; // invalida o cache local (outras instâncias expiram em 60s)
+  return { ok: true };
+});
+
+// (admin) Lê o estado atual do Modo Cofre.
+exports.getModoCofre = onCall(async (req) => {
+  await exigirAdmin(req);
+  const snap = await db.collection('config').doc('seguranca').get();
+  const d = snap.exists ? snap.data() : {};
+  return { cofreAtivo: !!d.cofreAtivo, maxJanela: d.maxJanela || 8, janelaSeg: d.janelaSeg || 120 };
 });
 
 // Apps restritos que o usuário ATUAL pode ver (admin vê todos)

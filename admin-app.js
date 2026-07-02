@@ -35,6 +35,8 @@ const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
 const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
+const getModoCofre = httpsCallable(fns, 'getModoCofre');
+const setModoCofre = httpsCallable(fns, 'setModoCofre');
 const listarStatusApps        = httpsCallable(fns, 'listarStatusApps');
 const listarNotificacoesAdmin = httpsCallable(fns, 'listarNotificacoesAdmin');
 const excluirNotificacao      = httpsCallable(fns, 'excluirNotificacao');
@@ -238,6 +240,7 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
 
 async function carregarTudo() {
   carregarLancamento();
+  carregarSeguranca();
   await Promise.all([carregarBanner(), carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
 }
 
@@ -397,6 +400,38 @@ async function carregarLancamento() {
       btnVolta.disabled = true;
       try { await publicarLocacoes({ versao: '' }); carregarLancamento(); }
       catch (e) { alert('Erro: ' + e.message); btnVolta.disabled = false; }
+    });
+  } catch (e) {
+    cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+  }
+}
+
+// ─── Segurança — Modo Cofre (anti-dump de credenciais) ────────────────────────
+async function carregarSeguranca() {
+  const cont = document.getElementById('segurancaCofre');
+  if (!cont) return;
+  cont.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const r = await getModoCofre();
+    const { cofreAtivo, maxJanela, janelaSeg } = r.data;
+    cont.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <div style="flex:1;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🔐 Modo Cofre</div>
+          <div style="font-size:20px;font-weight:700;margin-top:4px">${cofreAtivo ? '🟢 Ligado' : '⚪ Desligado'}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Bloqueia acima de <strong>${maxJanela}</strong> sistemas diferentes em <strong>${janelaSeg}s</strong> por pessoa.</div>
+          <button class="topbar-btn ${cofreAtivo ? '' : 'primario'}" id="btnCofre" style="margin-top:10px">${cofreAtivo ? '⚪ Desligar' : '🔐 Ligar Modo Cofre'}</button>
+        </div>
+      </div>`;
+    const btn = document.getElementById('btnCofre');
+    btn.addEventListener('click', async () => {
+      const ligar = !cofreAtivo;
+      if (!confirm(ligar
+        ? 'Ligar o Modo Cofre? A partir de agora, quem tentar puxar muitas senhas de sistemas em poucos minutos será bloqueado. Uso normal não é afetado.'
+        : 'Desligar o Modo Cofre? As senhas voltam a poder ser puxadas sem limite.')) return;
+      btn.disabled = true;
+      try { await setModoCofre({ ativo: ligar }); carregarSeguranca(); }
+      catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
     });
   } catch (e) {
     cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
