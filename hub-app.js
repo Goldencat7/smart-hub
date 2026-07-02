@@ -2047,6 +2047,18 @@ async function carregarDocumentos() {
       if (aberto) { fechar(); return; }
       abrir();
       carregarListaFichas(f.key);
+      // Marca notificações desse tipo como vistas e esconde a bolinha
+      const idsDoTipo = notifDados.filter(n => n.tipo === f.key && n.id).map(n => n.id);
+      if (idsDoTipo.length) {
+        const vistos = getVistos();
+        idsDoTipo.forEach(id => vistos.add(id));
+        salvarVistos(vistos);
+        const dot = document.getElementById('dot-' + f.key);
+        if (dot) dot.hidden = true;
+        const totalNaoVistos = notifDados.filter(n => n.id && !vistos.has(n.id)).length;
+        if (totalNaoVistos > 0) { notifBadge.textContent = totalNaoVistos > 99 ? '99+' : totalNaoVistos; notifBadge.hidden = false; }
+        else { notifBadge.hidden = true; }
+      }
     });
 
     // Copiar link — feedback no próprio botão (visível mesmo com accordion fechado)
@@ -2258,16 +2270,15 @@ async function atualizarNotifFichas() {
     const res = await contarNotifFichas();
     notifDados = res.data?.items || [];
     const vistos = getVistos();
-    // Só conta fichas com ID ainda não visto pelo usuário
-    const novos = notifDados.filter(n => n.id && !vistos.has(n.id));
-    if (novos.length > 0) {
-      notifBadge.textContent = novos.length > 99 ? '99+' : novos.length;
+    const naoVistos = notifDados.filter(n => n.id && !vistos.has(n.id));
+    if (naoVistos.length > 0) {
+      notifBadge.textContent = naoVistos.length > 99 ? '99+' : naoVistos.length;
       notifBadge.hidden = false;
     } else {
       notifBadge.hidden = true;
     }
-    const tiposComNotif = new Set(notifDados.map(n => n.tipo));
-    FICHAS_CONFIG.forEach(f => { const dot = document.getElementById('dot-' + f.key); if (dot) dot.hidden = !tiposComNotif.has(f.key); });
+    const tiposNaoVistos = new Set(naoVistos.map(n => n.tipo));
+    FICHAS_CONFIG.forEach(f => { const dot = document.getElementById('dot-' + f.key); if (dot) dot.hidden = !tiposNaoVistos.has(f.key); });
   } catch(e) { console.warn('Notif fichas:', e); }
 }
 
@@ -2276,10 +2287,13 @@ function renderNotifPanel() {
     notifLista.innerHTML = '<p class="notif-vazio">Nenhuma ficha pendente</p>';
     return;
   }
+  const vistos = getVistos();
   notifLista.innerHTML = notifDados.map(n => {
     const data = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '—';
     const sub  = n.corretor ? `${n.corretor} · ${data}` : data;
-    return `<div class="notif-item" data-tipo="${n.tipo}">
+    const novo = n.id && !vistos.has(n.id);
+    return `<div class="notif-item${novo ? ' notif-novo' : ''}" data-tipo="${n.tipo}">
+      ${novo ? '<span class="notif-item-dot"></span>' : ''}
       <span class="notif-item-titulo">${escapeHtml(n.nome)}</span>
       <span class="notif-item-sub">${escapeHtml(n.tipoLabel)} · ${escapeHtml(sub)}</span>
     </div>`;
