@@ -256,18 +256,21 @@ exports.getUserAccess = onCall(async (req) => {
   const alvoAdmin = !!(userRec && userRec.customClaims && userRec.customClaims.admin) || ehBootstrapAdmin(uid);
   const snap = await db.collection('user_access').doc(uid).get();
   const dados = snap.exists ? snap.data() : {};
+  const perfilSnap = await db.collection('loc_perfis').doc(uid).get();
   return {
     apps: dados.apps || [],
     restritos: RESTRICTED_APPS,
     isAdmin: alvoAdmin,
-    drives_fotografia: !!dados.drives_fotografia
+    drives_fotografia: !!dados.drives_fotografia,
+    loc_role: (userRec && userRec.customClaims && userRec.customClaims.locRole) || 'corretor',
+    loc_financeiro: !!(perfilSnap.exists && perfilSnap.data().financeiro)
   };
 });
 
-// (admin) Define quais apps restritos um usuário pode ver
+// (admin) Define quais apps restritos um usuário pode ver + o perfil de Locação
 exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
-  const { uid, apps, drives_fotografia } = req.data || {};
+  const { uid, apps, drives_fotografia, loc_role, loc_financeiro } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
@@ -275,6 +278,18 @@ exports.setUserAccess = onCall(async (req) => {
     drives_fotografia: !!drives_fotografia,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
+  // Perfil de Locação (opcional): grava na claim locRole (autoridade) + loc_perfis p/ Financeiro.
+  if (loc_role !== undefined) {
+    const role = LOC_ROLES.includes(loc_role) ? loc_role : 'corretor';
+    const userRec = await admin.auth().getUser(uid);
+    const claims = { ...(userRec.customClaims || {}) };
+    if (role === 'corretor') delete claims.locRole; else claims.locRole = role;   // preserva claim admin
+    await admin.auth().setCustomUserClaims(uid, claims);
+    await db.collection('loc_perfis').doc(uid).set({
+      role, financeiro: role === 'corretor' ? false : !!loc_financeiro,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
   return { ok: true };
 });
 
@@ -285,8 +300,8 @@ exports.setUserAccess = onCall(async (req) => {
 // exigir relogin). "corretor" é o PADRÃO: todo usuário logado sem a claim já é corretor.
 const LOC_ROLES = ['gestor', 'administrativo', 'corretor'];
 
-// É gestor? A claim manda; o bootstrap admin do Hub entra como gestor só pra
-// conseguir criar o 1º gestor de verdade (mesma ideia do bootstrapAdmin).
+// É gestor? A claim locRole manda (concedida pelo admin no painel de Permissões);
+// o bootstrap admin entra como gestor de largada.
 function ehGestorAuth(auth) {
   return !!(auth && ((auth.token && auth.token.locRole === 'gestor') || ehBootstrapAdmin(auth.uid)));
 }
