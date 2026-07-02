@@ -726,6 +726,7 @@ async function abrirModalPermissoes(uid, email) {
     const temFoto = !!r.data.drives_fotografia;
     const locRole = r.data.loc_role || 'corretor';
     const locFin = !!r.data.loc_financeiro;
+    const locBeta = !!r.data.loc_beta;
     cont.innerHTML =
       (alvoAdmin ? '<p class="muted">Este usuário é admin — já enxerga todos os apps restritos.</p>' : '') +
       APPS_RESTRITOS.map(a => `
@@ -744,6 +745,10 @@ async function abrirModalPermissoes(uid, email) {
        </label>
        <hr style="border-color:var(--border);margin:10px 0">
        <p class="muted" style="font-size:11px;margin:0 0 6px">Gestão de Locações:</p>
+       <label class="auth-label-inline">
+         <input type="checkbox" id="permLocBeta" ${locBeta ? 'checked' : ''}>
+         Acesso de teste <span class="muted" style="font-size:10px">(vê o módulo — libere só pra quem vai testar)</span>
+       </label>
        <label class="auth-label-inline" style="gap:8px">
          Perfil
          <select id="permLocRole" class="topbar-btn" style="padding:4px 8px">
@@ -772,12 +777,13 @@ document.getElementById('cancelarPermissoes').addEventListener('click', (e) => {
 document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const uid = document.getElementById('permUid').value;
-  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):checked')).map(c => c.value);
+  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):checked')).map(c => c.value);
   const drives_fotografia = !!(document.getElementById('permDrivesFotografia')?.checked);
+  const loc_beta = !!(document.getElementById('permLocBeta')?.checked);
   const loc_role = document.getElementById('permLocRole')?.value || 'corretor';
   const loc_financeiro = !!(document.getElementById('permLocFinanceiro')?.checked);
   try {
-    await setUserAccess({ uid, apps, drives_fotografia, loc_role, loc_financeiro });
+    await setUserAccess({ uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro });
     modalPermissoes.close();
   } catch (err) { alert('Erro: ' + err.message); }
 });

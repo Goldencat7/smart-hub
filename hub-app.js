@@ -244,10 +244,10 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  { id: 'painel',      nome: 'Painel',    icone: ICN.painel, painel: true },
-  { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true },
-  { id: 'financeiro',  nome: 'Financeiro', icone: ICN.financeiro, financeiro: true },
-  { id: 'locadmin',    nome: 'Locação',   icone: ICN.locadmin, locadmin: true, soGestor: true },
+  { id: 'painel',      nome: 'Painel',    icone: ICN.painel, painel: true, beta: true },
+  { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true, beta: true },
+  { id: 'financeiro',  nome: 'Financeiro', icone: ICN.financeiro, financeiro: true, beta: true },
+  { id: 'locadmin',    nome: 'Locação',   icone: ICN.locadmin, locadmin: true, soGestor: true, beta: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -267,6 +267,7 @@ let categoriaAtiva = 'captacao';
 let termoBusca = '';
 let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
+let betaLocacoes = false;       // acesso de teste ao módulo de Locações (feature flag) — gate das abas
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
@@ -359,6 +360,7 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
+    (!c.beta || betaLocacoes) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
   );
@@ -924,6 +926,7 @@ onAuthStateChanged(auth, async (user) => {
     const perm = await getMinhasPermissoes();
     appsPermitidos = perm.data.apps || [];
     temDrivesFotografia = !!perm.data.drives_fotografia;
+    betaLocacoes = !!perm.data.loc_beta;
     if (perm.data.isAdmin) isAdmin = true;
   } catch (e) {
     console.warn('Permissões:', e);

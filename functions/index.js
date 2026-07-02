@@ -242,9 +242,10 @@ exports.getMinhasPermissoes = onCall(async (req) => {
   const snap = await db.collection('user_access').doc(auth.uid).get();
   const dados = snap.exists ? snap.data() : {};
   const drives_fotografia = !!dados.drives_fotografia;
-  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia };
+  const loc_beta = !!dados.loc_beta;   // acesso de teste ao módulo de Locações (feature flag)
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta };
   const apps = dados.apps || [];
-  return { apps, isAdmin: false, drives_fotografia };
+  return { apps, isAdmin: false, drives_fotografia, loc_beta };
 });
 
 // (admin) Lê os apps restritos liberados pra um usuário + lista de restritos disponíveis
@@ -262,6 +263,7 @@ exports.getUserAccess = onCall(async (req) => {
     restritos: RESTRICTED_APPS,
     isAdmin: alvoAdmin,
     drives_fotografia: !!dados.drives_fotografia,
+    loc_beta: !!dados.loc_beta,
     loc_role: (userRec && userRec.customClaims && userRec.customClaims.locRole) || 'corretor',
     loc_financeiro: !!(perfilSnap.exists && perfilSnap.data().financeiro)
   };
@@ -270,12 +272,13 @@ exports.getUserAccess = onCall(async (req) => {
 // (admin) Define quais apps restritos um usuário pode ver + o perfil de Locação
 exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
-  const { uid, apps, drives_fotografia, loc_role, loc_financeiro } = req.data || {};
+  const { uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
     apps: limpos,
     drives_fotografia: !!drives_fotografia,
+    loc_beta: !!loc_beta,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
   // Perfil de Locação (opcional): grava na claim locRole (autoridade) + loc_perfis p/ Financeiro.
