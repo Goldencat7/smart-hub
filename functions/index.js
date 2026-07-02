@@ -488,6 +488,16 @@ exports.locObterImovel = onCall(async (req) => {
   const gSnap = await db.collection('garantias').doc(imovelId).get();
   const garantia = gSnap.exists ? { ...gSnap.data(), atualizadoEm: gSnap.data().atualizadoEm?.toDate?.()?.toISOString() || null } : null;
 
+  // Contrato (1 por imóvel na Fase 1)
+  const cSnap = await db.collection('contratos').doc(imovelId).get();
+  const contrato = cSnap.exists ? {
+    id: cSnap.id, ...cSnap.data(),
+    criadoEm: cSnap.data().criadoEm?.toDate?.()?.toISOString() || null,
+    ativadoEm: cSnap.data().ativadoEm?.toDate?.()?.toISOString() || null,
+    atualizadoEm: cSnap.data().atualizadoEm?.toDate?.()?.toISOString() || null
+  } : null;
+  const podeContratar = (await locImovelPodeContratar(imovelId)).ok;
+
   const historico = (imovel.historico || []).map(h => ({
     ...h, em: h.em?.toDate?.()?.toISOString() || null
   }));
@@ -499,7 +509,7 @@ exports.locObterImovel = onCall(async (req) => {
       atualizadoEm: imovel.atualizadoEm?.toDate?.()?.toISOString() || null,
       historico
     },
-    locadores, locatarios, garantia
+    locadores, locatarios, garantia, contrato, podeContratar
   };
 });
 
@@ -631,6 +641,132 @@ exports.locSalvarGarantia = onCall(async (req) => {
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   return { ok: true };
+});
+
+// ─── Gestão de Locações · Bloco 4 · Contratos (T7) ──────────────────────────
+// Converte "R$ 1.500,00" / "10%" em número (pra cobranças calculáveis na Fase 5).
+function loc_valorNum(s) {
+  const n = Number(String(s == null ? '' : s).replace(/[^\d,]/g, '').replace(',', '.'));
+  return isFinite(n) ? n : 0;
+}
+
+// (GESTOR) Gera o contrato (rascunho) a partir do imóvel — 1 contrato ativo por imóvel.
+// Só depois de análise + garantia aprovadas (mesma regra do gate da esteira).
+exports.locCriarContrato = onCall(async (req) => {
+  const auth = await exigirGestor(req);
+  const { imovelId, dados } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const d = dados || {};
+
+  const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const imovel = imovelSnap.data();
+
+  const gate = await locImovelPodeContratar(imovelId);
+  if (!gate.ok) {
+    const falta = [!gate.analiseOk && 'análise do locatário aprovada', !gate.garantiaOk && 'garantia aprovada'].filter(Boolean).join(' e ');
+    throw new HttpsError('failed-precondition', `Falta ${falta} antes de gerar o contrato.`);
+  }
+
+  const ref = db.collection('contratos').doc(imovelId); // 1 contrato por imóvel na Fase 1
+  const existente = await ref.get();
+  if (existente.exists && existente.data().status === 'ativo') {
+    throw new HttpsError('already-exists', 'Este imóvel já tem um contrato ativo.');
+  }
+
+  // Locatários aprovados
+  const locSnap = await db.collection('pessoas').where('imovelId', '==', imovelId).get();
+  const locatarioIds = locSnap.docs.filter(p => p.data().papel === 'locatario' && (p.data().analise || {}).status === 'aprovado').map(p => p.id);
+
+  const contrato = {
+    imovelId, corretorUid: imovel.corretorUid,
+    locadorIds: imovel.locadorIds || [], locatarioIds, garantiaId: imovelId,
+    valorAluguel: loc_valorNum(d.valorAluguel != null ? d.valorAluguel : (imovel.valorProposta || imovel.valorAnuncio)),
+    valorCondominio: loc_valorNum(d.valorCondominio != null ? d.valorCondominio : imovel.valorCondominio),
+    valorIptu: loc_valorNum(d.valorIptu != null ? d.valorIptu : imovel.iptu),
+    taxaAdm: loc_valorNum(d.taxaAdm != null ? d.taxaAdm : (imovel.administracao || {}).taxa),
+    tipoRepasse: d.tipoRepasse || (imovel.administracao || {}).tipoRepasse || '',
+    indiceReajuste: d.indiceReajuste || 'IGP-M',
+    diaVencimento: Math.min(28, Math.max(1, parseInt(d.diaVencimento, 10) || 10)),
+    vigenciaInicio: d.vigenciaInicio || '', vigenciaFim: d.vigenciaFim || '',
+    status: 'rascunho', contratoDocUrl: '',
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  };
+  if (!existente.exists) contrato.criadoEm = admin.firestore.FieldValue.serverTimestamp();
+  await ref.set(contrato, { merge: true });
+
+  // Move o imóvel pra "em_contrato" (passou o gate)
+  if (imovel.status !== 'em_contrato' && imovel.status !== 'ativo') {
+    await imovelSnap.ref.update({
+      status: 'em_contrato', atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      historico: admin.firestore.FieldValue.arrayUnion({ de: imovel.status || 'aprovado', para: 'em_contrato', por: auth.uid, porNome: 'geração de contrato', em: admin.firestore.Timestamp.now() })
+    });
+  }
+  return { ok: true, id: ref.id };
+});
+
+// (GESTOR) Registra dados/assinatura do contrato (edita enquanto rascunho/assinatura).
+exports.locAtualizarContrato = onCall(async (req) => {
+  await exigirGestor(req);
+  const { contratoId, dados } = req.data || {};
+  if (!contratoId) throw new HttpsError('invalid-argument', 'contratoId é obrigatório.');
+  const ref = db.collection('contratos').doc(contratoId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Contrato não encontrado.');
+  if (snap.data().status === 'ativo') throw new HttpsError('failed-precondition', 'Contrato ativo não é editável (encerre ou renove).');
+
+  const d = dados || {};
+  const upd = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+  if (d.valorAluguel != null)    upd.valorAluguel = loc_valorNum(d.valorAluguel);
+  if (d.valorCondominio != null) upd.valorCondominio = loc_valorNum(d.valorCondominio);
+  if (d.valorIptu != null)       upd.valorIptu = loc_valorNum(d.valorIptu);
+  if (d.taxaAdm != null)         upd.taxaAdm = loc_valorNum(d.taxaAdm);
+  if (d.indiceReajuste != null)  upd.indiceReajuste = d.indiceReajuste;
+  if (d.diaVencimento != null)   upd.diaVencimento = Math.min(28, Math.max(1, parseInt(d.diaVencimento, 10) || 10));
+  if (d.vigenciaInicio != null)  upd.vigenciaInicio = d.vigenciaInicio;
+  if (d.vigenciaFim != null)     upd.vigenciaFim = d.vigenciaFim;
+  if (d.contratoDocUrl != null)  upd.contratoDocUrl = d.contratoDocUrl;
+  if (d.status === 'assinatura') upd.status = 'assinatura';
+  await ref.update(upd);
+  return { ok: true };
+});
+
+// (GESTOR) Ativa o contrato → imóvel vira "ativo". (A geração de cobranças entra no Bloco 5.)
+exports.locAtivarContrato = onCall(async (req) => {
+  const auth = await exigirGestor(req);
+  const { contratoId } = req.data || {};
+  if (!contratoId) throw new HttpsError('invalid-argument', 'contratoId é obrigatório.');
+  const ref = db.collection('contratos').doc(contratoId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Contrato não encontrado.');
+  const c = snap.data();
+  if (c.status === 'ativo') return { ok: true, status: 'ativo' };
+  if (!c.vigenciaInicio || !c.vigenciaFim || !c.valorAluguel) {
+    throw new HttpsError('failed-precondition', 'Preencha vigência e valor do aluguel antes de ativar.');
+  }
+  await ref.update({ status: 'ativo', ativadoEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  await db.collection('imoveis').doc(c.imovelId).update({
+    status: 'ativo', atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    historico: admin.firestore.FieldValue.arrayUnion({ de: 'em_contrato', para: 'ativo', por: auth.uid, porNome: 'ativação de contrato', em: admin.firestore.Timestamp.now() })
+  }).catch(() => {});
+  // TODO Bloco 5: gerar cobranças mensais a partir daqui.
+  return { ok: true, status: 'ativo' };
+});
+
+// (autenticado) Lista contratos: corretor vê os seus; gestor/admin veem todos.
+exports.locListarContratos = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  let q = db.collection('contratos');
+  if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
+  const snap = await q.get();
+  const contratos = snap.docs.map(dc => ({
+    id: dc.id, ...dc.data(),
+    criadoEm: dc.data().criadoEm?.toDate?.()?.toISOString() || null,
+    ativadoEm: dc.data().ativadoEm?.toDate?.()?.toISOString() || null,
+    atualizadoEm: dc.data().atualizadoEm?.toDate?.()?.toISOString() || null
+  }));
+  return { contratos, veTudo };
 });
 
 // Lista quais siteKeys têm credenciais cadastradas

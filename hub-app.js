@@ -42,6 +42,9 @@ const locObterImovel = httpsCallable(fns, 'locObterImovel');
 const locAddLocatario = httpsCallable(fns, 'locAddLocatario');
 const locAnalisarLocatario = httpsCallable(fns, 'locAnalisarLocatario');
 const locSalvarGarantia = httpsCallable(fns, 'locSalvarGarantia');
+const locCriarContrato = httpsCallable(fns, 'locCriarContrato');
+const locAtualizarContrato = httpsCallable(fns, 'locAtualizarContrato');
+const locAtivarContrato = httpsCallable(fns, 'locAtivarContrato');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -2012,7 +2015,42 @@ function renderDetalheImovel(d) {
       <button class="topbar-btn primario btn-salvar-garantia" style="font-size:11px;padding:4px 10px">Salvar garantia</button></div>`
       : `<div style="font-size:12px">${g.modalidade ? GAR_MOD_LABEL[g.modalidade] : '—'} · <strong>${g.status ? GAR_STATUS_LABEL[g.status] : 'sem garantia'}</strong></div>`;
 
-    gestaoHtml = sec('Locatário &amp; análise', locG + formLoc) + sec('Garantia', garForm);
+    // Contrato
+    const CT_STATUS_LABEL = { rascunho:'Rascunho', assinatura:'Em assinatura', ativo:'Ativo', encerrado:'Encerrado' };
+    const CT_STATUS_COR   = { rascunho:'#b45309', assinatura:'#6366f1', ativo:'#16a34a', encerrado:'#6b7280' };
+    const c = d.contrato;
+    let contratoHtml;
+    if (c && ehGestor) {
+      const numInp = (cls, val) => `<input class="${cls}" type="number" step="0.01" value="${val != null ? val : ''}" style="${_selStyle};width:110px">`;
+      const editavel = c.status !== 'ativo';
+      const dis = editavel ? '' : ' disabled';
+      contratoHtml = `<div class="form-contrato" data-contrato="${c.id}">
+        <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:${CT_STATUS_COR[c.status]};background:${CT_STATUS_COR[c.status]}18;padding:2px 8px;border-radius:5px">${CT_STATUS_LABEL[c.status] || c.status}</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px 10px">
+          <label style="font-size:11px;color:var(--text-muted)">Aluguel R$ ${numInp('ct-aluguel', c.valorAluguel)}</label>
+          <label style="font-size:11px;color:var(--text-muted)">Condomínio R$ ${numInp('ct-cond', c.valorCondominio)}</label>
+          <label style="font-size:11px;color:var(--text-muted)">IPTU R$ ${numInp('ct-iptu', c.valorIptu)}</label>
+          <label style="font-size:11px;color:var(--text-muted)">Taxa adm % ${numInp('ct-taxa', c.taxaAdm)}</label>
+          <label style="font-size:11px;color:var(--text-muted)">Dia venc. <input class="ct-dia" type="number" min="1" max="28" value="${c.diaVencimento || 10}" style="${_selStyle};width:60px"></label>
+          <label style="font-size:11px;color:var(--text-muted)">Índice <input class="ct-indice" value="${escapeHtml(c.indiceReajuste || 'IGP-M')}" style="${_selStyle};width:90px"></label>
+          <label style="font-size:11px;color:var(--text-muted)">Início <input class="ct-ini" type="date" value="${escapeHtml(c.vigenciaInicio || '')}" style="${_selStyle}"${dis}></label>
+          <label style="font-size:11px;color:var(--text-muted)">Fim <input class="ct-fim" type="date" value="${escapeHtml(c.vigenciaFim || '')}" style="${_selStyle}"${dis}></label>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${editavel ? `<button class="topbar-btn btn-salvar-contrato" style="font-size:11px;padding:4px 10px">Salvar contrato</button>` : ''}
+          ${c.status !== 'ativo' ? `<button class="topbar-btn primario btn-ativar-contrato" data-contrato="${c.id}" style="font-size:11px;padding:4px 10px">✓ Ativar contrato</button>` : '<span style="font-size:11px;color:#16a34a;align-self:center">Contrato ativo — cobranças na Fase 5.</span>'}
+        </div></div>`;
+    } else if (c) {
+      contratoHtml = `<div style="font-size:12px">Status: <strong>${CT_STATUS_LABEL[c.status] || c.status}</strong> · Aluguel R$ ${escapeHtml(String(c.valorAluguel || 0))} · Venc. dia ${escapeHtml(String(c.diaVencimento || '—'))}</div>`;
+    } else if (ehGestor) {
+      contratoHtml = d.podeContratar
+        ? `<button class="topbar-btn primario btn-gerar-contrato" data-imovel="${imId}" style="font-size:11px;padding:4px 10px">Gerar contrato</button>`
+        : `<div style="font-size:11px;color:var(--text-muted)">Aprove a análise do locatário e a garantia pra liberar a geração do contrato.</div>`;
+    } else {
+      contratoHtml = '<div style="font-size:11px;color:var(--text-muted)">Sem contrato ainda.</div>';
+    }
+
+    gestaoHtml = sec('Locatário &amp; análise', locG + formLoc) + sec('Garantia', garForm) + sec('Contrato', contratoHtml);
   }
 
   return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
@@ -2061,6 +2099,40 @@ function wireDetalheImovel(cont, imovelId) {
         });
         await recarregarDetalhe(cont, imovelId);
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+  }
+  // Contrato: gerar / salvar / ativar
+  const btnGerar = cont.querySelector('.btn-gerar-contrato');
+  if (btnGerar) btnGerar.addEventListener('click', async () => {
+    btnGerar.disabled = true;
+    try { await locCriarContrato({ imovelId }); carregarImoveis(); }
+    catch (e) { alert('Erro: ' + e.message); btnGerar.disabled = false; }
+  });
+  const formCt = cont.querySelector('.form-contrato');
+  if (formCt) {
+    const btnSalvar = formCt.querySelector('.btn-salvar-contrato');
+    if (btnSalvar) btnSalvar.addEventListener('click', async () => {
+      btnSalvar.disabled = true;
+      try {
+        await locAtualizarContrato({ contratoId: formCt.dataset.contrato, dados: {
+          valorAluguel: formCt.querySelector('.ct-aluguel').value,
+          valorCondominio: formCt.querySelector('.ct-cond').value,
+          valorIptu: formCt.querySelector('.ct-iptu').value,
+          taxaAdm: formCt.querySelector('.ct-taxa').value,
+          diaVencimento: formCt.querySelector('.ct-dia').value,
+          indiceReajuste: formCt.querySelector('.ct-indice').value,
+          vigenciaInicio: formCt.querySelector('.ct-ini').value,
+          vigenciaFim: formCt.querySelector('.ct-fim').value
+        }});
+        await recarregarDetalhe(cont, imovelId);
+      } catch (e) { alert('Erro: ' + e.message); btnSalvar.disabled = false; }
+    });
+    const btnAtivar = formCt.querySelector('.btn-ativar-contrato');
+    if (btnAtivar) btnAtivar.addEventListener('click', async () => {
+      if (!confirm('Ativar o contrato? O imóvel passa a "Ativo".')) return;
+      btnAtivar.disabled = true;
+      try { await locAtivarContrato({ contratoId: btnAtivar.dataset.contrato }); carregarImoveis(); }
+      catch (e) { alert('Erro: ' + e.message); btnAtivar.disabled = false; }
     });
   }
 }
