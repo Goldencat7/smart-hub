@@ -1536,13 +1536,18 @@ function fetchBuffer(url) {
 async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
   try {
     const d = ficha.dados || {};
+    // Nome do corretor que enviou: usa o gravado na ficha; se faltar, busca pelo UID no Auth.
+    let corretorNome = ficha.corretorNome || '';
+    if (!corretorNome && ficha.corretorUid) {
+      try { const u = await admin.auth().getUser(ficha.corretorUid); corretorNome = u.displayName || u.email || ''; } catch (_) {}
+    }
     const linhas = [
       ['Tipo', tipoLabel],
       ['Cliente', d.nome || 'Sem nome'],
       ['CPF/CNPJ', d.cpf || d.cnpj || '—'],
       ['WhatsApp', d.whatsapp || '—'],
       ['E-mail', d.email || '—'],
-      ['Corretor', ficha.corretorNome || '—'],
+      ['Corretor', corretorNome || '—'],
       ['Pendências', (ficha.pendentes || []).length ? ficha.pendentes.join(', ') : 'nenhuma'],
     ];
 
@@ -1584,7 +1589,7 @@ async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
     await transporter.sendMail({
       from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
       to: FICHAS_ADMIN_EMAIL,
-      subject: `[Hub] ${tipoLabel} — ${d.nome || 'Nova ficha'} (${ficha.corretorNome || 'corretor'})`,
+      subject: `[Hub] ${tipoLabel} — ${d.nome || 'Nova ficha'} (${corretorNome || 'corretor'})`,
       text: linhas.map(([k, v]) => `${k}: ${v}`).join('\n') + '\n\nAcesse o Hub para revisar.',
       html: `<p>Uma ficha foi enviada ao administrativo:</p>`
           + `<table style="border-collapse:collapse;font-size:14px">`

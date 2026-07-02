@@ -365,10 +365,12 @@ function validarCPF(cpf){
 }
 // Confere CPFs preenchidos e telefones duplicados no objeto `dados` (já montado do FormData). Devolve mensagem ou null.
 function validarCpfsETelefones(dados){
+  // Rola até o campo com erro e o destaca, pra pessoa ver qual CPF corrigir.
+  const marcar=(k,msg)=>{ const el=document.querySelector(`[name="${k}"]`); if(el){ el.style.outline='2px solid #e11d48'; el.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>{ el.style.outline=''; },5000); } return msg; };
   for(const k of Object.keys(dados)){
     if(dados[k]==='Não existe') continue;
     const val=(''+dados[k]).trim(); if(!val) continue;
-    if(/cpf$/i.test(k) && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
+    if(/cpf$/i.test(k) && !validarCPF(val)) return marcar(k,`CPF inválido: ${maskCPF(val)}. Confira os números digitados.`);
   }
   const fonesVistos=new Map();
   for(const k of Object.keys(dados)){

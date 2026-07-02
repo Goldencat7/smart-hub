@@ -971,10 +971,27 @@ onAuthStateChanged(auth, async (user) => {
   clearInterval(window.__notifTimer);
   window.__notifTimer = setInterval(verificarNotificacoes, 180000);
 
-  // Sininho de fichas: carrega ao entrar e atualiza a cada 3 min
+  // Sininho de fichas: carrega ao entrar e atualiza a cada 60s
   atualizarNotifFichas();
   clearInterval(window.__notifFichasTimer);
-  window.__notifFichasTimer = setInterval(atualizarNotifFichas, 180000);
+  window.__notifFichasTimer = setInterval(atualizarNotifFichas, 60000);
+
+  // Atualiza na hora quando a pessoa volta pro app (foco / aba visível),
+  // pra não esperar o timer quando a ficha acabou de chegar. Wire uma vez só.
+  if (!window.__notifFocusWired) {
+    window.__notifFocusWired = true;
+    let ultimaAtt = 0;
+    const attAoVoltar = () => {
+      if (document.hidden) return;
+      const agora = Date.now();
+      if (agora - ultimaAtt < 10000) return; // trava: no máx. 1x a cada 10s
+      ultimaAtt = agora;
+      atualizarNotifFichas();
+      verificarNotificacoes();
+    };
+    window.addEventListener('focus', attAoVoltar);
+    document.addEventListener('visibilitychange', attAoVoltar);
+  }
 });
 
 // ─── Agenda ────────────────────────────────────────────────────────────────

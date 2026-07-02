@@ -125,17 +125,19 @@ function validarCNPJ(cnpj){
 }
 // Confere CPFs/CNPJs preenchidos e telefones duplicados. Devolve mensagem de erro ou null.
 function validarCpfsETelefones(){
+  // Rola até o campo com erro e o destaca, pra pessoa ver qual CPF/CNPJ corrigir.
+  const marcar=(k,msg)=>{ const el=document.querySelector(`[data-key="${k}"]`); if(el){ el.style.outline='2px solid #e11d48'; el.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(()=>{ el.style.outline=''; },5000); } return msg; };
   for(const k of Object.keys(valores)){
     if(naoExiste.has(k)||pendentes.has(k)) continue;
     const val=(''+(valores[k]||'')).trim(); if(!val) continue;
     if(k==='cpf_cnpj'){
       const d=val.replace(/\D/g,'');
-      if(d.length===11 && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
-      if(d.length===14 && !validarCNPJ(val)) return 'CNPJ inválido. Confira os números digitados.';
+      if(d.length===11 && !validarCPF(val)) return marcar(k,`CPF inválido: ${maskCPF(val)}. Confira os números digitados.`);
+      if(d.length===14 && !validarCNPJ(val)) return marcar(k,`CNPJ inválido: ${val}. Confira os números digitados.`);
       continue;
     }
-    if(/cpf$/i.test(k) && !validarCPF(val)) return 'CPF inválido. Confira os números digitados.';
-    if(/cnpj$/i.test(k) && !validarCNPJ(val)) return 'CNPJ inválido. Confira os números digitados.';
+    if(/cpf$/i.test(k) && !validarCPF(val)) return marcar(k,`CPF inválido: ${maskCPF(val)}. Confira os números digitados.`);
+    if(/cnpj$/i.test(k) && !validarCNPJ(val)) return marcar(k,`CNPJ inválido: ${val}. Confira os números digitados.`);
   }
   const fonesVistos=new Map();
   for(const k of Object.keys(valores)){
