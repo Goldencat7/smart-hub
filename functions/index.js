@@ -477,6 +477,17 @@ exports.locObterImovel = onCall(async (req) => {
     if (p.exists) locadores.push({ id: p.id, ...p.data(), atualizadoEm: p.data().atualizadoEm?.toDate?.()?.toISOString() || null });
   }
 
+  // Locatários (candidatos) + análise. Só locatários têm imovelId (campo único, sem índice composto).
+  const locSnap = await db.collection('pessoas').where('imovelId', '==', imovelId).get();
+  const locatarios = locSnap.docs.filter(d => d.data().papel === 'locatario').map(d => {
+    const dd = d.data();
+    return { id: d.id, ...dd, analise: dd.analise ? { ...dd.analise, em: dd.analise.em?.toDate?.()?.toISOString() || null } : null };
+  });
+
+  // Garantia (1 por imóvel)
+  const gSnap = await db.collection('garantias').doc(imovelId).get();
+  const garantia = gSnap.exists ? { ...gSnap.data(), atualizadoEm: gSnap.data().atualizadoEm?.toDate?.()?.toISOString() || null } : null;
+
   const historico = (imovel.historico || []).map(h => ({
     ...h, em: h.em?.toDate?.()?.toISOString() || null
   }));
@@ -488,7 +499,7 @@ exports.locObterImovel = onCall(async (req) => {
       atualizadoEm: imovel.atualizadoEm?.toDate?.()?.toISOString() || null,
       historico
     },
-    locadores
+    locadores, locatarios, garantia
   };
 });
 
@@ -497,6 +508,16 @@ exports.locObterImovel = onCall(async (req) => {
 // decisões (aprovado) e contrato (em_contrato/ativo) são EXCLUSIVAS do gestor.
 const IMOVEL_STATUS_VALIDOS = ['recebido', 'em_analise', 'aprovado', 'em_contrato', 'ativo'];
 const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
+
+// Helper: um imóvel só pode ir pra contrato com ≥1 locatário aprovado E garantia aprovada.
+async function locImovelPodeContratar(imovelId) {
+  const gSnap = await db.collection('garantias').doc(imovelId).get();
+  const garantiaOk = gSnap.exists && gSnap.data().status === 'aprovada';
+  // Só locatários têm o campo imovelId (índice de campo único, sem composto); filtra o papel em memória.
+  const locSnap = await db.collection('pessoas').where('imovelId', '==', imovelId).get();
+  const analiseOk = locSnap.docs.some(d => d.data().papel === 'locatario' && (d.data().analise || {}).status === 'aprovado');
+  return { ok: garantiaOk && analiseOk, garantiaOk, analiseOk };
+}
 
 exports.locMoverImovelStatus = onCall(async (req) => {
   const auth = exigirAutenticado(req);
@@ -509,6 +530,15 @@ exports.locMoverImovelStatus = onCall(async (req) => {
   if (!IMOVEL_STATUS_VALIDOS.includes(novoStatus)) throw new HttpsError('invalid-argument', 'Status inválido.');
   if (IMOVEL_STATUS_SO_GESTOR.includes(novoStatus) && !ehGestor) {
     throw new HttpsError('permission-denied', 'Só o gestor pode aprovar, mandar pra contrato ou ativar.');
+  }
+
+  // Regra de negócio: pra ir a "em_contrato" precisa de análise + garantia aprovadas.
+  if (novoStatus === 'em_contrato') {
+    const gate = await locImovelPodeContratar(imovelId);
+    if (!gate.ok) {
+      const falta = [!gate.analiseOk && 'análise do locatário aprovada', !gate.garantiaOk && 'garantia aprovada'].filter(Boolean).join(' e ');
+      throw new HttpsError('failed-precondition', `Falta ${falta} antes de ir pra contrato.`);
+    }
   }
 
   const ref = db.collection('imoveis').doc(imovelId);
@@ -528,6 +558,79 @@ exports.locMoverImovelStatus = onCall(async (req) => {
     })
   });
   return { ok: true, status: novoStatus };
+});
+
+// ─── Gestão de Locações · Bloco 3 · Locatário + Garantia (T6) ───────────────
+const LOC_ANALISE_STATUS = ['em_analise', 'pendencia', 'aprovado', 'reprovado'];
+const LOC_GARANTIA_MODALIDADES = ['seguro_fianca', 'fiador', 'caucao', 'titulo_capitalizacao'];
+const LOC_GARANTIA_STATUS = ['pendente', 'aprovada', 'reprovada'];
+
+// (gestor/administrativo) Adiciona um locatário (candidato) a um imóvel.
+// Vira uma pessoa com papel 'locatario', ligada ao imóvel, em análise.
+exports.locAddLocatario = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth) && !(auth.token && auth.token.locRole === 'administrativo')) {
+    throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo.');
+  }
+  const { imovelId, dados } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const d = dados || {};
+  if (!d.nome) throw new HttpsError('invalid-argument', 'Nome do locatário é obrigatório.');
+
+  const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+
+  const ref = db.collection('pessoas').doc();
+  await ref.set({
+    papel: 'locatario', imovelId,
+    corretorUid: imovelSnap.data().corretorUid,   // herda o dono p/ a regra de ouro
+    nome: d.nome, cpf: d.cpf || '', email: d.email || '', whatsapp: d.whatsapp || '',
+    renda: d.renda || '', profissao: d.profissao || '', obs: d.obs || '',
+    analise: { status: 'em_analise', obs: '', por: '', em: null },
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true, id: ref.id };
+});
+
+// (GESTOR) Registra a análise cadastral de um locatário.
+exports.locAnalisarLocatario = onCall(async (req) => {
+  const auth = await exigirGestor(req);
+  const { pessoaId, status, obs } = req.data || {};
+  if (!pessoaId) throw new HttpsError('invalid-argument', 'pessoaId é obrigatório.');
+  if (!LOC_ANALISE_STATUS.includes(status)) throw new HttpsError('invalid-argument', 'Status de análise inválido.');
+
+  const ref = db.collection('pessoas').doc(pessoaId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().papel !== 'locatario') throw new HttpsError('not-found', 'Locatário não encontrado.');
+
+  let porNome = '';
+  try { porNome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
+  await ref.update({
+    analise: { status, obs: obs || '', por: porNome || auth.uid, em: admin.firestore.Timestamp.now() },
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true };
+});
+
+// (GESTOR) Registra/atualiza a garantia de um imóvel (1 garantia ativa por imóvel).
+exports.locSalvarGarantia = onCall(async (req) => {
+  const auth = await exigirGestor(req);
+  const { imovelId, modalidade, status, apoliceUrl, obs } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  if (!LOC_GARANTIA_MODALIDADES.includes(modalidade)) throw new HttpsError('invalid-argument', 'Modalidade inválida.');
+  if (!LOC_GARANTIA_STATUS.includes(status)) throw new HttpsError('invalid-argument', 'Status de garantia inválido.');
+
+  const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+
+  await db.collection('garantias').doc(imovelId).set({
+    imovelId,
+    corretorUid: imovelSnap.data().corretorUid,   // regra de ouro
+    modalidade, status, apoliceUrl: apoliceUrl || '', obs: obs || '',
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
 });
 
 // Lista quais siteKeys têm credenciais cadastradas

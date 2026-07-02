@@ -39,6 +39,9 @@ const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
 const locObterImovel = httpsCallable(fns, 'locObterImovel');
+const locAddLocatario = httpsCallable(fns, 'locAddLocatario');
+const locAnalisarLocatario = httpsCallable(fns, 'locAnalisarLocatario');
+const locSalvarGarantia = httpsCallable(fns, 'locSalvarGarantia');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -1928,6 +1931,12 @@ const imovelCor   = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).cor   || '
 const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
 const IMOVEL_NOMES_DOC = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio' };
 const IMOVEL_NOMES_PEND = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio', profissao:'Profissão', im_admcond:'Adm. condominial', im_admcontato:'Contato adm', im_condominio:'Condomínio', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU' };
+let imoveisRole = 'corretor'; // papel do usuário atual na aba Imóveis (setado em carregarImoveis)
+const GAR_MOD_LABEL = { seguro_fianca:'Seguro fiança', fiador:'Fiador', caucao:'Caução', titulo_capitalizacao:'Título de capitalização' };
+const GAR_STATUS_LABEL = { pendente:'Pendente', aprovada:'Aprovada', reprovada:'Reprovada' };
+const ANALISE_LABEL = { em_analise:'Em análise', pendencia:'Pendência', aprovado:'Aprovado', reprovado:'Reprovado' };
+const ANALISE_COR   = { em_analise:'#6366f1', pendencia:'#b45309', aprovado:'#16a34a', reprovado:'#DC1C2E' };
+const _selStyle = 'font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)';
 
 // Renderiza o detalhe completo de um imóvel (retorno de locObterImovel).
 function renderDetalheImovel(d) {
@@ -1968,7 +1977,99 @@ function renderDetalheImovel(d) {
     return `<div style="font-size:11px;color:var(--text-muted);padding:1px 0">${imovelLabel(h.de)} → ${imovelLabel(h.para)} · ${escapeHtml(h.porNome || '—')} · ${dt}</div>`;
   }).join('')) : '';
 
-  return locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml || '<p style="color:var(--text-muted)">Sem dados.</p>';
+  // Seção de gestão (locatário + garantia) — só p/ gestor/administrativo
+  let gestaoHtml = '';
+  if (imoveisRole === 'gestor' || imoveisRole === 'administrativo') {
+    const ehGestor = imoveisRole === 'gestor';
+    const imId = im.id;
+
+    const locatarios = d.locatarios || [];
+    const locG = locatarios.length ? locatarios.map(l => {
+      const st = (l.analise || {}).status || 'em_analise';
+      const acoes = ehGestor ? `<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap">
+        <button class="topbar-btn btn-analise" data-pessoa="${l.id}" data-status="aprovado" style="font-size:10px;padding:3px 8px">✓ Aprovar</button>
+        <button class="topbar-btn btn-analise" data-pessoa="${l.id}" data-status="pendencia" style="font-size:10px;padding:3px 8px">Pendência</button>
+        <button class="topbar-btn btn-analise" data-pessoa="${l.id}" data-status="reprovado" style="font-size:10px;padding:3px 8px">Reprovar</button></div>` : '';
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <strong style="font-size:12px">${escapeHtml(l.nome || '')}</strong>
+          <span style="font-size:10px;font-weight:600;color:${ANALISE_COR[st]};background:${ANALISE_COR[st]}18;padding:2px 7px;border-radius:5px">${ANALISE_LABEL[st] || st}</span></div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${[l.cpf, l.renda && 'Renda ' + l.renda, l.whatsapp].filter(Boolean).map(escapeHtml).join(' · ') || '—'}</div>
+        ${acoes}</div>`;
+    }).join('') : '<div style="font-size:11px;color:var(--text-muted)">Nenhum locatário cadastrado.</div>';
+
+    const inp = (ph, cls) => `<input class="${cls}" placeholder="${ph}" style="${_selStyle}">`;
+    const formLoc = `<div class="form-add-locatario" data-imovel="${imId}" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:5px">
+      ${inp('Nome*', 'ni-nome')}${inp('CPF', 'ni-cpf')}${inp('WhatsApp', 'ni-whats')}${inp('Renda', 'ni-renda')}
+      <button class="topbar-btn primario btn-add-locatario" style="font-size:11px;padding:4px 10px">+ Adicionar</button></div>`;
+
+    const g = d.garantia || {};
+    const optSel = (obj, val) => Object.entries(obj).map(([k, lbl]) => `<option value="${k}"${k === val ? ' selected' : ''}>${lbl}</option>`).join('');
+    const garForm = ehGestor ? `<div class="form-garantia" data-imovel="${imId}" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+      <select class="gar-mod" style="${_selStyle}">${optSel(GAR_MOD_LABEL, g.modalidade || 'seguro_fianca')}</select>
+      <select class="gar-status" style="${_selStyle}">${optSel(GAR_STATUS_LABEL, g.status || 'pendente')}</select>
+      <input class="gar-apolice" placeholder="Link da apólice (opcional)" value="${escapeHtml(g.apoliceUrl || '')}" style="${_selStyle}">
+      <button class="topbar-btn primario btn-salvar-garantia" style="font-size:11px;padding:4px 10px">Salvar garantia</button></div>`
+      : `<div style="font-size:12px">${g.modalidade ? GAR_MOD_LABEL[g.modalidade] : '—'} · <strong>${g.status ? GAR_STATUS_LABEL[g.status] : 'sem garantia'}</strong></div>`;
+
+    gestaoHtml = sec('Locatário &amp; análise', locG + formLoc) + sec('Garantia', garForm);
+  }
+
+  return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
+}
+
+// Liga os controles de gestão (locatário/garantia) dentro de um painel de detalhe.
+function wireDetalheImovel(cont, imovelId) {
+  cont.querySelectorAll('.btn-analise').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await locAnalisarLocatario({ pessoaId: btn.dataset.pessoa, status: btn.dataset.status });
+        await recarregarDetalhe(cont, imovelId);
+      } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+  });
+  const formLoc = cont.querySelector('.form-add-locatario');
+  if (formLoc) {
+    const btn = formLoc.querySelector('.btn-add-locatario');
+    btn.addEventListener('click', async () => {
+      const nome = formLoc.querySelector('.ni-nome').value.trim();
+      if (!nome) { alert('Informe ao menos o nome do locatário.'); return; }
+      btn.disabled = true;
+      try {
+        await locAddLocatario({ imovelId, dados: {
+          nome,
+          cpf: formLoc.querySelector('.ni-cpf').value.trim(),
+          whatsapp: formLoc.querySelector('.ni-whats').value.trim(),
+          renda: formLoc.querySelector('.ni-renda').value.trim()
+        }});
+        await recarregarDetalhe(cont, imovelId);
+      } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+  }
+  const formGar = cont.querySelector('.form-garantia');
+  if (formGar) {
+    const btn = formGar.querySelector('.btn-salvar-garantia');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await locSalvarGarantia({
+          imovelId,
+          modalidade: formGar.querySelector('.gar-mod').value,
+          status: formGar.querySelector('.gar-status').value,
+          apoliceUrl: formGar.querySelector('.gar-apolice').value.trim()
+        });
+        await recarregarDetalhe(cont, imovelId);
+      } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+  }
+}
+
+async function recarregarDetalhe(cont, imovelId) {
+  cont.innerHTML = '<p style="color:var(--text-muted)">Atualizando...</p>';
+  const res = await locObterImovel({ imovelId });
+  cont.innerHTML = renderDetalheImovel(res.data || {});
+  wireDetalheImovel(cont, imovelId);
 }
 
 async function toggleDetalheImovel(btn) {
@@ -1982,6 +2083,7 @@ async function toggleDetalheImovel(btn) {
   try {
     const res = await locObterImovel({ imovelId: id });
     cont.innerHTML = renderDetalheImovel(res.data || {});
+    wireDetalheImovel(cont, id);
     cont.dataset.carregado = '1';
   } catch (e) {
     cont.innerHTML = `<p style="color:var(--text-muted)">Erro ao carregar: ${escapeHtml(e.message)}</p>`;
@@ -2028,6 +2130,7 @@ async function carregarImoveis() {
     const imoveis = res.data?.imoveis || [];
     const veTudo  = !!res.data?.veTudo;
     const role    = res.data?.role || 'corretor';
+    imoveisRole = role;
 
     if (!imoveis.length) {
       secaoImoveis.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">
