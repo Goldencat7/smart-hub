@@ -553,6 +553,33 @@ exports.locObterImovel = onCall(async (req) => {
   };
 });
 
+// (GESTOR) Exclui um imóvel e TUDO que está vinculado (cascata). Irreversível.
+// Não apaga a ficha de origem (fica no Cadastro) — só os registros de locação.
+exports.locExcluirImovel = onCall(async (req) => {
+  await exigirGestor(req);
+  const { imovelId } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+
+  // Vinculados: locadores (pessoas.fichaId), locatários (pessoas.imovelId),
+  // cobranças/repasses (contratoId==imovelId), vistorias (imovelId).
+  const [pessLoc, pessLoct, cobr, rep, vist] = await Promise.all([
+    db.collection('pessoas').where('fichaId', '==', imovelId).get(),
+    db.collection('pessoas').where('imovelId', '==', imovelId).get(),
+    db.collection('cobrancas').where('contratoId', '==', imovelId).get(),
+    db.collection('repasses').where('contratoId', '==', imovelId).get(),
+    db.collection('vistorias').where('imovelId', '==', imovelId).get()
+  ]);
+  const batch = db.batch();
+  [pessLoc, pessLoct, cobr, rep, vist].forEach(s => s.docs.forEach(d => batch.delete(d.ref)));
+  batch.delete(db.collection('garantias').doc(imovelId));
+  batch.delete(db.collection('contratos').doc(imovelId));
+  batch.delete(db.collection('imoveis').doc(imovelId));
+  await batch.commit();
+  return { ok: true };
+});
+
 // (gestor/administrativo) Move um imóvel pela esteira, com trilha de auditoria.
 // Regra da spec: recepção/triagem (recebido<->em_analise) o administrativo pode;
 // decisões (aprovado) e contrato (em_contrato/ativo) são EXCLUSIVAS do gestor.

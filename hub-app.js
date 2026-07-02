@@ -38,6 +38,7 @@ const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
+const locExcluirImovel = httpsCallable(fns, 'locExcluirImovel');
 const locObterImovel = httpsCallable(fns, 'locObterImovel');
 const locAddLocatario = httpsCallable(fns, 'locAddLocatario');
 const locAnalisarLocatario = httpsCallable(fns, 'locAnalisarLocatario');
@@ -2115,6 +2116,12 @@ function renderDetalheImovel(d) {
     }
 
     gestaoHtml = sec('Locatário &amp; análise', locG + formLoc) + sec('Garantia', garForm) + sec('Contrato', contratoHtml);
+    // Excluir imóvel (só gestor) — cascata, irreversível
+    if (ehGestor) {
+      gestaoHtml += `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="topbar-btn perigo btn-excluir-imovel" data-imovel="${imId}" style="font-size:11px;padding:4px 10px">🗑 Excluir imóvel</button>
+        <span style="font-size:10px;color:var(--text-muted);margin-left:8px">Apaga imóvel, locatários, garantia, contrato e financeiro. Não desfaz.</span></div>`;
+    }
   }
 
   // Vistorias — quem vê o detalhe pode registrar (corretor dono executa; gestor/admin acompanham)
@@ -2179,6 +2186,15 @@ function wireDetalheImovel(cont, imovelId) {
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
     });
   }
+  // Excluir imóvel (só gestor)
+  const btnExcluir = cont.querySelector('.btn-excluir-imovel');
+  if (btnExcluir) btnExcluir.addEventListener('click', async () => {
+    if (!confirm('Excluir este imóvel e TUDO vinculado (locatários, garantia, contrato, cobranças, repasses, vistorias)? Não dá pra desfazer.')) return;
+    btnExcluir.disabled = true;
+    try { await locExcluirImovel({ imovelId }); carregarImoveis(); }
+    catch (e) { alert('Erro: ' + e.message); btnExcluir.disabled = false; }
+  });
+
   // Vistoria: registrar
   const formVi = cont.querySelector('.form-vistoria');
   if (formVi) {
