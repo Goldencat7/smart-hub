@@ -48,6 +48,7 @@ const locAtivarContrato = httpsCallable(fns, 'locAtivarContrato');
 const locListarFinanceiro = httpsCallable(fns, 'locListarFinanceiro');
 const locRegistrarPagamento = httpsCallable(fns, 'locRegistrarPagamento');
 const locRegistrarRepasse = httpsCallable(fns, 'locRegistrarRepasse');
+const locAtualizarRepasse = httpsCallable(fns, 'locAtualizarRepasse');
 const locListarAlertas = httpsCallable(fns, 'locListarAlertas');
 const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
 const locListarPessoasPerfis = httpsCallable(fns, 'locListarPessoasPerfis');
@@ -2462,12 +2463,17 @@ async function carregarFinanceiro() {
     };
     const linhaRep = r => {
       const [lbl, cor] = REP_STATUS[r.status] || [r.status, '#6b7280'];
+      // Financeiro pode ajustar o valor (a conta automática é uma estimativa).
+      const valorCell = podeBaixar
+        ? `<input type="number" step="0.01" min="0" class="rep-valor" data-id="${r.id}" value="${r.valorRepasse != null ? r.valorRepasse : 0}" style="width:100px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+           <button class="topbar-btn btn-fin" data-tipo="rep-valor" data-id="${r.id}" style="font-size:10px;padding:3px 7px">Salvar</button>`
+        : fmtBRLnum(r.valorRepasse);
       const acao = podeBaixar ? (r.status === 'repassado'
         ? `<button class="topbar-btn btn-fin" data-tipo="rep-desfazer" data-id="${r.id}" style="font-size:10px;padding:3px 8px">Desfazer</button>`
         : `<button class="topbar-btn primario btn-fin" data-tipo="rep" data-id="${r.id}" style="font-size:10px;padding:3px 8px">Repassar</button>`) : '';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
         <div style="min-width:66px;font-weight:600;font-size:12px">${compLabel(r.competencia)}</div>
-        <div style="flex:1;font-size:12px">${fmtBRLnum(r.valorRepasse)}</div>
+        <div style="flex:1;font-size:12px;display:flex;align-items:center;gap:5px">${valorCell}</div>
         <span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;padding:2px 7px;border-radius:5px">${lbl}</span>${acao}</div>`;
     };
     const h = t => `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-primary);margin:16px 0 8px">${t}</div>`;
@@ -2486,6 +2492,10 @@ async function carregarFinanceiro() {
             else if (t === 'pag-desfazer') await locRegistrarPagamento({ cobrancaId: id, desfazer: true });
             else if (t === 'rep') await locRegistrarRepasse({ repasseId: id });
             else if (t === 'rep-desfazer') await locRegistrarRepasse({ repasseId: id, desfazer: true });
+            else if (t === 'rep-valor') {
+              const inp = secaoFinanceiro.querySelector(`.rep-valor[data-id="${id}"]`);
+              await locAtualizarRepasse({ repasseId: id, valorRepasse: inp ? inp.value : 0 });
+            }
             carregarFinanceiro();
           } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
         });

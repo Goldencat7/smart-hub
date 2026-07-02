@@ -908,6 +908,21 @@ exports.locRegistrarRepasse = onCall(async (req) => {
   return { ok: true };
 });
 
+// (financeiro) Ajusta o valor do repasse (a conta automática é uma estimativa — o
+// financeiro corrige caso a caso; não considera 100% o tipo de repasse na Fase 1).
+exports.locAtualizarRepasse = onCall(async (req) => {
+  await exigirFinanceiro(req);
+  const { repasseId, valorRepasse } = req.data || {};
+  if (!repasseId) throw new HttpsError('invalid-argument', 'repasseId é obrigatório.');
+  const valor = Number(valorRepasse);
+  if (!isFinite(valor) || valor < 0) throw new HttpsError('invalid-argument', 'Valor inválido.');
+  const ref = db.collection('repasses').doc(repasseId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Repasse não encontrado.');
+  await ref.update({ valorRepasse: valor, valorAjustado: true, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true, valorRepasse: valor };
+});
+
 // (autenticado) Financeiro: cobranças + repasses. Gestor/admin veem tudo; corretor os seus (consulta).
 exports.locListarFinanceiro = onCall(async (req) => {
   const auth = exigirAutenticado(req);
