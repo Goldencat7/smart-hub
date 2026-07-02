@@ -749,7 +749,7 @@ exports.locAtivarContrato = onCall(async (req) => {
     status: 'ativo', atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
     historico: admin.firestore.FieldValue.arrayUnion({ de: 'em_contrato', para: 'ativo', por: auth.uid, porNome: 'ativação de contrato', em: admin.firestore.Timestamp.now() })
   }).catch(() => {});
-  // TODO Bloco 5: gerar cobranças mensais a partir daqui.
+  await gerarCobrancasDoContrato(c, contratoId);   // Bloco 5: cobranças + repasses mensais
   return { ok: true, status: 'ativo' };
 });
 
@@ -767,6 +767,143 @@ exports.locListarContratos = onCall(async (req) => {
     atualizadoEm: dc.data().atualizadoEm?.toDate?.()?.toISOString() || null
   }));
   return { contratos, veTudo };
+});
+
+// ─── Gestão de Locações · Bloco 5 · Cobrança + Repasse + Alertas (T8/T10) ────
+// Permissão Financeiro: gestor sempre; administrativo só se o gestor liberar a aba
+// (loc_perfis/{uid}.financeiro). Corretor nunca dá baixa (só consulta).
+async function podeFinanceiro(auth) {
+  if (ehGestorAuth(auth)) return true;
+  if (auth.token && auth.token.locRole === 'administrativo') {
+    const snap = await db.collection('loc_perfis').doc(auth.uid).get();
+    return !!(snap.exists && snap.data().financeiro === true);
+  }
+  return false;
+}
+async function exigirFinanceiro(req) {
+  const auth = exigirAutenticado(req);
+  if (await podeFinanceiro(auth)) return auth;
+  throw new HttpsError('permission-denied', 'Precisa da aba Financeiro liberada pelo gestor.');
+}
+
+// Gera as cobranças + repasses mensais da vigência do contrato (previsão).
+// Ids determinísticos (contratoId_competencia) → idempotente. Ganchos Fase 2:
+// origemStatus='manual' e idExterno='' já nascem aqui (o gateway só troca esses depois).
+async function gerarCobrancasDoContrato(c, contratoId) {
+  const pi = String(c.vigenciaInicio || '').split('-').map(Number);
+  const pf = String(c.vigenciaFim || '').split('-').map(Number);
+  if (!pi[0] || !pi[1] || !pf[0] || !pf[1]) return;
+  const dia = Math.min(28, Math.max(1, c.diaVencimento || 10));
+  const valorAluguel = c.valorAluguel || 0, valorCond = c.valorCondominio || 0, valorIptu = c.valorIptu || 0;
+  const valorCobranca = valorAluguel + valorCond + valorIptu;                 // o que o locatário paga
+  const valorRepasse = Math.max(0, valorAluguel - (valorAluguel * (c.taxaAdm || 0) / 100)); // simplificação Fase 1
+  const proprietarioId = (c.locadorIds || [])[0] || '';
+  const ts = admin.firestore.FieldValue.serverTimestamp();
+
+  const batch = db.batch();
+  let y = pi[0], m = pi[1], count = 0;
+  while ((y < pf[0] || (y === pf[0] && m <= pf[1])) && count < 60) {
+    const competencia = `${y}-${String(m).padStart(2, '0')}`;
+    const docId = `${contratoId}_${competencia}`;
+    batch.set(db.collection('cobrancas').doc(docId), {
+      contratoId, imovelId: c.imovelId, corretorUid: c.corretorUid, competencia,
+      valor: valorCobranca, valorAluguel, valorCondominio: valorCond, valorIptu,
+      vencimento: `${competencia}-${String(dia).padStart(2, '0')}`,
+      status: 'previsto', dataBaixa: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
+    }, { merge: true });
+    batch.set(db.collection('repasses').doc(docId), {
+      contratoId, imovelId: c.imovelId, corretorUid: c.corretorUid, proprietarioId, competencia,
+      valorRepasse, status: 'pendente', dataRepasse: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
+    }, { merge: true });
+    count++; m++; if (m > 12) { m = 1; y++; }
+  }
+  await batch.commit();
+}
+
+// (financeiro) Baixa manual de um pagamento.
+exports.locRegistrarPagamento = onCall(async (req) => {
+  const auth = await exigirFinanceiro(req);
+  const { cobrancaId, desfazer } = req.data || {};
+  if (!cobrancaId) throw new HttpsError('invalid-argument', 'cobrancaId é obrigatório.');
+  const ref = db.collection('cobrancas').doc(cobrancaId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Cobrança não encontrada.');
+  if (desfazer) {
+    await ref.update({ status: 'previsto', dataBaixa: null });
+  } else {
+    let nome = ''; try { nome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
+    await ref.update({ status: 'pago', dataBaixa: admin.firestore.Timestamp.now(), origemStatus: 'manual', baixaPor: nome || auth.uid });
+  }
+  return { ok: true };
+});
+
+// (financeiro) Registra o repasse efetuado ao proprietário.
+exports.locRegistrarRepasse = onCall(async (req) => {
+  const auth = await exigirFinanceiro(req);
+  const { repasseId, desfazer } = req.data || {};
+  if (!repasseId) throw new HttpsError('invalid-argument', 'repasseId é obrigatório.');
+  const ref = db.collection('repasses').doc(repasseId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Repasse não encontrado.');
+  if (desfazer) {
+    await ref.update({ status: 'pendente', dataRepasse: null });
+  } else {
+    let nome = ''; try { nome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
+    await ref.update({ status: 'repassado', dataRepasse: admin.firestore.Timestamp.now(), origemStatus: 'manual', repassePor: nome || auth.uid });
+  }
+  return { ok: true };
+});
+
+// (autenticado) Financeiro: cobranças + repasses. Gestor/admin veem tudo; corretor os seus (consulta).
+exports.locListarFinanceiro = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const podeBaixar = await podeFinanceiro(auth);
+  const filtro = coll => veTudo ? db.collection(coll) : db.collection(coll).where('corretorUid', '==', auth.uid);
+  const [cobS, repS] = await Promise.all([filtro('cobrancas').get(), filtro('repasses').get()]);
+  const ser = (d, campos) => { const o = { id: d.id, ...d.data() }; campos.forEach(k => { o[k] = d.data()[k]?.toDate?.()?.toISOString() || null; }); return o; };
+  const cobrancas = cobS.docs.map(d => ser(d, ['dataBaixa', 'criadoEm']));
+  const repasses  = repS.docs.map(d => ser(d, ['dataRepasse', 'criadoEm']));
+  return { cobrancas, repasses, veTudo, podeBaixar };
+});
+
+// (autenticado) Central de alertas: atrasos + repasses pendentes (dos seus, se corretor).
+exports.locListarAlertas = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  // Evita índice composto: veTudo filtra por status; corretor filtra por corretorUid e o status em memória.
+  let cobDocs, repDocs;
+  if (veTudo) {
+    const [c, r] = await Promise.all([
+      db.collection('cobrancas').where('status', '==', 'atrasado').get(),
+      db.collection('repasses').where('status', '==', 'pendente').get()
+    ]);
+    cobDocs = c.docs; repDocs = r.docs;
+  } else {
+    const [c, r] = await Promise.all([
+      db.collection('cobrancas').where('corretorUid', '==', auth.uid).get(),
+      db.collection('repasses').where('corretorUid', '==', auth.uid).get()
+    ]);
+    cobDocs = c.docs.filter(d => d.data().status === 'atrasado');
+    repDocs = r.docs.filter(d => d.data().status === 'pendente');
+  }
+  const alertas = [];
+  cobDocs.forEach(d => { const x = d.data(); alertas.push({ tipo: 'atraso', competencia: x.competencia, valor: x.valor, vencimento: x.vencimento, contratoId: x.contratoId }); });
+  repDocs.forEach(d => { const x = d.data(); alertas.push({ tipo: 'repasse_pendente', competencia: x.competencia, valor: x.valorRepasse, contratoId: x.contratoId }); });
+  return { alertas };
+});
+
+// Rotina diária: cobranças previstas cujo vencimento passou viram "atrasado".
+exports.locRecalcularAlertas = onSchedule({ schedule: '0 6 * * *', timeZone: TZ }, async () => {
+  const hoje = admin.firestore.Timestamp.now().toDate().toISOString().slice(0, 10);
+  const snap = await db.collection('cobrancas').where('status', '==', 'previsto').get();
+  const vencidas = snap.docs.filter(d => (d.data().vencimento || '') < hoje);
+  for (let i = 0; i < vencidas.length; i += 400) {
+    const batch = db.batch();
+    vencidas.slice(i, i + 400).forEach(d => batch.update(d.ref, { status: 'atrasado' }));
+    await batch.commit();
+  }
+  console.log(`locRecalcularAlertas: ${vencidas.length} cobranças marcadas atrasadas.`);
 });
 
 // Lista quais siteKeys têm credenciais cadastradas

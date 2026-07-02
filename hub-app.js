@@ -45,6 +45,10 @@ const locSalvarGarantia = httpsCallable(fns, 'locSalvarGarantia');
 const locCriarContrato = httpsCallable(fns, 'locCriarContrato');
 const locAtualizarContrato = httpsCallable(fns, 'locAtualizarContrato');
 const locAtivarContrato = httpsCallable(fns, 'locAtivarContrato');
+const locListarFinanceiro = httpsCallable(fns, 'locListarFinanceiro');
+const locRegistrarPagamento = httpsCallable(fns, 'locRegistrarPagamento');
+const locRegistrarRepasse = httpsCallable(fns, 'locRegistrarRepasse');
+const locListarAlertas = httpsCallable(fns, 'locListarAlertas');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -181,6 +185,7 @@ const ICN = {
   calculadoras: svgIcone('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
   notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
   imoveis:      svgIcone('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/>'),
+  financeiro:   svgIcone('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.4"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -231,6 +236,7 @@ const CATEGORIAS = [
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
   { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true },
+  { id: 'financeiro',  nome: 'Financeiro', icone: ICN.financeiro, financeiro: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -277,6 +283,7 @@ const secaoIA             = document.getElementById('secaoIA');
 const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
 const secaoImoveis        = document.getElementById('secaoImoveis');
+const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -378,6 +385,7 @@ function renderCentro() {
   secaoCalculadoras.hidden = true;
   secaoNotas.hidden = true;
   secaoImoveis.hidden = true;
+  secaoFinanceiro.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
@@ -500,6 +508,18 @@ function renderCentro() {
     return;
   }
 
+  // Aba Financeiro (cobranças, repasses, alertas — Gestão de Locações)
+  if (cat.financeiro) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoFinanceiro.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarFinanceiro();
+    return;
+  }
+
   // Aba Reunião
   if (cat.salaReuniao) {
     appsGrid.hidden = true;
@@ -591,7 +611,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis', 'financeiro']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -2259,6 +2279,78 @@ async function carregarImoveis() {
     });
   } catch (e) {
     secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ─── Financeiro (cobranças, repasses, alertas — Gestão de Locações) ──────────
+const COB_STATUS = { previsto:['Previsto','#6366f1'], pago:['Pago','#16a34a'], atrasado:['Atrasado','#DC1C2E'] };
+const REP_STATUS = { pendente:['Pendente','#b45309'], repassado:['Repassado','#16a34a'] };
+const fmtBRLnum = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const compLabel = c => { const [y, m] = String(c || '').split('-'); const mes = ['', 'Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+m] || m; return mes + '/' + (y || ''); };
+
+async function carregarFinanceiro() {
+  secaoFinanceiro.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando financeiro...</p>';
+  try {
+    const [fRes, aRes] = await Promise.all([locListarFinanceiro({}), locListarAlertas({})]);
+    const cobrancas = (fRes.data?.cobrancas || []).slice().sort((a, b) => (a.competencia || '').localeCompare(b.competencia || ''));
+    const repasses  = (fRes.data?.repasses  || []).slice().sort((a, b) => (a.competencia || '').localeCompare(b.competencia || ''));
+    const podeBaixar = !!fRes.data?.podeBaixar;
+    const alertas = aRes.data?.alertas || [];
+
+    if (!cobrancas.length && !repasses.length) {
+      secaoFinanceiro.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">Nada no financeiro ainda.<br><span style="font-size:12px">Cobranças e repasses são gerados quando um contrato é <strong>ativado</strong> (na aba Imóveis).</span></div>`;
+      return;
+    }
+
+    const nAtraso = alertas.filter(a => a.tipo === 'atraso').length;
+    const nRep = alertas.filter(a => a.tipo === 'repasse_pendente').length;
+    const alertaHtml = (nAtraso || nRep) ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      ${nAtraso ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#DC1C2E;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600">⚠ ${nAtraso} cobrança(s) em atraso</div>` : ''}
+      ${nRep ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#b45309;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600">↩ ${nRep} repasse(s) pendente(s)</div>` : ''}</div>` : '';
+
+    const linhaCob = c => {
+      const [lbl, cor] = COB_STATUS[c.status] || [c.status, '#6b7280'];
+      const acao = podeBaixar ? (c.status === 'pago'
+        ? `<button class="topbar-btn btn-fin" data-tipo="pag-desfazer" data-id="${c.id}" style="font-size:10px;padding:3px 8px">Desfazer</button>`
+        : `<button class="topbar-btn primario btn-fin" data-tipo="pag" data-id="${c.id}" style="font-size:10px;padding:3px 8px">Dar baixa</button>`) : '';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <div style="min-width:66px;font-weight:600;font-size:12px">${compLabel(c.competencia)}</div>
+        <div style="flex:1;font-size:12px">${fmtBRLnum(c.valor)}<span style="color:var(--text-muted);font-size:11px"> · venc. ${escapeHtml(c.vencimento || '—')}</span></div>
+        <span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;padding:2px 7px;border-radius:5px">${lbl}</span>${acao}</div>`;
+    };
+    const linhaRep = r => {
+      const [lbl, cor] = REP_STATUS[r.status] || [r.status, '#6b7280'];
+      const acao = podeBaixar ? (r.status === 'repassado'
+        ? `<button class="topbar-btn btn-fin" data-tipo="rep-desfazer" data-id="${r.id}" style="font-size:10px;padding:3px 8px">Desfazer</button>`
+        : `<button class="topbar-btn primario btn-fin" data-tipo="rep" data-id="${r.id}" style="font-size:10px;padding:3px 8px">Repassar</button>`) : '';
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+        <div style="min-width:66px;font-weight:600;font-size:12px">${compLabel(r.competencia)}</div>
+        <div style="flex:1;font-size:12px">${fmtBRLnum(r.valorRepasse)}</div>
+        <span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;padding:2px 7px;border-radius:5px">${lbl}</span>${acao}</div>`;
+    };
+    const h = t => `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-primary);margin:16px 0 8px">${t}</div>`;
+
+    secaoFinanceiro.innerHTML = alertaHtml
+      + h('Cobranças (locatário)') + (cobrancas.map(linhaCob).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhuma.</p>')
+      + h('Repasses (proprietário)') + (repasses.map(linhaRep).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhum.</p>');
+
+    if (podeBaixar) {
+      secaoFinanceiro.querySelectorAll('.btn-fin').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          const t = btn.dataset.tipo, id = btn.dataset.id;
+          try {
+            if (t === 'pag') await locRegistrarPagamento({ cobrancaId: id });
+            else if (t === 'pag-desfazer') await locRegistrarPagamento({ cobrancaId: id, desfazer: true });
+            else if (t === 'rep') await locRegistrarRepasse({ repasseId: id });
+            else if (t === 'rep-desfazer') await locRegistrarRepasse({ repasseId: id, desfazer: true });
+            carregarFinanceiro();
+          } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+        });
+      });
+    }
+  } catch (e) {
+    secaoFinanceiro.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar financeiro: ${escapeHtml(e.message)}</p>`;
   }
 }
 
