@@ -233,6 +233,13 @@ const TREINAMENTO_CATS = [
   ]}
 ];
 
+// Sub-apps da Gestão de Locações — viram cards dentro da aba "Locação"
+const LOC_APPS = [
+  { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira',       icone: ICN.painel },
+  { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Esteira das captações',         icone: ICN.imoveis },
+  { id: 'financeiro', titulo: 'Financeiro', desc: 'Cobranças, repasses e alertas', icone: ICN.financeiro },
+];
+
 const CATEGORIAS = [
   { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
@@ -244,10 +251,7 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  { id: 'painel',      nome: 'Painel',    icone: ICN.painel, painel: true, beta: true },
-  { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true, beta: true },
-  { id: 'financeiro',  nome: 'Financeiro', icone: ICN.financeiro, financeiro: true, beta: true },
-  { id: 'locadmin',    nome: 'Locação',   icone: ICN.locadmin, locadmin: true, soGestor: true, beta: true },
+  { id: 'locacoes',    nome: 'Locação',   icone: ICN.locacao, locacoes: true, beta: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -264,6 +268,7 @@ const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 );
 
 let categoriaAtiva = 'captacao';
+let locSub = null;              // sub-app aberto dentro da aba Locação (null = grade de cards)
 let termoBusca = '';
 let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
@@ -381,6 +386,7 @@ function renderSidebar() {
         return;
       }
       categoriaAtiva = b.dataset.cat;
+      locSub = null;
       termoBusca = '';
       inputBusca.value = '';
       renderSidebar();
@@ -516,51 +522,38 @@ function renderCentro() {
     return;
   }
 
-  // Aba Painel (dashboard — Gestão de Locações)
-  if (cat.painel) {
-    appsGrid.hidden = true;
+  // Aba Locação (Gestão de Locações) — Painel/Imóveis/Financeiro como sub-apps
+  if (cat.locacoes) {
     estadoVazio.hidden = true;
     secaoDocs.hidden = true;
-    secaoPainel.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
-    carregarPainel();
-    return;
-  }
 
-  // Aba Imóveis (esteira das captações — Gestão de Locações)
-  if (cat.imoveis) {
-    appsGrid.hidden = true;
-    estadoVazio.hidden = true;
-    secaoDocs.hidden = true;
-    secaoImoveis.hidden = false;
-    inputBusca.disabled = true;
-    inputBusca.placeholder = '';
-    carregarImoveis();
-    return;
-  }
+    if (!locSub) {
+      // Grade inicial: cards dos sub-apps
+      appsGrid.hidden = false;
+      appsGrid.innerHTML = LOC_APPS.map(a => `
+        <button class="hub-card" data-locsub="${a.id}">
+          <span class="card-icon">${a.icone}</span>
+          <span class="card-title">${a.titulo}</span>
+          <span class="card-desc">${a.desc}</span>
+        </button>
+      `).join('');
+      appsGrid.querySelectorAll('.hub-card').forEach(b => {
+        b.addEventListener('click', () => { locSub = b.dataset.locsub; renderCentro(); });
+      });
+      return;
+    }
 
-  // Aba Financeiro (cobranças, repasses, alertas — Gestão de Locações)
-  if (cat.financeiro) {
+    // Sub-app aberto: título vira "voltar + nome" e mostra a seção
     appsGrid.hidden = true;
-    estadoVazio.hidden = true;
-    secaoDocs.hidden = true;
-    secaoFinanceiro.hidden = false;
-    inputBusca.disabled = true;
-    inputBusca.placeholder = '';
-    carregarFinanceiro();
-    return;
-  }
+    const sub = LOC_APPS.find(a => a.id === locSub);
+    tituloCategoria.innerHTML = `<button class="loc-voltar" id="locVoltar">← Locação</button> <span>${sub ? sub.titulo : ''}</span>`;
+    document.getElementById('locVoltar').addEventListener('click', () => { locSub = null; renderCentro(); });
 
-  // Aba Locação (perfis/admin — só gestor)
-  if (cat.locadmin) {
-    appsGrid.hidden = true;
-    estadoVazio.hidden = true;
-    secaoDocs.hidden = true;
-    secaoLocAdmin.hidden = false;
-    inputBusca.disabled = true;
-    inputBusca.placeholder = '';
-    carregarLocAdmin();
+    if (locSub === 'painel')     { secaoPainel.hidden = false;     carregarPainel(); }
+    if (locSub === 'imoveis')    { secaoImoveis.hidden = false;    carregarImoveis(); }
+    if (locSub === 'financeiro') { secaoFinanceiro.hidden = false; carregarFinanceiro(); }
     return;
   }
 
@@ -655,7 +648,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis', 'financeiro', 'locadmin', 'painel']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'locacoes']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
