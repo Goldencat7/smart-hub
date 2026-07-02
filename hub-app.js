@@ -37,6 +37,7 @@ const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
+const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -1923,6 +1924,38 @@ const IMOVEL_STATUS = [
 ];
 const imovelLabel = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).label || k;
 const imovelCor   = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).cor   || '#6b7280';
+const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
+
+// Card de um imóvel. Se `role` for gestor/administrativo, inclui o controle de mover status.
+function cardImovelHtml(im, role) {
+  const e = im.endereco || {};
+  const end = [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', ');
+  const data = im.atualizadoEm ? new Date(im.atualizadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
+  const admin = role === 'gestor' || role === 'administrativo';
+  const meta = [im.tipo, im.valorAnuncio ? 'Anúncio ' + im.valorAnuncio : '', admin && im.corretorNome ? 'Corretor: ' + im.corretorNome : '', data]
+    .filter(Boolean).map(escapeHtml).join(' · ');
+
+  let controle = '';
+  if (admin) {
+    const opts = IMOVEL_STATUS.map(s => {
+      const dis = (role !== 'gestor' && IMOVEL_STATUS_SO_GESTOR.includes(s.key)) ? ' disabled' : '';
+      return `<option value="${s.key}"${s.key === im.status ? ' selected' : ''}${dis}>${s.label}</option>`;
+    }).join('');
+    controle = `<div style="margin-top:8px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:11px;color:var(--text-muted)">Mover para:</span>
+      <select class="imovel-status-sel" data-id="${escapeHtml(im.id)}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">${opts}</select></div>`;
+  }
+
+  return `<div class="ficha-card">
+    <div class="ficha-card-head">
+      <div><strong style="font-size:13px">${escapeHtml(end || im.tipo || 'Imóvel')}</strong>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${escapeHtml(im.locadorNome || '')}</span></div>
+      <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
+    ${controle}
+  </div>`;
+}
 
 async function carregarImoveis() {
   secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando imóveis...</p>';
@@ -1930,11 +1963,12 @@ async function carregarImoveis() {
     const res = await locListarImoveis({});
     const imoveis = res.data?.imoveis || [];
     const veTudo  = !!res.data?.veTudo;
+    const role    = res.data?.role || 'corretor';
 
     if (!imoveis.length) {
       secaoImoveis.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">
         Nenhum imóvel na esteira ainda.<br>
-        <span style="font-size:12px">Um imóvel aparece aqui automaticamente quando você aprova uma ficha do locador e <strong>envia ao administrativo</strong> (aba Cadastro).</span></div>`;
+        <span style="font-size:12px">Um imóvel aparece aqui automaticamente quando o corretor aprova uma ficha do locador e <strong>envia ao administrativo</strong> (aba Cadastro).</span></div>`;
       return;
     }
 
@@ -1946,24 +1980,39 @@ async function carregarImoveis() {
         <div style="font-size:20px;font-weight:700;color:${s.cor}">${contagem[s.key] || 0}</div>
         <div style="font-size:11px;color:var(--text-muted)">${s.label}</div></div>`).join('')}</div>`;
 
-    // Cards
-    const cards = imoveis.map(im => {
-      const e = im.endereco || {};
-      const end = [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', ');
-      const data = im.atualizadoEm ? new Date(im.atualizadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
-      const meta = [im.tipo, im.valorAnuncio ? 'Anúncio ' + im.valorAnuncio : '', veTudo && im.corretorNome ? 'Corretor: ' + im.corretorNome : '', data]
-        .filter(Boolean).map(escapeHtml).join(' · ');
-      return `<div class="ficha-card">
-        <div class="ficha-card-head">
-          <div><strong style="font-size:13px">${escapeHtml(end || im.tipo || 'Imóvel')}</strong>
-            <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${escapeHtml(im.locadorNome || '')}</span></div>
-          <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span>
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
-      </div>`;
-    }).join('');
+    let corpo;
+    if (veTudo) {
+      // Gestor/Administrativo: esteira agrupada por etapa
+      const grupos = IMOVEL_STATUS.map(s => {
+        const lista = imoveis.filter(im => im.status === s.key);
+        if (!lista.length) return '';
+        return `<div style="margin-top:18px">
+          <div style="font-size:12px;font-weight:700;color:${s.cor};text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${s.label} · ${lista.length}</div>
+          <div style="display:flex;flex-direction:column;gap:10px">${lista.map(im => cardImovelHtml(im, role)).join('')}</div></div>`;
+      }).join('');
+      const fora = imoveis.filter(im => !IMOVEL_STATUS.some(s => s.key === im.status));
+      const foraHtml = fora.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">OUTROS · ${fora.length}</div><div style="display:flex;flex-direction:column;gap:10px">${fora.map(im => cardImovelHtml(im, role)).join('')}</div></div>` : '';
+      corpo = grupos + foraHtml;
+    } else {
+      // Corretor: lista simples dos seus imóveis
+      corpo = `<div style="display:flex;flex-direction:column;gap:10px">${imoveis.map(im => cardImovelHtml(im, role)).join('')}</div>`;
+    }
 
-    secaoImoveis.innerHTML = resumo + `<div style="display:flex;flex-direction:column;gap:10px">${cards}</div>`;
+    secaoImoveis.innerHTML = resumo + corpo;
+
+    // Controle de status (só aparece pra gestor/administrativo)
+    secaoImoveis.querySelectorAll('.imovel-status-sel').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        sel.disabled = true;
+        try {
+          await locMoverImovelStatus({ imovelId: sel.dataset.id, novoStatus: sel.value });
+          carregarImoveis();
+        } catch (e) {
+          alert('Erro ao mover: ' + e.message);
+          carregarImoveis();
+        }
+      });
+    });
   } catch (e) {
     secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
   }

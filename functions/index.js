@@ -439,7 +439,9 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
 // (autenticado) Lista imóveis: corretor vê só os seus; gestor/administrativo veem todos.
 exports.locListarImoveis = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const role = ehGestorAuth(auth) ? 'gestor'
+             : (auth.token && auth.token.locRole === 'administrativo' ? 'administrativo' : 'corretor');
+  const veTudo = role === 'gestor' || role === 'administrativo';
   let q = db.collection('imoveis');
   if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
   const snap = await q.get();
@@ -448,7 +450,45 @@ exports.locListarImoveis = onCall(async (req) => {
     criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() || null,
     atualizadoEm: d.data().atualizadoEm?.toDate?.()?.toISOString() || null
   }));
-  return { imoveis, veTudo };
+  return { imoveis, veTudo, role };
+});
+
+// (gestor/administrativo) Move um imóvel pela esteira, com trilha de auditoria.
+// Regra da spec: recepção/triagem (recebido<->em_analise) o administrativo pode;
+// decisões (aprovado) e contrato (em_contrato/ativo) são EXCLUSIVAS do gestor.
+const IMOVEL_STATUS_VALIDOS = ['recebido', 'em_analise', 'aprovado', 'em_contrato', 'ativo'];
+const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
+
+exports.locMoverImovelStatus = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ehGestor = ehGestorAuth(auth);
+  const ehAdm = auth.token && auth.token.locRole === 'administrativo';
+  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo movem imóveis.');
+
+  const { imovelId, novoStatus } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  if (!IMOVEL_STATUS_VALIDOS.includes(novoStatus)) throw new HttpsError('invalid-argument', 'Status inválido.');
+  if (IMOVEL_STATUS_SO_GESTOR.includes(novoStatus) && !ehGestor) {
+    throw new HttpsError('permission-denied', 'Só o gestor pode aprovar, mandar pra contrato ou ativar.');
+  }
+
+  const ref = db.collection('imoveis').doc(imovelId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const atual = snap.data().status || 'recebido';
+  if (atual === novoStatus) return { ok: true, status: novoStatus };
+
+  let porNome = '';
+  try { porNome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
+
+  await ref.update({
+    status: novoStatus,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    historico: admin.firestore.FieldValue.arrayUnion({
+      de: atual, para: novoStatus, por: auth.uid, porNome, em: admin.firestore.Timestamp.now()
+    })
+  });
+  return { ok: true, status: novoStatus };
 });
 
 // Lista quais siteKeys têm credenciais cadastradas
