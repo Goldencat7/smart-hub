@@ -281,7 +281,8 @@ exports.setUserAccess = onCall(async (req) => {
   // Perfil de Locação (opcional): grava na claim locRole (autoridade) + loc_perfis p/ Financeiro.
   if (loc_role !== undefined) {
     const role = LOC_ROLES.includes(loc_role) ? loc_role : 'corretor';
-    const userRec = await admin.auth().getUser(uid);
+    const userRec = await admin.auth().getUser(uid).catch(() => null);
+    if (!userRec) throw new HttpsError('not-found', 'Usuário não encontrado.');
     const claims = { ...(userRec.customClaims || {}) };
     if (role === 'corretor') delete claims.locRole; else claims.locRole = role;   // preserva claim admin
     await admin.auth().setCustomUserClaims(uid, claims);
@@ -792,12 +793,26 @@ exports.locAtivarContrato = onCall(async (req) => {
   if (!c.vigenciaInicio || !c.vigenciaFim || !c.valorAluguel) {
     throw new HttpsError('failed-precondition', 'Preencha vigência e valor do aluguel antes de ativar.');
   }
+
+  // O imóvel precisa estar "em_contrato" (ou já "ativo", num retry). Não força de estado errado.
+  const imovelRef = db.collection('imoveis').doc(c.imovelId);
+  const imovelSnap = await imovelRef.get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel do contrato não encontrado.');
+  const statusImovel = imovelSnap.data().status;
+  if (statusImovel !== 'em_contrato' && statusImovel !== 'ativo') {
+    throw new HttpsError('failed-precondition', 'O imóvel precisa estar "Em contrato" pra ativar.');
+  }
+
+  // Ordem: imóvel → cobranças → contrato (marca 'ativo' por ÚLTIMO). Se algo falhar no meio,
+  // o contrato NÃO fica 'ativo', então dá pra reativar e reconciliar (tudo idempotente).
+  if (statusImovel === 'em_contrato') {
+    await imovelRef.update({
+      status: 'ativo', atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      historico: admin.firestore.FieldValue.arrayUnion({ de: statusImovel, para: 'ativo', por: auth.uid, porNome: 'ativação de contrato', em: admin.firestore.Timestamp.now() })
+    });
+  }
+  await gerarCobrancasDoContrato(c, contratoId);
   await ref.update({ status: 'ativo', ativadoEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
-  await db.collection('imoveis').doc(c.imovelId).update({
-    status: 'ativo', atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
-    historico: admin.firestore.FieldValue.arrayUnion({ de: 'em_contrato', para: 'ativo', por: auth.uid, porNome: 'ativação de contrato', em: admin.firestore.Timestamp.now() })
-  }).catch(() => {});
-  await gerarCobrancasDoContrato(c, contratoId);   // Bloco 5: cobranças + repasses mensais
   return { ok: true, status: 'ativo' };
 });
 
@@ -851,21 +866,30 @@ async function gerarCobrancasDoContrato(c, contratoId) {
   const proprietarioId = (c.locadorIds || [])[0] || '';
   const ts = admin.firestore.FieldValue.serverTimestamp();
 
+  // Idempotência REAL: lê o que já existe e só CRIA o que falta — nunca reescreve
+  // uma cobrança/repasse existente (não reseta uma baixa/repasse já registrado).
+  const [exC, exR] = await Promise.all([
+    db.collection('cobrancas').where('contratoId', '==', contratoId).get(),
+    db.collection('repasses').where('contratoId', '==', contratoId).get()
+  ]);
+  const temC = new Set(exC.docs.map(d => d.id));
+  const temR = new Set(exR.docs.map(d => d.id));
+
   const batch = db.batch();
   let y = pi[0], m = pi[1], count = 0;
   while ((y < pf[0] || (y === pf[0] && m <= pf[1])) && count < 60) {
     const competencia = `${y}-${String(m).padStart(2, '0')}`;
     const docId = `${contratoId}_${competencia}`;
-    batch.set(db.collection('cobrancas').doc(docId), {
+    if (!temC.has(docId)) batch.set(db.collection('cobrancas').doc(docId), {
       contratoId, imovelId: c.imovelId, corretorUid: c.corretorUid, competencia,
       valor: valorCobranca, valorAluguel, valorCondominio: valorCond, valorIptu,
       vencimento: `${competencia}-${String(dia).padStart(2, '0')}`,
       status: 'previsto', dataBaixa: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
-    }, { merge: true });
-    batch.set(db.collection('repasses').doc(docId), {
+    });
+    if (!temR.has(docId)) batch.set(db.collection('repasses').doc(docId), {
       contratoId, imovelId: c.imovelId, corretorUid: c.corretorUid, proprietarioId, competencia,
       valorRepasse, status: 'pendente', dataRepasse: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
-    }, { merge: true });
+    });
     count++; m++; if (m > 12) { m = 1; y++; }
   }
   if (count >= 60 && (y < pf[0] || (y === pf[0] && m <= pf[1]))) {
