@@ -85,6 +85,7 @@ const MAX_PROP = 4;
 const valores   = {};        // chave -> valor
 const pendentes = new Set();
 const arquivos  = {};
+const docsExistentes = {};
 let nProponentes = 1;        // quantos blocos de proponente estão visíveis
 let somenteLeitura = false;
 
@@ -258,7 +259,7 @@ function atualizarProgresso(){
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(isPend(k) || (valores[k]&&(''+valores[k]).trim())) ok++; });
   // documentos obrigatórios contam também
-  ['rgcpf','compEndereco','compRenda','compEstadoCivil'].forEach(k=>{ total++; if(isPend(k)||arquivos[k]) ok++; });
+  ['rgcpf','compEndereco','compRenda','compEstadoCivil'].forEach(k=>{ total++; if(isPend(k)||arquivos[k]||docsExistentes[k]) ok++; });
   const pct = total? Math.round(ok/total*100):0;
   const bar = document.getElementById('progressFill'); if(bar) bar.style.width = pct+'%';
 }
@@ -408,6 +409,30 @@ function aplicarFicha(ficha){
   renderProponentes();
   // marca docs pendentes
   (ficha.pendentes||[]).forEach(k=>{ const tag=document.getElementById('pend-'+k); if(tag) tag.style.display='inline-block'; });
+  // mostra docs existentes (corretor e edição)
+  const nomesDoc = { rgcpf:'RG/CPF/CNH', compEndereco:'Comp. endereço', compRenda:'Comp. renda', compEstadoCivil:'Estado civil' };
+  Object.entries(ficha.documentos || {}).forEach(([k, url]) => {
+    docsExistentes[k] = url;
+    const st = document.getElementById('status-'+k);
+    const area = document.getElementById('area-'+k);
+    if (st) {
+      if (modo === 'corretor') {
+        st.innerHTML = `<a href="${url}" target="_blank" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`;
+      } else {
+        st.innerHTML = `<a href="${url}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+      }
+    }
+    if (area) area.classList.add('tem-arquivo');
+    if (modo === 'corretor') {
+      const wrapper = area && area.closest('.doc-wrapper');
+      if (wrapper && !url.toLowerCase().endsWith('.pdf')) {
+        const img = document.createElement('img');
+        img.src = url; img.alt = nomesDoc[k]||k;
+        img.style.cssText = 'width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0';
+        wrapper.appendChild(img);
+      }
+    }
+  });
   atualizarProgresso();
 }
 
@@ -425,7 +450,7 @@ async function init(){
       document.querySelectorAll('#formFicha input,#formFicha select,#formFicha textarea').forEach(el=>{ el.disabled=true; });
       document.querySelectorAll('.nao-tenho,.doc-clickable').forEach(el=>{ el.style.pointerEvents='none'; el.style.opacity='.6'; });
       window.__fichaId=idFicha;
-      if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>`<li>${p}</li>`).join(''); }
+      if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={rgcpf:'RG / CPF / CNH',compEndereco:'Comprovante de endereço',compRenda:'Comprovante de renda',compEstadoCivil:'Comprovante de estado civil'}; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>{const m=p.match(/^p(\d+)_(.+)$/); if(m){const i=m[1],c=m[2]; return `<li>Proponente ${i} — ${c==='profissao'?'Profissão':c==='renda'?'Renda mensal':c}</li>`;} return `<li>${_nomesPend[p]||p}</li>`;}).join(''); }
     }catch(e){ mostrarErro('Erro: '+e.message); }
   } else if(modo==='edicao' && idFicha){
     const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Edição';

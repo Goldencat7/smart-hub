@@ -26,6 +26,7 @@ export const valores = {};
 export const pendentes = new Set();   // "Não tenho agora"
 export const naoExiste = new Set();   // "Não existe"
 export const arquivos = {};
+export const docsExistentes = {};
 let somenteLeitura = false;
 let CFG = null;
 
@@ -166,9 +167,11 @@ function renderDocs(){
     let toggles='';
     if(d.ni)  toggles+=`<label class="nao-tenho nao-existe doc-nao-tenho"><input type="checkbox" data-doc-ni="${d.key}"${ni?' checked':''}><span>Não existe</span></label>`;
     if(d.nta) toggles+=`<label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="${d.key}"${nta?' checked':''}><span>Não tenho agora</span></label>`;
-    const statusTxt = arquivos[d.key]?('✓ '+arquivos[d.key].name):(nta?'Marcado como pendente':(ni?'Não se aplica':'Toque para selecionar'));
-    const areaCls = arquivos[d.key]?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
-    return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" data-trigger="${d.key}"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}"></div>${toggles}</div>`;
+    const temExistente = !arquivos[d.key] && docsExistentes[d.key];
+    const statusTxt = arquivos[d.key]?('✓ '+arquivos[d.key].name):(temExistente?`<a href="${docsExistentes[d.key]}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a>${somenteLeitura?'':' <span style="color:#888;font-size:11px">(toque para trocar)</span>'}`):(nta?'Marcado como pendente':(ni?'Não se aplica':'Toque para selecionar'));
+    const areaCls = (arquivos[d.key]||temExistente)?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
+    const imgInline = (somenteLeitura && temExistente && !docsExistentes[d.key].toLowerCase().endsWith('.pdf')) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0">` : '';
+    return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" data-trigger="${d.key}"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}"></div>${toggles}${imgInline}</div>`;
   }).join('');
 }
 
@@ -181,7 +184,7 @@ export function atualizarProgresso(){
   const campos=document.querySelectorAll('[data-key]');
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(pendentes.has(k)||naoExiste.has(k)||(valores[k]&&(''+valores[k]).trim())) ok++; });
-  (CFG.docs||[]).forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]) ok++; });
+  (CFG.docs||[]).forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
   const pct=total?Math.round(ok/total*100):0;
   const bar=document.getElementById('progressFill'); if(bar) bar.style.width=pct+'%';
   if(CFG.aoAtualizar) CFG.aoAtualizar();
@@ -323,12 +326,12 @@ export async function iniciarFicha(cfg){
     document.getElementById('barraCorretor').style.display = origemHub ? 'none':'flex';
     const b=document.getElementById('badgeModo'); b.style.display='inline'; b.textContent='Revisão';
     document.getElementById('introTexto').style.display='none'; document.getElementById('btnSubmit').style.display='none';
-    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); aplicarValores(f.dados); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender();
-      if((f.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; document.getElementById('listaPendencias').innerHTML=f.pendentes.map(p=>`<li>${p}</li>`).join(''); } }catch(e){ mostrarErro('Erro: '+e.message); }
+    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); aplicarValores(f.dados); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender();
+      if((f.pendentes||[]).length && !CFG.semResumoPendencias){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={}; (CFG.docs||[]).forEach(d=>{_nomesPend[d.key]=d.label;}); document.querySelectorAll('[data-campo]').forEach(cb=>{const lbl=cb.closest('.field-header')?.querySelector('label'); if(lbl){const t=lbl.cloneNode(true); t.querySelectorAll('span').forEach(s=>s.remove()); _nomesPend[cb.dataset.campo]=t.textContent.trim();}}); document.querySelectorAll('[data-doc-campo]').forEach(cb=>{if(!_nomesPend[cb.dataset.docCampo]){const lbl=cb.closest('.doc-wrapper')?.querySelector('.doc-label'); if(lbl){const t=lbl.cloneNode(true); t.querySelectorAll('span').forEach(s=>s.remove()); _nomesPend[cb.dataset.docCampo]=t.textContent.trim();}}}); document.getElementById('listaPendencias').innerHTML=f.pendentes.map(p=>`<li>${_nomesPend[p]||p}</li>`).join(''); } }catch(e){ mostrarErro('Erro: '+e.message); }
   } else if(CFG._modo==='edicao' && CFG._idFicha){
     const b=document.getElementById('badgeModo'); b.style.display='inline'; b.textContent='Edição';
     document.getElementById('btnSubmit').textContent='Salvar alterações';
-    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); if(!origemHub&&f.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(f.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${f.observacaoCorretor}</p>`; } aplicarValores(f.dados); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender(); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
+    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); if(!origemHub&&f.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(f.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${f.observacaoCorretor}</p>`; } aplicarValores(f.dados); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender(); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
     rerender();
   }

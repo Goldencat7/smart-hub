@@ -573,10 +573,20 @@ function rotuloFicha(k) {
   return humanizarChave(k);
 }
 
-function gerarPdfFicha(ficha, tipoLabel) {
+async function gerarPdfFicha(ficha, tipoLabel) {
+  const NOMES_DOC = { rgcpf:'RG e CPF', energia:'Energia', agua:'Água', gas:'Gás', iptu_doc:'IPTU', condominio_doc:'Condomínio', rgFrente:'RG (frente)', rgVerso:'RG (verso)', compRenda:'Comp. renda', compEndereco:'Comp. endereço', compEstadoCivil:'Estado civil', matricula:'Matrícula' };
+
+  // Baixa imagens dos documentos antes de montar o PDF
+  const docImages = {};
+  for (const [campo, url] of Object.entries(ficha.documentos || {})) {
+    const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('%2fpdf');
+    if (isPdf) continue;
+    try { docImages[campo] = await fetchBuffer(url); } catch (_) {}
+  }
+
   return new Promise((resolve, reject) => {
     try {
-      const PDFDocument = require('pdfkit'); // lazy: só carrega quando gerar PDF
+      const PDFDocument = require('pdfkit');
       const d = ficha.dados || {};
       const chunks = [];
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
@@ -613,6 +623,27 @@ function gerarPdfFicha(ficha, tipoLabel) {
         doc.fontSize(11).fillColor('#b45309').text('Itens pendentes:');
         doc.fontSize(10).fillColor('#b45309')
           .text(pendentes.map(p => '• ' + rotuloFicha(p)).join('\n'));
+      }
+
+      // Documentos anexados (imagens embutidas no PDF)
+      const docKeys = Object.keys(docImages);
+      if (docKeys.length) {
+        doc.addPage();
+        doc.fontSize(14).fillColor('#002749').text('Documentos anexados', { paragraphGap: 6 });
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#ddd').stroke();
+        doc.moveDown(0.5);
+
+        for (const campo of docKeys) {
+          const label = NOMES_DOC[campo] || rotuloFicha(campo);
+          doc.fontSize(10).fillColor('#555').text(label + ':', { paragraphGap: 4 });
+          try {
+            doc.image(docImages[campo], { fit: [475, 600], align: 'center' });
+          } catch (_) {
+            doc.fontSize(9).fillColor('#999').text('(imagem não pôde ser incorporada)');
+          }
+          doc.moveDown(1);
+          if (doc.y > 700) doc.addPage();
+        }
       }
 
       doc.end();

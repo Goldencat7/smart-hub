@@ -64,19 +64,11 @@ function render(){
 }
 
 FE.iniciarFicha({
-  titulo:'Ficha Cadastral Vendedor', tipo:'vendedor', docsNum:5,
+  titulo:'Ficha Cadastral Vendedor', tipo:'vendedor',
+  semResumoPendencias: true,
   rigidos:['nome','whatsapp','email'],
   msgRigidos:'Preencha pelo menos nome, WhatsApp e e-mail do 1º vendedor.',
   intro:'Preencha os dados do(s) vendedor(es), imóvel e comissões. Use <strong>"Não tenho agora"</strong> para pendências e <strong>"Não existe"</strong> para o que não se aplica.',
-  docs:[
-    {key:'rgcpf',     icon:'🪪', label:'RG e CPF',                badge:'obrig'},
-    {key:'matricula', icon:'📋', label:'Matrícula / Escritura',   badge:'obrig'},
-    {key:'iptu',      icon:'📄', label:'Documento do IPTU',       badge:'obrig'},
-    {key:'energia',   icon:'⚡', label:'Conta de energia',        badge:'obrig'},
-    {key:'condominio',icon:'🏢', label:'Documento do condomínio', badge:'opc', ni:true, nta:true},
-    {key:'agua',      icon:'💧', label:'Conta de água',            badge:'opc', ni:true, nta:true},
-    {key:'gas',       icon:'🔥', label:'Conta de gás',             badge:'opc', ni:true, nta:true},
-  ],
   render,
   acoes:{
     addVend:()=>{ if(st.numVend<4) st.numVend++; },

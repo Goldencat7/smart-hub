@@ -305,6 +305,7 @@ const origemHub   = params.get('origem') === 'hub';
 
 const pendentes = new Set();
 const arquivos  = {};
+const docsExistentes = {};
 let somenteLeitura = false;
 
 // ── Visibilidade de seções ──────────────────────────────────────────
@@ -494,7 +495,7 @@ function atualizarProgresso() {
   let total = CAMPOS_PROG.length, ok = 0;
   CAMPOS_PROG.forEach(c => {
     const el = document.querySelector(`[name="${c}"]`);
-    if (pendentes.has(c) || arquivos[c] || (el && el.value.trim())) ok++;
+    if (pendentes.has(c) || arquivos[c] || docsExistentes[c] || (el && el.value.trim())) ok++;
   });
   const pct = Math.round(ok / total * 100);
   const bar = document.getElementById('progressFill'); if (bar) bar.style.width = pct + '%';
@@ -528,14 +529,30 @@ function preencherFicha(ficha) {
     const cb = document.querySelector(`[data-campo="${campo}"]`) || document.querySelector(`[data-doc-campo="${campo}"]`);
     if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); }
   });
-  // Mostra links de docs existentes
-  if (modo === 'corretor') {
-    const nomesDoc = { rgcpf:'RG e CPF', energia:'Energia', agua:'Água', gas:'Gás', iptu_doc:'IPTU', condominio_doc:'Condomínio' };
-    Object.entries(ficha.documentos || {}).forEach(([k, url]) => {
-      const st = document.getElementById(`status-${k}`);
-      if (st) { st.innerHTML = `<a href="${url}" target="_blank" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`; const area = document.getElementById(`area-${k}`); if (area) area.classList.add('tem-arquivo'); }
-    });
-  }
+  // Mostra links de docs existentes (corretor e edição)
+  const nomesDoc = { rgcpf:'RG e CPF', energia:'Energia', agua:'Água', gas:'Gás', iptu_doc:'IPTU', condominio_doc:'Condomínio' };
+  Object.entries(ficha.documentos || {}).forEach(([k, url]) => {
+    docsExistentes[k] = url;
+    const st = document.getElementById(`status-${k}`);
+    const area = document.getElementById(`area-${k}`);
+    if (st) {
+      if (modo === 'corretor') {
+        st.innerHTML = `<a href="${url}" target="_blank" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`;
+      } else {
+        st.innerHTML = `<a href="${url}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+      }
+    }
+    if (area) area.classList.add('tem-arquivo');
+    if (modo === 'corretor') {
+      const wrapper = area && area.closest('.doc-wrapper');
+      if (wrapper && !url.toLowerCase().endsWith('.pdf')) {
+        const img = document.createElement('img');
+        img.src = url; img.alt = nomesDoc[k]||k;
+        img.style.cssText = 'width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0';
+        wrapper.appendChild(img);
+      }
+    }
+  });
   atualizarProgresso();
 }
 
@@ -553,7 +570,7 @@ async function init() {
       const ficha = snap.data(); preencherFicha(ficha); window.__fichaId = idFicha;
       if ((ficha.pendentes || []).length) {
         document.getElementById('resumoPendencias').style.display = 'block';
-        document.getElementById('listaPendencias').innerHTML = ficha.pendentes.map(p => `<li>${p}</li>`).join('');
+        const _nomesPend={rgcpf:'RG e CPF',energia:'Conta de energia',agua:'Conta de água',gas:'Conta de gás',iptu_doc:'Documento do IPTU',condominio_doc:'Doc. do condomínio',profissao:'Profissão',im_admcond:'Adm. condominial',im_enel:'Instalação ENEL',im_sabesp:'Instalação Sabesp',im_comgas:'Instalação Comgás'}; document.getElementById('listaPendencias').innerHTML = ficha.pendentes.map(p => `<li>${_nomesPend[p]||p}</li>`).join('');
       }
     } catch(e) { mostrarErro('Erro: ' + e.message); }
 

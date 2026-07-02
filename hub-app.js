@@ -2136,6 +2136,7 @@ async function carregarListaFichas(fichaKey = 'locador') {
 
           ${obs ? `<div style="font-size:11px;color:#6366f1;margin-top:6px;background:#eef2ff;padding:5px 8px;border-radius:6px">📝 Obs. ao cliente: ${obs}</div>` : ''}
           ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p => nomePend[p]||p).join(', ')}</div>` : ''}
+          ${f.corretorNome ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:right">Corretor: ${escapeHtml(f.corretorNome)}</div>` : ''}
 
           <!-- Ações -->
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
