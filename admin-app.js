@@ -33,6 +33,8 @@ const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
+const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
+const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
 const listarStatusApps        = httpsCallable(fns, 'listarStatusApps');
 const listarNotificacoesAdmin = httpsCallable(fns, 'listarNotificacoesAdmin');
 const excluirNotificacao      = httpsCallable(fns, 'excluirNotificacao');
@@ -235,6 +237,7 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
 });
 
 async function carregarTudo() {
+  carregarLancamento();
   await Promise.all([carregarBanner(), carregarCredenciais(), carregarUsuarios(), carregarCodigos(), carregarStatusApps()]);
 }
 
@@ -357,6 +360,49 @@ document.getElementById('materialFileInput').addEventListener('change', async ()
 });
 
 // ─── Banner principal (carrossel) ─────────────────────────────────────────────
+async function carregarLancamento() {
+  const cont = document.getElementById('lancamentoLocacoes');
+  if (!cont) return;
+  cont.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const [perm, versao] = await Promise.all([getMinhasPermissoes(), window.hubApi.getAppVersion()]);
+    const publicada = perm.data.locacoesPublicadaEm || '';
+    const jaPublicada = !!publicada && versao === publicada;
+    cont.innerHTML = `
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🧪 Versão de teste (esta)</div>
+          <div style="font-size:20px;font-weight:700;margin-top:4px">${versao}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${jaPublicada ? '✓ já publicada para todos' : 'só quem tem "Acesso de teste" vê o módulo'}</div>
+          ${jaPublicada
+            ? `<button class="topbar-btn" id="btnVoltarTeste" style="margin-top:10px">↩ Voltar pra teste</button>`
+            : `<button class="topbar-btn primario" id="btnPublicar" style="margin-top:10px">🚀 Publicar ${versao} para todos</button>`}
+        </div>
+        <div style="flex:1;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">📦 Publicada para todos</div>
+          <div style="font-size:20px;font-weight:700;margin-top:4px">${publicada || '—'}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${publicada ? 'todos nesta versão veem o módulo' : 'ainda ninguém (só testadores)'}</div>
+        </div>
+      </div>`;
+    const btnPub = document.getElementById('btnPublicar');
+    if (btnPub) btnPub.addEventListener('click', async () => {
+      if (!confirm(`Publicar a Gestão de Locações (versão ${versao}) para TODOS os usuários?`)) return;
+      btnPub.disabled = true;
+      try { await publicarLocacoes({ versao }); carregarLancamento(); }
+      catch (e) { alert('Erro: ' + e.message); btnPub.disabled = false; }
+    });
+    const btnVolta = document.getElementById('btnVoltarTeste');
+    if (btnVolta) btnVolta.addEventListener('click', async () => {
+      if (!confirm('Voltar a Gestão de Locações para modo de teste (esconde de quem não tem Acesso de teste)?')) return;
+      btnVolta.disabled = true;
+      try { await publicarLocacoes({ versao: '' }); carregarLancamento(); }
+      catch (e) { alert('Erro: ' + e.message); btnVolta.disabled = false; }
+    });
+  } catch (e) {
+    cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+  }
+}
+
 async function carregarBanner() {
   const el = document.getElementById('bannerAdmin');
   el.innerHTML = '<p class="muted">carregando...</p>';

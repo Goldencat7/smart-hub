@@ -243,9 +243,23 @@ exports.getMinhasPermissoes = onCall(async (req) => {
   const dados = snap.exists ? snap.data() : {};
   const drives_fotografia = !!dados.drives_fotografia;
   const loc_beta = !!dados.loc_beta;   // acesso de teste ao módulo de Locações (feature flag)
-  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta };
+  const relSnap = await db.collection('config').doc('release').get();
+  const locacoesPublicadaEm = (relSnap.exists && relSnap.data().locacoesPublicadaEm) || ''; // versão liberada p/ todos
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, locacoesPublicadaEm };
   const apps = dados.apps || [];
-  return { apps, isAdmin: false, drives_fotografia, loc_beta };
+  return { apps, isAdmin: false, drives_fotografia, loc_beta, locacoesPublicadaEm };
+});
+
+// (admin) Publica a versão atual da Gestão de Locações pra TODOS (ou volta pra teste com versao='').
+exports.publicarLocacoes = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { versao } = req.data || {};
+  await db.collection('config').doc('release').set({
+    locacoesPublicadaEm: typeof versao === 'string' ? versao : '',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: req.auth.uid
+  }, { merge: true });
+  return { ok: true };
 });
 
 // (admin) Lê os apps restritos liberados pra um usuário + lista de restritos disponíveis

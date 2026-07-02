@@ -268,6 +268,7 @@ let termoBusca = '';
 let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
 let betaLocacoes = false;       // acesso de teste ao módulo de Locações (feature flag) — gate das abas
+let locacoesPublicado = false;  // true quando a versão deste app foi publicada p/ todos (painel de Admin)
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
@@ -360,7 +361,7 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
-    (!c.beta || betaLocacoes) &&
+    (!c.beta || betaLocacoes || locacoesPublicado) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
   );
@@ -927,6 +928,10 @@ onAuthStateChanged(auth, async (user) => {
     appsPermitidos = perm.data.apps || [];
     temDrivesFotografia = !!perm.data.drives_fotografia;
     betaLocacoes = !!perm.data.loc_beta;
+    try {
+      const v = await window.hubApi.getAppVersion();
+      locacoesPublicado = !!perm.data.locacoesPublicadaEm && v === perm.data.locacoesPublicadaEm;
+    } catch (_) { locacoesPublicado = false; }
     if (perm.data.isAdmin) isAdmin = true;
   } catch (e) {
     console.warn('Permissões:', e);
