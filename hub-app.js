@@ -49,6 +49,10 @@ const locListarFinanceiro = httpsCallable(fns, 'locListarFinanceiro');
 const locRegistrarPagamento = httpsCallable(fns, 'locRegistrarPagamento');
 const locRegistrarRepasse = httpsCallable(fns, 'locRegistrarRepasse');
 const locListarAlertas = httpsCallable(fns, 'locListarAlertas');
+const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
+const locListarPessoasPerfis = httpsCallable(fns, 'locListarPessoasPerfis');
+const locDefinirPerfil = httpsCallable(fns, 'locDefinirPerfil');
+const locMeuPerfil = httpsCallable(fns, 'locMeuPerfil');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -186,6 +190,7 @@ const ICN = {
   notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
   imoveis:      svgIcone('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/>'),
   financeiro:   svgIcone('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.4"/>'),
+  locadmin:     svgIcone('<path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="M9 12l2 2 4-4"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -237,6 +242,7 @@ const CATEGORIAS = [
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
   { id: 'imoveis',     nome: 'Imóveis',   icone: ICN.imoveis, imoveis: true },
   { id: 'financeiro',  nome: 'Financeiro', icone: ICN.financeiro, financeiro: true },
+  { id: 'locadmin',    nome: 'Locação',   icone: ICN.locadmin, locadmin: true, soGestor: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -255,6 +261,7 @@ const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 let categoriaAtiva = 'captacao';
 let termoBusca = '';
 let isAdmin = false;
+let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
@@ -284,6 +291,7 @@ const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
 const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
+const secaoLocAdmin       = document.getElementById('secaoLocAdmin');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -345,6 +353,7 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
+    (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
   );
 
@@ -386,6 +395,7 @@ function renderCentro() {
   secaoNotas.hidden = true;
   secaoImoveis.hidden = true;
   secaoFinanceiro.hidden = true;
+  secaoLocAdmin.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
@@ -520,6 +530,18 @@ function renderCentro() {
     return;
   }
 
+  // Aba Locação (perfis/admin — só gestor)
+  if (cat.locadmin) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoLocAdmin.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarLocAdmin();
+    return;
+  }
+
   // Aba Reunião
   if (cat.salaReuniao) {
     appsGrid.hidden = true;
@@ -611,7 +633,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis', 'financeiro']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'imoveis', 'financeiro', 'locadmin']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -888,6 +910,10 @@ onAuthStateChanged(auth, async (user) => {
     console.warn('Permissões:', e);
     appsPermitidos = [];
   }
+  try {
+    const mp = await locMeuPerfil();
+    locRoleAtual = mp.data?.role || 'corretor';
+  } catch (e) { locRoleAtual = 'corretor'; }
   await Promise.all([carregarStatusApps(), carregarBanner()]); // carrega dados antes de renderizar
   renderSidebar(); // re-render: agora que isAdmin/permissões chegaram, itens restritos (ClickSign) aparecem
   renderCentro();
@@ -2073,7 +2099,21 @@ function renderDetalheImovel(d) {
     gestaoHtml = sec('Locatário &amp; análise', locG + formLoc) + sec('Garantia', garForm) + sec('Contrato', contratoHtml);
   }
 
-  return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
+  // Vistorias — quem vê o detalhe pode registrar (corretor dono executa; gestor/admin acompanham)
+  const VIST_LABEL = { agendada:'Agendada', realizada:'Realizada', laudo_emitido:'Laudo emitido' };
+  const vistorias = d.vistorias || [];
+  const vistList = vistorias.length ? vistorias.map(v => {
+    const laudo = /^https?:/i.test(v.laudoUrl || '') ? ` · <a href="${escapeHtml(v.laudoUrl)}" target="_blank">laudo ↗</a>` : '';
+    return `<div style="font-size:12px;padding:3px 0">${v.tipo === 'entrada' ? 'Entrada' : 'Saída'} — <strong>${VIST_LABEL[v.status] || v.status}</strong>${laudo}</div>`;
+  }).join('') : '<div style="font-size:11px;color:var(--text-muted)">Nenhuma vistoria registrada.</div>';
+  const vistForm = `<div class="form-vistoria" data-imovel="${im.id}" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+    <select class="vi-tipo" style="${_selStyle}"><option value="entrada">Entrada</option><option value="saida">Saída</option></select>
+    <select class="vi-status" style="${_selStyle}"><option value="agendada">Agendada</option><option value="realizada">Realizada</option><option value="laudo_emitido">Laudo emitido</option></select>
+    <input class="vi-laudo" placeholder="Link do laudo (opcional)" style="${_selStyle}">
+    <button class="topbar-btn primario btn-add-vistoria" style="font-size:11px;padding:4px 10px">Registrar vistoria</button></div>`;
+  const vistoriaHtml = sec('Vistorias', vistList + vistForm);
+
+  return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml + vistoriaHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
 }
 
 // Liga os controles de gestão (locatário/garantia) dentro de um painel de detalhe.
@@ -2116,6 +2156,23 @@ function wireDetalheImovel(cont, imovelId) {
           modalidade: formGar.querySelector('.gar-mod').value,
           status: formGar.querySelector('.gar-status').value,
           apoliceUrl: formGar.querySelector('.gar-apolice').value.trim()
+        });
+        await recarregarDetalhe(cont, imovelId);
+      } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+  }
+  // Vistoria: registrar
+  const formVi = cont.querySelector('.form-vistoria');
+  if (formVi) {
+    const btn = formVi.querySelector('.btn-add-vistoria');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await locSalvarVistoria({
+          imovelId,
+          tipo: formVi.querySelector('.vi-tipo').value,
+          status: formVi.querySelector('.vi-status').value,
+          laudoUrl: formVi.querySelector('.vi-laudo').value.trim()
         });
         await recarregarDetalhe(cont, imovelId);
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
@@ -2279,6 +2336,48 @@ async function carregarImoveis() {
     });
   } catch (e) {
     secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ─── Locação · Admin (perfis — só gestor) ────────────────────────────────────
+async function carregarLocAdmin() {
+  secaoLocAdmin.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando perfis...</p>';
+  try {
+    const res = await locListarPessoasPerfis({});
+    const usuarios = (res.data?.usuarios || []).slice().sort((a, b) => (a.nome || a.email || '').localeCompare(b.nome || b.email || ''));
+    const ROLE_OPTS = { corretor: 'Corretor', administrativo: 'Administrativo', gestor: 'Gestor' };
+    const rows = usuarios.map(u => `
+      <div class="ficha-card" data-uid="${escapeHtml(u.uid)}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <div style="flex:1;min-width:150px"><strong style="font-size:13px">${escapeHtml(u.nome || '(sem nome)')}</strong>
+          <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(u.email || '')}</div></div>
+        <select class="perfil-role" style="${_selStyle}">${Object.entries(ROLE_OPTS).map(([k, l]) => `<option value="${k}"${k === u.role ? ' selected' : ''}>${l}</option>`).join('')}</select>
+        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><input type="checkbox" class="perfil-fin"${u.financeiro ? ' checked' : ''}${u.role === 'corretor' ? ' disabled' : ''}> Financeiro</label>
+        <button class="topbar-btn primario btn-salvar-perfil" style="font-size:11px;padding:4px 10px">Salvar</button>
+      </div>`).join('');
+    secaoLocAdmin.innerHTML = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Defina o perfil de cada pessoa e libere a aba <strong>Financeiro</strong>. Após mudar o perfil, a pessoa precisa deslogar/logar pra valer.</div>${rows}`;
+
+    secaoLocAdmin.querySelectorAll('.perfil-role').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const fin = sel.closest('[data-uid]').querySelector('.perfil-fin');
+        if (sel.value === 'corretor') { fin.checked = false; fin.disabled = true; } else fin.disabled = false;
+      });
+    });
+    secaoLocAdmin.querySelectorAll('.btn-salvar-perfil').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const card = btn.closest('[data-uid]');
+        btn.disabled = true;
+        try {
+          await locDefinirPerfil({
+            uid: card.dataset.uid,
+            role: card.querySelector('.perfil-role').value,
+            financeiro: card.querySelector('.perfil-fin').checked
+          });
+          carregarLocAdmin();
+        } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+      });
+    });
+  } catch (e) {
+    secaoLocAdmin.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro: ${escapeHtml(e.message)}</p>`;
   }
 }
 

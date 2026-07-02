@@ -349,6 +349,23 @@ exports.locMeuPerfil = onCall(async (req) => {
   return { role, financeiro };
 });
 
+// (gestor) Lista os usuários do Hub com seus perfis de locação (pra tela de admin — T12).
+exports.locListarPessoasPerfis = onCall(async (req) => {
+  await exigirGestor(req);
+  const [result, perfisSnap] = await Promise.all([
+    admin.auth().listUsers(1000),
+    db.collection('loc_perfis').get()
+  ]);
+  const perfis = {};
+  perfisSnap.forEach(d => { perfis[d.id] = d.data(); });
+  const usuarios = result.users.map(u => ({
+    uid: u.uid, nome: u.displayName || '', email: u.email || '',
+    role: (u.customClaims && u.customClaims.locRole) || 'corretor',
+    financeiro: !!(perfis[u.uid] && perfis[u.uid].financeiro)
+  }));
+  return { usuarios };
+});
+
 // ─── Gestão de Locações · Bloco 2 · Captação ────────────────────────────────
 // Quando o corretor aprova a ficha do locador e envia ao admin (status -> enviado_admin),
 // materializamos o IMÓVEL na esteira + as PESSOAS (locadores). Idempotente: o id do
@@ -498,6 +515,10 @@ exports.locObterImovel = onCall(async (req) => {
   } : null;
   const podeContratar = (await locImovelPodeContratar(imovelId)).ok;
 
+  // Vistorias do imóvel
+  const vSnap = await db.collection('vistorias').where('imovelId', '==', imovelId).get();
+  const vistorias = vSnap.docs.map(v => ({ id: v.id, ...v.data(), atualizadoEm: v.data().atualizadoEm?.toDate?.()?.toISOString() || null }));
+
   const historico = (imovel.historico || []).map(h => ({
     ...h, em: h.em?.toDate?.()?.toISOString() || null
   }));
@@ -509,7 +530,7 @@ exports.locObterImovel = onCall(async (req) => {
       atualizadoEm: imovel.atualizadoEm?.toDate?.()?.toISOString() || null,
       historico
     },
-    locadores, locatarios, garantia, contrato, podeContratar
+    locadores, locatarios, garantia, contrato, podeContratar, vistorias
   };
 });
 
@@ -891,6 +912,33 @@ exports.locListarAlertas = onCall(async (req) => {
   cobDocs.forEach(d => { const x = d.data(); alertas.push({ tipo: 'atraso', competencia: x.competencia, valor: x.valor, vencimento: x.vencimento, contratoId: x.contratoId }); });
   repDocs.forEach(d => { const x = d.data(); alertas.push({ tipo: 'repasse_pendente', competencia: x.competencia, valor: x.valorRepasse, contratoId: x.contratoId }); });
   return { alertas };
+});
+
+// ─── Gestão de Locações · Bloco 6 · Vistorias (T9) ──────────────────────────
+// Fase 1 manual (D-06 em aberto): registra entrada/saída + link do laudo. O corretor
+// (dono) executa; gestor/admin acompanham.
+const VISTORIA_STATUS = ['agendada', 'realizada', 'laudo_emitido'];
+exports.locSalvarVistoria = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId, vistoriaId, tipo, status, laudoUrl, obs } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  if (!['entrada', 'saida'].includes(tipo)) throw new HttpsError('invalid-argument', 'Tipo inválido.');
+  if (!VISTORIA_STATUS.includes(status)) throw new HttpsError('invalid-argument', 'Status inválido.');
+
+  const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && imovelSnap.data().corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
+
+  const ref = vistoriaId ? db.collection('vistorias').doc(vistoriaId) : db.collection('vistorias').doc();
+  const base = {
+    imovelId, contratoId: imovelId, corretorUid: imovelSnap.data().corretorUid,
+    tipo, status, laudoUrl: laudoUrl || '', obs: obs || '',
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  };
+  if (!vistoriaId) base.criadoEm = admin.firestore.FieldValue.serverTimestamp();
+  await ref.set(base, { merge: true });
+  return { ok: true, id: ref.id };
 });
 
 // Rotina diária: cobranças previstas cujo vencimento passou viram "atrasado".
