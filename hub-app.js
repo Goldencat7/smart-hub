@@ -12,7 +12,7 @@ import {
   getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
 import {
-  getFirestore, doc, setDoc, serverTimestamp as fsTs
+  getFirestore, doc, getDoc, setDoc, serverTimestamp as fsTs
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -169,6 +169,8 @@ const ICN = {
   whatsapp:    svgIcone('<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'),
   clicksign:   svgIcone('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
+  calculadoras: svgIcone('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
+  notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
 };
 
@@ -222,6 +224,8 @@ const CATEGORIAS = [
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
   { id: 'ia',           nome: 'IA',              icone: ICN.ia, ia: true },
+  { id: 'calculadoras', nome: 'Calculadoras',    icone: ICN.calculadoras, calculadoras: true },
+  { id: 'notas',        nome: 'Bloco de Notas',  icone: ICN.notas, notas: true },
   { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp' },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
@@ -259,6 +263,8 @@ const secaoFotografia     = document.getElementById('secaoFotografia');
 const secaoReuniao        = document.getElementById('secaoReuniao');
 const secaoSalaReuniao    = document.getElementById('secaoSalaReuniao');
 const secaoIA             = document.getElementById('secaoIA');
+const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
+const secaoNotas          = document.getElementById('secaoNotas');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
@@ -357,6 +363,8 @@ function renderCentro() {
   secaoReuniao.hidden = true;
   secaoSalaReuniao.hidden = true;
   secaoIA.hidden = true;
+  secaoCalculadoras.hidden = true;
+  secaoNotas.hidden = true;
   secaoTreinamento.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
@@ -440,6 +448,30 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarIA();
+    return;
+  }
+
+  // Aba Calculadoras
+  if (cat.calculadoras) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoCalculadoras.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarCalculadoras();
+    return;
+  }
+
+  // Aba Bloco de Notas
+  if (cat.notas) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoNotas.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarNotas();
     return;
   }
 
@@ -534,7 +566,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -1799,12 +1831,12 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
           <div class="ficha-card" data-id="${f.id}">
             <div class="ficha-card-head">
               <div>
-                <strong style="font-size:13px">${d.nome || 'Sem nome'}</strong>
-                <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Corretor: ${f.corretorNome || '—'}</span>
+                <strong style="font-size:13px">${escapeHtml(d.nome || 'Sem nome')}</strong>
+                <span style="font-size:11px;color:var(--text-muted);margin-left:8px">Corretor: ${escapeHtml(f.corretorNome || '—')}</span>
               </div>
               <span style="font-size:11px;color:var(--text-muted)">${dataEnvio}</span>
             </div>
-            ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p=>nomePend[p]||p).join(', ')}</div>` : ''}
+            ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p=>escapeHtml(nomePend[p]||p)).join(', ')}</div>` : ''}
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
               <button class="topbar-btn primario btn-baixar-docs" data-id="${f.id}" style="font-size:11px;padding:4px 10px">📥 Baixar documentos</button>
               <button class="topbar-btn btn-ver-dados" data-id="${f.id}" style="font-size:11px;padding:4px 10px">Ver dados ▾</button>
@@ -1812,9 +1844,9 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
             </div>
             <div id="dados-${f.id}" style="display:none;margin-top:10px;font-size:12px;border-top:1px solid var(--border);padding-top:10px">
               <div class="row-dados" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">
-                ${[['Nome',d.nome],['CPF',d.cpf],['RG',d.rg],['Nascimento',d.dataNasc],['Estado civil',d.estadoCivil],['Profissão',d.profissao],['Renda',d.renda],['WhatsApp',d.whatsapp],['E-mail',d.email],['CEP',d.cep],['Endereço',`${d.logradouro||''} ${d.numero||''} ${d.complemento||''}`],['Bairro',d.bairro],['Cidade',`${d.cidade||''}/${d.estado||''}`],['Banco',d.banco],['Agência',d.agencia],['Conta',`${d.conta||''} (${d.tipoConta||''})`],['Pix',d.pix]].filter(([,v])=>v).map(([k,v])=>`<div style="margin-bottom:3px"><span style="color:var(--text-muted)">${k}:</span> ${v}</div>`).join('')}
+                ${[['Nome',d.nome],['CPF',d.cpf],['RG',d.rg],['Nascimento',d.dataNasc],['Estado civil',d.estadoCivil],['Profissão',d.profissao],['Renda',d.renda],['WhatsApp',d.whatsapp],['E-mail',d.email],['CEP',d.cep],['Endereço',`${d.logradouro||''} ${d.numero||''} ${d.complemento||''}`],['Bairro',d.bairro],['Cidade',`${d.cidade||''}/${d.estado||''}`],['Banco',d.banco],['Agência',d.agencia],['Conta',`${d.conta||''} (${d.tipoConta||''})`],['Pix',d.pix]].filter(([,v])=>v).map(([k,v])=>`<div style="margin-bottom:3px"><span style="color:var(--text-muted)">${k}:</span> ${escapeHtml(v)}</div>`).join('')}
               </div>
-              ${docs.length > 0 ? `<div style="margin-top:8px;font-weight:600;font-size:12px;margin-bottom:4px">Documentos:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${docs.map(([k,url])=>`<a href="${url}" target="_blank" class="topbar-btn" style="font-size:11px;padding:4px 10px">${nomesDoc[k]||k} ↗</a>`).join('')}</div>` : '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">Nenhum documento enviado.</p>'}
+              ${docs.length > 0 ? `<div style="margin-top:8px;font-weight:600;font-size:12px;margin-bottom:4px">Documentos:</div><div style="display:flex;flex-wrap:wrap;gap:6px">${docs.map(([k,url])=> /^https?:/i.test(url) ? `<a href="${escapeHtml(url)}" target="_blank" class="topbar-btn" style="font-size:11px;padding:4px 10px">${escapeHtml(nomesDoc[k]||k)} ↗</a>` : '').join('')}</div>` : '<p style="font-size:11px;color:var(--text-muted);margin-top:6px">Nenhum documento enviado.</p>'}
             </div>
           </div>`;
       }).join('')}`;
@@ -1861,6 +1893,136 @@ async function carregarFichasAnalise(fichaKey = 'locador') {
 
   } catch(e) {
     lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro: ${e.message}</p>`;
+  }
+}
+
+// ─── Calculadoras ────────────────────────────────────────────────────────────
+function carregarCalculadoras() {
+  const CALCS = [
+    {
+      calc: 'aluguel', nome: 'Aluguel proporcional',
+      desc: 'Valor do aluguel por dia e o total proporcional aos dias contabilizados.',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><circle cx="24" cy="24" r="12" fill="none" stroke="#A4D7F4" stroke-width="2.5"/><text x="24" y="30" text-anchor="middle" font-size="14" font-weight="800" fill="#fff" font-family="Arial,sans-serif">R$</text></svg>`
+    },
+    {
+      calc: 'multa', nome: 'Multa rescisória',
+      desc: 'Multa proporcional pela saída antecipada, com base nos dias restantes do contrato.',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><rect x="15" y="12" width="18" height="24" rx="2" fill="none" stroke="#A4D7F4" stroke-width="2"/><path d="M24 19v7" stroke="#DC1C2E" stroke-width="2.5" stroke-linecap="round"/><circle cx="24" cy="30" r="1.4" fill="#DC1C2E"/></svg>`
+    }
+  ];
+
+  secaoCalculadoras.innerHTML = `
+    <div class="ia-grid">
+      ${CALCS.map(c => `
+        <button class="ia-card" data-calc="${c.calc}">
+          <div class="ia-icone">${c.icone}</div>
+          <div class="ia-nome">${c.nome}</div>
+          <div class="ia-empresa">Calculadora</div>
+          <p class="ia-desc">${c.desc}</p>
+        </button>
+      `).join('')}
+    </div>`;
+
+  secaoCalculadoras.querySelectorAll('.ia-card').forEach(card => {
+    card.addEventListener('click', () => {
+      window.hubApi.abrirFichaLocal('calculadoras.html', { calc: card.dataset.calc });
+    });
+  });
+}
+
+// ─── Bloco de Notas ──────────────────────────────────────────────────────────
+let notasState = null;        // array de {id, titulo, corpo, atualizadoEm}
+let notasSaveTimer = null;
+let notasCarregando = false;
+
+async function carregarNotas() {
+  if (notasState === null) {
+    if (notasCarregando) return;
+    notasCarregando = true;
+    secaoNotas.innerHTML = '<p class="notas-vazio">Carregando suas notas...</p>';
+    try {
+      const snap = currentUid ? await getDoc(doc(db, 'user_notes', currentUid)) : null;
+      notasState = (snap && snap.exists() && Array.isArray(snap.data().notas)) ? snap.data().notas : [];
+    } catch (e) {
+      notasState = [];
+      console.warn('Erro ao carregar notas:', e.message);
+    }
+    notasCarregando = false;
+  }
+  renderNotas();
+}
+
+function renderNotas() {
+  const notas = notasState || [];
+  secaoNotas.innerHTML = `
+    <div class="notas-barra">
+      <button class="topbar-btn primario" id="btnNovaNota">+ Nova nota</button>
+      <span class="notas-status" id="notasStatus"></span>
+    </div>
+    ${notas.length === 0
+      ? '<p class="notas-vazio">Nenhuma nota ainda. Clique em <strong>+ Nova nota</strong> para começar.</p>'
+      : `<div class="notas-grid">${notas.map(n => `
+        <div class="nota-card" data-id="${escapeHtml(n.id)}">
+          <div class="nota-card-head">
+            <input class="nota-titulo" data-campo="titulo" placeholder="Título" value="${escapeHtml(n.titulo || '')}">
+          </div>
+          <textarea class="nota-corpo" data-campo="corpo" placeholder="Escreva aqui...">${escapeHtml(n.corpo || '')}</textarea>
+          <div class="nota-rodape">
+            <span>${n.atualizadoEm ? 'Editada ' + new Date(n.atualizadoEm).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : 'Nova'}</span>
+            <button class="nota-excluir" data-excluir="${escapeHtml(n.id)}">🗑 Excluir</button>
+          </div>
+        </div>`).join('')}</div>`}
+  `;
+
+  const btnNova = document.getElementById('btnNovaNota');
+  if (btnNova) btnNova.addEventListener('click', () => {
+    notasState.unshift({ id: 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), titulo: '', corpo: '', atualizadoEm: Date.now() });
+    renderNotas();
+    const primeiro = secaoNotas.querySelector('.nota-titulo');
+    if (primeiro) primeiro.focus();
+    agendarSalvarNotas();
+  });
+
+  secaoNotas.querySelectorAll('.nota-card').forEach(card => {
+    const id = card.dataset.id;
+    // Edição inline: atualiza o estado sem re-renderizar (não perde o foco ao digitar)
+    card.querySelectorAll('[data-campo]').forEach(el => {
+      el.addEventListener('input', () => {
+        const nota = notasState.find(n => n.id === id);
+        if (!nota) return;
+        nota[el.dataset.campo] = el.value;
+        nota.atualizadoEm = Date.now();
+        agendarSalvarNotas();
+      });
+    });
+    const btnDel = card.querySelector('[data-excluir]');
+    if (btnDel) btnDel.addEventListener('click', () => {
+      if (!confirm('Excluir esta nota?')) return;
+      notasState = notasState.filter(n => n.id !== id);
+      renderNotas();
+      salvarNotas();
+    });
+  });
+}
+
+function agendarSalvarNotas() {
+  const status = document.getElementById('notasStatus');
+  if (status) status.textContent = 'Salvando...';
+  clearTimeout(notasSaveTimer);
+  notasSaveTimer = setTimeout(salvarNotas, 800);
+}
+
+async function salvarNotas() {
+  clearTimeout(notasSaveTimer);
+  if (!currentUid) return;
+  try {
+    await setDoc(doc(db, 'user_notes', currentUid), { notas: notasState || [], updatedAt: fsTs() }, { merge: true });
+    const status = document.getElementById('notasStatus');
+    if (status) status.textContent = 'Salvo ✓';
+  } catch (e) {
+    const status = document.getElementById('notasStatus');
+    if (status) status.textContent = 'Erro ao salvar';
+    console.warn('Erro ao salvar notas:', e.message);
   }
 }
 
@@ -2140,14 +2302,14 @@ async function carregarListaFichas(fichaKey = 'locador') {
         <div class="ficha-card" data-id="${f.id}">
           <div class="ficha-card-head">
             <div>
-              <strong style="font-size:13px">${f.dados?.nome || 'Sem nome'}</strong>
+              <strong style="font-size:13px">${escapeHtml(f.dados?.nome || 'Sem nome')}</strong>
               <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${data}</span>
             </div>
             <span style="font-size:11px;font-weight:600;color:${cor};background:${cor}18;padding:3px 8px;border-radius:6px">${label}</span>
           </div>
 
-          ${obs ? `<div style="font-size:11px;color:#6366f1;margin-top:6px;background:#eef2ff;padding:5px 8px;border-radius:6px">📝 Obs. ao cliente: ${obs}</div>` : ''}
-          ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p => nomePend[p]||p).join(', ')}</div>` : ''}
+          ${obs ? `<div style="font-size:11px;color:#6366f1;margin-top:6px;background:#eef2ff;padding:5px 8px;border-radius:6px">📝 Obs. ao cliente: ${escapeHtml(obs)}</div>` : ''}
+          ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p => escapeHtml(nomePend[p]||p)).join(', ')}</div>` : ''}
           ${f.corretorNome ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:right">Corretor: ${escapeHtml(f.corretorNome)}</div>` : ''}
 
           <!-- Ações -->

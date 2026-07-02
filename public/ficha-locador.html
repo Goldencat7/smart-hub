@@ -305,6 +305,9 @@ const origemHub   = params.get('origem') === 'hub';
 
 const pendentes = new Set();
 const arquivos  = {};
+
+// Escape p/ inserção segura em innerHTML — dados do Firestore vêm de cliente anônimo.
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const docsExistentes = {};
 let somenteLeitura = false;
 
@@ -570,7 +573,7 @@ async function init() {
       const ficha = snap.data(); preencherFicha(ficha); window.__fichaId = idFicha;
       if ((ficha.pendentes || []).length) {
         document.getElementById('resumoPendencias').style.display = 'block';
-        const _nomesPend={rgcpf:'RG e CPF',energia:'Conta de energia',agua:'Conta de água',gas:'Conta de gás',iptu_doc:'Documento do IPTU',condominio_doc:'Doc. do condomínio',profissao:'Profissão',im_admcond:'Adm. condominial',im_enel:'Instalação ENEL',im_sabesp:'Instalação Sabesp',im_comgas:'Instalação Comgás'}; document.getElementById('listaPendencias').innerHTML = ficha.pendentes.map(p => `<li>${_nomesPend[p]||p}</li>`).join('');
+        const _nomesPend={rgcpf:'RG e CPF',energia:'Conta de energia',agua:'Conta de água',gas:'Conta de gás',iptu_doc:'Documento do IPTU',condominio_doc:'Doc. do condomínio',profissao:'Profissão',im_admcond:'Adm. condominial',im_enel:'Instalação ENEL',im_sabesp:'Instalação Sabesp',im_comgas:'Instalação Comgás'}; document.getElementById('listaPendencias').innerHTML = ficha.pendentes.map(p => `<li>${escHtml(_nomesPend[p]||p)}</li>`).join('');
       }
     } catch(e) { mostrarErro('Erro: ' + e.message); }
 
@@ -582,7 +585,7 @@ async function init() {
       if (!snap.exists()) { mostrarErro('Ficha não encontrada.'); return; }
       const ficha = snap.data();
       if (!origemHub && ficha.status !== 'aguardando_edicao_cliente') { mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; }
-      if (ficha.observacaoCorretor) { document.getElementById('introTexto').innerHTML = `<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p>`; }
+      if (ficha.observacaoCorretor) { document.getElementById('introTexto').innerHTML = `<p>📝 <strong>Observação do corretor:</strong> ${escHtml(ficha.observacaoCorretor)}</p>`; }
       preencherFicha(ficha);
     } catch(e) { mostrarErro('Erro ao carregar: ' + e.message); }
   }

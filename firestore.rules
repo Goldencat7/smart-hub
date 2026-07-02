@@ -17,6 +17,13 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.admin == true;
     }
 
+    // Bloco de notas pessoal: cada usuário lê/escreve só o próprio doc.
+    match /user_notes/{uid} {
+      allow read:  if request.auth != null && request.auth.uid == uid;
+      allow write: if request.auth != null && request.auth.uid == uid
+                   && request.resource.data.notas is list;
+    }
+
     // Fichas do locador — cliente anônimo cria/edita, mas com validação:
     // - corretorUid obrigatório e imutável (impede trocar o dono)
     // - status do client-side sempre 'aguardando_corretor' (Admin SDK muda pra outros)
@@ -24,9 +31,11 @@ service cloud.firestore {
       allow get: if true;
       allow create: if request.resource.data.corretorUid is string
                     && request.resource.data.corretorUid.size() > 0
-                    && request.resource.data.status == 'aguardando_corretor';
+                    && request.resource.data.status == 'aguardando_corretor'
+                    && semObsCorretor();
       allow update: if request.resource.data.corretorUid == resource.data.corretorUid
-                    && request.resource.data.status == 'aguardando_corretor';
+                    && request.resource.data.status == 'aguardando_corretor'
+                    && semObsCorretor();
       allow list: if request.auth != null && request.auth.token.admin == true;
     }
 
@@ -36,11 +45,21 @@ service cloud.firestore {
       allow create: if request.resource.data.corretorUid is string
                     && request.resource.data.corretorUid.size() > 0
                     && request.resource.data.tipo is string
-                    && request.resource.data.status == 'aguardando_corretor';
+                    && request.resource.data.status == 'aguardando_corretor'
+                    && semObsCorretor();
       allow update: if request.resource.data.corretorUid == resource.data.corretorUid
                     && request.resource.data.tipo == resource.data.tipo
-                    && request.resource.data.status == 'aguardando_corretor';
+                    && request.resource.data.status == 'aguardando_corretor'
+                    && semObsCorretor();
       allow list: if request.auth != null && request.auth.token.admin == true;
+    }
+
+    // A observação do corretor só é escrita pelas Cloud Functions (Admin SDK, que
+    // ignora estas regras). No caminho anônimo (cliente preenchendo/editando) ela
+    // precisa ficar vazia — impede plantar payload de XSS via write direto.
+    function semObsCorretor() {
+      return !('observacaoCorretor' in request.resource.data)
+             || request.resource.data.observacaoCorretor == '';
     }
   }
 }

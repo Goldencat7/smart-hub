@@ -78,10 +78,23 @@ function base64url(buf) {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-// Permite sites HTTP antigos e ignora cert errors
-app.commandLine.appendSwitch('ignore-certificate-errors');
+// Sites legados de autologin às vezes têm certificado quebrado/expirado e conteúdo misto.
+// Antes a verificação TLS era desligada no app INTEIRO — o que expunha o login do Firebase
+// e as Cloud Functions a interceptação (MITM). Agora a leniência de certificado vale só
+// para as janelas que abrem esses sites de terceiros (ver 'certificate-error' abaixo).
 app.commandLine.appendSwitch('allow-running-insecure-content');
 app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests');
+
+// webContents.id das janelas de autologin/PWA autorizadas a aceitar cert inválido.
+const contentsComCertLiberado = new Set();
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  if (webContents && contentsComCertLiberado.has(webContents.id)) {
+    event.preventDefault();
+    callback(true);   // confia — apenas nos sites legados de autologin/PWA
+  } else {
+    callback(false);  // verificação TLS padrão para Firebase, Google e o Hub
+  }
+});
 
 // ─── Auto-update via GitHub Releases ────────────────────────────────────────
 autoUpdater.autoDownload = true;
@@ -299,7 +312,8 @@ ipcMain.on('abrir-ficha-local', (_e, { arquivo, params }) => {
     width: 940, height: 860, autoHideMenuBar: true,
     webPreferences: { devTools: DEVTOOLS_HABILITADO }
   });
-  const filePath = path.join(__dirname, 'public', arquivo);
+  // basename evita path traversal (ex.: '..\\..\\algo.html') — só abre arquivos de public/
+  const filePath = path.join(__dirname, 'public', path.basename(arquivo || ''));
   win.loadFile(filePath, { query: params || {} })
      .catch(err => console.error('Erro ao abrir ficha local:', err));
 });
@@ -457,6 +471,9 @@ function abrirJanelaSimples(url) {
     }
   });
   disfarcarComoChrome(win);
+  const cidSimples = win.webContents.id;
+  contentsComCertLiberado.add(cidSimples);
+  win.on('closed', () => contentsComCertLiberado.delete(cidSimples));
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
 }
 
@@ -481,6 +498,11 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
   // Disfarça como Chrome real (UA padrão + Client Hints) — ClickSign e afins
   // bloqueiam clientes Electron mesmo com o "Electron/x" removido da UA.
   disfarcarComoChrome(pwaWindow);
+
+  // Autoriza esta janela (site legado) a aceitar certificado inválido.
+  const cidPwa = pwaWindow.webContents.id;
+  contentsComCertLiberado.add(cidPwa);
+  pwaWindow.on('closed', () => contentsComCertLiberado.delete(cidPwa));
 
   // Páginas com muitos iframes (reCAPTCHA etc.) podem estourar o limite padrão de listeners
   pwaWindow.webContents.setMaxListeners(50);

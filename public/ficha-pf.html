@@ -149,7 +149,7 @@ function blocoProponente(i){
   const mostraConj = COM_CONJUGE.includes(civilVal);
   const removivel = i>1 && i===nProponentes && !somenteLeitura;
   return `<div class="section" data-prop="${i}">
-    <div class="prop-head"><div><span class="num">${i}</span><strong>${i===1?'Locatário':'Locatário '+i}</strong></div>${removivel?`<button type="button" class="btn-remover-bloco" data-remover="${i}">✕ Remover</button>`:''}</div>
+    <div class="prop-head"><div><span class="num">${i}</span><strong>${i===1?'Cliente':'Cliente '+i}</strong></div>${removivel?`<button type="button" class="btn-remover-bloco" data-remover="${i}">✕ Remover</button>`:''}</div>
     ${campo({label:'Nome completo',key:kNome})}
     ${row(
       campo({label:'RG',key:P+'rg'}),
@@ -191,7 +191,7 @@ function renderProponentes(){
   let html = '';
   for(let i=1;i<=nProponentes;i++) html += blocoProponente(i);
   if(!somenteLeitura && nProponentes < MAX_PROP)
-    html += `<button type="button" class="btn-add-bloco" id="btnAddProp">+ Adicionar locatário (${nProponentes}/${MAX_PROP})</button>`;
+    html += `<button type="button" class="btn-add-bloco" id="btnAddProp">+ Adicionar cliente (${nProponentes}/${MAX_PROP})</button>`;
   document.getElementById('proponentes').innerHTML = html;
   // popula o select de UF do imóvel (uma vez basta, mas é barato refazer)
   const imEstado = document.querySelector('[data-key="im_estado"]');
@@ -345,7 +345,7 @@ form.addEventListener('submit', async e=>{
   if(!corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
   const rigidos = [['nome','nome'],['whatsapp','WhatsApp'],['email','e-mail']];
   const falta = rigidos.filter(([k])=> !(valores[k]&&(''+valores[k]).trim()));
-  if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do locatário principal.'); return; }
+  if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do cliente principal.'); return; }
   const erroCpfFone = validarCpfsETelefones();
   if(erroCpfFone){ mostrarErro(erroCpfFone); return; }
 

@@ -651,9 +651,25 @@ async function gerarPdfFicha(ficha, tipoLabel) {
   });
 }
 
+// Só permite baixar do próprio bucket de Storage do projeto. Os documentos das fichas
+// são gravados por clientes anônimos, que poderiam apontar 'documentos' para endpoints
+// internos/metadata (SSRF) — aqui garantimos que a URL é do Firebase Storage do projeto.
+const STORAGE_BUCKET = 'remax-smart-hub.firebasestorage.app';
+function urlStoragePermitida(u) {
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'firebasestorage.googleapis.com') return parsed.pathname.startsWith(`/v0/b/${STORAGE_BUCKET}/o/`);
+    if (host === 'storage.googleapis.com') return parsed.pathname.startsWith(`/${STORAGE_BUCKET}/`);
+    return false;
+  } catch (_) { return false; }
+}
+
 // Busca um arquivo de URL remota como Buffer (limite 8 MB por arquivo)
 function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
+    if (!urlStoragePermitida(url)) { reject(new Error('URL de documento não permitida')); return; }
     const MAX = 8 * 1024 * 1024;
     let done = false;
     const finish = (err, val) => { if (done) return; done = true; err ? reject(err) : resolve(val); };

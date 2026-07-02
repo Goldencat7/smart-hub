@@ -29,6 +29,10 @@ const origemHub    = params.get('origem') === 'hub';
 const arquivos = {};
 const pendentes = new Set();
 
+// Escape p/ inserção segura em innerHTML — dados do Firestore são preenchidos por
+// clientes anônimos, então nunca vão pra innerHTML sem passar por aqui.
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
 // ── Inicialização por modo ──────────────────────────────────────────────────
 if (modo === 'corretor' && idFicha) {
   iniciarModoCorretor();
@@ -62,7 +66,7 @@ async function iniciarModoEdicao() {
 
     if (ficha.observacaoCorretor) {
       const intro = document.getElementById('introTexto');
-      if (intro) intro.innerHTML = `<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p><p style="margin-top:8px;color:#444">Atualize as informações e clique em <strong>Salvar alterações</strong>.</p>`;
+      if (intro) intro.innerHTML = `<p>📝 <strong>Observação do corretor:</strong> ${escHtml(ficha.observacaoCorretor)}</p><p style="margin-top:8px;color:#444">Atualize as informações e clique em <strong>Salvar alterações</strong>.</p>`;
     }
     Object.entries(ficha.dados || {}).forEach(([k,v]) => {
       const el = document.querySelector(`[name="${k}"]`);
@@ -100,7 +104,7 @@ async function iniciarModoCorretor() {
       const resumo = document.getElementById('resumoPendencias');
       const lista = document.getElementById('listaPendencias');
       if (resumo) resumo.style.display = 'block';
-      if (lista) lista.innerHTML = pendList.map(p => `<li>${p}</li>`).join('');
+      if (lista) lista.innerHTML = pendList.map(p => `<li>${escHtml(p)}</li>`).join('');
       pendList.forEach(c => { const t = document.getElementById(`pend-${c}`); if (t) t.style.display = 'inline-block'; });
     }
     window.__fichaId = idFicha;

@@ -1032,6 +1032,43 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .ia-empresa { font-size: 10px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,.55); }
 .ia-desc { font-size: 12px; color: rgba(255,255,255,.75); line-height: 1.5; margin: 0; }
 
+/* ── Bloco de Notas ─────────────────────────────────────────────── */
+.notas-barra { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.notas-status { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+.notas-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px; align-items: start;
+}
+.nota-card {
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.nota-card-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
+.nota-titulo {
+  flex: 1; border: none; background: transparent; font-family: inherit;
+  font-size: 14px; font-weight: 700; color: var(--text-primary); padding: 2px 0;
+}
+.nota-titulo:focus { outline: none; }
+.nota-corpo {
+  border: none; background: transparent; resize: vertical; font-family: inherit;
+  font-size: 13px; line-height: 1.55; color: var(--text-primary);
+  padding: 6px 12px 10px; min-height: 120px; width: 100%;
+}
+.nota-corpo:focus { outline: none; }
+.nota-rodape {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-muted);
+}
+.nota-excluir {
+  border: none; background: transparent; cursor: pointer; color: var(--text-muted);
+  font-size: 12px; padding: 2px 6px; border-radius: var(--radius-btn);
+}
+.nota-excluir:hover { background: rgba(220,28,46,.12); color: #DC1C2E; }
+.notas-vazio { font-size: 13px; color: var(--text-muted); padding: 24px 0; }
+
 /* ── Suporte (botão flutuante + modal) ──────────────────────────── */
 .suporte-fab {
   position: fixed; bottom: 18px; right: 18px; z-index: 1000;

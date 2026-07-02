@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Calculadoras de Locação — REMAX Smart</title>
+<link rel="stylesheet" href="ficha.css">
+<style>
+  .calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.calc-grid{grid-template-columns:1fr}}
+  .calc-res{background:#f8fafc;border:1px solid #e8edf3;border-radius:10px;padding:14px 16px;margin-top:6px}
+  .calc-linha{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;font-size:13px;color:#374151}
+  .calc-linha + .calc-linha{border-top:1px dashed #e2e8f0}
+  .calc-linha .valor{font-weight:700;color:#002749;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .calc-linha.destaque{margin-top:4px;padding-top:12px;border-top:2px solid #DC1C2E}
+  .calc-linha.destaque .rotulo{font-weight:700;color:#002749;font-size:14px}
+  .calc-linha.destaque .valor{color:#DC1C2E;font-size:19px}
+  .calc-aviso{font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-top:10px;display:none}
+  .hint{font-size:11px;color:#6b7280;font-weight:400}
+</style>
+</head>
+<body>
+<div class="header">
+  <svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg>
+  <div><h1>Calculadoras de Locação <span class="badge-modo">Ferramenta</span></h1><p>REMAX Smart — Imóveis</p></div>
+</div>
+
+<div class="container">
+  <div class="intro"><p>Preencha os campos e o resultado é calculado automaticamente. Nada é salvo — é só uma ferramenta de apoio.</p></div>
+
+  <!-- 1. Aluguel proporcional -->
+  <div class="section" id="sec-aluguel">
+    <div class="section-title"><span class="num">1</span> Cálculo de aluguel proporcional</div>
+    <div class="calc-grid">
+      <div class="field"><div class="field-header"><label>Valor do aluguel</label></div><input type="text" id="al_aluguel" inputmode="numeric" placeholder="R$ 0,00"></div>
+      <div class="field"><div class="field-header"><label>Dias do mês de referência</label></div><input type="text" id="al_diasMes" inputmode="numeric" value="30" placeholder="30"></div>
+      <div class="field"><div class="field-header"><label>Dias contabilizados <span class="hint">(dias a cobrar)</span></label></div><input type="text" id="al_diasCont" inputmode="numeric" placeholder="0"></div>
+    </div>
+    <div class="calc-res">
+      <div class="calc-linha"><span class="rotulo">Valor do aluguel por dia</span><span class="valor" id="al_out_dia">—</span></div>
+      <div class="calc-linha destaque"><span class="rotulo">Valor a pagar</span><span class="valor" id="al_out_pagar">—</span></div>
+    </div>
+  </div>
+
+  <!-- 2. Multa rescisória -->
+  <div class="section" id="sec-multa">
+    <div class="section-title"><span class="num">2</span> Cálculo de multa rescisória</div>
+    <div class="calc-grid">
+      <div class="field"><div class="field-header"><label>Data de início do contrato</label></div><input type="date" id="mu_ini"></div>
+      <div class="field"><div class="field-header"><label>Data final do contrato</label></div><input type="date" id="mu_fim"></div>
+      <div class="field"><div class="field-header"><label>Data da saída</label></div><input type="date" id="mu_saida"></div>
+      <div class="field"><div class="field-header"><label>Valor do aluguel</label></div><input type="text" id="mu_aluguel" inputmode="numeric" placeholder="R$ 0,00"></div>
+      <div class="field"><div class="field-header"><label>Nº de aluguéis da multa <span class="hint">(padrão 3)</span></label></div><input type="text" id="mu_mult" inputmode="numeric" value="3" placeholder="3"></div>
+    </div>
+    <div class="calc-res">
+      <div class="calc-linha"><span class="rotulo">Dias do contrato</span><span class="valor" id="mu_out_diasContrato">—</span></div>
+      <div class="calc-linha"><span class="rotulo">Dias restantes</span><span class="valor" id="mu_out_diasRest">—</span></div>
+      <div class="calc-linha"><span class="rotulo">Multa contratual</span><span class="valor" id="mu_out_multaContrat">—</span></div>
+      <div class="calc-linha"><span class="rotulo">Valor da multa por dia</span><span class="valor" id="mu_out_multaDia">—</span></div>
+      <div class="calc-linha destaque"><span class="rotulo">Multa a pagar</span><span class="valor" id="mu_out_multaPagar">—</span></div>
+    </div>
+    <div class="calc-aviso" id="mu_aviso"></div>
+
+    <!-- Ajustes opcionais → saldo a receber -->
+    <div style="margin-top:18px;padding-top:16px;border-top:1px dashed #e2e8f0">
+      <div class="field-header" style="margin-bottom:10px"><label>Ajustes (opcional) <span class="hint">para chegar no saldo final</span></label></div>
+      <div class="calc-grid">
+        <div class="field"><div class="field-header"><label>Outros valores a receber <span class="hint">(+)</span></label></div><input type="text" id="mu_acrescimo" inputmode="numeric" placeholder="R$ 0,00"></div>
+        <div class="field"><div class="field-header"><label>Valores a abater / já pagos <span class="hint">(−)</span></label></div><input type="text" id="mu_desconto" inputmode="numeric" placeholder="R$ 0,00"></div>
+      </div>
+      <div class="calc-res">
+        <div class="calc-linha destaque"><span class="rotulo">Saldo a receber</span><span class="valor" id="mu_out_saldo">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Helpers ──
+function maskMoney(str){ let d=(''+str).replace(/\D/g,''); if(!d) return ''; d=d.replace(/^0+/,'')||'0'; while(d.length<3) d='0'+d; const int=d.slice(0,-2), c=d.slice(-2); return 'R$ '+int.replace(/\B(?=(\d{3})+(?!\d))/g,'.')+','+c; }
+function parseMoney(str){ const d=(''+str).replace(/\D/g,''); return d ? parseInt(d,10)/100 : 0; }
+function fmtBRL(n){ return isFinite(n) ? 'R$ '+n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'; }
+function fmtNum(n){ return isFinite(n) ? n.toLocaleString('pt-BR',{maximumFractionDigits:2}) : '—'; }
+function soDigitos(str){ const d=(''+str).replace(/\D/g,''); return d ? parseInt(d,10) : 0; }
+function parseDataUTC(str){ if(!str) return null; const p=str.split('-').map(Number); if(p.length!==3||!p[0]||!p[1]||!p[2]) return null; return Date.UTC(p[0], p[1]-1, p[2]); }
+function diasEntre(msIni, msFim){ if(msIni==null||msFim==null) return null; return Math.round((msFim-msIni)/86400000); }
+const $ = id => document.getElementById(id);
+
+// Máscara de dinheiro nos campos monetários
+['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto'].forEach(id=>{
+  $(id).addEventListener('input', e=>{ e.target.value = maskMoney(e.target.value); calcular(); });
+});
+// Campos numéricos simples (só dígitos)
+['al_diasMes','al_diasCont'].forEach(id=>{
+  $(id).addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,''); calcular(); });
+});
+// Multiplicador aceita vírgula/ponto (ex.: 2,5)
+$('mu_mult').addEventListener('input', e=>{ e.target.value = e.target.value.replace(/[^\d.,]/g,''); calcular(); });
+['mu_ini','mu_fim','mu_saida'].forEach(id=> $(id).addEventListener('input', calcular));
+
+function calcular(){
+  // ── 1. Aluguel proporcional ──
+  const aluguel  = parseMoney($('al_aluguel').value);
+  const diasMes  = soDigitos($('al_diasMes').value);
+  const diasCont = soDigitos($('al_diasCont').value);
+  const valorDia = diasMes ? aluguel/diasMes : 0;
+  const aPagar   = valorDia * diasCont;
+  $('al_out_dia').textContent   = diasMes ? fmtBRL(valorDia) : '—';
+  $('al_out_pagar').textContent = (diasMes && diasCont) ? fmtBRL(aPagar) : '—';
+
+  // ── 2. Multa rescisória ──
+  const ini    = parseDataUTC($('mu_ini').value);
+  const fim    = parseDataUTC($('mu_fim').value);
+  const saida  = parseDataUTC($('mu_saida').value);
+  const aluguel2 = parseMoney($('mu_aluguel').value);
+  const mult   = parseFloat(($('mu_mult').value||'').replace(',','.')) || 0;
+
+  let diasContrato = diasEntre(ini, fim);
+  let diasRest     = diasEntre(saida, fim);
+  const avisos = [];
+  if(ini!=null && fim!=null && diasContrato<=0) avisos.push('A data final do contrato precisa ser depois da data de início.');
+  if(saida!=null && ini!=null && saida<ini)     avisos.push('A data de saída está antes do início do contrato.');
+  if(diasRest!=null && diasRest<0){ avisos.push('A saída é depois do fim do contrato — multa zerada (contrato já encerrado).'); diasRest=0; }
+
+  const multaContratual = aluguel2 * mult;
+  const valida = diasContrato!=null && diasContrato>0;
+  const valorMultaDia = valida ? multaContratual/diasContrato : 0;
+  const multaPagar = (valida && diasRest!=null) ? valorMultaDia*diasRest : 0;
+
+  $('mu_out_diasContrato').textContent = (diasContrato!=null && diasContrato>0) ? fmtNum(diasContrato)+' dias' : '—';
+  $('mu_out_diasRest').textContent      = (diasRest!=null && valida) ? fmtNum(diasRest)+' dias' : '—';
+  $('mu_out_multaContrat').textContent  = aluguel2 ? fmtBRL(multaContratual) : '—';
+  $('mu_out_multaDia').textContent      = (valida && aluguel2) ? fmtBRL(valorMultaDia) : '—';
+  $('mu_out_multaPagar').textContent    = (valida && aluguel2 && diasRest!=null) ? fmtBRL(multaPagar) : '—';
+
+  const acrescimo = parseMoney($('mu_acrescimo').value);
+  const desconto  = parseMoney($('mu_desconto').value);
+  const temResultado = valida && aluguel2 && diasRest!=null;
+  const saldo = multaPagar + acrescimo - desconto;
+  $('mu_out_saldo').textContent = (temResultado || acrescimo || desconto) ? fmtBRL(saldo) : '—';
+
+  const aviso = $('mu_aviso');
+  if(avisos.length){ aviso.textContent = '⚠ ' + avisos.join(' '); aviso.style.display='block'; }
+  else aviso.style.display='none';
+}
+
+// Exibe só a calculadora indicada por ?calc=aluguel|multa (sem o parâmetro, mostra as duas)
+const calc = new URLSearchParams(location.search).get('calc');
+if(calc==='multa' || calc==='aluguel'){
+  $(calc==='multa' ? 'sec-aluguel' : 'sec-multa').style.display = 'none';
+  $(calc==='multa' ? 'sec-multa' : 'sec-aluguel').querySelector('.num').textContent = '1';
+  const titulo = calc==='multa' ? 'Cálculo de multa rescisória' : 'Cálculo de aluguel proporcional';
+  document.title = titulo + ' — REMAX Smart';
+  document.querySelector('.header h1').childNodes[0].textContent = titulo + ' ';
+}
+calcular();
+</script>
+</body>
+</html>
