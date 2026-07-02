@@ -61,5 +61,40 @@ service cloud.firestore {
       return !('observacaoCorretor' in request.resource.data)
              || request.resource.data.observacaoCorretor == '';
     }
+
+    // ─── Gestão de Locações · Bloco 1 ──────────────────────────────────────
+    // Perfil vem da claim `locRole`; o bootstrap admin do Hub entra como gestor
+    // pra conseguir criar o 1º gestor real (espelha a lógica das functions).
+    function locGestor() {
+      return request.auth != null
+             && (request.auth.token.locRole == 'gestor'
+                 || request.auth.uid == 'OwcT6wCrXMgJ0tPADMUdKdBB8h32');
+    }
+    function locAdministrativo() {
+      return request.auth != null && request.auth.token.locRole == 'administrativo';
+    }
+    // Gestor e Administrativo leem tudo; corretor só o que ele captou.
+    function locGestorOuAdmin() { return locGestor() || locAdministrativo(); }
+    function locDono(rec) {
+      return request.auth != null && rec.corretorUid == request.auth.uid;
+    }
+    function locPodeLer(rec) { return locGestorOuAdmin() || locDono(rec); }
+
+    // Regra de ouro: leitura por corretorUid (corretor vê só os seus).
+    // ESCRITA é sempre negada aqui — toda mutação passa por Cloud Function
+    // (Admin SDK ignora estas regras), pra garantir integridade do financeiro.
+    match /imoveis/{id}   { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /pessoas/{id}   { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /contratos/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /garantias/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /cobrancas/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /repasses/{id}  { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /vistorias/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
+
+    // Perfis: cada um lê o seu; o gestor lista todos (pra futura tela de admin).
+    match /loc_perfis/{uid} {
+      allow read:  if request.auth != null && (request.auth.uid == uid || locGestor());
+      allow write: if false; // só via Cloud Function (locDefinirPerfil)
+    }
   }
 }

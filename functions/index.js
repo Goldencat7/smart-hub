@@ -278,6 +278,77 @@ exports.setUserAccess = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Gestão de Locações · Perfis (Bloco 1) ──────────────────────────────────
+// Modelo HÍBRIDO: o PERFIL (gestor/administrativo/corretor) mora numa custom claim
+// `locRole` — seguro e barato de checar nas regras do Firestore. A liberação da aba
+// FINANCEIRO mora num doc `loc_perfis/{uid}` que o gestor liga/desliga na hora (sem
+// exigir relogin). "corretor" é o PADRÃO: todo usuário logado sem a claim já é corretor.
+const LOC_ROLES = ['gestor', 'administrativo', 'corretor'];
+
+// É gestor? A claim manda; o bootstrap admin do Hub entra como gestor só pra
+// conseguir criar o 1º gestor de verdade (mesma ideia do bootstrapAdmin).
+function ehGestorAuth(auth) {
+  return !!(auth && ((auth.token && auth.token.locRole === 'gestor') || ehBootstrapAdmin(auth.uid)));
+}
+async function exigirGestor(req) {
+  const auth = exigirAutenticado(req);
+  if (ehGestorAuth(auth)) return auth;
+  throw new HttpsError('permission-denied', 'Apenas o gestor de locações pode fazer isso.');
+}
+
+// Bootstrap: o admin inicial do Hub vira o 1º gestor de locações (chama 1 vez).
+exports.locBootstrapGestor = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehBootstrapAdmin(auth.uid)) {
+    throw new HttpsError('permission-denied', 'Só o admin inicial pode virar o primeiro gestor.');
+  }
+  const userRec = await admin.auth().getUser(auth.uid);
+  // Merge das claims pra preservar a claim `admin` do Hub
+  await admin.auth().setCustomUserClaims(auth.uid, { ...(userRec.customClaims || {}), locRole: 'gestor' });
+  await db.collection('loc_perfis').doc(auth.uid).set({
+    role: 'gestor', financeiro: true,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: auth.uid
+  }, { merge: true });
+  return { ok: true, mensagem: 'Você agora é gestor de locações. Faça logout/login pra atualizar o token.' };
+});
+
+// (gestor) Define o perfil de alguém e libera/tira a aba Financeiro.
+// A claim `locRole` é a AUTORIDADE (as regras leem dela); o doc guarda o `financeiro`
+// e espelha o `role` só pra facilitar a listagem na futura tela de admin.
+exports.locDefinirPerfil = onCall(async (req) => {
+  const gestor = await exigirGestor(req);
+  const { uid, role, financeiro } = req.data || {};
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  if (!LOC_ROLES.includes(role)) throw new HttpsError('invalid-argument', 'Perfil inválido.');
+
+  const userRec = await admin.auth().getUser(uid).catch(() => null);
+  if (!userRec) throw new HttpsError('not-found', 'Usuário não encontrado.');
+
+  // Merge das claims pra NÃO apagar outras (ex.: a claim `admin` do Hub).
+  const claims = { ...(userRec.customClaims || {}) };
+  if (role === 'corretor') delete claims.locRole;   // corretor = padrão, sem claim
+  else claims.locRole = role;
+  await admin.auth().setCustomUserClaims(uid, claims);
+
+  const fin = role === 'corretor' ? false : !!financeiro;   // corretor nunca tem Financeiro
+  await db.collection('loc_perfis').doc(uid).set({
+    role, financeiro: fin,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: gestor.uid
+  }, { merge: true });
+
+  return { ok: true, aviso: 'A pessoa precisa deslogar/logar pra a mudança de perfil valer.' };
+});
+
+// (qualquer autenticado) Retorna o próprio perfil — a UI usa pra decidir o que mostrar.
+exports.locMeuPerfil = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const role = ehGestorAuth(auth) ? 'gestor'
+             : (auth.token && auth.token.locRole === 'administrativo' ? 'administrativo' : 'corretor');
+  const snap = await db.collection('loc_perfis').doc(auth.uid).get();
+  const financeiro = role !== 'corretor' && !!(snap.exists && snap.data().financeiro);
+  return { role, financeiro };
+});
+
 // Lista quais siteKeys têm credenciais cadastradas
 exports.listCredentials = onCall(async (req) => {
   await exigirAdmin(req);
