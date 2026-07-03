@@ -246,7 +246,15 @@ ipcMain.handle('baixar-ficha-pdf', async (_e, { url, filename }) => {
   const win = new BrowserWindow({ width: 900, height: 860, show: false, webPreferences: { devTools: false } });
   try {
     await win.loadURL(url);
-    await new Promise(r => setTimeout(r, 2500)); // aguarda render completo
+    await new Promise(r => setTimeout(r, 2500)); // aguarda render base (dados/imagens)
+    // PDFs anexados são renderizados de forma assíncrona (doc-preview.js seta
+    // window.__docsProntos). Espera até 20s por isso antes de imprimir.
+    for (let i = 0; i < 40; i++) {
+      const prontos = await win.webContents.executeJavaScript('window.__docsProntos !== false').catch(() => true);
+      if (prontos) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    await new Promise(r => setTimeout(r, 400)); // pequena folga pro layout assentar
     const pdf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4', marginsType: 1 });
     await fs.promises.writeFile(result.filePath, pdf);
     shell.openPath(result.filePath);

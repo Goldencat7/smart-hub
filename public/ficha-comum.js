@@ -3,6 +3,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
 import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
+import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
 
 const app = initializeApp({
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -187,8 +188,8 @@ function renderDocs(){
     else statusTxt='Toque para selecionar';
     const areaCls = (arquivos[d.key]||temExistente)?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
     // URLs do Firebase não têm extensão; tenta como imagem e, se falhar (é PDF),
-    // mostra uma mensagem apontando pro link do card (que abre no navegador).
-    const imgInline = (somenteLeitura && temExistente) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'📄 '+(this.alt||'Documento')+' é um PDF — clique em ✓ Enviado acima para visualizar no navegador.',style:'margin-top:6px;padding:10px 12px;background:#eef2f7;border:1px solid #d5dde8;border-radius:8px;color:#002749;font-size:13px;font-weight:600'}))">` : '';
+    // renderiza as páginas via pdf.js (doc-preview.js). Sem ele, mensagem apontando pro link.
+    const imgInline = (somenteLeitura && temExistente) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0" onerror="if(window.__pdfInline){window.__pdfInline(this,this.alt)}else{this.replaceWith(Object.assign(document.createElement('div'),{textContent:'📄 '+(this.alt||'Documento')+' é um PDF — clique em ✓ Enviado acima para visualizar no navegador.',style:'margin-top:6px;padding:10px 12px;background:#eef2f7;border:1px solid #d5dde8;border-radius:8px;color:#002749;font-size:13px;font-weight:600'}))}">` : '';
     return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" data-trigger="${d.key}"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}"></div>${toggles}${imgInline}</div>`;
   }).join('');
 }

@@ -290,6 +290,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
 import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
+import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
 
 const app = initializeApp({ apiKey:"AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8", authDomain:"remax-smart-hub.firebaseapp.com", projectId:"remax-smart-hub", storageBucket:"remax-smart-hub.firebasestorage.app", messagingSenderId:"474454438949", appId:"1:474454438949:web:ba1e10e6b343af0408fbcc" });
 const db = getFirestore(app);
@@ -564,6 +565,8 @@ function preencherFicha(ficha) {
         img.src = url; img.alt = nomesDoc[k]||k;
         img.style.cssText = 'width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0';
         img.onerror = () => {
+          // PDF: renderiza as páginas como imagem (pdf.js). Se indisponível, mensagem.
+          if (window.__pdfInline) { window.__pdfInline(img, nomesDoc[k]||k); return; }
           const d = document.createElement('div');
           d.textContent = `📄 ${nomesDoc[k]||k} é um PDF — clique em "↗ Abrir ${nomesDoc[k]||k}" acima para visualizar no navegador.`;
           d.style.cssText = 'margin-top:6px;padding:10px 12px;background:#eef2f7;border:1px solid #d5dde8;border-radius:8px;color:#002749;font-size:13px;font-weight:600';
