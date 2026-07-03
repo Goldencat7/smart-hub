@@ -92,6 +92,7 @@ const docsExistentes = {};
 // definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
 function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
 function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 let nProponentes = 1;        // quantos blocos de proponente estão visíveis
 let somenteLeitura = false;
 
@@ -480,7 +481,7 @@ async function init(){
       if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; }
       const ficha=snap.data();
       if(!origemHub && ficha.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; }
-      if(ficha.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${ficha.observacaoCorretor}</p>`; }
+      if(ficha.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${escHtml(ficha.observacaoCorretor)}</p>`; }
       aplicarFicha(ficha);
     }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
