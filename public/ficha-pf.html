@@ -469,7 +469,7 @@ async function init(){
       if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; }
       const ficha=snap.data(); aplicarFicha(ficha);
       document.querySelectorAll('#formFicha input,#formFicha select,#formFicha textarea').forEach(el=>{ el.disabled=true; });
-      document.querySelectorAll('.nao-tenho,.doc-clickable').forEach(el=>{ el.style.pointerEvents='none'; el.style.opacity='.6'; });
+      document.querySelectorAll('.nao-tenho').forEach(el=>{ el.style.pointerEvents='none'; el.style.opacity='.6'; });
       window.__fichaId=idFicha;
       if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={rgcpf:'RG / CPF / CNH',compEndereco:'Comprovante de endereço',compRenda:'Comprovante de renda',compEstadoCivil:'Comprovante de estado civil'}; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>{const m=p.match(/^p(\d+)_(.+)$/); if(m){const i=m[1],c=m[2]; return `<li>Proponente ${i} — ${c==='profissao'?'Profissão':c==='renda'?'Renda mensal':c}</li>`;} return `<li>${_nomesPend[p]||p}</li>`;}).join(''); }
     }catch(e){ mostrarErro('Erro: '+e.message); }
