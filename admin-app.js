@@ -91,7 +91,7 @@ const APPS_RESTRITOS = [
   { key: 'analise_locador', nome: 'Análise de Fichas do Locador' }
 ];
 
-// Todos os apps do Hub (espelha o array APPS do hub-app.js) — pro controle de status
+// Todos os apps e abas internas do Hub — pro controle de status e registro de uso
 const TODOS_APPS = [
   { key: 'cadastro_imobiliario', nome: 'Central de Cadastro' },
   { key: 'imovelp', nome: 'Imóvel do Proprietário' },
@@ -102,9 +102,22 @@ const TODOS_APPS = [
   { key: 'alude', nome: 'Alude' },
   { key: 'clicksign', nome: 'ClickSign' },
   { key: 'motiva', nome: 'Motiva Smart' },
+  { key: 'gemini', nome: 'Gemini' },
+  { key: 'whatsapp', nome: 'WhatsApp' },
   { key: 'universidade', nome: 'Universidade REMAX' },
   { key: 'goiconnect', nome: 'IConnect' },
-  { key: 'brokerapp', nome: 'BrokerApp' }
+  { key: 'brokerapp', nome: 'BrokerApp' },
+  { key: 'documentos', nome: 'Cadastro (Fichas)' },
+  { key: 'marketing', nome: 'Marketing' },
+  { key: 'treinamento', nome: 'Treinamento' },
+  { key: 'locacoes', nome: 'Gestão de Locações' },
+  { key: 'agenda', nome: 'Agenda' },
+  { key: 'calculadoras', nome: 'Calculadoras' },
+  { key: 'notas', nome: 'Bloco de Notas' },
+  { key: 'ia', nome: 'IA' },
+  { key: 'fotografia', nome: 'Fotografia' },
+  { key: 'reuniao', nome: 'Reunião' },
+  { key: 'sala_reuniao', nome: 'Sala de Reunião' },
 ];
 
 // Mesma lista do hub-app.js — sites que têm autologin (são os únicos com credenciais)

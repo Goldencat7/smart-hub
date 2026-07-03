@@ -393,6 +393,10 @@ function renderSidebar() {
       inputBusca.value = '';
       renderSidebar();
       renderCentro();
+      const _grid = ['captacao','crm','vistoria','locacao','performance'];
+      if (cat && !cat.appDireto && cat.id !== 'config' && !_grid.includes(cat.id)) {
+        registrarAcesso({ siteKey: cat.id, titulo: cat.nome }).catch(() => {});
+      }
     });
   });
 }
