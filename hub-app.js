@@ -37,6 +37,7 @@ const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
 const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
+const locListarFichasImovel = httpsCallable(fns, 'locListarFichasImovel');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
 const locExcluirImovel = httpsCallable(fns, 'locExcluirImovel');
 const locObterImovel = httpsCallable(fns, 'locObterImovel');
@@ -2158,7 +2159,16 @@ function renderDetalheImovel(d) {
     <button class="topbar-btn primario btn-add-vistoria" style="font-size:11px;padding:4px 10px">Registrar vistoria</button></div>`;
   const vistoriaHtml = sec('Vistorias', vistList + vistForm);
 
-  return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml + vistoriaHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
+  const FICHAS_IMOVEL = [
+    { key: 'pf', label: 'Pessoa Física', arquivo: 'ficha-pf.html' },
+    { key: 'pj', label: 'Pessoa Jurídica', arquivo: 'ficha-pj.html' },
+    { key: 'fianca', label: 'Fiança', arquivo: 'ficha-fianca.html' },
+  ];
+  const fichasBtns = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+    ${FICHAS_IMOVEL.map(fi => `<button class="topbar-btn primario btn-nova-ficha-imovel" data-imovel="${im.id}" data-tipo="${fi.key}" data-arquivo="${fi.arquivo}" style="font-size:11px;padding:4px 10px">+ ${escapeHtml(fi.label)}</button>`).join('')}</div>`;
+  const fichasImovelHtml = sec('Fichas vinculadas', `<div class="fichas-imovel-lista" data-imovel="${im.id}"><div style="font-size:11px;color:var(--text-muted)">Carregando fichas...</div></div>${fichasBtns}`);
+
+  return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml + fichasImovelHtml + vistoriaHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
 }
 
 // Liga os controles de gestão (locatário/garantia) dentro de um painel de detalhe.
@@ -2265,6 +2275,41 @@ function wireDetalheImovel(cont, imovelId) {
       try { await locAtivarContrato({ contratoId: btnAtivar.dataset.contrato }); carregarImoveis(); }
       catch (e) { alert('Erro: ' + e.message); btnAtivar.disabled = false; }
     });
+  }
+
+  // Fichas vinculadas ao imóvel
+  cont.querySelectorAll('.btn-nova-ficha-imovel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
+      window.hubApi.abrirFichaLocal(btn.dataset.arquivo, {
+        corretor: currentUid,
+        nome: encodeURIComponent(nomeCorretor),
+        imovelId: btn.dataset.imovel
+      });
+    });
+  });
+  const fichasListaEl = cont.querySelector('.fichas-imovel-lista');
+  if (fichasListaEl) {
+    const TIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', fianca:'Fiança', locador:'Locador', locacao_fiador:'Locação c/ Fiador' };
+    const STATUS_LABEL = { aguardando_corretor:'Aguardando revisão', aguardando_edicao_cliente:'Aguardando cliente', enviado_admin:'Enviado ao admin', correcao_solicitada:'Correção solicitada', finalizado:'Finalizado' };
+    const STATUS_COR = { aguardando_corretor:'#b45309', aguardando_edicao_cliente:'#6366f1', enviado_admin:'#16a34a', correcao_solicitada:'#DC1C2E', finalizado:'#6b7280' };
+    locListarFichasImovel({ imovelId }).then(res => {
+      const fichas = res.data || [];
+      if (!fichas.length) { fichasListaEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Nenhuma ficha vinculada a este imóvel.</div>'; return; }
+      fichasListaEl.innerHTML = fichas.map(f => {
+        const dt = f.criadoEm ? new Date(f.criadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+        const cor = STATUS_COR[f.status] || '#6b7280';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="min-width:0">
+            <strong style="font-size:12px">${escapeHtml(f.dados?.nome || 'Sem nome')}</strong>
+            <span style="font-size:11px;color:var(--text-muted);margin-left:6px">${escapeHtml(TIPO_LABEL[f.tipo] || f.tipo)}</span>
+            ${f.corretorNome ? `<span style="font-size:10px;color:var(--text-muted);margin-left:6px">· ${escapeHtml(f.corretorNome)}</span>` : ''}
+            <span style="font-size:10px;color:var(--text-muted);margin-left:6px">${dt}</span>
+          </div>
+          <span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;padding:2px 7px;border-radius:5px;white-space:nowrap">${STATUS_LABEL[f.status] || f.status}</span>
+        </div>`;
+      }).join('');
+    }).catch(() => { fichasListaEl.innerHTML = '<div style="font-size:11px;color:var(--text-muted)">Erro ao carregar fichas.</div>'; });
   }
 }
 

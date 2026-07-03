@@ -72,6 +72,7 @@ const modo         = params.get('modo') || 'cliente';
 const corretorUid  = params.get('corretor') || '';
 const corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
 const idFicha      = params.get('idFicha') || '';
+const imovelId     = params.get('imovelId') || '';
 const origemHub    = params.get('origem') === 'hub';
 
 // ── Constantes de domínio ──
@@ -376,7 +377,9 @@ form.addEventListener('submit', async e=>{
       const docsAntigos = ex.exists()?(ex.data().documentos||{}):{};
       await updateDoc(doc(db,'fichas',idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
     } else {
-      await addDoc(collection(db,'fichas'),{ tipo, id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() });
+      const fichaDoc = { tipo, id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() };
+      if(imovelId) fichaDoc.imovelId = imovelId;
+      await addDoc(collection(db,'fichas'), fichaDoc);
     }
     form.style.display='none';
     document.getElementById('tela-sucesso').style.display='block';

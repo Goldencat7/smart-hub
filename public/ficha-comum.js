@@ -296,7 +296,9 @@ async function enviar(e){
       const ex=await getDoc(doc(db,'fichas',CFG._idFicha)); const docsAntigos=ex.exists()?(ex.data().documentos||{}):{};
       await updateDoc(doc(db,'fichas',CFG._idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
     } else {
-      await addDoc(collection(db,'fichas'),{ tipo:CFG.tipo, id:fichaId, corretorUid:CFG._corretorUid, corretorNome:CFG._corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() });
+      const fichaDoc = { tipo:CFG.tipo, id:fichaId, corretorUid:CFG._corretorUid, corretorNome:CFG._corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() };
+      if(CFG._imovelId) fichaDoc.imovelId = CFG._imovelId;
+      await addDoc(collection(db,'fichas'), fichaDoc);
     }
     document.getElementById('formFicha').style.display='none'; document.getElementById('tela-sucesso').style.display='block';
     const t=document.getElementById('sucessoTitulo'),m=document.getElementById('sucessoMsg');
@@ -323,6 +325,7 @@ export async function iniciarFicha(cfg){
   CFG._corretorUid = params.get('corretor') || '';
   CFG._corretorNome = params.get('nome') ? decodeURIComponent(params.get('nome')) : '';
   CFG._idFicha = params.get('idFicha') || '';
+  CFG._imovelId = params.get('imovelId') || '';
   const origemHub = params.get('origem')==='hub';
   if(cfg.estadoInicial) cfg.estadoInicial();
 

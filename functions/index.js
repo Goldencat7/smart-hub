@@ -576,6 +576,23 @@ exports.locListarImoveis = onCall(async (req) => {
   return { imoveis, veTudo, role };
 });
 
+exports.locListarFichasImovel = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const imSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const im = imSnap.data();
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && im.corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso.');
+  const snap = await db.collection('fichas').where('imovelId', '==', imovelId).get();
+  const fichas = snap.docs.map(d => {
+    const f = d.data();
+    return { id: d.id, tipo: f.tipo, status: f.status, dados: { nome: f.dados?.nome || '' }, corretorNome: f.corretorNome || '', criadoEm: f.criadoEm?.toDate?.()?.toISOString() || null };
+  });
+  return fichas;
+});
+
 // (autenticado, com posse) Detalhe de um imóvel + seus locadores (coleção pessoas).
 // Reúne o que a esteira precisa pra revisar antes de aprovar. Respeita a regra de ouro:
 // gestor/administrativo veem qualquer um; corretor só os seus (corretorUid).

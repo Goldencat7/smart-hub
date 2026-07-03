@@ -66,3 +66,23 @@ firebase deploy --only functions --project remax-smart-hub
   - Corretor salva número pessoal nas Configurações do Hub.
   - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).
   - Setup: Meta for Developers → Meta Business Account → cadastrar número → aprovar template de mensagem (~24h) → token na Cloud Function.
+
+- **Ambiente de staging** (projeto Firebase separado): testar mudanças sem risco de afetar produção. Criar um segundo projeto Firebase (ex.: `remax-smart-hub-staging`) e trocar config por variável de ambiente.
+
+- **Criptografia de credenciais em repouso**: senhas dos sistemas ficam em texto puro no Firestore. Criptografar com chave no Google Secret Manager; `getCredentials` descriptografa na hora. Protege contra vazamento do banco.
+
+- **Log de auditoria**: registrar quem acessou credenciais, editou perfil, enviou ficha, mudou permissões. Coleção `audit_log` no Firestore com retenção configurável. Necessário pra LGPD e rastreabilidade.
+
+- **LGPD — retenção e exclusão de dados**: fichas guardam CPF, RG, renda. Implementar política de expurgo automático (ex.: 2 anos) e fluxo de exclusão a pedido do titular.
+
+- **CI/CD**: pipeline automatizado (GitHub Actions) que roda lint, `node --check`, testes básicos e bloqueia deploy quebrado. Hoje é tudo manual.
+
+- **2FA / MFA**: login é só email+senha. Adicionar autenticação em dois fatores pelo menos pros admins (Firebase Auth suporta TOTP/SMS).
+
+- **App Check**: validar que as chamadas às Cloud Functions vêm do app legítimo (não de script/curl). Firebase App Check com reCAPTCHA Enterprise ou Device Check.
+
+- **Monitoramento e alertas em tempo real**: Cloud Functions falhou? Erro subiu? Hoje ninguém é avisado. Configurar alertas no Google Cloud Monitoring ou integrar com Slack/email.
+
+- **Teste de restore do backup**: backup existe, mas nunca foi testado. Simular restore num projeto de staging pra validar que os dados voltam íntegros.
+
+- **Refatoração de arquivos monolíticos**: `hub-app.js` e `functions/index.js` têm milhares de linhas. Quebrar em módulos menores facilita manutenção e reduz risco de regressão.
