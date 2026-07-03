@@ -48,6 +48,7 @@ const setBanner        = httpsCallable(fns, 'setBanner');
 const listarBanners    = httpsCallable(fns, 'listarBanners');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
+const reordenarBanners = httpsCallable(fns, 'reordenarBanners');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -453,6 +454,11 @@ function renderBannerAdmin(el, banners) {
       ${banners.map((b, i) => `
         <div class="banner-admin-item">
           <span class="banner-admin-num">${i + 1}</span>
+          ${banners.length > 1 ? `
+          <span style="display:inline-flex;flex-direction:column;gap:2px;flex-shrink:0">
+            <button class="topbar-btn banner-mover" data-idx="${i}" data-dir="-1" title="Subir na ordem" ${i === 0 ? 'disabled' : ''} style="padding:0 6px;font-size:10px;line-height:16px">▲</button>
+            <button class="topbar-btn banner-mover" data-idx="${i}" data-dir="1" title="Descer na ordem" ${i === banners.length - 1 ? 'disabled' : ''} style="padding:0 6px;font-size:10px;line-height:16px">▼</button>
+          </span>` : ''}
           ${b.tipo === 'video'
             ? `<video src="${b.mediaUrl}" class="banner-preview-img" muted preload="metadata"></video>`
             : `<img src="${b.imagem || b.mediaUrl}" class="banner-preview-img" alt="Banner ${i+1}">`}
@@ -466,7 +472,7 @@ function renderBannerAdmin(el, banners) {
         <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         ${banners.length ? 'Adicionar outro banner' : 'Enviar banner'}
       </button>
-      ${banners.length > 1 ? `<span class="muted" style="font-size:11px">${banners.length} banners · alternam a cada 30s</span>` : ''}
+      ${banners.length > 1 ? `<span class="muted" style="font-size:11px">${banners.length} banners · alternam a cada 15s · use ▲▼ pra mudar a ordem</span>` : ''}
     </div>`;
 
   document.getElementById('bannerAdicionar').addEventListener('click', () => document.getElementById('bannerFileInput').click());
@@ -475,6 +481,19 @@ function renderBannerAdmin(el, banners) {
       if (!(await confirmar('Remover este banner?'))) return;
       try { await removerBanner({ id: btn.dataset.id }); carregarBanner(); }
       catch (e) { alert('Erro: ' + e.message); }
+    });
+  });
+  // Subir/descer: troca de posição com o vizinho e grava a nova ordem completa
+  el.querySelectorAll('.banner-mover').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const i = parseInt(btn.dataset.idx, 10), j = i + parseInt(btn.dataset.dir, 10);
+      if (j < 0 || j >= banners.length) return;
+      const nova = banners.slice();
+      [nova[i], nova[j]] = [nova[j], nova[i]];
+      el.querySelectorAll('.banner-mover').forEach(b => b.disabled = true);
+      try { await reordenarBanners({ ids: nova.map(b => b.id) }); }
+      catch (e) { alert('Erro ao reordenar: ' + e.message); }
+      carregarBanner();
     });
   });
 }

@@ -696,8 +696,8 @@ function agendarProximoBanner() {
     // GIF: avança após 1 loop completo (duração calculada dos frames)
     window.__bannerTimer = setTimeout(avancarBanner, banner.duracao);
   } else {
-    // PNG/JPG: 30 segundos fixos
-    window.__bannerTimer = setTimeout(avancarBanner, 30000);
+    // PNG/JPG: 15 segundos fixos
+    window.__bannerTimer = setTimeout(avancarBanner, 15000);
   }
 }
 

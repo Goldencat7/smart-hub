@@ -1418,6 +1418,20 @@ exports.removerBanner = onCall(async (req) => {
   return { ok: true };
 });
 
+// Reordena os banners: recebe a lista completa de ids na nova ordem e grava ordem=posição.
+exports.reordenarBanners = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { ids } = req.data || {};
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50) throw new HttpsError('invalid-argument', 'ids inválidos.');
+  const batch = db.batch();
+  ids.forEach((id, i) => {
+    if (typeof id !== 'string' || !id) throw new HttpsError('invalid-argument', 'id inválido.');
+    batch.update(db.collection('banners').doc(id), { ordem: i });
+  });
+  await batch.commit();
+  return { ok: true };
+});
+
 // Mantém getBanner/setBanner por compatibilidade (migração: se não há banners na coleção nova,
 // retorna o banner antigo de config/banner como fallback).
 exports.getBanner = onCall(async (req) => {

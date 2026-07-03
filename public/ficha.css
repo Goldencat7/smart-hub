@@ -29,6 +29,14 @@ input:disabled,select:disabled{background:#f5f7fa;color:#9ca3af;cursor:not-allow
 .docs-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:480px){.docs-grid{grid-template-columns:1fr}}
 .doc-wrapper{display:flex;flex-direction:column;gap:6px}
+/* Impressão (botão "Baixar PDF" do Hub): documento nunca sai cortado entre páginas.
+   O grid vira fluxo vertical (quebra de página não funciona bem dentro de grid);
+   cada documento/página renderizada fica inteira — se não couber, desce pra próxima. */
+@media print{
+  .docs-grid{display:block}
+  .docs-grid .doc-wrapper{break-inside:avoid;page-break-inside:avoid;margin-bottom:14px}
+  .doc-wrapper img,.doc-wrapper canvas{break-inside:avoid;page-break-inside:avoid;max-height:23cm;object-fit:contain}
+}
 .doc-area{border:2px dashed #d1d5db;border-radius:10px;padding:12px;transition:border-color .2s}
 .doc-area.tem-arquivo{border-color:#16a34a;border-style:solid;background:#f0fdf4}
 .doc-area.pendente-doc{border-color:#d97706;border-style:solid;background:#fffbeb}
