@@ -173,9 +173,13 @@ function criarJanelaPrincipal() {
       }
     });
   });
-  // Links de arquivos (ex.: documentos do Drive) abrem numa janela nova
+  // Links de arquivos (ex.: documentos do Drive) abrem numa janela nova.
+  // Documentos das fichas (Firebase Storage) vão pro navegador padrão — o
+  // visualizador de PDF do navegador é mais confiável que a janela Electron.
   janelaPrincipal.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) {
+    if (/^https:\/\/firebasestorage\.googleapis\.com\//i.test(url)) {
+      shell.openExternal(url);
+    } else if (/^https?:\/\//i.test(url)) {
       const w = new BrowserWindow({
         width: 1200, height: 800, autoHideMenuBar: true,
         webPreferences: { devTools: DEVTOOLS_HABILITADO }
@@ -301,6 +305,12 @@ ipcMain.on('abrir-ficha', (_e, { url, titulo }) => {
     title: titulo || 'Ficha',
     webPreferences: { devTools: DEVTOOLS_HABILITADO }
   });
+  // Documentos anexados (links target=_blank) abrem no navegador padrão do Windows —
+  // o visualizador de PDF do navegador é mais confiável que uma janela Electron crua.
+  win.webContents.setWindowOpenHandler(({ url: u }) => {
+    if (/^https?:\/\//i.test(u)) shell.openExternal(u);
+    return { action: 'deny' };
+  });
   win.loadURL(url).catch(err => console.error('Erro ao abrir ficha:', err));
 });
 
@@ -311,6 +321,12 @@ ipcMain.on('abrir-ficha-local', (_e, { arquivo, params }) => {
   const win = new BrowserWindow({
     width: 940, height: 860, autoHideMenuBar: true,
     webPreferences: { devTools: DEVTOOLS_HABILITADO }
+  });
+  // Documentos anexados (links target=_blank) abrem no navegador padrão do Windows —
+  // o visualizador de PDF do navegador é mais confiável que uma janela Electron crua.
+  win.webContents.setWindowOpenHandler(({ url: u }) => {
+    if (/^https?:\/\//i.test(u)) shell.openExternal(u);
+    return { action: 'deny' };
   });
   // basename evita path traversal (ex.: '..\\..\\algo.html') — só abre arquivos de public/
   const filePath = path.join(__dirname, 'public', path.basename(arquivo || ''));

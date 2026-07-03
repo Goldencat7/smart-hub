@@ -338,7 +338,7 @@ document.getElementById('proponentes').addEventListener('click', e=>{
 });
 
 // ── Documentos (globais p/ onclick) ──
-window.triggerFile = function(k){ const cb=document.querySelector(`[data-doc-campo="${k}"]`); if(cb&&cb.checked) return; document.getElementById('file-'+k).click(); };
+window.triggerFile = function(k){ if(somenteLeitura) return; const cb=document.querySelector(`[data-doc-campo="${k}"]`); if(cb&&cb.checked) return; document.getElementById('file-'+k).click(); };
 window.docSelecionado = function(input){
   const k = input.dataset.doc; const area = input.closest('.doc-area');
   if(input.files[0]){ arquivos[k]=input.files[0]; area.classList.add('tem-arquivo'); area.classList.remove('pendente-doc'); const st=document.getElementById('status-'+k); if(st) st.textContent='✓ '+input.files[0].name; const lbl=area.querySelector('.doc-label'); const b=lbl&&lbl.querySelector('.badge-obrig,.badge-preen'); if(b){b.textContent='Preenchido';b.className='badge-preen';} atualizarProgresso(); }
@@ -426,9 +426,9 @@ function aplicarFicha(ficha){
     const area = document.getElementById('area-'+k);
     if (st) {
       if (modo === 'corretor') {
-        st.innerHTML = `<a href="${url}" target="_blank" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`;
+        st.innerHTML = `<a href="${url}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`;
       } else {
-        st.innerHTML = `<a href="${url}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+        st.innerHTML = `<a href="${url}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
       }
     }
     if (area) area.classList.add('tem-arquivo');
@@ -436,11 +436,16 @@ function aplicarFicha(ficha){
       const wrapper = area && area.closest('.doc-wrapper');
       if (wrapper) {
         // URLs do Firebase não têm extensão, então não dá pra saber se é PDF pela URL.
-        // Tenta como imagem; se falhar (PDF, arquivo inválido), troca por um link "abrir".
+        // Tenta como imagem; se falhar (é PDF), mostra uma mensagem apontando pro link "Abrir".
         const img = document.createElement('img');
         img.src = url; img.alt = nomesDoc[k]||k;
         img.style.cssText = 'width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0';
-        img.onerror = () => { const a=document.createElement('a'); a.href=url; a.target='_blank'; a.textContent='📄 Abrir '+(nomesDoc[k]||k); a.style.cssText='display:inline-block;margin-top:6px;color:#002749;font-weight:600;text-decoration:none'; img.replaceWith(a); };
+        img.onerror = () => {
+          const d = document.createElement('div');
+          d.textContent = `📄 ${nomesDoc[k]||k} é um PDF — clique em "↗ Abrir ${nomesDoc[k]||k}" acima para visualizar no navegador.`;
+          d.style.cssText = 'margin-top:6px;padding:10px 12px;background:#eef2f7;border:1px solid #d5dde8;border-radius:8px;color:#002749;font-size:13px;font-weight:600';
+          img.replaceWith(d);
+        };
         wrapper.appendChild(img);
       }
     }

@@ -181,13 +181,14 @@ function renderDocs(){
     const temExistente = !arquivos[d.key] && docsExistentes[d.key];
     let statusTxt;
     if(arquivos[d.key]) statusTxt='✓ '+arquivos[d.key].name;
-    else if(temExistente) statusTxt=`<a href="${docsExistentes[d.key]}" target="_blank" style="color:#1a7f37;font-weight:600">✓ Enviado</a>${somenteLeitura?'':' <span style="color:#888;font-size:11px">(toque para trocar)</span>'}`;
+    else if(temExistente) statusTxt=`<a href="${docsExistentes[d.key]}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a>${somenteLeitura?'':' <span style="color:#888;font-size:11px">(toque para trocar)</span>'}`;
     else if(nta) statusTxt='Marcado como pendente';
     else if(ni) statusTxt='Não se aplica';
     else statusTxt='Toque para selecionar';
     const areaCls = (arquivos[d.key]||temExistente)?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
-    // URLs do Firebase não têm extensão; tenta como imagem e, se falhar (PDF), vira link "abrir".
-    const imgInline = (somenteLeitura && temExistente) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0" onerror="this.replaceWith(Object.assign(document.createElement('a'),{href:this.src,target:'_blank',textContent:'📄 Abrir '+(this.alt||'documento'),style:'display:inline-block;margin-top:6px;color:#002749;font-weight:600;text-decoration:none'}))">` : '';
+    // URLs do Firebase não têm extensão; tenta como imagem e, se falhar (é PDF),
+    // mostra uma mensagem apontando pro link do card (que abre no navegador).
+    const imgInline = (somenteLeitura && temExistente) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'📄 '+(this.alt||'Documento')+' é um PDF — clique em ✓ Enviado acima para visualizar no navegador.',style:'margin-top:6px;padding:10px 12px;background:#eef2f7;border:1px solid #d5dde8;border-radius:8px;color:#002749;font-size:13px;font-weight:600'}))">` : '';
     return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" data-trigger="${d.key}"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}"></div>${toggles}${imgInline}</div>`;
   }).join('');
 }
