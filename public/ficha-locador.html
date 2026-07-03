@@ -307,6 +307,11 @@ const origemHub   = params.get('origem') === 'hub';
 const pendentes = new Set();
 const arquivos  = {};
 
+// URL de download sem getDownloadURL() (que exige READ, negado ao cliente anônimo):
+// definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
+function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
+function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+
 // Escape p/ inserção segura em innerHTML — dados do Firestore vêm de cliente anônimo.
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const docsExistentes = {};
@@ -551,10 +556,12 @@ function preencherFicha(ficha) {
     if (area) area.classList.add('tem-arquivo');
     if (modo === 'corretor') {
       const wrapper = area && area.closest('.doc-wrapper');
-      if (wrapper && !url.toLowerCase().endsWith('.pdf')) {
+      if (wrapper) {
+        // URLs do Firebase não têm extensão; tenta como imagem e, se falhar (PDF), vira link.
         const img = document.createElement('img');
         img.src = url; img.alt = nomesDoc[k]||k;
         img.style.cssText = 'width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0';
+        img.onerror = () => { const a=document.createElement('a'); a.href=url; a.target='_blank'; a.textContent='📄 Abrir '+(nomesDoc[k]||k); a.style.cssText='display:inline-block;margin-top:6px;color:#002749;font-weight:600;text-decoration:none'; img.replaceWith(a); };
         wrapper.appendChild(img);
       }
     }
@@ -627,7 +634,7 @@ document.getElementById('formFicha').addEventListener('submit', async function(e
     const prog = document.getElementById('upload-progress'), fill = document.getElementById('upload-progress-fill');
     prog.style.display = 'block'; let n = 0;
     for (const k of docsKeys) {
-      try { const r = ref(storage, `fichas-locador/${fichaId}/${k}`); await uploadBytes(r, arquivos[k]); urlsDocs[k] = await getDownloadURL(r); }
+      try { const _p = `fichas-locador/${fichaId}/${k}`, _t = _fbToken(); await uploadBytes(ref(storage, _p), arquivos[k], { customMetadata: { firebaseStorageDownloadTokens: _t } }); urlsDocs[k] = _fbDownloadUrl(_p, _t); }
       catch(err) { pendentes.add(k); }
       fill.style.width = Math.round((++n / docsKeys.length) * 100) + '%';
     }

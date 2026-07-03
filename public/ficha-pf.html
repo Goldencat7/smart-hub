@@ -87,6 +87,10 @@ const valores   = {};        // chave -> valor
 const pendentes = new Set();
 const arquivos  = {};
 const docsExistentes = {};
+// URL de download sem getDownloadURL() (que exige READ, negado ao cliente anônimo):
+// definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
+function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
+function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
 let nProponentes = 1;        // quantos blocos de proponente estão visíveis
 let somenteLeitura = false;
 
@@ -365,7 +369,7 @@ form.addEventListener('submit', async e=>{
     const prog=document.getElementById('upload-progress'); const fill=document.getElementById('upload-progress-fill'); prog.style.display='block';
     let n=0;
     for(const k of docsKeys){
-      try{ const r=ref(storage,`fichas/${tipo}/${fichaId}/${k}`); await uploadBytes(r,arquivos[k]); urlsDocs[k]=await getDownloadURL(r); }
+      try{ const _p=`fichas/${tipo}/${fichaId}/${k}`, _t=_fbToken(); await uploadBytes(ref(storage,_p),arquivos[k],{ customMetadata:{ firebaseStorageDownloadTokens:_t } }); urlsDocs[k]=_fbDownloadUrl(_p,_t); }
       catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); }
       fill.style.width = Math.round((++n/docsKeys.length)*100)+'%';
     }
@@ -430,10 +434,13 @@ function aplicarFicha(ficha){
     if (area) area.classList.add('tem-arquivo');
     if (modo === 'corretor') {
       const wrapper = area && area.closest('.doc-wrapper');
-      if (wrapper && !url.toLowerCase().endsWith('.pdf')) {
+      if (wrapper) {
+        // URLs do Firebase não têm extensão, então não dá pra saber se é PDF pela URL.
+        // Tenta como imagem; se falhar (PDF, arquivo inválido), troca por um link "abrir".
         const img = document.createElement('img');
         img.src = url; img.alt = nomesDoc[k]||k;
         img.style.cssText = 'width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0';
+        img.onerror = () => { const a=document.createElement('a'); a.href=url; a.target='_blank'; a.textContent='📄 Abrir '+(nomesDoc[k]||k); a.style.cssText='display:inline-block;margin-top:6px;color:#002749;font-weight:600;text-decoration:none'; img.replaceWith(a); };
         wrapper.appendChild(img);
       }
     }
@@ -469,7 +476,12 @@ async function init(){
       aplicarFicha(ficha);
     }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
+    params.forEach((val, key) => { if(key.startsWith('pre_')) valores[key.slice(4)] = val; });
     renderProponentes();
+    document.querySelectorAll('#formFicha [data-key]').forEach(el => {
+      const val = valores[el.dataset.key];
+      if(val) el.value = val;
+    });
   }
 }
 init();

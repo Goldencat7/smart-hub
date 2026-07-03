@@ -1506,12 +1506,15 @@ function rotuloFicha(k) {
 async function gerarPdfFicha(ficha, tipoLabel) {
   const NOMES_DOC = { rgcpf:'RG e CPF', energia:'Energia', agua:'Água', gas:'Gás', iptu_doc:'IPTU', condominio_doc:'Condomínio', rgFrente:'RG (frente)', rgVerso:'RG (verso)', compRenda:'Comp. renda', compEndereco:'Comp. endereço', compEstadoCivil:'Estado civil', matricula:'Matrícula' };
 
-  // Baixa imagens dos documentos antes de montar o PDF
+  // Baixa imagens dos documentos antes de montar o PDF. As chaves não têm extensão,
+  // então detectamos PDF pelos bytes mágicos (%PDF) e não tentamos embuti-lo como imagem.
   const docImages = {};
   for (const [campo, url] of Object.entries(ficha.documentos || {})) {
-    const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('%2fpdf');
-    if (isPdf) continue;
-    try { docImages[campo] = await fetchBuffer(url); } catch (_) {}
+    try {
+      const buf = await fetchBuffer(url);
+      if (buf.slice(0, 4).toString('latin1') === '%PDF') continue;
+      docImages[campo] = buf;
+    } catch (_) {}
   }
 
   return new Promise((resolve, reject) => {
@@ -1660,7 +1663,7 @@ async function avisarFichaAdminPorEmail(ficha, tipoLabel) {
       }
       try {
         const buf = await fetchBuffer(url);
-        const isPdf = url.toLowerCase().includes('.pdf') || url.toLowerCase().includes('%2fpdf');
+        const isPdf = buf.slice(0, 4).toString('latin1') === '%PDF';
         const nomeBase = nomesDoc[campo] || campo;
         attachments.push({ filename: `${nomeBase}.${isPdf ? 'pdf' : 'jpg'}`, content: buf });
         totalAnexos += buf.length;

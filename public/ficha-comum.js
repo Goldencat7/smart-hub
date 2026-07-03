@@ -30,6 +30,12 @@ export const docsExistentes = {};
 let somenteLeitura = false;
 let CFG = null;
 
+// Gera a URL de download SEM chamar getDownloadURL() — que exige permissão de READ no
+// Storage e é negada ao cliente anônimo da ficha (upload/create é liberado, read não).
+// Definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
+function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
+function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+
 // ── Helpers de leitura ──
 export function v(k){ return valores[k]!=null ? valores[k] : ''; }
 export function esc(s){ return (''+s).replace(/"/g,'&quot;'); }
@@ -180,7 +186,8 @@ function renderDocs(){
     else if(ni) statusTxt='Não se aplica';
     else statusTxt='Toque para selecionar';
     const areaCls = (arquivos[d.key]||temExistente)?'doc-area tem-arquivo':((ni||nta)?'doc-area pendente-doc':'doc-area');
-    const imgInline = (somenteLeitura && temExistente && !docsExistentes[d.key].toLowerCase().endsWith('.pdf')) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0">` : '';
+    // URLs do Firebase não têm extensão; tenta como imagem e, se falhar (PDF), vira link "abrir".
+    const imgInline = (somenteLeitura && temExistente) ? `<img src="${docsExistentes[d.key]}" alt="${d.label}" style="width:100%;max-height:400px;object-fit:contain;border-radius:8px;margin-top:6px;border:1px solid #e0e0e0" onerror="this.replaceWith(Object.assign(document.createElement('a'),{href:this.src,target:'_blank',textContent:'📄 Abrir '+(this.alt||'documento'),style:'display:inline-block;margin-top:6px;color:#002749;font-weight:600;text-decoration:none'}))">` : '';
     return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${d.key}"><div class="doc-clickable" data-trigger="${d.key}"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${d.key}">${statusTxt}</div></div><input type="file" id="file-${d.key}" accept="image/*,.pdf" style="display:none" data-doc="${d.key}"></div>${toggles}${imgInline}</div>`;
   }).join('');
 }
@@ -289,7 +296,7 @@ async function enviar(e){
   const urlsDocs={}; const docsKeys=Object.keys(arquivos);
   if(docsKeys.length){
     const prog=document.getElementById('upload-progress'),fill=document.getElementById('upload-progress-fill'); prog.style.display='block'; let n=0;
-    for(const k of docsKeys){ try{ const r=ref(storage,`fichas/${CFG.tipo}/${fichaId}/${k}`); await uploadBytes(r,arquivos[k]); urlsDocs[k]=await getDownloadURL(r); }catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); } fill.style.width=Math.round((++n/docsKeys.length)*100)+'%'; }
+    for(const k of docsKeys){ try{ const _p=`fichas/${CFG.tipo}/${fichaId}/${k}`, _t=_fbToken(); await uploadBytes(ref(storage,_p),arquivos[k],{ customMetadata:{ firebaseStorageDownloadTokens:_t } }); urlsDocs[k]=_fbDownloadUrl(_p,_t); }catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); } fill.style.width=Math.round((++n/docsKeys.length)*100)+'%'; }
   }
   try{
     if(CFG._modo==='edicao'&&CFG._idFicha){
@@ -346,6 +353,7 @@ export async function iniciarFicha(cfg){
     document.getElementById('btnSubmit').textContent='Salvar alterações';
     try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); if(!origemHub&&f.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(f.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${escHtml(f.observacaoCorretor)}</p>`; } aplicarValores(f.dados); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender(); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
+    params.forEach((val, key) => { if(key.startsWith('pre_')) valores[key.slice(4)] = val; });
     rerender();
   }
 }

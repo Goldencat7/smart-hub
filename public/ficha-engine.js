@@ -29,6 +29,11 @@ const origemHub    = params.get('origem') === 'hub';
 const arquivos = {};
 const pendentes = new Set();
 
+// URL de download sem getDownloadURL() (que exige READ, negado ao cliente anônimo):
+// definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
+function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
+function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+
 // Escape p/ inserção segura em innerHTML — dados do Firestore são preenchidos por
 // clientes anônimos, então nunca vão pra innerHTML sem passar por aqui.
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -244,9 +249,9 @@ async function enviarFicha(e) {
     let n = 0;
     for (const campo of docsKeys) {
       try {
-        const r = ref(storage, `fichas/${tipo}/${fichaId}/${campo}`);
-        await uploadBytes(r, arquivos[campo]);
-        urlsDocs[campo] = await getDownloadURL(r);
+        const _p = `fichas/${tipo}/${fichaId}/${campo}`, _t = _fbToken();
+        await uploadBytes(ref(storage, _p), arquivos[campo], { customMetadata: { firebaseStorageDownloadTokens: _t } });
+        urlsDocs[campo] = _fbDownloadUrl(_p, _t);
       } catch(err) { console.warn('Upload falhou:', campo, err.message); pendentes.add(campo); }
       if (fill) fill.style.width = Math.round((++n/docsKeys.length)*100)+'%';
     }

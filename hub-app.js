@@ -2172,7 +2172,7 @@ function renderDetalheImovel(d) {
 }
 
 // Liga os controles de gestão (locatário/garantia) dentro de um painel de detalhe.
-function wireDetalheImovel(cont, imovelId) {
+function wireDetalheImovel(cont, imovelId, imovelData) {
   cont.querySelectorAll('.btn-analise').forEach(btn => {
     btn.addEventListener('click', async () => {
       btn.disabled = true;
@@ -2277,15 +2277,36 @@ function wireDetalheImovel(cont, imovelId) {
     });
   }
 
-  // Fichas vinculadas ao imóvel
+  // Fichas vinculadas ao imóvel — pré-preenche com dados do imóvel
+  const im = imovelData?.imovel || {};
+  const imEnd = im.endereco || {};
   cont.querySelectorAll('.btn-nova-ficha-imovel').forEach(btn => {
     btn.addEventListener('click', () => {
       const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
-      window.hubApi.abrirFichaLocal(btn.dataset.arquivo, {
+      const params = {
         corretor: currentUid,
         nome: encodeURIComponent(nomeCorretor),
         imovelId: btn.dataset.imovel
-      });
+      };
+      const tipo = btn.dataset.tipo;
+      if (tipo === 'fianca') {
+        if (im.valorAnuncio) params.pre_aluguel = im.valorAnuncio;
+        if (im.iptu) params.pre_iptu = im.iptu;
+        if (im.valorCondominio) params.pre_condominio = im.valorCondominio;
+      } else {
+        if (im.tipo) params.pre_im_tipo = im.tipo;
+        if (im.referencia) params.pre_im_ref = im.referencia;
+        if (imEnd.cep) params.pre_im_cep = imEnd.cep;
+        if (imEnd.logradouro) params.pre_im_endereco = imEnd.logradouro;
+        if (imEnd.numero) params.pre_im_numero = imEnd.numero;
+        if (imEnd.complemento) params.pre_im_complemento = imEnd.complemento;
+        if (imEnd.bairro) params.pre_im_bairro = imEnd.bairro;
+        if (imEnd.cidade) params.pre_im_cidade = imEnd.cidade;
+        if (imEnd.estado) params.pre_im_estado = imEnd.estado;
+        if (im.condominio) params.pre_im_condominio = im.condominio;
+        if (im.valorAnuncio) params.pre_im_anuncio = im.valorAnuncio;
+      }
+      window.hubApi.abrirFichaLocal(btn.dataset.arquivo, params);
     });
   });
   const fichasListaEl = cont.querySelector('.fichas-imovel-lista');
@@ -2316,8 +2337,9 @@ function wireDetalheImovel(cont, imovelId) {
 async function recarregarDetalhe(cont, imovelId) {
   cont.innerHTML = '<p style="color:var(--text-muted)">Atualizando...</p>';
   const res = await locObterImovel({ imovelId });
-  cont.innerHTML = renderDetalheImovel(res.data || {});
-  wireDetalheImovel(cont, imovelId);
+  const d = res.data || {};
+  cont.innerHTML = renderDetalheImovel(d);
+  wireDetalheImovel(cont, imovelId, d);
 }
 
 async function toggleDetalheImovel(btn) {
@@ -2330,8 +2352,9 @@ async function toggleDetalheImovel(btn) {
   cont.innerHTML = '<p style="color:var(--text-muted)">Carregando detalhes...</p>';
   try {
     const res = await locObterImovel({ imovelId: id });
-    cont.innerHTML = renderDetalheImovel(res.data || {});
-    wireDetalheImovel(cont, id);
+    const d = res.data || {};
+    cont.innerHTML = renderDetalheImovel(d);
+    wireDetalheImovel(cont, id, d);
     cont.dataset.carregado = '1';
   } catch (e) {
     cont.innerHTML = `<p style="color:var(--text-muted)">Erro ao carregar: ${escapeHtml(e.message)}</p>`;
