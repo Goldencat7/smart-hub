@@ -49,6 +49,8 @@ const listarBanners    = httpsCallable(fns, 'listarBanners');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const reordenarBanners = httpsCallable(fns, 'reordenarBanners');
+const listarChamados   = httpsCallable(fns, 'listarChamados');
+const responderChamado = httpsCallable(fns, 'responderChamado');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -154,16 +156,35 @@ function fmtDataHora(iso) {
   });
 }
 
-// Verifica auth + admin
+// Verifica auth + admin ou TI
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.hubApi.voltarParaLogin(); return; }
   const t = await user.getIdTokenResult();
-  if (!t.claims.admin) {
-    alert('Sem permissão de admin.');
+  const isAdminUser = !!t.claims.admin;
+
+  let isTI = false;
+  if (!isAdminUser) {
+    try {
+      const perm = await getMinhasPermissoes();
+      isTI = !!perm.data.ti;
+    } catch (e) {}
+  }
+
+  if (!isAdminUser && !isTI) {
+    alert('Sem permissão.');
     window.hubApi.voltarParaHub();
     return;
   }
-  carregarTudo();
+
+  if (isTI && !isAdminUser) {
+    document.querySelectorAll('.admin-section').forEach(s => { s.hidden = true; });
+    document.getElementById('secaoChamados').hidden = false;
+    carregarChamados();
+  } else {
+    document.getElementById('secaoChamados').hidden = false;
+    carregarTudo();
+    carregarChamados();
+  }
 
   // Presença em tempo real — atualiza os dots na tabela de usuários
   onSnapshot(collection(dbFs, 'user_presence'), snap => {
@@ -825,6 +846,84 @@ async function carregarUsuarios() {
   }
 }
 
+// ─── Chamados de Suporte ────────────────────────────────────────────────────
+async function carregarChamados() {
+  const el = document.getElementById('listaChamados');
+  if (!el) return;
+  el.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const r = await listarChamados();
+    const lista = r.data || [];
+    if (!lista.length) {
+      el.innerHTML = '<p class="muted">Nenhum chamado recebido.</p>';
+      return;
+    }
+    el.innerHTML = `
+      <table class="users-table">
+        <thead><tr><th>Usuário</th><th>Mensagem</th><th>Data</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${lista.map(c => {
+            const data = fmtDataHora(c.criadoEm);
+            const statusLabel = c.status === 'aberto'
+              ? '<span style="color:#e8a735;font-weight:600">Aberto</span>'
+              : '<span style="color:#22c55e;font-weight:600">Resolvido</span>';
+            const msgPreview = escHtml((c.mensagem || '').slice(0, 80)) + (c.mensagem?.length > 80 ? '...' : '');
+            return `<tr>
+              <td>
+                <strong style="font-size:12px">${escHtml(c.criadoPorNome)}</strong>
+                <div class="muted" style="font-size:10px">${escHtml(c.criadoPorEmail)}</div>
+              </td>
+              <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${msgPreview}${c.temImagem ? ' 📎' : ''}</td>
+              <td style="font-size:12px;white-space:nowrap">${data}</td>
+              <td>${statusLabel}</td>
+              <td>${c.status === 'aberto'
+                ? `<button class="topbar-btn primario chamado-responder" data-id="${c.id}" data-nome="${escHtml(c.criadoPorNome)}" data-email="${escHtml(c.criadoPorEmail)}" data-msg="${escHtml(c.mensagem || '')}">Responder</button>`
+                : `<span class="muted" style="font-size:11px">${escHtml((c.resposta || '').slice(0, 60))}${(c.resposta || '').length > 60 ? '...' : ''}</span>`
+              }</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+
+    el.querySelectorAll('.chamado-responder').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('chamadoResponderId').value = btn.dataset.id;
+        document.getElementById('chamadoDeNome').textContent = btn.dataset.nome;
+        document.getElementById('chamadoDeEmail').textContent = btn.dataset.email;
+        document.getElementById('chamadoMensagemOriginal').textContent = btn.dataset.msg;
+        document.getElementById('chamadoResposta').value = '';
+        document.getElementById('modalResponderChamado').showModal();
+      });
+    });
+  } catch (e) {
+    el.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+  }
+}
+
+document.getElementById('cancelarChamado').addEventListener('click', () => {
+  document.getElementById('modalResponderChamado').close();
+});
+
+document.getElementById('formResponderChamado').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const chamadoId = document.getElementById('chamadoResponderId').value;
+  const resposta = document.getElementById('chamadoResposta').value.trim();
+  if (!resposta) return;
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  try {
+    await responderChamado({ chamadoId, resposta });
+    document.getElementById('modalResponderChamado').close();
+    carregarChamados();
+  } catch (err) {
+    alert('Erro: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Resolver e responder';
+  }
+});
+
 // ─── Modal de permissões (apps restritos por usuário) ────────────────────────
 async function abrirModalPermissoes(uid, email) {
   document.getElementById('permUid').value = uid;
@@ -837,6 +936,7 @@ async function abrirModalPermissoes(uid, email) {
     const liberados = r.data.apps || [];
     const alvoAdmin = !!r.data.isAdmin;
     const temFoto = !!r.data.drives_fotografia;
+    const temTI = !!r.data.ti;
     const locRole = r.data.loc_role || 'corretor';
     const locFin = !!r.data.loc_financeiro;
     const locBeta = !!r.data.loc_beta;
@@ -855,6 +955,10 @@ async function abrirModalPermissoes(uid, email) {
        <label class="auth-label-inline">
          <input type="checkbox" id="permDrivesFotografia" ${temFoto ? 'checked' : ''}>
          Drives Fotografia <span class="muted" style="font-size:10px">(gerenciar pastas de fotos)</span>
+       </label>
+       <label class="auth-label-inline">
+         <input type="checkbox" id="permTI" ${temTI ? 'checked' : ''}>
+         Suporte / TI <span class="muted" style="font-size:10px">(responder chamados de suporte)</span>
        </label>
        <hr style="border-color:var(--border);margin:10px 0">
        <p class="muted" style="font-size:11px;margin:0 0 6px">Gestão de Locações:</p>
@@ -890,13 +994,14 @@ document.getElementById('cancelarPermissoes').addEventListener('click', (e) => {
 document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const uid = document.getElementById('permUid').value;
-  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):checked')).map(c => c.value);
+  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):not(#permTI):checked')).map(c => c.value);
   const drives_fotografia = !!(document.getElementById('permDrivesFotografia')?.checked);
+  const ti = !!(document.getElementById('permTI')?.checked);
   const loc_beta = !!(document.getElementById('permLocBeta')?.checked);
   const loc_role = document.getElementById('permLocRole')?.value || 'corretor';
   const loc_financeiro = !!(document.getElementById('permLocFinanceiro')?.checked);
   try {
-    await setUserAccess({ uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro });
+    await setUserAccess({ uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro, ti });
     modalPermissoes.close();
   } catch (err) { alert('Erro: ' + err.message); }
 });

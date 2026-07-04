@@ -180,6 +180,12 @@ async function temPermissaoFotografia(auth) {
   return !!(snap.exists && snap.data().drives_fotografia);
 }
 
+async function temPermissaoTI(auth) {
+  if (!auth) return false;
+  const snap = await db.collection('user_access').doc(auth.uid).get();
+  return !!(snap.exists && snap.data().ti);
+}
+
 // Verifica se o usuário pode acessar um app (todos podem os normais; restritos só liberados/admin)
 async function temAcessoApp(auth, siteKey) {
   if (!RESTRICTED_APPS.includes(siteKey)) return true;
@@ -313,11 +319,12 @@ exports.getMinhasPermissoes = onCall(async (req) => {
   const dados = snap.exists ? snap.data() : {};
   const drives_fotografia = !!dados.drives_fotografia;
   const loc_beta = !!dados.loc_beta;   // acesso de teste ao módulo de Locações (feature flag)
+  const ti = !!dados.ti;
   const relSnap = await db.collection('config').doc('release').get();
   const locacoesPublicadaEm = (relSnap.exists && relSnap.data().locacoesPublicadaEm) || ''; // versão liberada p/ todos
-  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, locacoesPublicadaEm };
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, locacoesPublicadaEm, ti };
   const apps = dados.apps || [];
-  return { apps, isAdmin: false, drives_fotografia, loc_beta, locacoesPublicadaEm };
+  return { apps, isAdmin: false, drives_fotografia, loc_beta, locacoesPublicadaEm, ti };
 });
 
 // (admin) Publica a versão atual da Gestão de Locações pra TODOS (ou volta pra teste com versao='').
@@ -348,6 +355,7 @@ exports.getUserAccess = onCall(async (req) => {
     isAdmin: alvoAdmin,
     drives_fotografia: !!dados.drives_fotografia,
     loc_beta: !!dados.loc_beta,
+    ti: !!dados.ti,
     loc_role: (userRec && userRec.customClaims && userRec.customClaims.locRole) || 'corretor',
     loc_financeiro: !!(perfilSnap.exists && perfilSnap.data().financeiro)
   };
@@ -356,13 +364,14 @@ exports.getUserAccess = onCall(async (req) => {
 // (admin) Define quais apps restritos um usuário pode ver + o perfil de Locação
 exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
-  const { uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro } = req.data || {};
+  const { uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro, ti } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
     apps: limpos,
     drives_fotografia: !!drives_fotografia,
     loc_beta: !!loc_beta,
+    ti: !!ti,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
   // Perfil de Locação (opcional): grava na claim locRole (autoridade) + loc_perfis p/ Financeiro.
@@ -1755,7 +1764,101 @@ exports.enviarSuporte = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) =>
     console.error('Erro ao enviar suporte:', e.message);
     throw new HttpsError('internal', 'Não foi possível enviar o chamado. Tente de novo.');
   }
+
+  await db.collection('chamados').add({
+    mensagem: texto,
+    imagemUrl: (attachments.length && typeof imagem === 'string') ? imagem : null,
+    imagemNome: imagemNome || null,
+    status: 'aberto',
+    criadoPor: auth.uid,
+    criadoPorNome: nome,
+    criadoPorEmail: email,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    resposta: null,
+    resolvidoPor: null,
+    resolvidoEm: null
+  });
+
   return { ok: true };
+});
+
+// ─── Chamados de Suporte ────────────────────────────────────────────────────
+
+exports.listarChamados = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ehTI = await temPermissaoTI(auth);
+  if (!ehTI && !ehAdminAuth(auth)) {
+    throw new HttpsError('permission-denied', 'Sem permissão de TI.');
+  }
+  const snap = await db.collection('chamados')
+    .orderBy('criadoEm', 'desc')
+    .limit(100)
+    .get();
+  return snap.docs.map(d => {
+    const x = d.data();
+    return {
+      id: d.id,
+      mensagem: x.mensagem || '',
+      status: x.status,
+      criadoPorNome: x.criadoPorNome || '',
+      criadoPorEmail: x.criadoPorEmail || '',
+      criadoEm: x.criadoEm?.toDate?.()?.toISOString() || null,
+      resposta: x.resposta || null,
+      resolvidoEm: x.resolvidoEm?.toDate?.()?.toISOString() || null,
+      temImagem: !!x.imagemUrl
+    };
+  });
+});
+
+exports.responderChamado = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ehTI = await temPermissaoTI(auth);
+  if (!ehTI && !ehAdminAuth(auth)) {
+    throw new HttpsError('permission-denied', 'Sem permissão de TI.');
+  }
+  const { chamadoId, resposta } = req.data || {};
+  if (!chamadoId) throw new HttpsError('invalid-argument', 'chamadoId é obrigatório.');
+  if (!resposta || !String(resposta).trim()) {
+    throw new HttpsError('invalid-argument', 'A resposta é obrigatória.');
+  }
+
+  const ref = db.collection('chamados').doc(chamadoId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Chamado não encontrado.');
+  const dados = snap.data();
+  if (dados.status === 'resolvido') {
+    throw new HttpsError('failed-precondition', 'Chamado já foi resolvido.');
+  }
+
+  await ref.update({
+    status: 'resolvido',
+    resposta: String(resposta).slice(0, 2000),
+    resolvidoPor: auth.uid,
+    resolvidoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  await db.collection('notifications').add({
+    titulo: 'Resposta do Suporte',
+    mensagem: String(resposta).slice(0, 1000),
+    todos: false,
+    destinatarios: [dados.criadoPor],
+    totalDestinatarios: 1,
+    criadoPor: auth.uid,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    lidoPor: []
+  });
+
+  return { ok: true };
+});
+
+exports.contarChamadosAbertos = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ehTI = await temPermissaoTI(auth);
+  if (!ehTI && !ehAdminAuth(auth)) return { total: 0 };
+  const snap = await db.collection('chamados')
+    .where('status', '==', 'aberto')
+    .get();
+  return { total: snap.size };
 });
 
 // ─── Google Agenda: conectar / desconectar / status ──────────────────────────

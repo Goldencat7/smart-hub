@@ -94,6 +94,7 @@ const listarFichasTipoAnalise   = httpsCallable(fns, 'listarFichasTipoAnalise');
 const finalizarFichaTipo        = httpsCallable(fns, 'finalizarFichaTipo');
 const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
 const contarNotifFichas   = httpsCallable(fns, 'contarNotifFichas');
+const contarChamadosAbertos = httpsCallable(fns, 'contarChamadosAbertos');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -279,6 +280,7 @@ let locacoesPublicado = false;  // true quando a versão deste app foi publicada
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
+let temPermTI = false;
 let statusApps = {};
 let treinamentoLinks = {};     // { itemId: { url, tipo } }
 let treinamentoCatAberta = null; // id da categoria expandida no accordion
@@ -920,13 +922,12 @@ onAuthStateChanged(auth, async (user) => {
     } catch (e) { console.warn('Bootstrap admin:', e); }
   }
 
-  btnAdmin.hidden = !isAdmin;
-
   // Busca os apps restritos liberados pra este usuário e re-renderiza
   try {
     const perm = await getMinhasPermissoes();
     appsPermitidos = perm.data.apps || [];
     temDrivesFotografia = !!perm.data.drives_fotografia;
+    temPermTI = !!perm.data.ti;
     betaLocacoes = !!perm.data.loc_beta;
     try {
       const v = await window.hubApi.getAppVersion();
@@ -937,6 +938,8 @@ onAuthStateChanged(auth, async (user) => {
     console.warn('Permissões:', e);
     appsPermitidos = [];
   }
+
+  btnAdmin.hidden = !(isAdmin || temPermTI);
   try {
     const mp = await locMeuPerfil();
     locRoleAtual = mp.data?.role || 'corretor';
@@ -983,6 +986,11 @@ onAuthStateChanged(auth, async (user) => {
   clearInterval(window.__notifFichasTimer);
   window.__notifFichasTimer = setInterval(atualizarNotifFichas, 60000);
 
+  // Badge de chamados abertos (TI / admin)
+  atualizarBadgeChamados();
+  clearInterval(window.__chamadosTimer);
+  window.__chamadosTimer = setInterval(atualizarBadgeChamados, 120000);
+
   // Atualiza na hora quando a pessoa volta pro app (foco / aba visível),
   // pra não esperar o timer quando a ficha acabou de chegar. Wire uma vez só.
   if (!window.__notifFocusWired) {
@@ -995,6 +1003,7 @@ onAuthStateChanged(auth, async (user) => {
       ultimaAtt = agora;
       atualizarNotifFichas();
       verificarNotificacoes();
+      atualizarBadgeChamados();
     };
     window.addEventListener('focus', attAoVoltar);
     document.addEventListener('visibilitychange', attAoVoltar);
@@ -3175,6 +3184,21 @@ async function atualizarNotifFichas() {
     const tiposNaoVistos = new Set(naoVistos.map(n => n.tipo));
     FICHAS_CONFIG.forEach(f => { const dot = document.getElementById('dot-' + f.key); if (dot) dot.hidden = !tiposNaoVistos.has(f.key); });
   } catch(e) { console.warn('Notif fichas:', e); }
+}
+
+const adminBadge = document.getElementById('adminBadge');
+async function atualizarBadgeChamados() {
+  if (!temPermTI && !isAdmin) { if (adminBadge) adminBadge.hidden = true; return; }
+  try {
+    const res = await contarChamadosAbertos();
+    const total = res.data?.total || 0;
+    if (total > 0 && adminBadge) {
+      adminBadge.textContent = total > 99 ? '99+' : total;
+      adminBadge.hidden = false;
+    } else if (adminBadge) {
+      adminBadge.hidden = true;
+    }
+  } catch (e) { console.warn('Badge chamados:', e); }
 }
 
 function renderNotifPanel() {

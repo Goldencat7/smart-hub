@@ -100,6 +100,16 @@
         </div>
         <div id="listaAvisosEnviados" class="admin-table"><p class="muted">carregando...</p></div>
       </section>
+
+      <section class="admin-section" id="secaoChamados" hidden>
+        <div class="admin-section-head">
+          <div>
+            <h2>Chamados de Suporte</h2>
+            <p class="admin-sub">Chamados recebidos dos usuários. Responda e marque como resolvido.</p>
+          </div>
+        </div>
+        <div id="listaChamados" class="admin-table"><p class="muted">carregando...</p></div>
+      </section>
     </main>
 
     <!-- Modal: editar credencial -->
@@ -207,6 +217,24 @@
           <button type="button" id="confirmSim" class="topbar-btn perigo">Excluir</button>
         </div>
       </div>
+    </dialog>
+
+    <!-- Modal: responder chamado -->
+    <dialog id="modalResponderChamado" class="modal">
+      <form method="dialog" id="formResponderChamado" class="modal-form">
+        <h3>Responder chamado</h3>
+        <p class="muted" style="font-size:12px">De: <strong id="chamadoDeNome"></strong> (<span id="chamadoDeEmail"></span>)</p>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin:8px 0;font-size:12px;white-space:pre-wrap;max-height:160px;overflow:auto" id="chamadoMensagemOriginal"></div>
+        <label class="auth-label">
+          Resposta
+          <textarea id="chamadoResposta" required maxlength="2000" rows="4" placeholder="Escreva a resposta para o usuário..."></textarea>
+        </label>
+        <input type="hidden" id="chamadoResponderId">
+        <div class="modal-actions">
+          <button type="button" id="cancelarChamado" class="topbar-btn">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Resolver e responder</button>
+        </div>
+      </form>
     </dialog>
 
     <script type="module" src="admin-app.js"></script>

@@ -142,6 +142,11 @@ function blocoConjuge(i){
       campo({label:'Regime de bens',key:p+'regimeBens',type:'select',optsHtml:selOptions(REGIME,v(p+'regimeBens')),badge:'none'}),
       campo({label:'Renda mensal',key:p+'renda',money:true,ph:'R$ 0,00',badge:'none'})
     )}
+    ${campo({label:'E-mail',key:p+'email',type:'email',badge:'none'})}
+    ${row(
+      campo({label:'Celular / WhatsApp',key:p+'celular',type:'tel',ph:'(11) 90000-0000',badge:'none'}),
+      campo({label:'Telefone fixo',key:p+'fixo',type:'tel',badge:'opc',ph:'(11) 0000-0000'})
+    )}
   </div>`;
 }
 
@@ -231,13 +236,19 @@ function validarCpfsETelefones(){
     const val=(''+(valores[k]||'')).trim(); if(!val) continue;
     if(/cpf$/i.test(k) && !validarCPF(val)) return marcar(k,`CPF inválido: ${maskCPF(val)}. Confira os números digitados.`);
   }
-  const fonesVistos=new Map();
-  for(const k of Object.keys(valores)){
-    if(!/celular|whatsapp|fixo|telefone/i.test(k)) continue;
-    if(isPend(k)) continue;
-    const d=(''+(valores[k]||'')).replace(/\D/g,''); if(d.length<8) continue;
-    if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
-    fonesVistos.set(d,k);
+  if(nProponentes >= 2){
+    const celulares = new Map();
+    for(let i=1;i<=nProponentes;i++){
+      const kCel = i===1 ? 'whatsapp' : `p${i}_celular`;
+      if(isPend(kCel)) continue;
+      const d = (''+(valores[kCel]||'')).replace(/\D/g,'');
+      if(d.length < 8) continue;
+      if(celulares.has(d)){
+        const outro = celulares.get(d);
+        return marcar(kCel, `O proponente ${i} e o proponente ${outro} estão com o mesmo número de celular. Cada proponente precisa ter um número diferente.`);
+      }
+      celulares.set(d, i);
+    }
   }
   return null;
 }

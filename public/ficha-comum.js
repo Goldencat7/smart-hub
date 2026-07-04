@@ -96,7 +96,9 @@ export function blocoConjuge(p){
   return `
     ${campo({label:'Nome do cônjuge',key:p+'conj_nome',badge:'none'})}
     ${row(campo({label:'RG',key:p+'conj_rg',badge:'none'}),campo({label:'CPF',key:p+'conj_cpf',cpf:true,ph:'000.000.000-00',badge:'none'}),campo({label:'Nascimento',key:p+'conj_nasc',type:'date',badge:'none'}))}
-    ${row(campo({label:'Profissão',key:p+'conj_profissao',badge:'none'}),campo({label:'Regime de bens',key:p+'conj_civil_regime',type:'select',optsHtml:selOptions(REGIME,v(p+'conj_civil_regime')),badge:'none'}))}`;
+    ${row(campo({label:'Profissão',key:p+'conj_profissao',badge:'none'}),campo({label:'Regime de bens',key:p+'conj_civil_regime',type:'select',optsHtml:selOptions(REGIME,v(p+'conj_civil_regime')),badge:'none'}))}
+    ${campo({label:'E-mail',key:p+'conj_email',type:'email',badge:'none'})}
+    ${row(campo({label:'Celular / WhatsApp',key:p+'conj_celular',type:'tel',ph:'(11) 90000-0000',badge:'none'}),campo({label:'Telefone fixo',key:p+'conj_fixo',type:'tel',badge:'opc',ph:'(11) 0000-0000'}))}`;
 }
 export function ehCasado(p){ return COM_CONJUGE.includes(v(p+'civil')); }
 
@@ -146,13 +148,13 @@ function validarCpfsETelefones(){
     if(/cpf$/i.test(k) && !validarCPF(val)) return marcar(k,`CPF inválido: ${maskCPF(val)}. Confira os números digitados.`);
     if(/cnpj$/i.test(k) && !validarCNPJ(val)) return marcar(k,`CNPJ inválido: ${val}. Confira os números digitados.`);
   }
-  const fonesVistos=new Map();
+  const celulares=new Map();
   for(const k of Object.keys(valores)){
-    if(!/celular|whatsapp|fixo|telefone/i.test(k)) continue;
+    if(!/celular|whatsapp/i.test(k)) continue;
     if(naoExiste.has(k)||pendentes.has(k)) continue;
     const d=(''+(valores[k]||'')).replace(/\D/g,''); if(d.length<8) continue;
-    if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
-    fonesVistos.set(d,k);
+    if(celulares.has(d)) return marcar(k,'Duas pessoas estão com o mesmo número de celular. Cada pessoa precisa ter um número diferente.');
+    celulares.set(d,k);
   }
   return null;
 }
