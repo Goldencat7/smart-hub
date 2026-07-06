@@ -17,99 +17,116 @@
       </div>
     </header>
 
-    <main class="container admin-container">
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Lançamento — Gestão de Locações</h2>
-            <p class="admin-sub">Toda versão nova começa <strong>em teste</strong> (só quem tem "Acesso de teste" vê o módulo). Clique em Publicar pra liberar pra todos.</p>
-          </div>
-        </div>
-        <div id="lancamentoLocacoes" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
-      </section>
+    <main class="admin-layout">
+      <nav class="admin-nav" id="adminNav">
+        <div class="admin-nav-grupo">Comunicação</div>
+        <button class="admin-nav-item" data-aba="banner"><i class="ti ti-photo"></i>Banner</button>
+        <button class="admin-nav-item" data-aba="avisos"><i class="ti ti-bell"></i>Avisos enviados</button>
+        <button class="admin-nav-item" data-aba="chamados" id="navChamados" hidden><i class="ti ti-headset"></i>Chamados</button>
+        <button class="admin-nav-item" data-aba="statusApps"><i class="ti ti-activity"></i>Status dos apps</button>
 
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Segurança — Modo Cofre</h2>
-            <p class="admin-sub">Quando <strong>ligado</strong>, bloqueia quem tenta baixar muitas senhas de sistemas em poucos minutos (dump em massa). Uso normal (abrir 1–2 apps) não é afetado. Deixe <strong>desligado</strong> durante os testes e ligue no lançamento.</p>
-          </div>
-        </div>
-        <div id="segurancaCofre" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
-      </section>
+        <div class="admin-nav-grupo">Usuários & acesso</div>
+        <button class="admin-nav-item" data-aba="usuarios"><i class="ti ti-users"></i>Usuários</button>
+        <button class="admin-nav-item" data-aba="codigos"><i class="ti ti-ticket"></i>Códigos de convite</button>
+        <button class="admin-nav-item" data-aba="credenciais"><i class="ti ti-key"></i>Credenciais</button>
 
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Banner Principal</h2>
-            <p class="admin-sub">Imagem exibida acima dos apps em todas as telas normais do Hub. Recomendado: 1800×300px.</p>
-          </div>
-        </div>
-        <div id="bannerAdmin" class="banner-admin-wrap">
-          <p class="muted">carregando...</p>
-        </div>
-        <input id="bannerFileInput" type="file" accept="image/*,.gif,video/mp4,.mp4" hidden>
-        <input id="materialFileInput" type="file" accept="image/*,.pdf,.mp4,.gif" hidden>
-      </section>
+        <div class="admin-nav-grupo">Sistema</div>
+        <button class="admin-nav-item" data-aba="cofre"><i class="ti ti-shield-lock"></i>Modo cofre</button>
+        <button class="admin-nav-item" data-aba="lancamento"><i class="ti ti-rocket"></i>Lançamento — Locações</button>
+      </nav>
 
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Credenciais dos Sistemas</h2>
-            <p class="admin-sub">Senhas usadas pelo autologin. Só admin vê/edita.</p>
+      <div class="admin-conteudo">
+        <section class="admin-section" data-aba="lancamento" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Lançamento — Gestão de Locações</h2>
+              <p class="admin-sub">Toda versão nova começa <strong>em teste</strong> (só quem tem "Acesso de teste" vê o módulo). Clique em Publicar pra liberar pra todos.</p>
+            </div>
           </div>
-        </div>
-        <div id="listaCredenciais" class="admin-grid"></div>
-      </section>
+          <div id="lancamentoLocacoes" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
 
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Códigos de Convite</h2>
-            <p class="admin-sub">Pessoas usam pra criar conta no Hub. Cada código pode ter validade e número de usos.</p>
+        <section class="admin-section" data-aba="cofre" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Segurança — Modo Cofre</h2>
+              <p class="admin-sub">Quando <strong>ligado</strong>, bloqueia quem tenta baixar muitas senhas de sistemas em poucos minutos (dump em massa). Uso normal (abrir 1–2 apps) não é afetado. Deixe <strong>desligado</strong> durante os testes e ligue no lançamento.</p>
+            </div>
           </div>
-          <button id="btnNovoCodigo" class="topbar-btn primario">+ Gerar código</button>
-        </div>
-        <div id="listaCodigos" class="admin-table"></div>
-      </section>
+          <div id="segurancaCofre" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
 
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Status dos Apps</h2>
-            <p class="admin-sub">Avise que um app está instável/fora do ar. Aparece pra todos na hora, sem atualizar o Hub.</p>
+        <section class="admin-section" data-aba="banner" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Banner Principal</h2>
+              <p class="admin-sub">Imagem exibida acima dos apps em todas as telas normais do Hub. Recomendado: 1800×300px.</p>
+            </div>
           </div>
-        </div>
-        <div id="listaStatusApps" class="admin-table"></div>
-      </section>
+          <div id="bannerAdmin" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+          <input id="bannerFileInput" type="file" accept="image/*,.gif,video/mp4,.mp4" hidden>
+          <input id="materialFileInput" type="file" accept="image/*,.pdf,.mp4,.gif" hidden>
+        </section>
 
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <h2>Usuários do Hub</h2>
-          <button id="btnNovoUsuario" class="topbar-btn primario">+ Novo usuário</button>
-        </div>
-        <div id="listaUsuarios" class="admin-table"></div>
-      </section>
-
-      <section class="admin-section">
-        <div class="admin-section-head">
-          <div>
-            <h2>Avisos Enviados</h2>
-            <p class="admin-sub">Quem confirmou cada aviso em tempo real.</p>
+        <section class="admin-section" data-aba="credenciais" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Credenciais dos Sistemas</h2>
+              <p class="admin-sub">Senhas usadas pelo autologin. Só admin vê/edita.</p>
+            </div>
           </div>
-        </div>
-        <div id="listaAvisosEnviados" class="admin-table"><p class="muted">carregando...</p></div>
-      </section>
+          <div id="listaCredenciais" class="admin-grid"></div>
+        </section>
 
-      <section class="admin-section" id="secaoChamados" hidden>
-        <div class="admin-section-head">
-          <div>
-            <h2>Chamados de Suporte</h2>
-            <p class="admin-sub">Chamados recebidos dos usuários. Responda e marque como resolvido.</p>
+        <section class="admin-section" data-aba="codigos" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Códigos de Convite</h2>
+              <p class="admin-sub">Pessoas usam pra criar conta no Hub. Cada código pode ter validade e número de usos.</p>
+            </div>
+            <button id="btnNovoCodigo" class="topbar-btn primario">+ Gerar código</button>
           </div>
-        </div>
-        <div id="listaChamados" class="admin-table"><p class="muted">carregando...</p></div>
-      </section>
+          <div id="listaCodigos" class="admin-table"></div>
+        </section>
+
+        <section class="admin-section" data-aba="statusApps" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Status dos Apps</h2>
+              <p class="admin-sub">Avise que um app está instável/fora do ar. Aparece pra todos na hora, sem atualizar o Hub.</p>
+            </div>
+          </div>
+          <div id="listaStatusApps" class="admin-table"></div>
+        </section>
+
+        <section class="admin-section" data-aba="usuarios" hidden>
+          <div class="admin-section-head">
+            <h2>Usuários do Hub</h2>
+            <button id="btnNovoUsuario" class="topbar-btn primario">+ Novo usuário</button>
+          </div>
+          <div id="listaUsuarios" class="admin-table"></div>
+        </section>
+
+        <section class="admin-section" data-aba="avisos" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Avisos Enviados</h2>
+              <p class="admin-sub">Quem confirmou cada aviso em tempo real.</p>
+            </div>
+          </div>
+          <div id="listaAvisosEnviados" class="admin-table"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="chamados" id="secaoChamados" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Chamados de Suporte</h2>
+              <p class="admin-sub">Chamados recebidos dos usuários. Responda e marque como resolvido.</p>
+            </div>
+          </div>
+          <div id="listaChamados" class="admin-table"><p class="muted">carregando...</p></div>
+        </section>
+      </div>
     </main>
 
     <!-- Modal: editar credencial -->

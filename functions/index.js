@@ -758,6 +758,42 @@ exports.locMoverImovelStatus = onCall(async (req) => {
   return { ok: true, status: novoStatus };
 });
 
+// ─── Gestão de Locações · Campos financeiros + checklist (esteira de locação) ─
+const LOC_CAMPOS_EDITAVEIS = new Set([
+  'valorFechamento', 'valorComissao', 'comissao1Data', 'comissao2Data',
+  'possuiAdministracao', 'contratoAssinado', 'possuiParceria', 'checklist'
+]);
+
+exports.locSalvarCamposLocacao = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId, campos } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  if (!campos || typeof campos !== 'object') throw new HttpsError('invalid-argument', 'Campos inválidos.');
+
+  const ref = db.collection('imoveis').doc(imovelId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const dados = snap.data();
+
+  const ehGestor = ehGestorAuth(auth);
+  const ehAdm = auth.token && auth.token.locRole === 'administrativo';
+  const ehDono = dados.corretorUid === auth.uid;
+  if (!ehGestor && !ehAdm && !ehDono) throw new HttpsError('permission-denied', 'Sem permissão.');
+
+  const update = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+  for (const [k, v] of Object.entries(campos)) {
+    if (!LOC_CAMPOS_EDITAVEIS.has(k)) continue;
+    // Números viram Number; datas ficam como string YYYY-MM-DD; booleans/objetos passam direto
+    if (k === 'valorFechamento' || k === 'valorComissao') {
+      update[k] = v === '' || v == null ? null : Number(String(v).replace(/[^\d.,-]/g, '').replace(',', '.'));
+    } else {
+      update[k] = v;
+    }
+  }
+  await ref.update(update);
+  return { ok: true };
+});
+
 // ─── Gestão de Locações · Bloco 3 · Locatário + Garantia (T6) ───────────────
 const LOC_ANALISE_STATUS = ['em_analise', 'pendencia', 'aprovado', 'reprovado'];
 const LOC_GARANTIA_MODALIDADES = ['seguro_fianca', 'fiador', 'caucao', 'titulo_capitalizacao'];

@@ -684,6 +684,47 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .admin-container { max-width: 1100px; }
 .admin-section   { margin-bottom: 28px; width: 100%; }
 
+/* Layout com abas laterais */
+.admin-layout {
+  display: grid; grid-template-columns: 220px 1fr; gap: 24px;
+  padding: 20px 32px 60px;
+}
+.admin-nav {
+  display: flex; flex-direction: column; gap: 2px;
+  position: sticky; top: 20px; align-self: start;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 10px 8px; max-height: calc(100vh - 100px); overflow-y: auto;
+}
+.admin-nav-grupo {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--text-muted); padding: 12px 10px 6px;
+}
+.admin-nav-grupo:first-child { padding-top: 4px; }
+.admin-nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 0; background: transparent;
+  color: var(--text-primary); font-size: 12px; font-weight: 500; text-align: left;
+  border-radius: 6px; cursor: pointer; transition: background .12s;
+}
+.admin-nav-item:hover { background: var(--hover); }
+.admin-nav-item.ativo { background: var(--remax-red); color: #fff; }
+.admin-nav-item.ativo i { color: #fff; }
+.admin-nav-item i { font-size: 15px; flex-shrink: 0; color: var(--text-muted); }
+.admin-conteudo { min-width: 0; max-width: 1500px; }
+.admin-conteudo .admin-section { margin-bottom: 0; }
+.admin-conteudo .admin-section h2 { font-size: 18px; }
+.admin-conteudo .admin-sub { font-size: 12px; }
+.admin-conteudo .admin-section-head { margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.users-table tbody tr { transition: background .12s; }
+.users-table tbody tr:hover { background: var(--hover); }
+.admin-card { transition: border-color .12s, transform .12s; }
+.admin-card:hover { border-color: var(--remax-red-hover, var(--remax-red)); }
+@media (max-width: 900px) {
+  .admin-layout { grid-template-columns: 1fr; }
+  .admin-nav { position: relative; top: 0; max-height: none; flex-direction: row; overflow-x: auto; flex-wrap: nowrap; }
+  .admin-nav-grupo { display: none; }
+}
+
 .admin-section-head {
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 12px; gap: 12px;
@@ -693,7 +734,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .admin-section h2 { margin: 0; font-size: 13px; font-weight: 700; color: var(--text-primary); }
 .admin-sub { margin: 3px 0 0; color: var(--text-muted); font-size: 11px; }
 
-.admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
 .admin-table { display: flex; flex-direction: column; gap: 8px; }
 
 .admin-card {
@@ -828,6 +869,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .docs-placeholder { padding: 24px 0; }
 .ficha-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px 14px; margin-bottom: 10px; }
 .ficha-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+@media (max-width: 1100px) { .imovel-det-grid { grid-template-columns: 1fr !important; } }
 .docs-card {
   max-width: 480px; padding: 24px;
   background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius-card);

@@ -177,15 +177,29 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
+  // Nav item de Chamados só aparece pra quem tem TI ou admin (ambos casos aqui, já passou a checagem acima)
+  const navChamados = document.getElementById('navChamados');
+  if (navChamados) navChamados.hidden = false;
+
+  // Se for TI-only (não admin), esconde tudo do nav exceto Chamados
   if (isTI && !isAdminUser) {
-    document.querySelectorAll('.admin-section').forEach(s => { s.hidden = true; });
-    document.getElementById('secaoChamados').hidden = false;
+    document.querySelectorAll('.admin-nav-item').forEach(b => {
+      if (b.dataset.aba !== 'chamados') b.hidden = true;
+    });
+    document.querySelectorAll('.admin-nav-grupo').forEach(g => g.hidden = true);
+    ativarAba('chamados');
     carregarChamados();
   } else {
-    document.getElementById('secaoChamados').hidden = false;
+    // Admin normal — carrega tudo em background e abre aba padrão
     carregarTudo();
     carregarChamados();
+    ativarAba('usuarios');
   }
+
+  // Handler das abas
+  document.querySelectorAll('.admin-nav-item').forEach(btn => {
+    btn.addEventListener('click', () => ativarAba(btn.dataset.aba));
+  });
 
   // Presença em tempo real — atualiza os dots na tabela de usuários
   onSnapshot(collection(dbFs, 'user_presence'), snap => {
@@ -273,6 +287,15 @@ document.getElementById('formUser').addEventListener('submit', async (e) => {
     carregarUsuarios();
   } catch (err) { alert('Erro: ' + err.message); }
 });
+
+function ativarAba(aba) {
+  document.querySelectorAll('.admin-section').forEach(s => {
+    s.hidden = s.dataset.aba !== aba;
+  });
+  document.querySelectorAll('.admin-nav-item').forEach(b => {
+    b.classList.toggle('ativo', b.dataset.aba === aba);
+  });
+}
 
 async function carregarTudo() {
   carregarLancamento();

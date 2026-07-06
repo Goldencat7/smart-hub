@@ -41,6 +41,7 @@ const locListarFichasImovel = httpsCallable(fns, 'locListarFichasImovel');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
 const locExcluirImovel = httpsCallable(fns, 'locExcluirImovel');
 const locObterImovel = httpsCallable(fns, 'locObterImovel');
+const locSalvarCamposLocacao = httpsCallable(fns, 'locSalvarCamposLocacao');
 const locAddLocatario = httpsCallable(fns, 'locAddLocatario');
 const locAnalisarLocatario = httpsCallable(fns, 'locAnalisarLocatario');
 const locSalvarGarantia = httpsCallable(fns, 'locSalvarGarantia');
@@ -2051,6 +2052,40 @@ const IMOVEL_STATUS = [
 const imovelLabel = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).label || k;
 const imovelCor   = k => (IMOVEL_STATUS.find(s => s.key === k) || {}).cor   || '#6b7280';
 const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
+
+// Checklist padrão da esteira de LOCAÇÃO (baseado no fluxo definido pelo gestor).
+// Cada item tem uma chave curta (grava em imovel.checklist[chave] = true/false) e o rótulo.
+const LOC_CHECKLIST = [
+  { k: 'ficha',           l: 'Ficha cadastral preenchida' },
+  { k: 'docs',            l: 'Documentação salva na pasta' },
+  { k: 'analise',         l: 'Análise de crédito aprovada' },
+  { k: 'contrato',        l: 'Contrato assinado' },
+  { k: 'vistoria',        l: 'Vistoria realizada' },
+  { k: 'seguro_fianca',   l: 'Seguro fiança emitido' },
+  { k: 'seguro_incendio', l: 'Seguro incêndio contratado' },
+  { k: 'transf_enel',     l: 'Transferência ENEL' },
+  { k: 'transf_iptu',     l: 'Transferência IPTU' },
+  { k: 'transf_cond',     l: 'Transferência titularidade condomínio' },
+  { k: 'chaves',          l: 'Entrega de chaves' },
+  { k: 'cadastro_sistema',l: 'Cadastrar locação no sistema' },
+  { k: 'gerar_cobranca',  l: 'Gerar cobrança' },
+  { k: 'acompanhamento',  l: 'Acompanhamento' }
+];
+const fmtBRL = n => n == null || n === '' ? '' : 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtDataBR = s => { if (!s) return ''; const [y,m,d] = String(s).split('-'); return (d && m && y) ? `${d}/${m}/${y}` : s; };
+// Status derivado da comissão a partir das datas das parcelas
+function statusComissao(im) {
+  const c1 = !!im.comissao1Data, c2 = !!im.comissao2Data;
+  if (c1 && c2) return { txt: 'Total recebida', cor: '#16a34a' };
+  if (c1) return { txt: '1ª parcela recebida', cor: '#b45309' };
+  return { txt: 'Comissão pendente', cor: '#DC1C2E' };
+}
+// Progresso da checklist (0-100)
+function progressoChecklist(im) {
+  const c = im.checklist || {};
+  const feitos = LOC_CHECKLIST.filter(x => c[x.k]).length;
+  return { feitos, total: LOC_CHECKLIST.length, pct: Math.round((feitos / LOC_CHECKLIST.length) * 100) };
+}
 const IMOVEL_NOMES_DOC = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio' };
 const IMOVEL_NOMES_PEND = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio', profissao:'Profissão', im_admcond:'Adm. condominial', im_admcontato:'Contato adm', im_condominio:'Condomínio', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU' };
 let imoveisRole = 'corretor'; // papel do usuário atual na aba Imóveis (setado em carregarImoveis)
@@ -2062,8 +2097,8 @@ const _selStyle = 'font-size:12px;padding:5px 8px;border:1px solid var(--border)
 
 // Renderiza o detalhe completo de um imóvel (retorno de locObterImovel).
 function renderDetalheImovel(d) {
-  const lin = (r, v) => v ? `<div style="display:flex;gap:8px;padding:2px 0"><span style="color:var(--text-muted);min-width:130px;flex-shrink:0">${r}</span><span>${escapeHtml(v)}</span></div>` : '';
-  const sec = (t, corpo) => corpo ? `<div style="margin-top:12px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-primary);margin-bottom:4px">${t}</div>${corpo}</div>` : '';
+  const lin = (r, v) => v ? `<div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px;flex-shrink:0">${r}</span><span style="word-break:break-word">${escapeHtml(v)}</span></div>` : '';
+  const sec = (t, corpo) => corpo ? `<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${t}</div>${corpo}</div>` : '';
   const im = d.imovel || {};
 
   const locHtml = (d.locadores || []).map((p, i) => {
@@ -2088,10 +2123,10 @@ function renderDetalheImovel(d) {
   const admHtml = sec('Administração', lin('REMAX administra?', adm.remaxAdministra) + lin('Taxa', adm.taxa) + lin('Tipo de repasse', adm.tipoRepasse) + lin('Observações', adm.observacoes));
 
   const docs = Object.entries(im.documentos || {}).filter(([, url]) => /^https?:/i.test(url));
-  const docsHtml = docs.length ? sec('Documentos', `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${docs.map(([k, url]) => `<a href="${escapeHtml(url)}" target="_blank" class="topbar-btn" style="font-size:11px;padding:4px 10px">${escapeHtml(IMOVEL_NOMES_DOC[k] || k)} ↗</a>`).join('')}</div>`) : '';
+  const docsHtml = docs.length ? sec('Documentos', `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${docs.map(([k, url]) => `<a href="${escapeHtml(url)}" target="_blank" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;border-radius:14px;background:#16a34a18;color:#16a34a;border:1px solid #16a34a40;text-decoration:none;font-weight:600">✓ ${escapeHtml(IMOVEL_NOMES_DOC[k] || k)}</a>`).join('')}</div>`) : '';
 
   const pend = im.pendentes || [];
-  const pendHtml = pend.length ? sec('Pendências ("Não tenho agora")', `<div style="font-size:12px;color:#b45309">${pend.map(p => escapeHtml(IMOVEL_NOMES_PEND[p] || p)).join(', ')}</div>`) : '';
+  const pendHtml = pend.length ? sec('Pendências', `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">${pend.map(p => `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:14px;background:#b4530918;color:#b45309;border:1px solid #b4530940;font-weight:600">⚠ ${escapeHtml(IMOVEL_NOMES_PEND[p] || p)}</span>`).join('')}</div>`) : '';
 
   const hist = im.historico || [];
   const histHtml = hist.length ? sec('Histórico de status', hist.map(h => {
@@ -2201,7 +2236,42 @@ function renderDetalheImovel(d) {
     ${FICHAS_IMOVEL.map(fi => `<button class="topbar-btn primario btn-nova-ficha-imovel" data-imovel="${im.id}" data-tipo="${fi.key}" data-arquivo="${fi.arquivo}" style="font-size:11px;padding:4px 10px">+ ${escapeHtml(fi.label)}</button>`).join('')}</div>`;
   const fichasImovelHtml = sec('Fichas vinculadas', `<div class="fichas-imovel-lista" data-imovel="${im.id}"><div style="font-size:11px;color:var(--text-muted)">Carregando fichas...</div></div>${fichasBtns}`);
 
-  return (locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + gestaoHtml + fichasImovelHtml + vistoriaHtml) || '<p style="color:var(--text-muted)">Sem dados.</p>';
+  // Bloco "Esteira de Locação" — editor de campos financeiros + checklist (Opção A)
+  const chk = im.checklist || {};
+  const _lblSty = 'display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)';
+  const _inp = (cls, ph, val, tipo) => `<input class="${cls}" type="${tipo || 'text'}" placeholder="${ph || ''}" value="${val == null ? '' : escapeHtml(String(val))}" style="${_selStyle};width:100%">`;
+  const _sel = (cls, val, opts) => `<select class="${cls}" style="${_selStyle};width:100%"><option value=""${!val ? ' selected' : ''}>—</option>${opts.map(([k,l]) => `<option value="${k}"${val === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+  const SIM_NAO = [['sim','Sim'],['nao','Não']];
+  const locFormHtml = `<div class="form-loc-esteira" data-imovel="${im.id}">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-bottom:12px">
+      <label style="${_lblSty}">Valor de fechamento (R$)${_inp('lf-fechamento','R$ do aluguel', im.valorFechamento, 'number')}</label>
+      <label style="${_lblSty}">Valor de comissão (R$)${_inp('lf-comissao','valor total', im.valorComissao, 'number')}</label>
+      <label style="${_lblSty}">1ª parcela recebida em${_inp('lf-com1','', im.comissao1Data, 'date')}</label>
+      <label style="${_lblSty}">2ª parcela recebida em${_inp('lf-com2','', im.comissao2Data, 'date')}</label>
+      <label style="${_lblSty}">REMAX administra?${_sel('lf-adm', im.possuiAdministracao, SIM_NAO)}</label>
+      <label style="${_lblSty}">Contrato assinado?${_sel('lf-contrato', im.contratoAssinado, SIM_NAO)}</label>
+      <label style="${_lblSty}">Possui parceria?${_sel('lf-parceria', im.possuiParceria, SIM_NAO)}</label>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:4px 0 6px">Checklist de locação</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+      ${LOC_CHECKLIST.map(x => `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+        <input type="checkbox" class="lf-chk" data-k="${x.k}"${chk[x.k] ? ' checked' : ''} style="width:15px;height:15px;flex-shrink:0;cursor:pointer">
+        <span>${escapeHtml(x.l)}</span></label>`).join('')}
+    </div>
+    <button class="topbar-btn primario btn-salvar-loc" style="font-size:11px;padding:5px 12px">Salvar</button>
+    <span class="lf-msg" style="font-size:11px;margin-left:8px"></span>
+  </div>`;
+  const esteiraHtml = sec('Esteira de Locação', locFormHtml);
+
+  // Layout em 2 colunas: dados cadastrais à esquerda · gestão/ações à direita
+  const colEsq = locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml;
+  const colDir = esteiraHtml + gestaoHtml + fichasImovelHtml + vistoriaHtml;
+  const conteudo = colEsq + colDir;
+  if (!conteudo) return '<p style="color:var(--text-muted)">Sem dados.</p>';
+  return `<div class="imovel-det-grid" style="display:grid;grid-template-columns:${colDir ? '1fr 1fr' : '1fr'};gap:24px">
+    <div>${colEsq}</div>
+    ${colDir ? `<div>${colDir}</div>` : ''}
+  </div>`;
 }
 
 // Liga os controles de gestão (locatário/garantia) dentro de um painel de detalhe.
@@ -2233,6 +2303,34 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
     });
   }
+  // Esteira de Locação: financeiro + checklist
+  const formLocE = cont.querySelector('.form-loc-esteira');
+  if (formLocE) {
+    const btn = formLocE.querySelector('.btn-salvar-loc');
+    const msg = formLocE.querySelector('.lf-msg');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; msg.textContent = 'salvando...'; msg.style.color = 'var(--text-muted)';
+      const checklist = {};
+      formLocE.querySelectorAll('.lf-chk').forEach(c => { checklist[c.dataset.k] = c.checked; });
+      const campos = {
+        valorFechamento: formLocE.querySelector('.lf-fechamento').value,
+        valorComissao:   formLocE.querySelector('.lf-comissao').value,
+        comissao1Data:   formLocE.querySelector('.lf-com1').value,
+        comissao2Data:   formLocE.querySelector('.lf-com2').value,
+        possuiAdministracao: formLocE.querySelector('.lf-adm').value,
+        contratoAssinado:    formLocE.querySelector('.lf-contrato').value,
+        possuiParceria:      formLocE.querySelector('.lf-parceria').value,
+        checklist
+      };
+      try {
+        await locSalvarCamposLocacao({ imovelId, campos });
+        msg.textContent = '✓ salvo'; msg.style.color = '#16a34a';
+        carregarImoveis(); // atualiza os cards (badges, valores, progresso)
+      } catch (e) { msg.textContent = 'Erro: ' + e.message; msg.style.color = 'var(--danger)'; }
+      finally { btn.disabled = false; }
+    });
+  }
+
   const formGar = cont.querySelector('.form-garantia');
   if (formGar) {
     const btn = formGar.querySelector('.btn-salvar-garantia');
@@ -2415,6 +2513,28 @@ function cardImovelHtml(im, role) {
       <select class="imovel-status-sel" data-id="${escapeHtml(im.id)}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">${opts}</select></div>`;
   }
 
+  // Bloco financeiro + checklist + badges (só aparece se tem algum dado preenchido)
+  const prog = progressoChecklist(im);
+  const stCom = statusComissao(im);
+  const temFin = im.valorFechamento != null || im.valorComissao != null;
+  const finRow = temFin ? `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12px">
+    ${im.valorFechamento != null ? `<span><span style="color:var(--text-muted)">Fechamento:</span> <strong>${fmtBRL(im.valorFechamento)}</strong></span>` : ''}
+    ${im.valorComissao != null ? `<span><span style="color:var(--text-muted)">Comissão:</span> <strong>${fmtBRL(im.valorComissao)}</strong></span>` : ''}
+  </div>` : '';
+  const progRow = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+    <div style="flex:1;height:6px;background:var(--hover);border-radius:3px;overflow:hidden"><div style="width:${prog.pct}%;height:100%;background:${prog.pct === 100 ? '#16a34a' : '#0ea5e9'};transition:width .2s"></div></div>
+    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${prog.feitos}/${prog.total} etapas</span>
+  </div>`;
+  const badge = (txt, cor) => `<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px">${escapeHtml(txt)}</span>`;
+  const badges = [];
+  badges.push(badge(stCom.txt, stCom.cor));
+  if (im.contratoAssinado === 'sim') badges.push(badge('Contrato assinado', '#16a34a'));
+  else if (im.contratoAssinado === 'nao') badges.push(badge('Contrato pendente', '#b45309'));
+  if (im.possuiAdministracao === 'sim') badges.push(badge('Adm. REMAX', '#16a34a'));
+  else if (im.possuiAdministracao === 'nao') badges.push(badge('Sem administração', '#6b7280'));
+  if (im.possuiParceria === 'sim') badges.push(badge('Parceria', '#6366f1'));
+  const badgesRow = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badges.join('')}</div>`;
+
   return `<div class="ficha-card">
     <div class="ficha-card-head">
       <div><strong style="font-size:13px">${escapeHtml(end || im.tipo || 'Imóvel')}</strong>
@@ -2422,6 +2542,7 @@ function cardImovelHtml(im, role) {
       <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span>
     </div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
+    ${finRow}${progRow}${badgesRow}
     ${controle}
     <div style="margin-top:8px"><button class="topbar-btn btn-det-imovel" data-id="${im.id}" style="font-size:11px;padding:4px 10px">Ver detalhes ▾</button></div>
     <div class="imovel-det" id="det-${im.id}" hidden style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"></div>
