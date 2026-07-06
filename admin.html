@@ -32,6 +32,7 @@
 
         <div class="admin-nav-grupo">Sistema</div>
         <button class="admin-nav-item" data-aba="cofre"><i class="ti ti-shield-lock"></i>Modo cofre</button>
+        <button class="admin-nav-item" data-aba="auditoria"><i class="ti ti-file-search"></i>Auditoria</button>
         <button class="admin-nav-item" data-aba="lancamento"><i class="ti ti-rocket"></i>Lançamento — Locações</button>
       </nav>
 
@@ -54,6 +55,29 @@
             </div>
           </div>
           <div id="segurancaCofre" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="auditoria" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Auditoria</h2>
+              <p class="admin-sub">Registro de ações sensíveis: quem viu credenciais, mudou permissões, excluiu recursos, criou conta, editou perfil. Requisito da LGPD.</p>
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center">
+            <select id="auditFiltroAcao" style="font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+              <option value="">Todas as ações</option>
+              <option value="viu_credencial">Abriu app</option>
+              <option value="alterou_permissoes">Alterou permissões</option>
+              <option value="excluiu_imovel">Excluiu imóvel</option>
+              <option value="excluiu_chamado">Excluiu chamado</option>
+              <option value="editou_perfil">Editou perfil</option>
+              <option value="criou_conta">Criou conta</option>
+            </select>
+            <button class="topbar-btn primario" id="btnAuditFiltrar" style="font-size:12px;padding:6px 14px">Filtrar</button>
+            <button class="topbar-btn" id="btnAuditAtualizar" style="font-size:12px;padding:6px 14px">↻ Atualizar</button>
+          </div>
+          <div id="listaAuditoria"><p class="muted">carregando...</p></div>
         </section>
 
         <section class="admin-section" data-aba="banner" hidden>

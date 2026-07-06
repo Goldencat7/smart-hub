@@ -2056,20 +2056,18 @@ const IMOVEL_STATUS_SO_GESTOR = ['aprovado', 'em_contrato', 'ativo'];
 // Checklist padrão da esteira de LOCAÇÃO (baseado no fluxo definido pelo gestor).
 // Cada item tem uma chave curta (grava em imovel.checklist[chave] = true/false) e o rótulo.
 const LOC_CHECKLIST = [
-  { k: 'ficha',           l: 'Ficha cadastral preenchida' },
-  { k: 'docs',            l: 'Documentação salva na pasta' },
-  { k: 'analise',         l: 'Análise de crédito aprovada' },
-  { k: 'contrato',        l: 'Contrato assinado' },
-  { k: 'vistoria',        l: 'Vistoria realizada' },
-  { k: 'seguro_fianca',   l: 'Seguro fiança emitido' },
-  { k: 'seguro_incendio', l: 'Seguro incêndio contratado' },
-  { k: 'transf_enel',     l: 'Transferência ENEL' },
-  { k: 'transf_iptu',     l: 'Transferência IPTU' },
-  { k: 'transf_cond',     l: 'Transferência titularidade condomínio' },
-  { k: 'chaves',          l: 'Entrega de chaves' },
-  { k: 'cadastro_sistema',l: 'Cadastrar locação no sistema' },
-  { k: 'gerar_cobranca',  l: 'Gerar cobrança' },
-  { k: 'acompanhamento',  l: 'Acompanhamento' }
+  { k: 'docs',                 l: 'Documentação completa e ficha cadastral no drive' },
+  { k: 'analise',              l: 'Análise de crédito aprovada' },
+  { k: 'contrato',             l: 'Contrato assinado' },
+  { k: 'vistoria',             l: 'Vistoria assinada' },
+  { k: 'seguro_fianca',        l: 'Seguro fiança emitido' },
+  { k: 'transf_enel',          l: 'Transferência ENEL' },
+  { k: 'seguro_incendio',      l: 'Seguro incêndio' },
+  { k: 'chaves',               l: 'Entrega de chaves' },
+  { k: 'cadastro_sistema',     l: 'Cadastrar locação no sistema' },
+  { k: 'gerar_cobranca',       l: 'Gerar cobrança' },
+  { k: 'acompanhamento',       l: 'Acompanhamento' },
+  { k: 'conferir_transf_enel', l: 'Conferir transferência ENEL' }
 ];
 const fmtBRL = n => n == null || n === '' ? '' : 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const fmtDataBR = s => { if (!s) return ''; const [y,m,d] = String(s).split('-'); return (d && m && y) ? `${d}/${m}/${y}` : s; };
@@ -2085,6 +2083,15 @@ function progressoChecklist(im) {
   const c = im.checklist || {};
   const feitos = LOC_CHECKLIST.filter(x => c[x.k]).length;
   return { feitos, total: LOC_CHECKLIST.length, pct: Math.round((feitos / LOC_CHECKLIST.length) * 100) };
+}
+// Formato "0001-07/26" — número zero-padded + mês/ano-curto do criadoEm.
+function fmtProtocolo(im) {
+  if (im.numeroProtocolo == null) return '';
+  const num = String(im.numeroProtocolo).padStart(4, '0');
+  const dt = im.criadoEm ? new Date(im.criadoEm) : new Date();
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const aa = String(dt.getFullYear()).slice(-2);
+  return `${num}-${mm}/${aa}`;
 }
 const IMOVEL_NOMES_DOC = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio' };
 const IMOVEL_NOMES_PEND = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio', profissao:'Profissão', im_admcond:'Adm. condominial', im_admcontato:'Contato adm', im_condominio:'Condomínio', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU' };
@@ -2265,10 +2272,11 @@ function renderDetalheImovel(d) {
 
   // Layout em 2 colunas: dados cadastrais à esquerda · gestão/ações à direita
   const colEsq = locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml;
-  const colDir = esteiraHtml + gestaoHtml + fichasImovelHtml + vistoriaHtml;
+  const colDir = esteiraHtml + gestaoHtml + vistoriaHtml + fichasImovelHtml;
   const conteudo = colEsq + colDir;
   if (!conteudo) return '<p style="color:var(--text-muted)">Sem dados.</p>';
-  return `<div class="imovel-det-grid" style="display:grid;grid-template-columns:${colDir ? '1fr 1fr' : '1fr'};gap:24px">
+  const protocolo = im.numeroProtocolo != null ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:6px;letter-spacing:.06em">PROTOCOLO ${fmtProtocolo(im)}</span></div>` : '';
+  return `${protocolo}<div class="imovel-det-grid" style="display:grid;grid-template-columns:${colDir ? '1fr 1fr' : '1fr'};gap:24px">
     <div>${colEsq}</div>
     ${colDir ? `<div>${colDir}</div>` : ''}
   </div>`;
@@ -2535,11 +2543,13 @@ function cardImovelHtml(im, role) {
   if (im.possuiParceria === 'sim') badges.push(badge('Parceria', '#6366f1'));
   const badgesRow = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badges.join('')}</div>`;
 
+  const numProt = im.numeroProtocolo != null ? `<span style="font-size:10px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:2px 8px;border-radius:6px;letter-spacing:.04em">${fmtProtocolo(im)}</span>` : '';
   return `<div class="ficha-card">
     <div class="ficha-card-head">
       <div><strong style="font-size:13px">${escapeHtml(end || im.tipo || 'Imóvel')}</strong>
         <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${escapeHtml(im.locadorNome || '')}</span></div>
-      <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span>
+      <div style="display:flex;align-items:center;gap:6px">${numProt}
+        <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span></div>
     </div>
     <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
     ${finRow}${progRow}${badgesRow}

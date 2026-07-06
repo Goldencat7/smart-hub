@@ -52,6 +52,7 @@ const reordenarBanners = httpsCallable(fns, 'reordenarBanners');
 const listarChamados   = httpsCallable(fns, 'listarChamados');
 const responderChamado = httpsCallable(fns, 'responderChamado');
 const excluirChamado   = httpsCallable(fns, 'excluirChamado');
+const listarAuditoria  = httpsCallable(fns, 'listarAuditoria');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -295,7 +296,94 @@ function ativarAba(aba) {
   document.querySelectorAll('.admin-nav-item').forEach(b => {
     b.classList.toggle('ativo', b.dataset.aba === aba);
   });
+  if (aba === 'auditoria') carregarAuditoria();
 }
+
+const AUDIT_LABEL = {
+  viu_credencial:     'Abriu app',
+  alterou_permissoes: 'Alterou permissões',
+  excluiu_imovel:     'Excluiu imóvel',
+  excluiu_chamado:    'Excluiu chamado',
+  editou_perfil:      'Editou perfil',
+  criou_conta:        'Criou conta'
+};
+const AUDIT_COR = {
+  viu_credencial:'#6366f1', alterou_permissoes:'#b45309', excluiu_imovel:'#DC1C2E',
+  excluiu_chamado:'#DC1C2E', editou_perfil:'#0ea5e9', criou_conta:'#16a34a'
+};
+
+async function carregarAuditoria() {
+  const el = document.getElementById('listaAuditoria');
+  if (!el) return;
+  el.innerHTML = '<p class="muted">carregando...</p>';
+  const acao = document.getElementById('auditFiltroAcao')?.value || '';
+  try {
+    const r = await listarAuditoria({ acao: acao || undefined, limite: 500 });
+    const eventos = r.data?.eventos || [];
+    const usuarios = r.data?.usuarios || [];
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    // Agrupa eventos por ator (uid)
+    const grupos = new Map();
+    // Semeia com todos os usuários (mesmo os sem atividade)
+    for (const u of usuarios) {
+      grupos.set(u.uid, { nome: u.nome, email: u.email, eventos: [] });
+    }
+    for (const e of eventos) {
+      const uid = e.ator?.uid || 'sistema';
+      if (!grupos.has(uid)) grupos.set(uid, { nome: e.ator?.nome || 'Sistema', email: e.ator?.email || '', eventos: [] });
+      grupos.get(uid).eventos.push(e);
+    }
+    // Ordena: quem tem atividade primeiro (mais recente), depois quem não tem (alfabético)
+    const arr = [...grupos.values()].sort((a, b) => {
+      const ta = a.eventos.length ? new Date(a.eventos[0].em || 0).getTime() : 0;
+      const tb = b.eventos.length ? new Date(b.eventos[0].em || 0).getTime() : 0;
+      if (tb !== ta) return tb - ta;
+      return a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+    if (!arr.length) { el.innerHTML = '<p class="muted">Nenhum evento registrado.</p>'; return; }
+    const fmtDT = s => s ? new Date(s).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+    const sanfonas = arr.map((g, idx) => {
+      const semAtiv = g.eventos.length === 0;
+      const ult = semAtiv ? 'sem atividade' : ('Última: ' + fmtDT(g.eventos[0]?.em));
+      const corCnt = semAtiv ? 'var(--text-muted)' : 'var(--text-primary)';
+      const linhas = semAtiv
+        ? `<div style="padding:14px 16px;font-size:12px;color:var(--text-muted);border-top:1px solid var(--border)">Nenhuma ação sensível registrada para este usuário.</div>`
+        : g.eventos.map(e => {
+            const cor = AUDIT_COR[e.acao] || '#6b7280';
+            const lbl = AUDIT_LABEL[e.acao] || e.acao;
+            const alvo = e.alvo ? `${esc(e.alvo.tipo || '')}${e.alvo.id ? ' · ' + esc(e.alvo.id) : ''}` : '—';
+            const det = e.detalhes && Object.keys(e.detalhes).length
+              ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;font-family:monospace;word-break:break-all">${esc(JSON.stringify(e.detalhes))}</div>` : '';
+            return `<div style="display:grid;grid-template-columns:130px 150px 1fr;gap:12px;padding:8px 12px;border-top:1px solid var(--border);align-items:start">
+              <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${fmtDT(e.em)}</span>
+              <span style="font-size:11px;font-weight:600;color:${cor};background:${cor}18;padding:2px 8px;border-radius:6px;text-align:center;justify-self:start">${esc(lbl)}</span>
+              <div style="font-size:12px">${alvo}${det}</div>
+            </div>`;
+          }).join('');
+      const opac = semAtiv ? 'opacity:.65' : '';
+      return `<details style="border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--surface);overflow:hidden;${opac}">
+        <summary style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;list-style:none">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <strong style="font-size:13px;color:${corCnt}">${esc(g.nome)}</strong>
+            <span style="font-size:11px;color:var(--text-muted)">${esc(g.email)}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:11px;color:var(--text-muted)">${ult}</span>
+            <span style="font-size:11px;font-weight:700;background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:12px">${g.eventos.length} evento${g.eventos.length !== 1 ? 's' : ''}</span>
+            <span style="font-size:14px;color:var(--text-muted)">▾</span>
+          </div>
+        </summary>
+        <div>${linhas}</div>
+      </details>`;
+    }).join('');
+    el.innerHTML = `<p class="muted" style="font-size:11px;margin-bottom:12px">Retenção: últimos 15 eventos por pessoa · limpeza diária.</p>${sanfonas}`;
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--danger);font-size:12px">Erro: ${e.message}</p>`;
+  }
+}
+
+document.getElementById('btnAuditFiltrar')?.addEventListener('click', carregarAuditoria);
+document.getElementById('btnAuditAtualizar')?.addEventListener('click', carregarAuditoria);
 
 async function carregarTudo() {
   carregarLancamento();

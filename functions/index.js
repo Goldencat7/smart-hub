@@ -27,6 +27,28 @@ async function logErro(funcao, erro, contexto = {}) {
   console.error(`[ERRO][${funcao}]`, erro.message || erro, contexto);
 }
 
+// ─── Auditoria: log de ações sensíveis no Firestore ─────────────────────────
+// Grava eventos importantes (viu credencial, mudou permissão, excluiu recurso)
+// pra rastreabilidade + LGPD. Nunca lança erro — falha silenciosa preserva o fluxo.
+async function registrarAudit(auth, acao, alvo, detalhes = {}) {
+  try {
+    const ator = auth ? {
+      uid: auth.uid,
+      nome: auth.token?.name || '',
+      email: auth.token?.email || ''
+    } : { uid: null, nome: 'sistema', email: '' };
+    await db.collection('audit_log').add({
+      acao,                                                 // ex: 'viu_credencial'
+      alvo: alvo || null,                                   // ex: { tipo:'credencial', id:'clicksign' }
+      detalhes: detalhes || {},                             // extras livres (não guardar senha)
+      ator,
+      em: admin.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.error('[AUDIT_FAIL]', acao, e.message);
+  }
+}
+
 // ─── Google Agenda (OAuth + sincronização) ──────────────────────────────────
 // A chave secreta do cliente OAuth fica no cofre (Secret Manager), NUNCA no código.
 const { defineSecret } = require('firebase-functions/params');
@@ -288,6 +310,7 @@ exports.getCredentials = onCall(async (req) => {
   if (!snap.exists) throw new HttpsError('not-found', `Sem credenciais para ${siteKey}.`);
 
   const d = snap.data();
+  await registrarAudit(auth, 'viu_credencial', { tipo: 'credencial', id: siteKey });
   return { login: d.login || '', password: d.password || '' };
 });
 
@@ -387,6 +410,8 @@ exports.setUserAccess = onCall(async (req) => {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
   }
+  await registrarAudit(req.auth, 'alterou_permissoes', { tipo: 'usuario', id: uid },
+    { apps: limpos, drives_fotografia: !!drives_fotografia, loc_beta: !!loc_beta, ti: !!ti, loc_role: loc_role ?? null, loc_financeiro: !!loc_financeiro });
   return { ok: true };
 });
 
@@ -522,6 +547,18 @@ function loc_montarImovel(dados) {
   };
 }
 
+// Contador transacional de protocolo interno dos imóveis (números sequenciais).
+async function proximoNumeroProtocolo() {
+  const ref = db.collection('counters').doc('imoveis');
+  return await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const atual = snap.exists ? (snap.data().proximo || 0) : 0;
+    const novo = atual + 1;
+    tx.set(ref, { proximo: novo, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return novo;
+  });
+}
+
 // Trigger de ingestão: ficha do locador -> imóvel + pessoas (na transição p/ enviado_admin).
 exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, async (event) => {
   const after  = event.data.after?.data();
@@ -559,9 +596,10 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       atualizadoEm: ts()
     };
     if (existente.exists) {
-      await imovelRef.set(base, { merge: true });          // preserva status + criadoEm
+      await imovelRef.set(base, { merge: true });          // preserva status + criadoEm + numeroProtocolo
     } else {
-      await imovelRef.set({ ...base, status: 'recebido', criadoEm: ts() });
+      const numeroProtocolo = await proximoNumeroProtocolo();
+      await imovelRef.set({ ...base, status: 'recebido', numeroProtocolo, criadoEm: ts() });
     }
   } catch (e) {
     await logErro('onFichaLocadorEnviadaAdmin', e, { fichaId });
@@ -577,7 +615,19 @@ exports.locListarImoveis = onCall(async (req) => {
   let q = db.collection('imoveis');
   if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
   const snap = await q.get();
-  const imoveis = snap.docs.map(d => ({
+  // Backfill de numeroProtocolo em imóveis antigos (ordenados por criadoEm p/ manter ordem cronológica).
+  const semNumero = snap.docs.filter(d => d.data().numeroProtocolo == null)
+    .sort((a, b) => {
+      const ta = a.data().criadoEm?.toMillis?.() || 0;
+      const tb = b.data().criadoEm?.toMillis?.() || 0;
+      return ta - tb;
+    });
+  for (const d of semNumero) {
+    const n = await proximoNumeroProtocolo();
+    await d.ref.set({ numeroProtocolo: n }, { merge: true });
+  }
+  const finalSnap = semNumero.length ? await q.get() : snap;
+  const imoveis = finalSnap.docs.map(d => ({
     id: d.id, ...d.data(),
     criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() || null,
     atualizadoEm: d.data().atualizadoEm?.toDate?.()?.toISOString() || null
@@ -690,6 +740,9 @@ exports.locExcluirImovel = onCall(async (req) => {
   batch.delete(db.collection('contratos').doc(imovelId));
   batch.delete(db.collection('imoveis').doc(imovelId));
   await batch.commit();
+  const im = imovelSnap.data();
+  await registrarAudit(req.auth, 'excluiu_imovel', { tipo: 'imovel', id: imovelId },
+    { locadorNome: im.locadorNome || '', endereco: im.endereco || null });
   return { ok: true };
 });
 
@@ -1397,6 +1450,8 @@ exports.salvarMeuPerfil = onCall(async (req) => {
     upd.photo = photo;
   }
   await db.collection('user_profiles').doc(auth.uid).set(upd, { merge: true });
+  await registrarAudit(auth, 'editou_perfil', { tipo: 'usuario', id: auth.uid },
+    { alterouNome: 'displayName' in upd, alterouFoto: 'photo' in upd });
   return { ok: true };
 });
 
@@ -1903,8 +1958,44 @@ exports.excluirChamado = onCall(async (req) => {
   if (!ehTI && !ehAdminAuth(auth)) throw new HttpsError('permission-denied', 'Sem permissão.');
   const { chamadoId } = req.data || {};
   if (!chamadoId) throw new HttpsError('invalid-argument', 'chamadoId obrigatório.');
+  const snap = await db.collection('chamados').doc(chamadoId).get();
   await db.collection('chamados').doc(chamadoId).delete();
+  await registrarAudit(auth, 'excluiu_chamado', { tipo: 'chamado', id: chamadoId },
+    snap.exists ? { criadoPorNome: snap.data().criadoPorNome || '', status: snap.data().status || '' } : {});
   return { ok: true };
+});
+
+// (admin) Lista últimos eventos de auditoria com filtros opcionais (ação, ator)
+// + retorna a lista completa de usuários pra exibir também quem não tem atividade.
+exports.listarAuditoria = onCall(async (req) => {
+  await exigirAdmin(req);
+  const { acao, atorUid, limite } = req.data || {};
+  let q = db.collection('audit_log').orderBy('em', 'desc');
+  if (acao) q = q.where('acao', '==', String(acao));
+  if (atorUid) q = q.where('ator.uid', '==', String(atorUid));
+  const lim = Math.max(1, Math.min(500, Number(limite) || 100));
+  const snap = await q.limit(lim).get();
+  const eventos = snap.docs.map(d => {
+    const x = d.data();
+    return {
+      id: d.id,
+      acao: x.acao || '',
+      alvo: x.alvo || null,
+      detalhes: x.detalhes || {},
+      ator: x.ator || {},
+      em: x.em?.toDate?.()?.toISOString() || null
+    };
+  });
+  let usuarios = [];
+  try {
+    const r = await admin.auth().listUsers(1000);
+    usuarios = r.users.filter(u => !u.disabled).map(u => ({
+      uid: u.uid,
+      nome: u.displayName || u.email || u.uid,
+      email: u.email || ''
+    }));
+  } catch (_) {}
+  return { eventos, usuarios };
 });
 
 // ─── Google Agenda: conectar / desconectar / status ──────────────────────────
@@ -2383,6 +2474,29 @@ exports.marcarNotificacaoLida = onCall(async (req) => {
 
 // Limpeza automática: apaga avisos com mais de 30 dias (roda 1x por dia).
 // Cobre o caso de avisos que nunca foram confirmados por todo mundo.
+// Retenção do log de auditoria: mantém os últimos 15 eventos por pessoa,
+// apaga o resto (LGPD — minimização). Rodagem diária.
+exports.limparAuditoriaAntiga = onSchedule('every 24 hours', async () => {
+  const snap = await db.collection('audit_log').orderBy('em', 'desc').get();
+  if (snap.empty) return;
+  const porAtor = new Map();
+  const paraApagar = [];
+  snap.forEach(d => {
+    const uid = d.data().ator?.uid || 'anonimo';
+    const cnt = (porAtor.get(uid) || 0) + 1;
+    porAtor.set(uid, cnt);
+    if (cnt > 15) paraApagar.push(d.ref);
+  });
+  if (!paraApagar.length) return;
+  // Firestore batch permite até 500 ops por vez
+  for (let i = 0; i < paraApagar.length; i += 400) {
+    const batch = db.batch();
+    paraApagar.slice(i, i + 400).forEach(r => batch.delete(r));
+    await batch.commit();
+  }
+  console.log(`Auditoria trimada: ${paraApagar.length} eventos antigos removidos.`);
+});
+
 exports.limparAvisosAntigos = onSchedule('every 24 hours', async () => {
   const limite = admin.firestore.Timestamp.fromMillis(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const snap = await db.collection('notifications').where('criadoEm', '<', limite).get();
@@ -2584,6 +2698,8 @@ exports.criarContaComCodigo = onCall(async (req) => {
     await admin.auth().setCustomUserClaims(user.uid, { admin: true });
   }
 
+  await registrarAudit(null, 'criou_conta', { tipo: 'usuario', id: user.uid },
+    { email, displayName: nomeNormalizado, codigo: codigo.trim().toUpperCase(), fazAdmin: !!dadosCodigo.fazAdmin });
   return { ok: true, uid: user.uid, fazAdmin: !!dadosCodigo.fazAdmin };
 });
 
