@@ -95,6 +95,9 @@ const finalizarFichaTipo        = httpsCallable(fns, 'finalizarFichaTipo');
 const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
 const contarNotifFichas   = httpsCallable(fns, 'contarNotifFichas');
 const contarChamadosAbertos = httpsCallable(fns, 'contarChamadosAbertos');
+const listarChamados      = httpsCallable(fns, 'listarChamados');
+const responderChamado    = httpsCallable(fns, 'responderChamado');
+const excluirChamado      = httpsCallable(fns, 'excluirChamado');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -193,6 +196,7 @@ const ICN = {
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
   calculadoras: svgIcone('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
   notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
+  ti:            svgIcone('<path d="M4 15s1-1 4-1 4 1 4 1"/><circle cx="8" cy="9" r="3"/><path d="M22 19V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14"/><path d="M16 8h.01M16 12h4"/>'),
   imoveis:      svgIcone('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/>'),
   financeiro:   svgIcone('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.4"/>'),
   locadmin:     svgIcone('<path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="M9 12l2 2 4-4"/>'),
@@ -262,6 +266,7 @@ const CATEGORIAS = [
   { id: 'calculadoras', nome: 'Calculadoras',    icone: ICN.calculadoras, calculadoras: true },
   { id: 'notas',        nome: 'Bloco de Notas',  icone: ICN.notas, notas: true },
   { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp' },
+  { id: 'ti',          nome: 'Suporte / TI',  icone: ICN.ti, ti: true, soTI: true },
   { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
 ];
 
@@ -310,6 +315,7 @@ const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
 const secaoLocAdmin       = document.getElementById('secaoLocAdmin');
 const secaoPainel         = document.getElementById('secaoPainel');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
+const secaoTI             = document.getElementById('secaoTI');
 const driveFrame     = document.getElementById('driveFrame');
 const btnAbrirDrive  = document.getElementById('btnAbrirDrive');
 const secaoConfig    = document.getElementById('secaoConfig');
@@ -372,7 +378,8 @@ function renderSidebar() {
     !c.oculto &&
     (!c.beta || betaLocacoes || locacoesPublicado) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
-    (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
+    (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
+    (!c.soTI || temPermTI || isAdmin)
   );
 
   navCategorias.innerHTML = visiveis.map(c => `
@@ -421,11 +428,24 @@ function renderCentro() {
   secaoLocAdmin.hidden = true;
   secaoPainel.hidden = true;
   secaoTreinamento.hidden = true;
+  secaoTI.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
   // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
   btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
+
+  // Aba Suporte / TI (chamados)
+  if (cat.ti) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoTI.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarChamadosHub();
+    return;
+  }
 
   // Aba Agenda (calendário completo)
   if (cat.agenda) {
@@ -657,7 +677,7 @@ async function carregarBanner() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'locacoes']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'locacoes', 'ti']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'video') {
@@ -3200,6 +3220,79 @@ async function atualizarBadgeChamados() {
     }
   } catch (e) { console.warn('Badge chamados:', e); }
 }
+
+// ─── Aba TI: carregar e responder chamados ──────────────────────────────
+async function carregarChamadosHub() {
+  const el = document.getElementById('listaChamadosHub');
+  if (!el) return;
+  el.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const r = await listarChamados();
+    const lista = r.data || [];
+    if (!lista.length) { el.innerHTML = '<p class="muted">Nenhum chamado recebido.</p>'; return; }
+    el.innerHTML = `
+      <table class="users-table">
+        <thead><tr><th>Usuário</th><th>Mensagem</th><th>Data</th><th>Status</th><th></th></tr></thead>
+        <tbody>${lista.map(c => {
+          const d = c.criadoEm ? new Date(c.criadoEm).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+          const st = c.status === 'aberto'
+            ? '<span style="color:#e8a735;font-weight:600">Aberto</span>'
+            : '<span style="color:#22c55e;font-weight:600">Resolvido</span>';
+          const msg = escapeHtml((c.mensagem||'').slice(0,80)) + ((c.mensagem||'').length > 80 ? '…' : '');
+          return `<tr>
+            <td><strong style="font-size:12px">${escapeHtml(c.criadoPorNome)}</strong><div class="muted" style="font-size:10px">${escapeHtml(c.criadoPorEmail)}</div></td>
+            <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${msg}${c.temImagem ? ' 📎' : ''}</td>
+            <td style="font-size:12px;white-space:nowrap">${d}</td>
+            <td>${st}</td>
+            <td>${c.status === 'aberto'
+              ? `<button class="topbar-btn primario chamadoHub-resp" data-id="${c.id}" data-nome="${escapeHtml(c.criadoPorNome)}" data-email="${escapeHtml(c.criadoPorEmail)}" data-msg="${escapeHtml(c.mensagem||'')}">Responder</button>`
+              : `<span class="muted" style="font-size:11px">${escapeHtml((c.resposta||'').slice(0,60))}${(c.resposta||'').length>60?'…':''}</span>
+                 <button class="topbar-btn perigo chamadoHub-del" data-id="${c.id}" style="margin-left:6px;font-size:11px">Excluir</button>`
+            }</td></tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    el.querySelectorAll('.chamadoHub-resp').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('chamadoHubId').value = btn.dataset.id;
+        document.getElementById('chamadoHubNome').textContent = btn.dataset.nome;
+        document.getElementById('chamadoHubEmail').textContent = btn.dataset.email;
+        document.getElementById('chamadoHubMsgOriginal').textContent = btn.dataset.msg;
+        document.getElementById('chamadoHubResposta').value = '';
+        document.getElementById('modalResponderChamadoHub').showModal();
+      });
+    });
+    el.querySelectorAll('.chamadoHub-del').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = '...';
+        try {
+          await excluirChamado({ chamadoId: btn.dataset.id });
+          carregarChamadosHub();
+          atualizarBadgeChamados();
+        } catch (err) { alert('Erro: ' + err.message); btn.disabled = false; btn.textContent = 'Excluir'; }
+      });
+    });
+  } catch (e) { el.innerHTML = `<p class="erro">Erro: ${e.message}</p>`; }
+}
+
+document.querySelectorAll('.chamadoHub-cancelar').forEach(b => b.addEventListener('click', () => {
+  document.getElementById('modalResponderChamadoHub').close();
+}));
+
+document.getElementById('formResponderChamadoHub').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const chamadoId = document.getElementById('chamadoHubId').value;
+  const resposta = document.getElementById('chamadoHubResposta').value.trim();
+  if (!resposta) return;
+  const btn = e.target.querySelector('[type="submit"]');
+  btn.disabled = true; btn.textContent = 'Enviando...';
+  try {
+    await responderChamado({ chamadoId, resposta });
+    document.getElementById('modalResponderChamadoHub').close();
+    carregarChamadosHub();
+    atualizarBadgeChamados();
+  } catch (err) { alert('Erro: ' + err.message); }
+  finally { btn.disabled = false; btn.textContent = 'Resolver e responder'; }
+});
 
 function renderNotifPanel() {
   if (!notifDados.length) {

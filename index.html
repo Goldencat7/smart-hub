@@ -263,6 +263,61 @@
               <button class="mkt-btn">Abrir editor ↗</button>
             </div>
 
+            <div class="mkt-card" data-template="vendido-v5-2dias.html">
+              <div class="mkt-thumb">
+                <svg viewBox="0 0 1080 1440" xmlns="http://www.w3.org/2000/svg" font-family="'Gotham',Montserrat,Arial,sans-serif">
+                  <defs>
+                    <linearGradient id="v5bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#003057"/><stop offset=".5" stop-color="#002749"/><stop offset="1" stop-color="#001a33"/></linearGradient>
+                    <linearGradient id="v5fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#001a33" stop-opacity="0.3"/><stop offset=".46" stop-color="#001a33" stop-opacity="0"/><stop offset=".82" stop-color="#002749" stop-opacity=".76"/><stop offset="1" stop-color="#002749"/></linearGradient>
+                    <clipPath id="v5ring"><circle cx="380" cy="1040" r="130"/></clipPath>
+                  </defs>
+                  <rect width="1080" height="1440" fill="url(#v5bg)"/>
+                  <!-- full-bleed photo fading -->
+                  <rect x="0" y="0" width="1080" height="700" fill="#0a3f73"/>
+                  <rect x="0" y="0" width="1080" height="700" fill="url(#v5fade)"/>
+                  <g stroke="#fff" stroke-opacity="0.12" stroke-width="10" fill="none" stroke-linejoin="round">
+                    <path d="M430 240 L540 178 L650 240"/>
+                    <rect x="455" y="240" width="170" height="180"/>
+                  </g>
+                  <text x="540" y="490" text-anchor="middle" font-size="36" font-weight="800" fill="#fff" fill-opacity=".16" letter-spacing="3">FOTO DO IMÓVEL</text>
+                  <!-- balloon -->
+                  <image href="marketing/assets/remax-balloon.png" x="44" y="40" width="92" height="92"/>
+                  <!-- selo circular rotacionado -->
+                  <g transform="translate(870,178) rotate(-8)">
+                    <circle cx="0" cy="0" r="118" fill="#DC1C2E" stroke="#fff" stroke-opacity=".4" stroke-width="3"/>
+                    <circle cx="0" cy="0" r="100" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width="1.5"/>
+                    <text x="0" y="-28" text-anchor="middle" font-size="22" font-weight="800" fill="#fff" letter-spacing=".06em">VENDIDO EM</text>
+                    <text x="0" y="52" text-anchor="middle" font-size="110" font-weight="900" fill="#fff" letter-spacing="-.02em">2</text>
+                    <text x="0" y="88" text-anchor="middle" font-size="28" font-weight="900" fill="#fff" letter-spacing=".22em">DIAS</text>
+                  </g>
+                  <!-- hero message -->
+                  <text x="540" y="578" text-anchor="middle" font-size="25" font-weight="700" fill="#A4D7F4" letter-spacing=".4em">IMÓVEL</text>
+                  <text x="540" y="730" text-anchor="middle" font-size="160" font-weight="900" fill="#DC1C2E" letter-spacing="-.01em">VENDIDO</text>
+                  <text x="540" y="800" text-anchor="middle" font-size="44" font-weight="700" fill="#fff" letter-spacing=".12em">BARRA FUNDA</text>
+                  <!-- agent ring + identity centered -->
+                  <circle cx="380" cy="1040" r="134" fill="#0a3f73" stroke="rgba(164,215,244,.55)" stroke-width="4"/>
+                  <image href="marketing/assets/avatar-remax.png" x="250" y="914" width="260" height="260" clip-path="url(#v5ring)"/>
+                  <text x="560" y="1000" font-size="60" font-weight="900" fill="#fff" letter-spacing="-.01em">LEANDRO</text>
+                  <text x="560" y="1066" font-size="60" font-weight="900" fill="#fff" letter-spacing="-.01em">FREITAS</text>
+                  <text x="560" y="1108" font-size="26" font-weight="600" fill="#A4D7F4">Corretor <tspan fill="#DC1C2E">·</tspan> REMAX Smart</text>
+                  <text x="560" y="1146" font-size="22" font-weight="500" fill="#A4D7F4" letter-spacing=".08em">CRECI 40431-J</text>
+                  <!-- CTA band -->
+                  <rect x="60" y="1190" width="960" height="80" rx="22" fill="rgba(164,215,244,.10)" stroke="rgba(164,215,244,.28)" stroke-width="1"/>
+                  <text x="540" y="1242" text-anchor="middle" font-size="34" font-weight="800" fill="#fff">Quer vender o seu? <tspan fill="#DC1C2E" font-weight="900">Fale comigo!</tspan></text>
+                  <!-- rodapé -->
+                  <rect x="0" y="1290" width="1080" height="150" fill="#001325"/>
+                  <rect x="0" y="1290" width="1080" height="3" fill="#DC1C2E"/>
+                  <text x="64" y="1376" font-size="36" font-weight="900" fill="#fff">REMAX <tspan font-weight="400" fill="#A4D7F4">Smart</tspan></text>
+                  <text x="1016" y="1368" text-anchor="end" font-size="36" font-weight="800" fill="#fff">(11) 98506-0725</text>
+                  <text x="1016" y="1404" text-anchor="end" font-size="22" font-weight="500" fill="#A4D7F4" letter-spacing="2">www.remax.com.br/smart</text>
+                </svg>
+              </div>
+              <div class="mkt-info">
+                <span class="mkt-desc">Selo circular · "vendido em X dias"</span>
+              </div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>
+
               </div><!-- fim mkt-carousel Vendido -->
               <button class="mkt-nav-btn mkt-next" aria-label="Próximo">›</button>
             </div><!-- fim mkt-carousel-wrap -->
@@ -337,6 +392,172 @@
               </div>
               <div class="mkt-info">
                 <span class="mkt-desc">Imóvel à venda — 3 fotos + preço + corretor</span>
+              </div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>
+
+            <!-- Anúncio — Imóvel dos Sonhos · Editorial -->
+            <div class="mkt-card" data-template="anuncio-imovel-sonhos-editorial.html">
+              <div class="mkt-thumb">
+                <svg viewBox="0 0 1080 1440" xmlns="http://www.w3.org/2000/svg" font-family="'Gotham',Montserrat,Arial,sans-serif">
+                  <defs>
+                    <linearGradient id="ise-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F3F1EC"/><stop offset=".6" stop-color="#ECE9E2"/><stop offset="1" stop-color="#E6E7EA"/></linearGradient>
+                  </defs>
+                  <rect width="1080" height="1440" fill="url(#ise-bg)"/>
+                  <!-- eyebrow -->
+                  <text x="60" y="82" font-size="24" font-weight="700" fill="#002749" letter-spacing=".28em">ENCONTRE O SEU</text>
+                  <rect x="790" y="74" width="230" height="2" fill="#0D7DC3"/>
+                  <!-- título -->
+                  <text x="56" y="228" font-size="104" font-weight="900" fill="#002749" letter-spacing="-.03em">IMÓVEL</text>
+                  <text x="56" y="328" font-size="104" font-weight="900" fill="#002749" letter-spacing="-.03em">DOS</text>
+                  <text x="56" y="428" font-size="104" font-weight="900" fill="#002749" letter-spacing="-.03em">SONHOS</text>
+                  <!-- chevrons -->
+                  <g fill="none" stroke="#0D7DC3" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="960,274 1010,312 960,350"/>
+                    <polyline points="920,274 970,312 920,350"/>
+                  </g>
+                  <!-- price pill -->
+                  <rect x="780" y="116" width="246" height="96" rx="16" fill="#003DA5"/>
+                  <text x="903" y="152" text-anchor="middle" font-size="19" font-weight="700" fill="#A4D7F4" letter-spacing=".14em">A PARTIR DE</text>
+                  <text x="903" y="198" text-anchor="middle" font-size="50" font-weight="900" fill="#fff">R$ 650k</text>
+                  <!-- collage: hero + 2 side -->
+                  <rect x="60" y="460" width="580" height="440" rx="14" fill="#0e2f50"/>
+                  <text x="350" y="700" text-anchor="middle" font-size="28" font-weight="700" fill="#fff" fill-opacity=".18">FOTO PRINCIPAL</text>
+                  <rect x="658" y="460" width="362" height="208" rx="14" fill="#0e2f50"/>
+                  <text x="839" y="574" text-anchor="middle" font-size="20" font-weight="700" fill="#fff" fill-opacity=".18">FOTO 2</text>
+                  <rect x="658" y="686" width="362" height="214" rx="14" fill="#0e2f50"/>
+                  <text x="839" y="804" text-anchor="middle" font-size="20" font-weight="700" fill="#fff" fill-opacity=".18">FOTO 3</text>
+                  <!-- features divider -->
+                  <rect x="60" y="946" width="960" height="2" fill="#C9C6BE"/>
+                  <!-- feature box azul -->
+                  <rect x="60" y="986" width="300" height="120" rx="16" fill="#003DA5"/>
+                  <text x="84" y="1036" font-size="25" font-weight="900" fill="#fff">Excelente</text>
+                  <text x="84" y="1072" font-size="25" font-weight="900" fill="#A4D7F4">localização</text>
+                  <!-- lista features -->
+                  <text x="400" y="1018" font-size="24" font-weight="700" fill="#002749"><tspan fill="#DC1C2E" font-weight="900">3</tspan> DORMITÓRIOS</text>
+                  <text x="400" y="1054" font-size="24" font-weight="700" fill="#002749"><tspan fill="#DC1C2E" font-weight="900">2</tspan> VAGAS</text>
+                  <text x="400" y="1090" font-size="24" font-weight="700" fill="#002749"><tspan fill="#DC1C2E" font-weight="900">120</tspan> M²</text>
+                  <!-- descrição -->
+                  <text x="690" y="1018" font-size="23" font-weight="500" fill="#44505d">Apartamento amplo</text>
+                  <text x="690" y="1050" font-size="23" font-weight="500" fill="#44505d">com acabamento de</text>
+                  <text x="690" y="1082" font-size="23" font-weight="500" fill="#44505d">alto padrão.</text>
+                  <!-- rodapé -->
+                  <rect x="0" y="1290" width="1080" height="150" fill="#001327"/>
+                  <rect x="0" y="1290" width="1080" height="3" fill="#DC1C2E"/>
+                  <text x="60" y="1370" font-size="25" font-weight="800" fill="#fff">REMAX Smart</text>
+                  <text x="60" y="1400" font-size="23" font-weight="500" fill="#A4D7F4">(11) 9 9999-9999</text>
+                  <image href="marketing/assets/remax-balloon.png" x="920" y="1310" width="104" height="104"/>
+                </svg>
+              </div>
+              <div class="mkt-info">
+                <span class="mkt-desc">Editorial · galeria 3 fotos · fundo claro</span>
+              </div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>
+
+            <!-- Anúncio — Imóvel dos Sonhos + Corretor -->
+            <div class="mkt-card" data-template="anuncio-imovel-sonhos-corretor.html">
+              <div class="mkt-thumb">
+                <svg viewBox="0 0 1080 1440" xmlns="http://www.w3.org/2000/svg" font-family="'Gotham',Montserrat,Arial,sans-serif">
+                  <defs>
+                    <linearGradient id="isc-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F3F1EC"/><stop offset=".6" stop-color="#ECE9E2"/><stop offset="1" stop-color="#E6E7EA"/></linearGradient>
+                    <clipPath id="isc-ring"><circle cx="540" cy="1072" r="106"/></clipPath>
+                  </defs>
+                  <rect width="1080" height="1440" fill="url(#isc-bg)"/>
+                  <!-- eyebrow -->
+                  <text x="60" y="82" font-size="24" font-weight="700" fill="#002749" letter-spacing=".28em">ENCONTRE O SEU</text>
+                  <rect x="790" y="74" width="230" height="2" fill="#0D7DC3"/>
+                  <!-- título -->
+                  <text x="56" y="228" font-size="104" font-weight="900" fill="#002749" letter-spacing="-.03em">IMÓVEL</text>
+                  <text x="56" y="328" font-size="104" font-weight="900" fill="#002749" letter-spacing="-.03em">DOS</text>
+                  <text x="56" y="428" font-size="104" font-weight="900" fill="#002749" letter-spacing="-.03em">SONHOS</text>
+                  <!-- price pill -->
+                  <rect x="780" y="116" width="246" height="96" rx="16" fill="#003DA5"/>
+                  <text x="903" y="152" text-anchor="middle" font-size="19" font-weight="700" fill="#A4D7F4" letter-spacing=".14em">A PARTIR DE</text>
+                  <text x="903" y="198" text-anchor="middle" font-size="50" font-weight="900" fill="#fff">R$ 650k</text>
+                  <!-- collage -->
+                  <rect x="60" y="460" width="580" height="440" rx="14" fill="#0e2f50"/>
+                  <text x="350" y="700" text-anchor="middle" font-size="28" font-weight="700" fill="#fff" fill-opacity=".18">FOTO PRINCIPAL</text>
+                  <rect x="658" y="460" width="362" height="208" rx="14" fill="#0e2f50"/>
+                  <rect x="658" y="686" width="362" height="214" rx="14" fill="#0e2f50"/>
+                  <!-- divider -->
+                  <rect x="60" y="946" width="960" height="2" fill="#C9C6BE"/>
+                  <!-- agent ring (centered) -->
+                  <circle cx="540" cy="1072" r="110" fill="#0e2f50" stroke="#003DA5" stroke-width="5"/>
+                  <image href="marketing/assets/avatar-remax.png" x="434" y="970" width="212" height="212" clip-path="url(#isc-ring)"/>
+                  <!-- agent name -->
+                  <text x="540" y="1222" text-anchor="middle" font-size="30" font-weight="900" fill="#002749" letter-spacing="-.01em">LEANDRO FREITAS</text>
+                  <text x="540" y="1260" text-anchor="middle" font-size="21" font-weight="600" fill="#003DA5" letter-spacing=".02em">Corretor · REMAX Smart</text>
+                  <!-- rodapé -->
+                  <rect x="0" y="1290" width="1080" height="150" fill="#001327"/>
+                  <rect x="0" y="1290" width="1080" height="3" fill="#DC1C2E"/>
+                  <text x="60" y="1370" font-size="25" font-weight="800" fill="#fff">REMAX Smart</text>
+                  <text x="60" y="1400" font-size="23" font-weight="500" fill="#A4D7F4">(11) 9 9999-9999</text>
+                  <image href="marketing/assets/remax-balloon.png" x="920" y="1310" width="104" height="104"/>
+                </svg>
+              </div>
+              <div class="mkt-info">
+                <span class="mkt-desc">Editorial + corretor · galeria 3 fotos</span>
+              </div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>
+
+            <!-- Anúncio — Apto à Venda · Condomínio Completo -->
+            <div class="mkt-card" data-template="anuncio-apto-condominio.html">
+              <div class="mkt-thumb">
+                <svg viewBox="0 0 1080 1440" xmlns="http://www.w3.org/2000/svg" font-family="'Gotham',Montserrat,Arial,sans-serif">
+                  <rect width="1080" height="1440" fill="#F4F6F9"/>
+                  <!-- location chip -->
+                  <rect x="44" y="52" width="280" height="52" rx="26" fill="#002749"/>
+                  <text x="184" y="88" text-anchor="middle" font-size="24" font-weight="800" fill="#fff" letter-spacing=".05em">📍 BARRA FUNDA</text>
+                  <!-- price chip -->
+                  <rect x="700" y="44" width="336" height="76" rx="20" fill="#002749"/>
+                  <text x="770" y="72" font-size="18" font-weight="700" fill="#A4D7F4" letter-spacing=".22em">A PARTIR DE</text>
+                  <text x="770" y="108" font-size="46" font-weight="900" fill="#fff">R$ 450k</text>
+                  <!-- título -->
+                  <text x="44" y="310" font-size="88" font-weight="900" fill="#002749" letter-spacing="-.02em">APTO À</text>
+                  <text x="44" y="398" font-size="88" font-weight="900" fill="#DC1C2E" letter-spacing="-.02em">VENDA</text>
+                  <text x="44" y="452" font-size="30" font-weight="800" fill="#002749">CONDOMÍNIO</text>
+                  <text x="310" y="452" font-size="30" font-weight="800" fill="#003DA5">COMPLETO</text>
+                  <!-- feature chips -->
+                  <rect x="44" y="500" width="432" height="70" rx="18" fill="#fff" stroke="#E1E7F0" stroke-width="1"/>
+                  <text x="80" y="546" font-size="29" font-weight="800" fill="#002749">🏊 PISCINA E LAZER</text>
+                  <rect x="44" y="588" width="432" height="70" rx="18" fill="#fff" stroke="#E1E7F0" stroke-width="1"/>
+                  <text x="80" y="634" font-size="29" font-weight="800" fill="#002749">🔒 PORTARIA 24H</text>
+                  <rect x="44" y="676" width="432" height="70" rx="18" fill="#fff" stroke="#E1E7F0" stroke-width="1"/>
+                  <text x="80" y="722" font-size="29" font-weight="800" fill="#002749">🅿 2 VAGAS GARAGEM</text>
+                  <rect x="44" y="764" width="432" height="70" rx="18" fill="#fff" stroke="#E1E7F0" stroke-width="1"/>
+                  <text x="80" y="810" font-size="29" font-weight="800" fill="#002749">🛏 3 DORMITÓRIOS</text>
+                  <!-- hero photo -->
+                  <rect x="500" y="216" width="540" height="468" rx="24" fill="#0a2a4a"/>
+                  <text x="770" y="468" text-anchor="middle" font-size="28" font-weight="700" fill="#fff" fill-opacity=".18">FOTO PRINCIPAL</text>
+                  <!-- 3 thumbnails -->
+                  <rect x="500" y="700" width="172" height="172" rx="18" fill="#0e2f50"/>
+                  <rect x="684" y="700" width="172" height="172" rx="18" fill="#0e2f50"/>
+                  <rect x="868" y="700" width="172" height="172" rx="18" fill="#0e2f50"/>
+                  <!-- blue band -->
+                  <rect x="0" y="920" width="1080" height="66" fill="#003DA5"/>
+                  <text x="540" y="964" text-anchor="middle" font-size="25" font-weight="800" fill="#fff" letter-spacing=".03em">CONDOMÍNIO COM INFRAESTRUTURA COMPLETA</text>
+                  <!-- amenities row -->
+                  <rect x="0" y="986" width="1080" height="216" fill="#002749"/>
+                  <text x="160" y="1110" text-anchor="middle" font-size="20" font-weight="700" fill="#A4D7F4">PISCINA</text>
+                  <text x="380" y="1110" text-anchor="middle" font-size="20" font-weight="700" fill="#A4D7F4">ACADEMIA</text>
+                  <text x="600" y="1110" text-anchor="middle" font-size="20" font-weight="700" fill="#A4D7F4">PLAYGROUND</text>
+                  <text x="820" y="1110" text-anchor="middle" font-size="20" font-weight="700" fill="#A4D7F4">SALÃO FESTAS</text>
+                  <circle cx="160" cy="1064" r="28" fill="none" stroke="#A4D7F4" stroke-width="2"/>
+                  <circle cx="380" cy="1064" r="28" fill="none" stroke="#A4D7F4" stroke-width="2"/>
+                  <circle cx="600" cy="1064" r="28" fill="none" stroke="#A4D7F4" stroke-width="2"/>
+                  <circle cx="820" cy="1064" r="28" fill="none" stroke="#A4D7F4" stroke-width="2"/>
+                  <!-- rodapé -->
+                  <rect x="0" y="1290" width="1080" height="150" fill="#001327"/>
+                  <rect x="0" y="1290" width="1080" height="3" fill="#DC1C2E"/>
+                  <text x="60" y="1370" font-size="25" font-weight="800" fill="#fff">REMAX Smart</text>
+                  <text x="60" y="1400" font-size="23" font-weight="500" fill="#A4D7F4">(11) 9 9999-9999</text>
+                  <image href="marketing/assets/remax-balloon.png" x="920" y="1310" width="104" height="104"/>
+                </svg>
+              </div>
+              <div class="mkt-info">
+                <span class="mkt-desc">Apto à venda · condomínio completo</span>
               </div>
               <button class="mkt-btn">Abrir editor ↗</button>
             </div>
@@ -435,6 +656,15 @@
 
         <!-- ──── Aba Bloco de Notas ──── -->
         <section id="secaoNotas" class="foto-wrap" hidden></section>
+
+        <!-- ──── Aba Suporte / TI (chamados) ──── -->
+        <section id="secaoTI" class="foto-wrap" hidden>
+          <div style="padding:18px 24px">
+            <h2 style="font-size:18px;font-weight:800;margin:0 0 4px">Chamados de Suporte</h2>
+            <p class="muted" style="font-size:12px;margin:0 0 16px">Chamados recebidos dos usuários. Responda e marque como resolvido.</p>
+            <div id="listaChamadosHub"><p class="muted">carregando...</p></div>
+          </div>
+        </section>
 
         <!-- ──── Aba Painel (Gestão de Locações) ──── -->
         <section id="secaoPainel" class="foto-wrap" hidden></section>
@@ -642,6 +872,25 @@
           <span id="supMsg" class="config-msg" hidden></span>
           <button type="button" id="supCancelar" class="topbar-btn">Cancelar</button>
           <button type="submit" id="supEnviar" class="topbar-btn primario">Enviar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Modal responder chamado (TI) -->
+    <dialog id="modalResponderChamadoHub" class="modal">
+      <form method="dialog" id="formResponderChamadoHub" class="modal-form">
+        <button type="button" class="modal-close chamadoHub-cancelar" title="Fechar" aria-label="Fechar">✕</button>
+        <h3>Responder chamado</h3>
+        <input type="hidden" id="chamadoHubId">
+        <p style="margin:0 0 4px;font-size:12px"><strong id="chamadoHubNome"></strong> <span class="muted" id="chamadoHubEmail"></span></p>
+        <div style="background:var(--hover);border-radius:8px;padding:10px 12px;margin:0 0 10px;font-size:13px;max-height:120px;overflow-y:auto;white-space:pre-wrap" id="chamadoHubMsgOriginal"></div>
+        <label class="auth-label">
+          Resposta
+          <textarea id="chamadoHubResposta" required maxlength="2000" rows="4" placeholder="Escreva a resposta..."></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="topbar-btn chamadoHub-cancelar">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Resolver e responder</button>
         </div>
       </form>
     </dialog>

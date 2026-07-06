@@ -1861,6 +1861,16 @@ exports.contarChamadosAbertos = onCall(async (req) => {
   return { total: snap.size };
 });
 
+exports.excluirChamado = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ehTI = await temPermissaoTI(auth);
+  if (!ehTI && !ehAdminAuth(auth)) throw new HttpsError('permission-denied', 'Sem permissão.');
+  const { chamadoId } = req.data || {};
+  if (!chamadoId) throw new HttpsError('invalid-argument', 'chamadoId obrigatório.');
+  await db.collection('chamados').doc(chamadoId).delete();
+  return { ok: true };
+});
+
 // ─── Google Agenda: conectar / desconectar / status ──────────────────────────
 // O app abre o navegador, a pessoa autoriza, e manda o "code" pra cá. A troca
 // pela permissão de longo prazo (refresh_token) acontece aqui no servidor.

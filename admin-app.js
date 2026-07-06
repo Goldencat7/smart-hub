@@ -51,6 +51,7 @@ const removerBanner    = httpsCallable(fns, 'removerBanner');
 const reordenarBanners = httpsCallable(fns, 'reordenarBanners');
 const listarChamados   = httpsCallable(fns, 'listarChamados');
 const responderChamado = httpsCallable(fns, 'responderChamado');
+const excluirChamado   = httpsCallable(fns, 'excluirChamado');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -878,7 +879,8 @@ async function carregarChamados() {
               <td>${statusLabel}</td>
               <td>${c.status === 'aberto'
                 ? `<button class="topbar-btn primario chamado-responder" data-id="${c.id}" data-nome="${escHtml(c.criadoPorNome)}" data-email="${escHtml(c.criadoPorEmail)}" data-msg="${escHtml(c.mensagem || '')}">Responder</button>`
-                : `<span class="muted" style="font-size:11px">${escHtml((c.resposta || '').slice(0, 60))}${(c.resposta || '').length > 60 ? '...' : ''}</span>`
+                : `<span class="muted" style="font-size:11px">${escHtml((c.resposta || '').slice(0, 60))}${(c.resposta || '').length > 60 ? '...' : ''}</span>
+                   <button class="topbar-btn perigo chamado-excluir" data-id="${c.id}" style="margin-left:6px;font-size:11px">Excluir</button>`
               }</td>
             </tr>`;
           }).join('')}
@@ -893,6 +895,13 @@ async function carregarChamados() {
         document.getElementById('chamadoMensagemOriginal').textContent = btn.dataset.msg;
         document.getElementById('chamadoResposta').value = '';
         document.getElementById('modalResponderChamado').showModal();
+      });
+    });
+    el.querySelectorAll('.chamado-excluir').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = '...';
+        try { await excluirChamado({ chamadoId: btn.dataset.id }); carregarChamados(); }
+        catch (err) { alert('Erro: ' + err.message); btn.disabled = false; btn.textContent = 'Excluir'; }
       });
     });
   } catch (e) {
