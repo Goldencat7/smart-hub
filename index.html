@@ -422,6 +422,23 @@
               <button type="button" id="cfgVerificarUpdate" class="topbar-btn">Verificar atualização</button>
             </div>
           </div>
+
+          <!-- Card: Segurança (2FA / TOTP) -->
+          <div class="config-card">
+            <h3 class="config-card-titulo">Segurança</h3>
+            <div class="config-linha">
+              <div>
+                <div class="config-linha-titulo">Autenticação em dois fatores (2FA) <span id="cfg2faStatus" class="cfg-badge-breve" style="background:#6b7280;color:#fff">verificando…</span></div>
+                <div class="muted config-dica">Uma camada extra: além da senha, no login pedimos um código de 6 dígitos gerado por um app (Google Authenticator, Authy, 1Password).</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button type="button" id="cfg2faVerificarEmail" class="topbar-btn primario" hidden>Verificar email</button>
+                <button type="button" id="cfg2faAtualizar" class="topbar-btn" hidden>↻ Atualizar</button>
+                <button type="button" id="cfg2faAtivar" class="topbar-btn primario" hidden>Ativar 2FA</button>
+                <button type="button" id="cfg2faRemover" class="topbar-btn perigo" hidden>Remover 2FA</button>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
 
@@ -560,6 +577,55 @@
         <div class="modal-actions">
           <button type="button" class="topbar-btn chamadoHub-cancelar">Cancelar</button>
           <button type="submit" class="topbar-btn primario">Resolver e responder</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Modal: pedir senha atual (reautenticação pra operações sensíveis) -->
+    <dialog id="modalReauth" class="modal">
+      <form method="dialog" id="formReauth" class="modal-form">
+        <button type="button" class="modal-close" id="reauthFechar" title="Fechar" aria-label="Fechar">✕</button>
+        <h3>Confirme sua senha</h3>
+        <p class="muted" style="margin:0 0 12px;font-size:12px">Por segurança, precisamos confirmar sua senha atual pra fazer essa operação.</p>
+        <label class="auth-label">
+          Senha atual
+          <input id="reauthSenha" type="password" autocomplete="current-password" required>
+        </label>
+        <div class="modal-actions">
+          <span id="reauthMsg" class="config-msg" hidden></span>
+          <button type="button" id="reauthCancelar" class="topbar-btn">Cancelar</button>
+          <button type="submit" class="topbar-btn primario">Confirmar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Modal 2FA: enrollment (mostrar secret + pedir código) -->
+    <dialog id="modal2fa" class="modal">
+      <form method="dialog" id="form2fa" class="modal-form">
+        <button type="button" class="modal-close" id="cfg2faFechar" title="Fechar" aria-label="Fechar">✕</button>
+        <h3>Ativar autenticação em dois fatores</h3>
+        <p class="muted" style="margin:0 0 10px;font-size:12px">Abre no seu celular o Google Authenticator, Authy ou 1Password. Escolha <strong>"Adicionar conta"</strong> → <strong>"Digitar chave de configuração"</strong> e cole o segredo abaixo. Depois digite o código de 6 dígitos que apareceu.</p>
+
+        <label class="auth-label">
+          Nome da conta (para o app)
+          <input id="tfaEmail" type="text" readonly>
+        </label>
+
+        <label class="auth-label">
+          Segredo (chave de configuração)
+          <input id="tfaSecret" type="text" readonly style="font-family:monospace;letter-spacing:2px;font-size:14px">
+        </label>
+        <button type="button" id="tfaCopiar" class="topbar-btn" style="margin-top:-6px;margin-bottom:10px">📋 Copiar segredo</button>
+
+        <label class="auth-label">
+          Código de 6 dígitos
+          <input id="tfaCodigo" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="font-family:monospace;letter-spacing:8px;font-size:20px;text-align:center">
+        </label>
+
+        <div class="modal-actions">
+          <span id="tfaMsg" class="config-msg" hidden></span>
+          <button type="button" id="tfaCancelar" class="topbar-btn">Cancelar</button>
+          <button type="submit" id="tfaConfirmar" class="topbar-btn primario">Ativar 2FA</button>
         </div>
       </form>
     </dialog>

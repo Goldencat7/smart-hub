@@ -1,7 +1,8 @@
 // Tela de login do Hub — Firebase Auth (Email/Senha) + cadastro via código de convite
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, sendPasswordResetEmail,
+  getMultiFactorResolver, TotpMultiFactorGenerator
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   getFunctions, httpsCallable
@@ -30,6 +31,7 @@ const formCadastro   = document.getElementById('formCadastro');
 const formEsqueceu   = document.getElementById('formEsqueceu');
 const inputEmail     = document.getElementById('inputEmail');
 const inputPass      = document.getElementById('inputPass');
+const btnVerSenha    = document.getElementById('btnVerSenha');
 const btnEntrar      = document.getElementById('btnEntrar');
 const btnCriar       = document.getElementById('btnCriar');
 const btnReset       = document.getElementById('btnReset');
@@ -122,6 +124,15 @@ olhoCadSenha.addEventListener('click', () => {
 });
 
 // ─── Login: Email + Senha ────────────────────────────────────────────────────
+// Olhinho pra mostrar/ocultar senha
+btnVerSenha?.addEventListener('click', () => {
+  const mostrando = inputPass.type === 'text';
+  inputPass.type = mostrando ? 'password' : 'text';
+  btnVerSenha.setAttribute('aria-label', mostrando ? 'Mostrar senha' : 'Ocultar senha');
+  btnVerSenha.setAttribute('title', mostrando ? 'Mostrar senha' : 'Ocultar senha');
+  inputPass.focus();
+});
+
 formLogin.addEventListener('submit', async (e) => {
   e.preventDefault();
   esconder(msgErro);
@@ -129,10 +140,74 @@ formLogin.addEventListener('submit', async (e) => {
   try {
     await signInWithEmailAndPassword(auth, inputEmail.value.trim(), inputPass.value);
   } catch (err) {
+    if (err.code === 'auth/multi-factor-auth-required') {
+      abrirDesafio2fa(err);
+      return;
+    }
     mostrar(msgErro, traduzErroFirebase(err.code));
     travarBotoes(false);
   }
 });
+
+// ─── Desafio 2FA no login ────────────────────────────────────────────────────
+// Quando a conta tem TOTP habilitado, o Firebase lança 'auth/multi-factor-auth-required'.
+// Aí a gente pega o resolver, pede o código de 6 dígitos e completa o login.
+function abrirDesafio2fa(err) {
+  const resolver = getMultiFactorResolver(auth, err);
+  const totpHint = (resolver.hints || []).find(h => h.factorId === 'totp');
+  if (!totpHint) {
+    mostrar(msgErro, 'Conta com 2FA por método não suportado.');
+    travarBotoes(false);
+    return;
+  }
+  // Ao invés de reescrever o form (destrói refs de inputEmail/inputPass e vaza handlers),
+  // esconde o form de login e mostra um bloco 2FA IRMÃO. Cancelar = volta simples.
+  const form2faLogin = document.createElement('form');
+  form2faLogin.className = 'auth-form';
+  form2faLogin.id = 'form2faLogin';
+  form2faLogin.innerHTML = `
+    <h2 style="margin:0 0 6px">Autenticação em dois fatores</h2>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">Abra seu app autenticador (Google Authenticator / Authy / 1Password) e digite o código de 6 dígitos.</p>
+    <label class="auth-label">
+      Código
+      <input id="inputTfa" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" style="font-family:monospace;letter-spacing:8px;font-size:20px;text-align:center" required>
+    </label>
+    <div id="msgErroTfa" class="auth-msg-erro" hidden></div>
+    <button type="submit" class="auth-btn primario" id="btnConfirmTfa">Entrar</button>
+    <button type="button" class="auth-btn" id="btnVoltarLogin" style="margin-top:8px">Cancelar</button>
+  `;
+  formLogin.hidden = true;
+  formLogin.parentNode.insertBefore(form2faLogin, formLogin.nextSibling);
+  travarBotoes(false);
+
+  const inputTfa      = form2faLogin.querySelector('#inputTfa');
+  const msgErroTfa    = form2faLogin.querySelector('#msgErroTfa');
+  const btnConfirmTfa = form2faLogin.querySelector('#btnConfirmTfa');
+  inputTfa.focus();
+
+  const removerForm2fa = () => {
+    form2faLogin.remove();
+    formLogin.hidden = false;
+  };
+
+  form2faLogin.querySelector('#btnVoltarLogin').addEventListener('click', removerForm2fa);
+
+  form2faLogin.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const codigo = (inputTfa.value || '').replace(/\D/g, '');
+    if (codigo.length !== 6) { msgErroTfa.textContent = 'O código tem 6 dígitos.'; msgErroTfa.hidden = false; return; }
+    btnConfirmTfa.disabled = true; msgErroTfa.hidden = true;
+    try {
+      const assertion = TotpMultiFactorGenerator.assertionForSignIn(totpHint.uid, codigo);
+      await resolver.resolveSignIn(assertion);
+      // onAuthStateChanged vai chamar loginConcluido; deixa o form 2fa até redirecionar
+    } catch (e) {
+      msgErroTfa.textContent = 'Código inválido. Tenta de novo.';
+      msgErroTfa.hidden = false;
+      btnConfirmTfa.disabled = false;
+    }
+  });
+}
 
 // ─── Cadastro com código de convite ──────────────────────────────────────────
 formCadastro.addEventListener('submit', async (e) => {

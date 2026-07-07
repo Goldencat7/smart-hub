@@ -3,7 +3,9 @@
 // - Verifica auth, busca credenciais via Cloud Function ao clicar
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import {
-  getAuth, onAuthStateChanged, signOut, sendPasswordResetEmail
+  getAuth, onAuthStateChanged, signOut, sendPasswordResetEmail,
+  multiFactor, TotpMultiFactorGenerator, sendEmailVerification,
+  EmailAuthProvider, reauthenticateWithCredential
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import {
   getFunctions, httpsCallable
@@ -881,6 +883,215 @@ cfgAlterarSenha.addEventListener('click', async () => {
   }
 });
 
+// ─── 2FA / TOTP ─────────────────────────────────────────────────────────────
+// Estado do 2FA do usuário atual: checa se já tem TOTP fator inscrito
+// e alterna botões "Ativar" / "Remover" na aba Configurações.
+const cfg2faStatus  = document.getElementById('cfg2faStatus');
+const cfg2faAtivar  = document.getElementById('cfg2faAtivar');
+const cfg2faRemover = document.getElementById('cfg2faRemover');
+const cfg2faVerificarEmail = document.getElementById('cfg2faVerificarEmail');
+const cfg2faAtualizar      = document.getElementById('cfg2faAtualizar');
+const modal2fa      = document.getElementById('modal2fa');
+const form2fa       = document.getElementById('form2fa');
+const tfaEmail      = document.getElementById('tfaEmail');
+const tfaSecret     = document.getElementById('tfaSecret');
+const tfaCodigo     = document.getElementById('tfaCodigo');
+const tfaMsg        = document.getElementById('tfaMsg');
+const tfaCopiar     = document.getElementById('tfaCopiar');
+const tfaCancelar   = document.getElementById('tfaCancelar');
+const cfg2faFechar  = document.getElementById('cfg2faFechar');
+
+let _tfaSecret = null; // guardado enquanto o modal está aberto
+
+function atualizar2faUi() {
+  const user = auth.currentUser;
+  if (!user) return;
+  const mf = multiFactor(user);
+  const temTotp = (mf.enrolledFactors || []).some(f => f.factorId === 'totp');
+  const emailOk = !!user.emailVerified;
+  if (temTotp) {
+    cfg2faStatus.textContent = 'ativo';
+    cfg2faStatus.style.background = '#16a34a';
+  } else if (!emailOk) {
+    cfg2faStatus.textContent = 'email não verificado';
+    cfg2faStatus.style.background = '#b45309';
+  } else {
+    cfg2faStatus.textContent = 'inativo';
+    cfg2faStatus.style.background = '#6b7280';
+  }
+  cfg2faStatus.style.color = '#fff';
+  cfg2faVerificarEmail.hidden = temTotp || emailOk;
+  cfg2faAtualizar.hidden = temTotp || emailOk;
+  cfg2faAtivar.hidden  = temTotp || !emailOk;
+  cfg2faRemover.hidden = !temTotp;
+}
+
+cfg2faVerificarEmail.addEventListener('click', async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  cfg2faVerificarEmail.disabled = true;
+  const orig = cfg2faVerificarEmail.textContent;
+  cfg2faVerificarEmail.textContent = 'Enviando…';
+  try {
+    await sendEmailVerification(user);
+    alert(`Enviamos um link de verificação para ${user.email}.\n\n1. Abre o email e clica no link.\n   ⚠️ Se não achar, verifica a pasta de SPAM / Lixo Eletrônico — o link do Firebase costuma cair lá.\n2. Volta aqui e clica em "↻ Atualizar" pra checar o status.`);
+  } catch (e) {
+    alert('Erro ao enviar email: ' + (e.message || e));
+  } finally {
+    cfg2faVerificarEmail.disabled = false;
+    cfg2faVerificarEmail.textContent = orig;
+  }
+});
+
+cfg2faAtualizar.addEventListener('click', async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  cfg2faAtualizar.disabled = true;
+  const orig = cfg2faAtualizar.textContent;
+  cfg2faAtualizar.textContent = 'Checando…';
+  try {
+    await user.reload();
+    atualizar2faUi();
+    if (!user.emailVerified) {
+      alert('Ainda tá como não verificado. Abre o email (inclusive a pasta de SPAM), clica no link e tenta de novo.');
+    }
+  } catch (e) {
+    alert('Erro ao atualizar: ' + (e.message || e));
+  } finally {
+    cfg2faAtualizar.disabled = false;
+    cfg2faAtualizar.textContent = orig;
+  }
+});
+
+function mostrarMsgTfa(texto, ok) {
+  tfaMsg.textContent = texto;
+  tfaMsg.style.color = ok ? '#16a34a' : 'var(--danger)';
+  tfaMsg.hidden = false;
+}
+
+// Reautentica com senha via modal HTML (Electron não suporta prompt()).
+// Retorna true se autenticou, false se usuário cancelou.
+function pedirSenhaModal() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalReauth');
+    const form  = document.getElementById('formReauth');
+    const inp   = document.getElementById('reauthSenha');
+    const msg   = document.getElementById('reauthMsg');
+    const btnCancelar = document.getElementById('reauthCancelar');
+    const btnFechar   = document.getElementById('reauthFechar');
+    inp.value = ''; msg.hidden = true;
+    const encerrar = (senha) => {
+      form.onsubmit = null;
+      btnCancelar.onclick = null;
+      btnFechar.onclick = null;
+      modal.close();
+      resolve(senha);
+    };
+    form.onsubmit = (e) => { e.preventDefault(); encerrar(inp.value || null); };
+    btnCancelar.onclick = () => encerrar(null);
+    btnFechar.onclick = () => encerrar(null);
+    modal.showModal();
+    setTimeout(() => inp.focus(), 50);
+  });
+}
+
+async function reautenticarComSenha(user) {
+  const senha = await pedirSenhaModal();
+  if (!senha) return false;
+  const cred = EmailAuthProvider.credential(user.email, senha);
+  await reauthenticateWithCredential(user, cred);
+  return true;
+}
+
+cfg2faAtivar.addEventListener('click', async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  cfg2faAtivar.disabled = true;
+  try {
+    // Reautentica SEMPRE — Firebase exige login recente pra qualquer operação MFA
+    const ok = await reautenticarComSenha(user);
+    if (!ok) return;
+    const mf = multiFactor(user);
+    const session = await mf.getSession();
+    _tfaSecret = await TotpMultiFactorGenerator.generateSecret(session);
+    tfaEmail.value  = user.email || '';
+    tfaSecret.value = _tfaSecret.secretKey;
+    tfaCodigo.value = '';
+    tfaMsg.hidden = true;
+    modal2fa.showModal();
+  } catch (e) {
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      alert('Senha incorreta. Tenta de novo.');
+    } else {
+      alert('Erro ao iniciar 2FA: ' + (e.message || e));
+    }
+  } finally {
+    cfg2faAtivar.disabled = false;
+  }
+});
+
+tfaCopiar.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(tfaSecret.value);
+    tfaCopiar.textContent = '✓ Copiado';
+    setTimeout(() => { tfaCopiar.textContent = '📋 Copiar segredo'; }, 1500);
+  } catch (_) {
+    tfaSecret.select();
+  }
+});
+
+function fecharModal2fa() {
+  modal2fa.close();
+  _tfaSecret = null;
+}
+tfaCancelar.addEventListener('click', fecharModal2fa);
+cfg2faFechar.addEventListener('click', fecharModal2fa);
+
+form2fa.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = auth.currentUser;
+  if (!user || !_tfaSecret) return;
+  const codigo = (tfaCodigo.value || '').replace(/\D/g, '').trim();
+  if (codigo.length !== 6) { mostrarMsgTfa('O código tem 6 dígitos.', false); return; }
+  const btn = form2fa.querySelector('button[type="submit"]');
+  btn.disabled = true; mostrarMsgTfa('Verificando…', true);
+  try {
+    const assertion = TotpMultiFactorGenerator.assertionForEnrollment(_tfaSecret, codigo);
+    await multiFactor(user).enroll(assertion, 'Autenticador principal');
+    fecharModal2fa();
+    atualizar2faUi();
+    alert('2FA ativado! No próximo login vamos pedir um código do seu app.');
+  } catch (err) {
+    mostrarMsgTfa('Código inválido. Confira no seu app e tente de novo.', false);
+    btn.disabled = false;
+  }
+});
+
+cfg2faRemover.addEventListener('click', async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+  if (!confirm('Remover a autenticação em dois fatores? Sua conta ficará só com senha.')) return;
+  cfg2faRemover.disabled = true;
+  try {
+    const ok = await reautenticarComSenha(user);
+    if (!ok) return;
+    const mf = multiFactor(user);
+    const totp = (mf.enrolledFactors || []).find(f => f.factorId === 'totp');
+    if (!totp) { atualizar2faUi(); return; }
+    await mf.unenroll(totp);
+    atualizar2faUi();
+    alert('2FA removido.');
+  } catch (e) {
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      alert('Senha incorreta. Tenta de novo.');
+    } else {
+      alert('Erro ao remover 2FA: ' + (e.message || e));
+    }
+  } finally {
+    cfg2faRemover.disabled = false;
+  }
+});
+
 // Verificar atualização — força a checagem de update via main process
 cfgVerificarUpdate.addEventListener('click', async () => {
   cfgVerificarUpdate.disabled = true;
@@ -924,6 +1135,7 @@ onAuthStateChanged(auth, async (user) => {
   }
   currentUid = user.uid;
   usuarioInfo.textContent = formatarNome(user.displayName) || user.email;
+  atualizar2faUi();
 
   // Marca presença online + heartbeat a cada 2 min
   const marcarOnline = () => setDoc(doc(db, 'user_presence', user.uid), { online: true, updatedAt: fsTs() }, { merge: true }).catch(() => {});
