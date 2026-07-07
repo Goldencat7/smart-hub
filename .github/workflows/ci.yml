@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validar código
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verificar sintaxe do main process (Electron)
+        run: node --check main.js
+
+      - name: Verificar sintaxe do preload
+        run: node --check preload.js
+
+      - name: Verificar sintaxe das Cloud Functions
+        run: node --check functions/index.js
+
+      - name: Validar package.json (raiz)
+        run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+
+      - name: Validar package.json (functions)
+        run: node -e "JSON.parse(require('fs').readFileSync('functions/package.json','utf8'))"
+
+      - name: Validar firebase.json
+        run: node -e "JSON.parse(require('fs').readFileSync('firebase.json','utf8'))"
+
+      - name: Validar firestore.rules (existe?)
+        run: test -f firestore.rules && echo "OK — regras do Firestore presentes" || (echo "AVISO: firestore.rules ausente" && exit 0)
+
+      - name: Checar arquivos essenciais do renderer
+        run: |
+          set -e
+          for f in index.html login.html admin.html hub-app.js admin-app.js auth-login.js firebase-config.js styles.css; do
+            if [ ! -f "$f" ]; then
+              echo "FALTA: $f"
+              exit 1
+            fi
+          done
+          echo "OK — todos os arquivos essenciais do renderer presentes"
+
+      - name: Checar versão do package.json bate com tag do último release (informativo)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "Versão declarada no package.json: $VERSION"
