@@ -1859,7 +1859,8 @@ async function carregarMarketing() {
   const cont = document.getElementById('mktContainer');
   const toolbar = document.getElementById('mktToolbar');
   const info = document.getElementById('mktToolbarInfo');
-  toolbar.hidden = !(temPermMarketing || isAdmin);
+  // Gerenciar Marketing é permissão à parte (marketing_gerenciar), NÃO herda de admin.
+  toolbar.hidden = !temPermMarketing;
   if (info) info.textContent = mktModoGerenciar ? 'Modo edição — arraste/edite/remova. Clique em Salvar quando terminar.' : '';
   const btnG = document.getElementById('btnMktGerenciar');
   if (btnG) btnG.textContent = mktModoGerenciar ? '← Voltar' : '⚙ Gerenciar';

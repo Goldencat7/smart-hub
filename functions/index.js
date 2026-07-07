@@ -2119,7 +2119,8 @@ exports.listarMarketingConfig = onCall(async (req) => {
 // (marketing_gerenciar OR admin) Salva o layout inteiro. Substitui.
 exports.salvarMarketingConfig = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  const pode = ehAdminAuth(auth) || (await temPermissaoMarketing(auth));
+  // Permissão à parte: gerenciar Marketing NÃO herda de admin (só marketing_gerenciar).
+  const pode = await temPermissaoMarketing(auth);
   if (!pode) throw new HttpsError('permission-denied', 'Sem permissão para gerenciar o Marketing.');
   const { sanfonas } = req.data || {};
   if (!Array.isArray(sanfonas)) throw new HttpsError('invalid-argument', 'sanfonas deve ser um array.');

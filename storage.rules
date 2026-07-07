@@ -39,11 +39,10 @@ service firebase.storage {
       return request.resource.contentType.matches('image/.*')
              || request.resource.contentType.matches('text/html.*');
     }
+    // Gerenciar Marketing é permissão à parte — NÃO herda de admin, só marketing_gerenciar.
     function podeMarketing() {
-      return request.auth != null && (
-        request.auth.token.admin == true ||
-        firestore.get(/databases/(default)/documents/user_access/$(request.auth.uid)).data.marketing_gerenciar == true
-      );
+      return request.auth != null &&
+        firestore.get(/databases/(default)/documents/user_access/$(request.auth.uid)).data.marketing_gerenciar == true;
     }
   }
 }
