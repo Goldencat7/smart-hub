@@ -37,6 +37,7 @@ const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
 const getModoCofre = httpsCallable(fns, 'getModoCofre');
 const setModoCofre = httpsCallable(fns, 'setModoCofre');
+const migrarCredenciaisCofre = httpsCallable(fns, 'migrarCredenciaisCofre');
 const listarStatusApps        = httpsCallable(fns, 'listarStatusApps');
 const listarNotificacoesAdmin = httpsCallable(fns, 'listarNotificacoesAdmin');
 const excluirNotificacao      = httpsCallable(fns, 'excluirNotificacao');
@@ -562,12 +563,19 @@ async function carregarSeguranca() {
     const r = await getModoCofre();
     const { cofreAtivo, maxJanela, janelaSeg } = r.data;
     cont.innerHTML = `
-      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-        <div style="flex:1;min-width:220px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch">
+        <div style="flex:1;min-width:260px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
           <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🔐 Modo Cofre</div>
           <div style="font-size:20px;font-weight:700;margin-top:4px">${cofreAtivo ? '🟢 Ligado' : '⚪ Desligado'}</div>
           <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Bloqueia acima de <strong>${maxJanela}</strong> sistemas diferentes em <strong>${janelaSeg}s</strong> por pessoa.</div>
           <button class="topbar-btn ${cofreAtivo ? '' : 'primario'}" id="btnCofre" style="margin-top:10px">${cofreAtivo ? '⚪ Desligar' : '🔐 Ligar Modo Cofre'}</button>
+        </div>
+        <div style="flex:1;min-width:260px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🔒 Criptografia em repouso</div>
+          <div style="font-size:20px;font-weight:700;margin-top:4px">KMS ativo</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Ao salvar uma senha, ela é criptografada com uma chave no Google KMS. Ao ler, é decriptada só na hora. Use o botão pra migrar as antigas.</div>
+          <button class="topbar-btn primario" id="btnMigrarCofre" style="margin-top:10px">🔒 Migrar credenciais existentes</button>
+          <div id="migrarCofreMsg" class="muted" style="font-size:11px;margin-top:6px"></div>
         </div>
       </div>`;
     const btn = document.getElementById('btnCofre');
@@ -579,6 +587,23 @@ async function carregarSeguranca() {
       btn.disabled = true;
       try { await setModoCofre({ ativo: ligar }); carregarSeguranca(); }
       catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+    const btnMig = document.getElementById('btnMigrarCofre');
+    const msgMig = document.getElementById('migrarCofreMsg');
+    btnMig.addEventListener('click', async () => {
+      if (!confirm('Criptografar TODAS as senhas de sistemas que ainda estão em texto puro? Uma vez feito, o banco só terá senhas criptografadas.')) return;
+      btnMig.disabled = true; msgMig.textContent = 'Migrando…';
+      try {
+        const r = await migrarCredenciaisCofre();
+        const { migradas, jaOk, erros, total } = r.data || {};
+        msgMig.textContent = `✓ Migradas: ${migradas} · Já criptografadas: ${jaOk} · Erros: ${erros} (de ${total} total)`;
+        msgMig.style.color = erros ? 'var(--danger)' : '#16a34a';
+      } catch (e) {
+        msgMig.textContent = 'Erro: ' + e.message;
+        msgMig.style.color = 'var(--danger)';
+      } finally {
+        btnMig.disabled = false;
+      }
     });
   } catch (e) {
     cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;

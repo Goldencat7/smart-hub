@@ -48,7 +48,7 @@ html, body {
   user-select: none;
 }
 
-body { display: flex; flex-direction: column; min-height: 100vh; }
+body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* ── Topbar ──────────────────────────────────────────────────────── */
 .topbar {
@@ -201,7 +201,8 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   display: grid;
   grid-template-columns: 160px 1fr 300px;
   gap: 0;
-  min-height: calc(100vh - 46px);
+  height: calc(100vh - 46px);
+  overflow: hidden;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
@@ -210,6 +211,8 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   border-right: 1px solid var(--navy-dark);
   background: var(--navy-deep);
   display: flex; flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; }
@@ -243,7 +246,12 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .hub-main {
   padding: 16px 20px 32px; background: var(--bg);
   display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  overflow-y: auto;
+  min-height: 0;
 }
+/* Flex column com overflow: filhos NÃO devem ser esmagados — devem
+   manter tamanho natural e causar scroll no container. */
+.hub-main > * { flex-shrink: 0; }
 
 .hub-main-head {
   display: flex; align-items: center;
@@ -343,6 +351,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   background: var(--surface);
   padding: 14px 12px;
   display: flex; flex-direction: column; gap: 14px; overflow-y: auto;
+  min-height: 0;
 }
 
 .agenda-min {
@@ -470,10 +479,30 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 /* ── Calendário completo (aba Agenda) ────────────────────────────── */
 .agenda-full { width: 100%; display: flex; gap: 20px; align-items: flex-start; }
 .cal-coluna { flex: 1.3; min-width: 0; }
-.cal-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-.cal-head h3 {
-  margin: 0; font-size: 13px; font-weight: 700;
-  min-width: 140px; text-transform: capitalize; color: var(--text-primary);
+.cal-head {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  gap: 12px; margin-bottom: 12px;
+}
+.cal-nav { display: flex; align-items: center; gap: 8px; justify-content: flex-start; }
+.cal-nav h3 {
+  margin: 0; font-size: 15px; font-weight: 700;
+  text-transform: capitalize; color: var(--text-primary);
+  text-align: center; min-width: 160px;
+}
+.cal-visao {
+  display: inline-flex; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px; justify-self: center;
+}
+.cal-visao-btn {
+  border: none; background: transparent; padding: 6px 14px; font-size: 11px;
+  border-radius: 999px; cursor: pointer; color: var(--text-muted); font-weight: 600;
+}
+.cal-visao-btn.ativo { background: var(--blue); color: #fff; }
+.cal-acoes { display: flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .cal-head { grid-template-columns: 1fr; }
+  .cal-nav, .cal-acoes { justify-content: center; }
 }
 .cal-grade .cal-semana { margin-bottom: 4px; }
 .cal-grade .cal-semana span { font-size: 11px; color: var(--text-muted); }
@@ -481,9 +510,74 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
   background: var(--border); gap: 1px; border-radius: var(--radius-card); overflow: hidden;
 }
 .cal-grade .cal-dia {
-  min-height: 60px; align-items: flex-start; justify-content: flex-start;
-  padding: 5px; font-size: 12px; background: var(--surface);
+  min-height: 110px; align-items: stretch; justify-content: flex-start;
+  padding: 4px 4px 6px; font-size: 12px; background: var(--surface);
   border: none; border-radius: 0; color: var(--text-primary);
+  display: flex; flex-direction: column; gap: 2px;
+  cursor: pointer;
+}
+.cal-grade .cal-dia .cal-num { align-self: flex-start; padding: 0 4px; }
+.cal-grade .cal-dia.hoje .cal-num {
+  background: var(--blue); color: #fff; border-radius: 999px;
+  width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px;
+}
+.cal-grade .cal-dia.hoje { box-shadow: none; }
+.cal-grade .cal-dia.sel { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); box-shadow: inset 0 0 0 2px var(--blue); }
+.cal-grade .cal-dia.sel .cal-num { color: var(--text-primary); }
+.cal-grade .cal-dia.sel.hoje .cal-num { background: var(--blue); color: #fff; }
+/* Pílulas de eventos dentro da célula */
+.cal-ev-lista { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; overflow: hidden; }
+.cal-ev-pill {
+  display: flex; align-items: center; gap: 4px;
+  padding: 2px 6px; border-radius: 3px; font-size: 10px; line-height: 1.3;
+  background: var(--blue); color: #fff; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cal-ev-pill.tipo-cliente   { background: #16a34a; }
+.cal-ev-pill.tipo-visita    { background: #b45309; }
+.cal-ev-pill.tipo-pessoal   { background: #6366f1; }
+.cal-ev-pill.tipo-google    { background: #4285F4; }
+.cal-ev-pill.tipo-pendente  { background: #DC1C2E; }
+.cal-ev-pill .cal-ev-hora { opacity: 0.85; font-size: 9px; font-weight: 600; }
+.cal-ev-mais {
+  font-size: 10px; color: var(--text-muted); padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* View: Lista (agenda cronológica de eventos do mês) */
+.cal-lista { display: flex; flex-direction: column; gap: 1px;
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  background: var(--border); overflow: hidden; }
+.cal-lista-grupo { background: var(--surface); padding: 12px 16px; }
+.cal-lista-dia { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; text-transform: capitalize; }
+.cal-lista-dia .cal-lista-hoje { color: var(--blue); }
+.cal-lista-ev {
+  display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.cal-lista-ev:first-of-type { border-top: none; }
+.cal-lista-ev .cal-lista-hora { font-size: 11px; color: var(--text-muted); min-width: 60px; font-family: monospace; }
+.cal-lista-ev .cal-lista-titulo { font-size: 12px; font-weight: 600; flex: 1; }
+.cal-lista-ev .cal-lista-tag { font-size: 9px; padding: 2px 6px; border-radius: 999px; }
+.cal-lista-vazio { padding: 20px; text-align: center; color: var(--text-muted); font-size: 12px; background: var(--surface); }
+
+/* View: Semana (grade 7 colunas com horas) */
+.cal-semana-grid {
+  display: grid; grid-template-columns: 48px repeat(7, 1fr); gap: 1px;
+  background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-card);
+  overflow: hidden; max-height: 70vh; overflow-y: auto;
+}
+.cal-semana-head { background: var(--surface); padding: 8px 4px; text-align: center; font-size: 11px; font-weight: 600; color: var(--text-muted); position: sticky; top: 0; z-index: 2; }
+.cal-semana-head.hoje { color: var(--blue); }
+.cal-semana-hora { background: var(--surface); padding: 4px 6px; font-size: 10px; color: var(--text-muted); text-align: right; font-family: monospace; }
+.cal-semana-cel { background: var(--surface); min-height: 30px; position: relative; padding: 1px; cursor: pointer; }
+.cal-semana-cel:hover { background: var(--hover); }
+.cal-semana-ev {
+  display: block; padding: 2px 4px; border-radius: 3px; font-size: 10px; color: #fff;
+  background: var(--blue); margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
 }
 .cal-grade .cal-dia.hoje { background: var(--surface); box-shadow: inset 0 0 0 2px var(--blue); }
 .cal-grade .cal-dia.sel  { background: var(--blue); box-shadow: none; }
@@ -555,7 +649,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .cfg-toggle { margin: 2px 0; cursor: pointer; }
 
 /* ── Auth / Login ────────────────────────────────────────────────── */
-.auth-body { display: flex; align-items: center; justify-content: center; }
+.auth-body { display: flex; align-items: center; justify-content: center; overflow-y: auto; }
 
 .auth-card {
   width: 100%; max-width: 380px;
@@ -688,12 +782,15 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .admin-layout {
   display: grid; grid-template-columns: 220px 1fr; gap: 24px;
   padding: 20px 32px 60px;
+  height: calc(100vh - 46px);
+  overflow-y: auto;
+  align-items: start;
 }
 .admin-nav {
   display: flex; flex-direction: column; gap: 2px;
-  position: sticky; top: 20px; align-self: start;
+  position: sticky; top: 0; align-self: start;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
-  padding: 10px 8px; max-height: calc(100vh - 100px); overflow-y: auto;
+  padding: 10px 8px; max-height: calc(100vh - 106px); overflow-y: auto;
 }
 .admin-nav-grupo {
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
@@ -834,6 +931,7 @@ body { display: flex; flex-direction: column; min-height: 100vh; }
 .docs-accordion {
   border: 1px solid var(--border); border-radius: var(--radius-card);
   background: var(--surface); overflow: hidden;
+  flex-shrink: 0;
 }
 .docs-acc-head {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

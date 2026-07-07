@@ -14,6 +14,29 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
 
 const db = admin.firestore();
 
+// ─── Cofre: criptografia de senhas em repouso (KMS) ─────────────────────────
+// Todas as senhas das plataformas (RE/MAX Mais, ClickSign etc) ficam
+// criptografadas no Firestore com uma chave simétrica no Google Cloud KMS.
+// A chave nunca sai do KMS: a Cloud Function pede pra criptografar/decriptar
+// via API. Se o banco vazar, as senhas continuam ilegíveis.
+const { KeyManagementServiceClient } = require('@google-cloud/kms');
+let _kmsClient = null;
+const KMS_KEY_NAME = 'projects/remax-smart-hub/locations/southamerica-east1/keyRings/hub-cofre/cryptoKeys/credenciais';
+function kmsClient() {
+  if (!_kmsClient) _kmsClient = new KeyManagementServiceClient();
+  return _kmsClient;
+}
+async function kmsEncrypt(plaintext) {
+  if (!plaintext) return null;
+  const [r] = await kmsClient().encrypt({ name: KMS_KEY_NAME, plaintext: Buffer.from(plaintext, 'utf8') });
+  return r.ciphertext.toString('base64');
+}
+async function kmsDecrypt(cipherB64) {
+  if (!cipherB64) return '';
+  const [r] = await kmsClient().decrypt({ name: KMS_KEY_NAME, ciphertext: Buffer.from(cipherB64, 'base64') });
+  return r.plaintext.toString('utf8');
+}
+
 // ─── Monitoramento: log de erros no Firestore ──────────────────────────────
 async function logErro(funcao, erro, contexto = {}) {
   try {
@@ -310,8 +333,21 @@ exports.getCredentials = onCall(async (req) => {
   if (!snap.exists) throw new HttpsError('not-found', `Sem credenciais para ${siteKey}.`);
 
   const d = snap.data();
+  let password = '';
+  if (d.password_enc) {
+    // Formato novo (criptografado). Decripta on-the-fly.
+    try { password = await kmsDecrypt(d.password_enc); }
+    catch (e) { await logErro('getCredentials.decrypt', e, { siteKey }); throw new HttpsError('internal', 'Falha ao decriptar credencial.'); }
+  } else if (d.password) {
+    // Formato antigo (texto puro). Devolve como está e migra em background.
+    password = d.password;
+    try {
+      const enc = await kmsEncrypt(password);
+      await snap.ref.set({ password_enc: enc, password: admin.firestore.FieldValue.delete(), migratedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    } catch (e) { await logErro('getCredentials.migrate', e, { siteKey }); }
+  }
   await registrarAudit(auth, 'viu_credencial', { tipo: 'credencial', id: siteKey });
-  return { login: d.login || '', password: d.password || '' };
+  return { login: d.login || '', password };
 });
 
 // (admin) Liga/desliga o Modo Cofre e ajusta o limite. Grava em config/seguranca.
@@ -1314,7 +1350,7 @@ exports.listCredentials = onCall(async (req) => {
     siteKey: doc.id,
     login: doc.data().login || '',
     // NÃO retorna a senha em lista — só ao editar.
-    temSenha: !!doc.data().password
+    temSenha: !!(doc.data().password || doc.data().password_enc)
   }));
 });
 
@@ -1327,7 +1363,14 @@ exports.getCredentialAdmin = onCall(async (req) => {
   const snap = await db.collection('credentials').doc(siteKey).get();
   if (!snap.exists) return { login: '', password: '' };
   const d = snap.data();
-  return { login: d.login || '', password: d.password || '' };
+  let password = '';
+  if (d.password_enc) {
+    try { password = await kmsDecrypt(d.password_enc); }
+    catch (e) { await logErro('getCredentialAdmin.decrypt', e, { siteKey }); throw new HttpsError('internal', 'Falha ao decriptar credencial.'); }
+  } else if (d.password) {
+    password = d.password;
+  }
+  return { login: d.login || '', password };
 });
 
 // Cria ou atualiza credenciais (admin only)
@@ -1336,12 +1379,44 @@ exports.setCredentials = onCall(async (req) => {
   const { siteKey, login, password } = req.data || {};
   if (!siteKey) throw new HttpsError('invalid-argument', 'siteKey é obrigatório.');
 
-  await db.collection('credentials').doc(siteKey).set({
+  const patch = {
     login: login || '',
-    password: password || '',
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+  };
+  if (password) {
+    // Sempre criptografa antes de gravar. Apaga o campo texto puro se existir.
+    patch.password_enc = await kmsEncrypt(password);
+    patch.password = admin.firestore.FieldValue.delete();
+  }
+  await db.collection('credentials').doc(siteKey).set(patch, { merge: true });
   return { ok: true };
+});
+
+// (admin) Força a migração: criptografa todas as credenciais em texto puro.
+// Ao terminar, nenhum doc de credentials deve ter o campo 'password' — só 'password_enc'.
+exports.migrarCredenciaisCofre = onCall(async (req) => {
+  await exigirAdmin(req);
+  const snap = await db.collection('credentials').get();
+  let migradas = 0, jaOk = 0, erros = 0;
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    if (d.password_enc && !d.password) { jaOk++; continue; }
+    if (!d.password) { jaOk++; continue; }
+    try {
+      const enc = await kmsEncrypt(d.password);
+      await doc.ref.set({
+        password_enc: enc,
+        password: admin.firestore.FieldValue.delete(),
+        migratedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      migradas++;
+    } catch (e) {
+      await logErro('migrarCredenciaisCofre', e, { siteKey: doc.id });
+      erros++;
+    }
+  }
+  await registrarAudit(req.auth, 'migrou_credenciais', { tipo: 'credencial', id: 'batch' }, { migradas, jaOk, erros, total: snap.size });
+  return { migradas, jaOk, erros, total: snap.size };
 });
 
 // Remove credenciais (admin only)

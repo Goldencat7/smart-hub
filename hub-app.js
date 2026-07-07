@@ -369,6 +369,7 @@ let fotoPendente = null; // null = sem mudança; string = nova foto (ou '' = rem
 // Estado da agenda
 let eventos = [];                 // {id, titulo, descricao, inicio:Date, todos, souDono}
 let calAno, calMes;               // mês exibido no calendário completo
+let calVisao = 'mes';             // 'mes' | 'semana' | 'lista'
 let diaSelecionado = null;        // 'YYYY-MM-DD' no calendário completo
 let eventoEditandoId = null;      // id do evento em edição no modal (null = modo criar)
 const alertados = new Set();      // ids já alertados (1h antes)
@@ -1338,18 +1339,111 @@ function montarGradeMes(ano, mes, mini=false){
     const chave = chaveDia(new Date(ano, mes, dia));
     const evs = eventosDoDia(chave);
     const fer = feriados[chave];
-    const googleEvs = evs.filter(e => e.origem === 'google');
-    const pendentesEvs = evs.filter(e => e.meuRsvp === 'pendente' && !e.souDono && e.origem !== 'google');
-    const pendentesIds = new Set(pendentesEvs.map(e => e.id));
-    const hubNormais = evs.filter(e => e.origem !== 'google' && !pendentesIds.has(e.id));
-    const pontoHtml = evs.length ? `<span class="cal-pontos">` +
-      (hubNormais.length ? `<span class="cal-ponto">${hubNormais.length > 1 ? hubNormais.length : ''}</span>` : '') +
-      (pendentesEvs.length ? `<span class="cal-ponto-pendente">${pendentesEvs.length > 1 ? pendentesEvs.length : ''}</span>` : '') +
-      (googleEvs.length ? `<span class="cal-ponto-google"></span>` : '') +
-      `</span>` : '';
+    // Mini calendário (painel direito) mantém só pontinhos por questão de espaço
+    if (mini) {
+      const googleEvs = evs.filter(e => e.origem === 'google');
+      const pendentesEvs = evs.filter(e => e.meuRsvp === 'pendente' && !e.souDono && e.origem !== 'google');
+      const pendentesIds = new Set(pendentesEvs.map(e => e.id));
+      const hubNormais = evs.filter(e => e.origem !== 'google' && !pendentesIds.has(e.id));
+      const pontoHtml = evs.length ? `<span class="cal-pontos">` +
+        (hubNormais.length ? `<span class="cal-ponto">${hubNormais.length > 1 ? hubNormais.length : ''}</span>` : '') +
+        (pendentesEvs.length ? `<span class="cal-ponto-pendente">${pendentesEvs.length > 1 ? pendentesEvs.length : ''}</span>` : '') +
+        (googleEvs.length ? `<span class="cal-ponto-google"></span>` : '') +
+        `</span>` : '';
+      html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''} ${fer?'feriado':''}" data-dia="${chave}"${fer?` title="${escapeHtml(fer)}"`:''}>
+        <span class="cal-num">${dia}</span>${pontoHtml}
+      </button>`;
+      continue;
+    }
+    // Calendário grande: pílulas de eventos ao estilo Google Calendar
+    const MAX_PILLS = 3;
+    const evsOrd = [...evs].sort((a,b) => a.inicio - b.inicio);
+    const visiveis = evsOrd.slice(0, MAX_PILLS);
+    const restantes = evsOrd.length - visiveis.length;
+    const pillsHtml = visiveis.map(e => {
+      const cls = e.origem === 'google' ? 'tipo-google'
+        : (e.meuRsvp === 'pendente' && !e.souDono ? 'tipo-pendente'
+        : ({ cliente:'tipo-cliente', visita:'tipo-visita', pessoal:'tipo-pessoal' }[e.tipo] || ''));
+      const hora = e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      return `<span class="cal-ev-pill ${cls}" data-ev-id="${e.id}" title="${escapeHtml(hora + ' ' + e.titulo)}">
+        <span class="cal-ev-hora">${hora}</span>
+        <span>${escapeHtml(e.titulo)}</span>
+      </span>`;
+    }).join('');
+    const maisHtml = restantes > 0 ? `<span class="cal-ev-mais">+${restantes} mais</span>` : '';
+    const feriadoHtml = fer ? `<span class="cal-feriado">${escapeHtml(fer)}</span>` : '';
     html += `<button class="cal-dia ${chave===hojeChave?'hoje':''} ${chave===diaSelecionado?'sel':''} ${evs.length?'tem-ev':''} ${fer?'feriado':''}" data-dia="${chave}"${fer?` title="${escapeHtml(fer)}"`:''}>
-      <span class="cal-num">${dia}</span>${pontoHtml}${(fer && !mini)?`<span class="cal-feriado">${escapeHtml(fer)}</span>`:''}
+      <span class="cal-num">${dia}</span>
+      ${feriadoHtml}
+      <div class="cal-ev-lista">${pillsHtml}${maisHtml}</div>
     </button>`;
+  }
+  return html + '</div>';
+}
+
+// View LISTA — cronológica dos eventos do mês
+function montarListaMes(ano, mes){
+  const inicio = new Date(ano, mes, 1);
+  const fim    = new Date(ano, mes+1, 0, 23, 59, 59);
+  const hojeChave = chaveDia(new Date());
+  const evs = eventos.filter(e => e.inicio >= inicio && e.inicio <= fim).sort((a,b) => a.inicio - b.inicio);
+  if (!evs.length) return '<div class="cal-lista-vazio">Nenhum compromisso neste mês.</div>';
+  // Agrupa por dia
+  const porDia = new Map();
+  for (const e of evs) {
+    const c = chaveDia(e.inicio);
+    if (!porDia.has(c)) porDia.set(c, []);
+    porDia.get(c).push(e);
+  }
+  return '<div class="cal-lista">' + [...porDia.entries()].map(([chave, lista]) => {
+    const d = new Date(chave + 'T00:00:00');
+    const eh = chave === hojeChave;
+    return `<div class="cal-lista-grupo">
+      <div class="cal-lista-dia ${eh ? 'cal-lista-hoje' : ''}">${d.toLocaleDateString('pt-BR',{weekday:'long', day:'2-digit', month:'long'})}${eh ? ' · Hoje' : ''}</div>
+      ${lista.map(e => `<div class="cal-lista-ev" data-ev-id="${e.id}" data-dia="${chave}">
+        <span class="cal-lista-hora">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
+        <span class="cal-lista-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)}</span>
+        ${e.origem === 'google' ? '<span class="cal-lista-tag ev-tag-google">Google</span>' : ''}
+        ${e.meuRsvp === 'pendente' && !e.souDono ? '<span class="cal-lista-tag ev-tag-pendente">convite</span>' : ''}
+      </div>`).join('')}
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// View SEMANA — 7 colunas × 24h. Cada evento vira uma pílula no seu horário.
+function montarSemana(dataRef){
+  // Segunda a partir do dataRef
+  const d = new Date(dataRef);
+  const dow = d.getDay(); // 0=dom
+  const inicio = new Date(d); inicio.setDate(d.getDate() - dow); inicio.setHours(0,0,0,0);
+  const hojeChave = chaveDia(new Date());
+  const dias = Array.from({length:7}, (_,i) => {
+    const x = new Date(inicio); x.setDate(inicio.getDate() + i); return x;
+  });
+  const HORAS = Array.from({length: 15}, (_,i) => i + 7); // 07:00 → 21:00
+  let html = '<div class="cal-semana-grid">';
+  // Header
+  html += '<div class="cal-semana-head"></div>';
+  html += dias.map(dt => {
+    const eh = chaveDia(dt) === hojeChave;
+    return `<div class="cal-semana-head ${eh ? 'hoje' : ''}">${DIAS_SEM[dt.getDay()]}<br>${String(dt.getDate()).padStart(2,'0')}/${String(dt.getMonth()+1).padStart(2,'0')}</div>`;
+  }).join('');
+  // Linhas de horas
+  for (const h of HORAS) {
+    html += `<div class="cal-semana-hora">${String(h).padStart(2,'0')}:00</div>`;
+    for (const dt of dias) {
+      const chave = chaveDia(dt);
+      const evsHora = eventos.filter(e =>
+        chaveDia(e.inicio) === chave && e.inicio.getHours() === h
+      ).sort((a,b) => a.inicio - b.inicio);
+      const cel = evsHora.map(e => {
+        const cor = e.origem === 'google' ? '#4285F4'
+          : (e.meuRsvp === 'pendente' && !e.souDono ? '#DC1C2E'
+          : ({ cliente:'#16a34a', visita:'#b45309', pessoal:'#6366f1' }[e.tipo] || 'var(--blue)'));
+        return `<span class="cal-semana-ev" data-ev-id="${e.id}" style="background:${cor}" title="${escapeHtml(e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ' + e.titulo)}">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} ${escapeHtml(e.titulo)}</span>`;
+      }).join('');
+      html += `<div class="cal-semana-cel" data-dia="${chave}" data-hora="${h}">${cel}</div>`;
+    }
   }
   return html + '</div>';
 }
@@ -1388,10 +1482,46 @@ async function renderCalendarioCompleto(){
   await carregarEventos(new Date(calAno, calMes-1, 1), new Date(calAno, calMes+2, 0));
   calTitulo.textContent = `${MESES[calMes]} ${calAno}`;
   document.getElementById('calHoje').hidden = (diaSelecionado === chaveDia(new Date()));
-  calGrade.innerHTML = montarGradeMes(calAno, calMes);
-  calGrade.querySelectorAll('.cal-dia[data-dia]').forEach(b=>{
-    b.addEventListener('click', ()=>{ diaSelecionado = b.dataset.dia; renderCalendarioCompleto(); });
-  });
+  if (calVisao === 'lista') {
+    calGrade.innerHTML = montarListaMes(calAno, calMes);
+    calGrade.querySelectorAll('.cal-lista-ev').forEach(el => {
+      el.addEventListener('click', () => {
+        diaSelecionado = el.dataset.dia;
+        const ev = eventos.find(x => x.id === el.dataset.evId);
+        if (ev) abrirModalEvento(diaSelecionado, ev);
+      });
+    });
+  } else if (calVisao === 'semana') {
+    calGrade.innerHTML = montarSemana(new Date(calAno, calMes, new Date().getDate()));
+    calGrade.querySelectorAll('.cal-semana-ev').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const ev = eventos.find(x => x.id === el.dataset.evId);
+        if (ev) { diaSelecionado = chaveDia(ev.inicio); abrirModalEvento(diaSelecionado, ev); }
+      });
+    });
+    calGrade.querySelectorAll('.cal-semana-cel').forEach(el => {
+      el.addEventListener('click', () => {
+        diaSelecionado = el.dataset.dia;
+        abrirModalEvento(diaSelecionado);
+      });
+    });
+  } else {
+    calGrade.innerHTML = montarGradeMes(calAno, calMes);
+    calGrade.querySelectorAll('.cal-dia[data-dia]').forEach(b => {
+      b.addEventListener('click', (e) => {
+        // Se clicou numa pílula, abre o evento direto
+        const pill = e.target.closest('.cal-ev-pill');
+        if (pill) {
+          e.stopPropagation();
+          const ev = eventos.find(x => x.id === pill.dataset.evId);
+          if (ev) { diaSelecionado = b.dataset.dia; abrirModalEvento(diaSelecionado, ev); return; }
+        }
+        diaSelecionado = b.dataset.dia;
+        renderCalendarioCompleto();
+      });
+    });
+  }
   renderDetalheDia();
   renderPainelAgenda();
   } finally {
@@ -1592,6 +1722,15 @@ document.getElementById('calProx').addEventListener('click', async (e) => {
 });
 
 document.getElementById('calHoje').addEventListener('click', ()=>{ const h=new Date(); calAno=h.getFullYear(); calMes=h.getMonth(); diaSelecionado=chaveDia(h); renderCalendarioCompleto(); });
+
+// Botões de visualização (Mês / Semana / Lista)
+document.querySelectorAll('.cal-visao-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    calVisao = btn.dataset.visao;
+    document.querySelectorAll('.cal-visao-btn').forEach(b => b.classList.toggle('ativo', b === btn));
+    renderCalendarioCompleto();
+  });
+});
 document.getElementById('calRecarregar').addEventListener('click', async (e)=>{
   const b = e.currentTarget; const t = b.textContent;
   b.disabled = true; b.textContent = '↻ Atualizando...';
@@ -2911,26 +3050,84 @@ const REP_STATUS = { pendente:['Pendente','#b45309'], repassado:['Repassado','#1
 const fmtBRLnum = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const compLabel = c => { const [y, m] = String(c || '').split('-'); const mes = ['', 'Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][+m] || m; return mes + '/' + (y || ''); };
 
+// Filtros da aba Financeiro (persistem entre re-renders)
+const finFiltro = { mes: '', status: 'todos' };
+
 async function carregarFinanceiro() {
   secaoFinanceiro.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando financeiro...</p>';
   try {
-    const [fRes, aRes] = await Promise.all([locListarFinanceiro({}), locListarAlertas({})]);
-    const cobrancas = (fRes.data?.cobrancas || []).slice().sort((a, b) => (a.competencia || '').localeCompare(b.competencia || ''));
-    const repasses  = (fRes.data?.repasses  || []).slice().sort((a, b) => (a.competencia || '').localeCompare(b.competencia || ''));
+    const [fRes, aRes, dRes] = await Promise.all([locListarFinanceiro({}), locListarAlertas({}), locDashboard({})]);
+    const cobrancasFull = (fRes.data?.cobrancas || []);
+    const repassesFull  = (fRes.data?.repasses  || []);
     const podeBaixar = !!fRes.data?.podeBaixar;
     const alertas = aRes.data?.alertas || [];
+    const dash = dRes.data || {};
 
-    if (!cobrancas.length && !repasses.length) {
+    if (!cobrancasFull.length && !repassesFull.length) {
       secaoFinanceiro.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">Nada no financeiro ainda.<br><span style="font-size:12px">Cobranças e repasses são gerados quando um contrato é <strong>ativado</strong> (na aba Imóveis).</span></div>`;
       return;
     }
 
+    // ─── KPI CARDS (Dashboard) ───────────────────────────────────────────────
+    const compAtual = new Date().toISOString().slice(0, 7);
+    const aReceberValor = cobrancasFull
+      .filter(c => (c.status === 'previsto' || c.status === 'atrasado') && (c.competencia || '') <= compAtual)
+      .reduce((s, c) => s + (c.valor || 0), 0);
+    const kpiCard = (label, valor, sub, cor) => `
+      <div style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted)">${label}</div>
+        <div style="font-size:22px;font-weight:700;color:${cor};margin-top:2px">${valor}</div>
+        ${sub ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${sub}</div>` : ''}
+      </div>`;
+    const kpiHtml = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+      ${kpiCard('Contratos ativos', String(dash.contratosAtivos || 0), '', 'var(--text-primary)')}
+      ${kpiCard('A receber (venc. até hoje)', fmtBRLnum(aReceberValor), (dash.inadimplencia?.qtd || 0) + ' em atraso · ' + fmtBRLnum(dash.inadimplencia?.valor || 0), '#DC1C2E')}
+      ${kpiCard('Repasse pendente', fmtBRLnum(dash.repassePendente?.valor || 0), (dash.repassePendente?.qtd || 0) + ' aguardando', '#b45309')}
+      ${kpiCard('Repassado no mês', fmtBRLnum(dash.repassadoMes || 0), compLabel(compAtual), '#16a34a')}
+    </div>`;
+
+    // ─── ALERTAS ────────────────────────────────────────────────────────────
     const nAtraso = alertas.filter(a => a.tipo === 'atraso').length;
     const nRep = alertas.filter(a => a.tipo === 'repasse_pendente').length;
     const alertaHtml = (nAtraso || nRep) ? `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       ${nAtraso ? `<div style="background:#fef2f2;border:1px solid #fecaca;color:#DC1C2E;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600">⚠ ${nAtraso} cobrança(s) em atraso</div>` : ''}
       ${nRep ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#b45309;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600">↩ ${nRep} repasse(s) pendente(s)</div>` : ''}</div>` : '';
 
+    // ─── FILTROS ────────────────────────────────────────────────────────────
+    // Popula lista de meses únicos (das cobranças) ordenados desc
+    const mesesUnicos = [...new Set([...cobrancasFull, ...repassesFull].map(x => x.competencia).filter(Boolean))].sort().reverse();
+    const filtroHtml = `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+      <span style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em">Filtros</span>
+      <select id="finFiltroMes" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
+        <option value="">Todos os meses</option>
+        ${mesesUnicos.map(m => `<option value="${m}"${finFiltro.mes === m ? ' selected' : ''}>${compLabel(m)}</option>`).join('')}
+      </select>
+      <select id="finFiltroStatus" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
+        <option value="todos"${finFiltro.status === 'todos' ? ' selected' : ''}>Todos os status</option>
+        <option value="previsto"${finFiltro.status === 'previsto' ? ' selected' : ''}>Previsto</option>
+        <option value="atrasado"${finFiltro.status === 'atrasado' ? ' selected' : ''}>Atrasado</option>
+        <option value="pago"${finFiltro.status === 'pago' ? ' selected' : ''}>Pago</option>
+        <option value="pendente"${finFiltro.status === 'pendente' ? ' selected' : ''}>Repasse pendente</option>
+        <option value="repassado"${finFiltro.status === 'repassado' ? ' selected' : ''}>Repassado</option>
+      </select>
+      ${(finFiltro.mes || finFiltro.status !== 'todos') ? `<button id="finLimparFiltro" class="topbar-btn" style="font-size:11px;padding:5px 10px">✕ Limpar</button>` : ''}
+    </div>`;
+
+    // Aplica filtros (competência mais recente primeiro)
+    const bateStatus = (item, campo) => {
+      if (finFiltro.status === 'todos') return true;
+      return item[campo] === finFiltro.status;
+    };
+    const cobrancas = cobrancasFull
+      .filter(c => !finFiltro.mes || c.competencia === finFiltro.mes)
+      .filter(c => finFiltro.status === 'todos' || ['previsto','atrasado','pago'].includes(finFiltro.status) && c.status === finFiltro.status)
+      .sort((a, b) => (b.competencia || '').localeCompare(a.competencia || ''));
+    const repasses = repassesFull
+      .filter(r => !finFiltro.mes || r.competencia === finFiltro.mes)
+      .filter(r => finFiltro.status === 'todos' || ['pendente','repassado'].includes(finFiltro.status) && r.status === finFiltro.status)
+      .sort((a, b) => (b.competencia || '').localeCompare(a.competencia || ''));
+
+    // ─── LINHAS ─────────────────────────────────────────────────────────────
     const linhaCob = c => {
       const [lbl, cor] = COB_STATUS[c.status] || [c.status, '#6b7280'];
       const acao = podeBaixar ? (c.status === 'pago'
@@ -2943,7 +3140,6 @@ async function carregarFinanceiro() {
     };
     const linhaRep = r => {
       const [lbl, cor] = REP_STATUS[r.status] || [r.status, '#6b7280'];
-      // Financeiro pode ajustar o valor (a conta automática é uma estimativa).
       const valorCell = podeBaixar
         ? `<input type="number" step="0.01" min="0" class="rep-valor" data-id="${r.id}" value="${r.valorRepasse != null ? r.valorRepasse : 0}" style="width:100px;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
            <button class="topbar-btn btn-fin" data-tipo="rep-valor" data-id="${r.id}" style="font-size:10px;padding:3px 7px">Salvar</button>`
@@ -2958,9 +3154,14 @@ async function carregarFinanceiro() {
     };
     const h = t => `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-primary);margin:16px 0 8px">${t}</div>`;
 
-    secaoFinanceiro.innerHTML = alertaHtml
-      + h('Cobranças (locatário)') + (cobrancas.map(linhaCob).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhuma.</p>')
-      + h('Repasses (proprietário)') + (repasses.map(linhaRep).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhum.</p>');
+    secaoFinanceiro.innerHTML = kpiHtml + alertaHtml + filtroHtml
+      + h(`Cobranças · locatário (${cobrancas.length})`) + (cobrancas.map(linhaCob).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhuma cobrança neste filtro.</p>')
+      + h(`Repasses · proprietário (${repasses.length})`) + (repasses.map(linhaRep).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhum repasse neste filtro.</p>');
+
+    // Handlers dos filtros
+    document.getElementById('finFiltroMes')?.addEventListener('change', (e) => { finFiltro.mes = e.target.value; carregarFinanceiro(); });
+    document.getElementById('finFiltroStatus')?.addEventListener('change', (e) => { finFiltro.status = e.target.value; carregarFinanceiro(); });
+    document.getElementById('finLimparFiltro')?.addEventListener('click', () => { finFiltro.mes = ''; finFiltro.status = 'todos'; carregarFinanceiro(); });
 
     if (podeBaixar) {
       secaoFinanceiro.querySelectorAll('.btn-fin').forEach(btn => {
