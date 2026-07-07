@@ -38,7 +38,12 @@ jobs:
         run: node -e "JSON.parse(require('fs').readFileSync('firebase.json','utf8'))"
 
       - name: Validar firestore.rules (existe?)
-        run: test -f firestore.rules && echo "OK — regras do Firestore presentes" || (echo "AVISO: firestore.rules ausente" && exit 0)
+        run: |
+          if [ -f firestore.rules ]; then
+            echo "OK - regras do Firestore presentes"
+          else
+            echo "AVISO: firestore.rules ausente (ok, so aviso)"
+          fi
 
       - name: Checar arquivos essenciais do renderer
         run: |
