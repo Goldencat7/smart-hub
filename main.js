@@ -285,8 +285,12 @@ ipcMain.handle('verificar-atualizacao', async () => {
 
 // ─── Templates de Marketing ──────────────────────────────────────────────────
 ipcMain.on('abrir-template', async (_e, fileName) => {
+  const raw = String(fileName || '');
+  // URL absoluta (Firebase Storage etc): só aceita https/http — outros esquemas são rejeitados.
+  const ehUrlHttps = /^https:\/\//i.test(raw);
+  const ehUrlHttp  = /^http:\/\//i.test(raw);
   // Só nomes de arquivo simples (sem barras) — defesa extra contra path traversal
-  const nome = path.basename(String(fileName || ''));
+  const nome = path.basename(raw);
   const w = new BrowserWindow({
     width: 1280, height: 860,
     autoHideMenuBar: true,
@@ -298,8 +302,18 @@ ipcMain.on('abrir-template', async (_e, fileName) => {
     }
   });
   try {
-    const { url } = await iniciarServidorMarketing();
-    await w.loadURL(`${url}/${encodeURIComponent(nome)}`);
+    if (ehUrlHttps || ehUrlHttp) {
+      // Só permite hostnames do Firebase Storage (defesa contra abrir qualquer site)
+      const u = new URL(raw);
+      const hostOk = u.hostname === 'firebasestorage.googleapis.com'
+        || u.hostname.endsWith('.firebaseapp.com')
+        || u.hostname.endsWith('.web.app');
+      if (!hostOk) throw new Error('Host não permitido: ' + u.hostname);
+      await w.loadURL(raw);
+    } else {
+      const { url } = await iniciarServidorMarketing();
+      await w.loadURL(`${url}/${encodeURIComponent(nome)}`);
+    }
   } catch (err) {
     console.warn('Erro ao abrir template:', err.message);
     if (!w.isDestroyed()) w.destroy();

@@ -490,7 +490,7 @@ function renderCentro() {
     secaoMarketing.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
-    setTimeout(iniciarCarrosseis, 50); // aguarda render pra medir scrollWidth
+    carregarMarketing();
     return;
   }
 
@@ -1162,6 +1162,7 @@ onAuthStateChanged(auth, async (user) => {
     appsPermitidos = perm.data.apps || [];
     temDrivesFotografia = !!perm.data.drives_fotografia;
     temPermTI = !!perm.data.ti;
+    temPermMarketing = !!perm.data.marketing_gerenciar;
     betaLocacoes = !!perm.data.loc_beta;
     try {
       const v = await window.hubApi.getAppVersion();
@@ -1829,6 +1830,8 @@ if (btnAbrirDrive) btnAbrirDrive.addEventListener('click', () => window.open(DRI
 
 // Abrir template de marketing numa janela dedicada
 document.getElementById('secaoMarketing').addEventListener('click', (e) => {
+  // No modo gerenciar, os cliques têm handlers próprios; deixa o modo default só pro modo visualizar.
+  if (mktModoGerenciar) return;
   // Navegação do carrossel
   const navBtn = e.target.closest('.mkt-nav-btn');
   if (navBtn) {
@@ -1840,6 +1843,290 @@ document.getElementById('secaoMarketing').addEventListener('click', (e) => {
   const card = e.target.closest('.mkt-card');
   if (!card) return;
   window.hubApi.abrirTemplate(card.dataset.template);
+});
+
+// ─── Marketing dinâmico + gerenciamento ─────────────────────────────────────
+const listarMarketingConfig = httpsCallable(fns, 'listarMarketingConfig');
+const salvarMarketingConfig = httpsCallable(fns, 'salvarMarketingConfig');
+let mktConfig = { sanfonas: [] };
+let mktModoGerenciar = false;
+let temPermMarketing = false; // vem do getMinhasPermissoes
+
+// Paleta de ícones pra escolher na sanfona (clicável — não precisa digitar emoji)
+const MKT_EMOJIS = ['🏆','🏠','🏡','🏘️','🏢','🔑','💰','💎','📣','📢','⭐','🌟','✨','🔥','🎯','🎉','🎁','🥳','📸','🖼️','🎨','👑','❤️','✅','📌','🚀','💼','🛋️','🌆','🏅','🤝','📈'];
+
+async function carregarMarketing() {
+  const cont = document.getElementById('mktContainer');
+  const toolbar = document.getElementById('mktToolbar');
+  const info = document.getElementById('mktToolbarInfo');
+  toolbar.hidden = !(temPermMarketing || isAdmin);
+  if (info) info.textContent = mktModoGerenciar ? 'Modo edição — arraste/edite/remova. Clique em Salvar quando terminar.' : '';
+  const btnG = document.getElementById('btnMktGerenciar');
+  if (btnG) btnG.textContent = mktModoGerenciar ? '← Voltar' : '⚙ Gerenciar';
+  cont.innerHTML = '<p class="muted" style="text-align:center;padding:32px 0">Carregando templates...</p>';
+  try {
+    const r = await listarMarketingConfig({});
+    mktConfig.sanfonas = (r.data?.sanfonas || []).slice().sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    if (mktModoGerenciar) renderMarketingGerenciar();
+    else renderMarketingVisualizar();
+  } catch (e) {
+    cont.innerHTML = `<p style="color:var(--danger);text-align:center;padding:24px">Erro ao carregar: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function urlArquivo(caminho) {
+  // Se for URL http, usa direto; senão é arquivo local
+  if (!caminho) return '';
+  if (/^https?:/.test(caminho)) return caminho;
+  return caminho;
+}
+
+function renderMarketingVisualizar() {
+  const cont = document.getElementById('mktContainer');
+  cont.innerHTML = mktConfig.sanfonas.map(s => {
+    const templates = (s.templates || []).slice().sort((a,b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    return `<details class="mkt-accordion" ${s.aberta ? 'open' : ''}>
+      <summary class="mkt-accordion-head">${escapeHtml(s.emoji || '')} ${escapeHtml(s.titulo || '')}</summary>
+      <div class="mkt-carousel-wrap">
+        <button class="mkt-nav-btn mkt-prev" aria-label="Anterior">‹</button>
+        <div class="mkt-carousel">
+          ${templates.map(t => `
+            <div class="mkt-card" data-template="${escapeHtml(t.arquivo)}">
+              <div class="mkt-thumb"><img src="${escapeHtml(urlArquivo(t.capa))}" alt="${escapeHtml(t.descricao)}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:11px\\'>sem capa</div>'"></div>
+              <div class="mkt-info"><span class="mkt-desc">${escapeHtml(t.descricao)}</span></div>
+              <button class="mkt-btn">Abrir editor ↗</button>
+            </div>`).join('')}
+        </div>
+        <button class="mkt-nav-btn mkt-next" aria-label="Próximo">›</button>
+      </div>
+    </details>`;
+  }).join('') || '<p class="muted" style="text-align:center;padding:32px 0">Nenhuma sanfona configurada.</p>';
+  requestAnimationFrame(() => iniciarCarrosseis());
+}
+
+function renderMarketingGerenciar() {
+  const cont = document.getElementById('mktContainer');
+  const esc = escapeHtml;
+  cont.innerHTML = `
+    <div style="background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:16px">
+      ⚠ Você está no modo edição. As mudanças só entram no ar quando clicar em <strong>Salvar</strong>.
+    </div>
+    ${mktConfig.sanfonas.map((s, si) => `
+      <div class="mkt-edit-sanfona" data-si="${si}" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+          <div class="mkt-emoji-wrap" style="display:flex;align-items:stretch">
+            <input class="mkt-edit-emoji" data-si="${si}" value="${esc(s.emoji || '')}" placeholder="🏆" maxlength="4" style="width:40px;font-size:18px;text-align:center;padding:6px 2px;border:1px solid var(--border);border-right:none;border-radius:6px 0 0 6px;background:var(--bg);color:var(--text-primary)">
+            <button type="button" class="mkt-emoji-toggle" data-si="${si}" title="Escolher ícone" style="border:1px solid var(--border);border-radius:0 6px 6px 0;background:var(--surface);color:var(--text-muted);cursor:pointer;padding:0 6px;font-size:11px">▾</button>
+          </div>
+          <input class="mkt-edit-titulo" data-si="${si}" value="${esc(s.titulo || '')}" placeholder="Título da sanfona" style="flex:1;min-width:180px;font-size:13px;font-weight:600;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
+          <label class="auth-label-inline" style="font-size:11px"><input type="checkbox" class="mkt-edit-aberta" data-si="${si}" ${s.aberta ? 'checked' : ''}> abre por padrão</label>
+          <div style="display:flex;gap:4px">
+            <button class="topbar-btn mkt-sanfona-up" data-si="${si}" ${si === 0 ? 'disabled' : ''} title="Subir" style="padding:4px 8px">▲</button>
+            <button class="topbar-btn mkt-sanfona-down" data-si="${si}" ${si === mktConfig.sanfonas.length - 1 ? 'disabled' : ''} title="Descer" style="padding:4px 8px">▼</button>
+            <button class="topbar-btn perigo mkt-sanfona-del" data-si="${si}" title="Excluir sanfona" style="padding:4px 8px">🗑</button>
+          </div>
+        </div>
+        <div class="mkt-emoji-pop" data-si="${si}" style="display:none;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:2px;padding:8px;margin-bottom:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+          ${MKT_EMOJIS.map(e => `<button type="button" class="mkt-emoji-opt" data-si="${si}" data-emoji="${e}" title="${e}" style="font-size:18px;padding:6px 4px;border:none;background:transparent;cursor:pointer;border-radius:4px;line-height:1">${e}</button>`).join('')}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${(s.templates || []).sort((a,b) => (a.ordem ?? 0) - (b.ordem ?? 0)).map((t, ti) => `
+            <div class="mkt-edit-template" data-si="${si}" data-ti="${ti}" style="display:flex;gap:10px;align-items:flex-start;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px">
+              <div style="width:90px;height:120px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+                ${t.capa ? `<img src="${esc(urlArquivo(t.capa))}" style="width:100%;height:100%;object-fit:cover" alt="">` : `<span class="muted" style="font-size:10px">sem capa</span>`}
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                <input class="mkt-edit-desc" data-si="${si}" data-ti="${ti}" value="${esc(t.descricao || '')}" placeholder="Descrição" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+                <div style="display:flex;gap:6px;align-items:center">
+                  <span style="font-size:11px;color:var(--text-muted);min-width:70px">Arquivo HTML:</span>
+                  <input class="mkt-edit-arquivo" data-si="${si}" data-ti="${ti}" value="${esc(t.arquivo || '')}" placeholder="ex: vendido-v1-faixa.html ou URL" style="flex:1;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);font-family:monospace">
+                  <button class="topbar-btn mkt-upload-html" data-si="${si}" data-ti="${ti}" title="Substituir arquivo HTML" style="font-size:10px;padding:4px 8px">📄 Upload</button>
+                </div>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <span style="font-size:11px;color:var(--text-muted);min-width:70px">Capa (imagem):</span>
+                  <input class="mkt-edit-capa" data-si="${si}" data-ti="${ti}" value="${esc(t.capa || '')}" placeholder="ex: marketing/assets/x.jpg ou URL" style="flex:1;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);font-family:monospace">
+                  <button class="topbar-btn mkt-upload-capa" data-si="${si}" data-ti="${ti}" title="Substituir capa" style="font-size:10px;padding:4px 8px">🖼 Upload</button>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px">
+                <button class="topbar-btn mkt-tpl-up" data-si="${si}" data-ti="${ti}" ${ti === 0 ? 'disabled' : ''} title="Subir" style="padding:2px 6px;font-size:10px">▲</button>
+                <button class="topbar-btn mkt-tpl-down" data-si="${si}" data-ti="${ti}" ${ti === (s.templates || []).length - 1 ? 'disabled' : ''} title="Descer" style="padding:2px 6px;font-size:10px">▼</button>
+                <button class="topbar-btn perigo mkt-tpl-del" data-si="${si}" data-ti="${ti}" title="Excluir template" style="padding:2px 6px;font-size:10px">✕</button>
+              </div>
+            </div>`).join('')}
+          <button class="topbar-btn mkt-add-tpl" data-si="${si}" style="align-self:flex-start;font-size:11px;padding:6px 12px">+ Adicionar template</button>
+        </div>
+      </div>`).join('')}
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="topbar-btn primario" id="btnMktAddSanfona" style="font-size:12px">+ Nova sanfona</button>
+      <button class="topbar-btn primario" id="btnMktSalvar" style="font-size:12px;margin-left:auto">💾 Salvar alterações</button>
+    </div>`;
+  ligarHandlersGerenciar();
+}
+
+// Re-render agendado pra DEPOIS do evento de clique atual.
+// Trocar o innerHTML de forma síncrona dentro do container com overflow:auto
+// (.hub-main), no meio do clique, desincroniza o hit-testing do Chromium:
+// cliques/digitação param de responder até um relayout (por isso "sair e voltar"
+// consertava — remontava a seção). Deferir com rAF quebra esse padrão, igual ao
+// caminho async do carregarMarketing (que renderiza após o await).
+function agendarRerender(){ requestAnimationFrame(renderMarketingGerenciar); }
+
+function ligarHandlersGerenciar() {
+  const cont = document.getElementById('mktContainer');
+  // Edições inline — persistem no mktConfig imediatamente (só valem quando Salvar)
+  cont.querySelectorAll('.mkt-edit-titulo').forEach(inp => inp.addEventListener('input', e => { mktConfig.sanfonas[+e.target.dataset.si].titulo = e.target.value; }));
+  cont.querySelectorAll('.mkt-edit-emoji').forEach(inp => inp.addEventListener('input', e => { mktConfig.sanfonas[+e.target.dataset.si].emoji = e.target.value; }));
+  // Seletor de ícone: abre/fecha a paleta
+  cont.querySelectorAll('.mkt-emoji-toggle').forEach(btn => btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const pop = btn.closest('.mkt-edit-sanfona').querySelector('.mkt-emoji-pop');
+    const abrindo = pop.style.display === 'none' || !pop.style.display;
+    cont.querySelectorAll('.mkt-emoji-pop').forEach(p => { p.style.display = 'none'; }); // fecha as outras
+    pop.style.display = abrindo ? 'grid' : 'none';
+  }));
+  // Clique num ícone da paleta: aplica na sanfona e fecha
+  cont.querySelectorAll('.mkt-emoji-opt').forEach(opt => opt.addEventListener('click', e => {
+    e.stopPropagation();
+    const si = +opt.dataset.si;
+    const emoji = opt.dataset.emoji;
+    mktConfig.sanfonas[si].emoji = emoji;
+    const inp = cont.querySelector(`.mkt-edit-emoji[data-si="${si}"]`);
+    if (inp) inp.value = emoji;
+    opt.closest('.mkt-emoji-pop').style.display = 'none';
+  }));
+  cont.querySelectorAll('.mkt-edit-aberta').forEach(inp => inp.addEventListener('change', e => { mktConfig.sanfonas[+e.target.dataset.si].aberta = e.target.checked; }));
+  cont.querySelectorAll('.mkt-edit-desc').forEach(inp => inp.addEventListener('input', e => {
+    const si = +e.target.dataset.si, ti = +e.target.dataset.ti;
+    mktConfig.sanfonas[si].templates[ti].descricao = e.target.value;
+  }));
+  cont.querySelectorAll('.mkt-edit-arquivo').forEach(inp => inp.addEventListener('input', e => {
+    const si = +e.target.dataset.si, ti = +e.target.dataset.ti;
+    mktConfig.sanfonas[si].templates[ti].arquivo = e.target.value;
+  }));
+  cont.querySelectorAll('.mkt-edit-capa').forEach(inp => inp.addEventListener('input', e => {
+    const si = +e.target.dataset.si, ti = +e.target.dataset.ti;
+    mktConfig.sanfonas[si].templates[ti].capa = e.target.value;
+  }));
+  // Reordenar sanfonas
+  cont.querySelectorAll('.mkt-sanfona-up').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.si; if (i === 0) return;
+    [mktConfig.sanfonas[i-1], mktConfig.sanfonas[i]] = [mktConfig.sanfonas[i], mktConfig.sanfonas[i-1]];
+    mktConfig.sanfonas.forEach((s, idx) => { s.ordem = idx; });
+    agendarRerender();
+  }));
+  cont.querySelectorAll('.mkt-sanfona-down').forEach(b => b.addEventListener('click', () => {
+    const i = +b.dataset.si; if (i >= mktConfig.sanfonas.length - 1) return;
+    [mktConfig.sanfonas[i+1], mktConfig.sanfonas[i]] = [mktConfig.sanfonas[i], mktConfig.sanfonas[i+1]];
+    mktConfig.sanfonas.forEach((s, idx) => { s.ordem = idx; });
+    agendarRerender();
+  }));
+  cont.querySelectorAll('.mkt-sanfona-del').forEach(b => b.addEventListener('click', () => {
+    if (!confirm('Excluir esta sanfona e todos os templates dela?')) return;
+    mktConfig.sanfonas.splice(+b.dataset.si, 1);
+    agendarRerender();
+  }));
+  // Reordenar/excluir templates
+  cont.querySelectorAll('.mkt-tpl-up').forEach(b => b.addEventListener('click', () => {
+    const si = +b.dataset.si, ti = +b.dataset.ti; if (ti === 0) return;
+    const arr = mktConfig.sanfonas[si].templates;
+    [arr[ti-1], arr[ti]] = [arr[ti], arr[ti-1]];
+    arr.forEach((t, idx) => { t.ordem = idx; });
+    agendarRerender();
+  }));
+  cont.querySelectorAll('.mkt-tpl-down').forEach(b => b.addEventListener('click', () => {
+    const si = +b.dataset.si, ti = +b.dataset.ti;
+    const arr = mktConfig.sanfonas[si].templates;
+    if (ti >= arr.length - 1) return;
+    [arr[ti+1], arr[ti]] = [arr[ti], arr[ti+1]];
+    arr.forEach((t, idx) => { t.ordem = idx; });
+    agendarRerender();
+  }));
+  cont.querySelectorAll('.mkt-tpl-del').forEach(b => b.addEventListener('click', () => {
+    if (!confirm('Excluir este template da sanfona?')) return;
+    const si = +b.dataset.si, ti = +b.dataset.ti;
+    mktConfig.sanfonas[si].templates.splice(ti, 1);
+    agendarRerender();
+  }));
+  // Adicionar template
+  cont.querySelectorAll('.mkt-add-tpl').forEach(b => b.addEventListener('click', () => {
+    const si = +b.dataset.si;
+    mktConfig.sanfonas[si].templates.push({
+      id: 'tpl-' + Date.now(),
+      arquivo: '',
+      capa: '',
+      descricao: 'Novo template',
+      ordem: mktConfig.sanfonas[si].templates.length
+    });
+    agendarRerender();
+  }));
+  // Uploads
+  cont.querySelectorAll('.mkt-upload-html').forEach(b => b.addEventListener('click', () => uploadArquivoTemplate(+b.dataset.si, +b.dataset.ti, 'arquivo')));
+  cont.querySelectorAll('.mkt-upload-capa').forEach(b => b.addEventListener('click', () => uploadArquivoTemplate(+b.dataset.si, +b.dataset.ti, 'capa')));
+  // Nova sanfona
+  document.getElementById('btnMktAddSanfona').addEventListener('click', () => {
+    mktConfig.sanfonas.push({
+      id: 'sanfona-' + Date.now(),
+      titulo: 'Nova sanfona',
+      emoji: '📁',
+      ordem: mktConfig.sanfonas.length,
+      aberta: false,
+      templates: []
+    });
+    agendarRerender();
+  });
+  // Salvar
+  document.getElementById('btnMktSalvar').addEventListener('click', async () => {
+    const btn = document.getElementById('btnMktSalvar');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+      await salvarMarketingConfig({ sanfonas: mktConfig.sanfonas });
+      alert('✓ Alterações salvas! Voltando pra visão normal.');
+      mktModoGerenciar = false;
+      carregarMarketing();
+    } catch (e) {
+      alert('Erro ao salvar: ' + e.message);
+      btn.disabled = false; btn.textContent = '💾 Salvar alterações';
+    }
+  });
+}
+
+async function uploadArquivoTemplate(si, ti, campo) {
+  const aceito = campo === 'arquivo' ? '.html,text/html' : 'image/*';
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = aceito;
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    // Limite: 8MB pro HTML (templates bundled), 2MB pra imagem
+    const limite = campo === 'arquivo' ? 8 : 2;
+    if (file.size > limite * 1024 * 1024) { alert(`Arquivo muito grande. Máx ${limite}MB.`); return; }
+    try {
+      const sanfonaId = mktConfig.sanfonas[si].id;
+      const templateId = mktConfig.sanfonas[si].templates[ti].id;
+      const ext = campo === 'arquivo' ? 'html' : (file.name.split('.').pop() || 'jpg');
+      const path = `marketing/${sanfonaId}/${templateId}-${Date.now()}.${ext}`;
+      const ref = storageRef(storage, path);
+      const snap = await uploadBytesResumable(ref, file);
+      const url = await getDownloadURL(snap.ref);
+      mktConfig.sanfonas[si].templates[ti][campo] = url;
+      agendarRerender();
+    } catch (e) {
+      alert('Erro no upload: ' + e.message);
+    }
+  };
+  input.click();
+}
+
+document.getElementById('btnMktGerenciar')?.addEventListener('click', () => {
+  mktModoGerenciar = !mktModoGerenciar;
+  carregarMarketing();
+});
+
+// Clicar em qualquer lugar fora da paleta de ícones fecha ela
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.mkt-emoji-wrap') || e.target.closest('.mkt-emoji-pop')) return; // clique dentro do seletor/paleta: ignora
+  document.querySelectorAll('.mkt-emoji-pop').forEach(p => { p.style.display = 'none'; });
 });
 
 // Atualiza estado dos botões ‹ › ao scrollar

@@ -231,6 +231,12 @@ async function temPermissaoTI(auth) {
   return !!(snap.exists && snap.data().ti);
 }
 
+async function temPermissaoMarketing(auth) {
+  if (!auth) return false;
+  const snap = await db.collection('user_access').doc(auth.uid).get();
+  return !!(snap.exists && snap.data().marketing_gerenciar);
+}
+
 // Verifica se o usuário pode acessar um app (todos podem os normais; restritos só liberados/admin)
 async function temAcessoApp(auth, siteKey) {
   if (!RESTRICTED_APPS.includes(siteKey)) return true;
@@ -379,11 +385,12 @@ exports.getMinhasPermissoes = onCall(async (req) => {
   const drives_fotografia = !!dados.drives_fotografia;
   const loc_beta = !!dados.loc_beta;   // acesso de teste ao módulo de Locações (feature flag)
   const ti = !!dados.ti;
+  const marketing_gerenciar = !!dados.marketing_gerenciar;
   const relSnap = await db.collection('config').doc('release').get();
   const locacoesPublicadaEm = (relSnap.exists && relSnap.data().locacoesPublicadaEm) || ''; // versão liberada p/ todos
-  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, locacoesPublicadaEm, ti };
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, locacoesPublicadaEm, ti, marketing_gerenciar };
   const apps = dados.apps || [];
-  return { apps, isAdmin: false, drives_fotografia, loc_beta, locacoesPublicadaEm, ti };
+  return { apps, isAdmin: false, drives_fotografia, loc_beta, locacoesPublicadaEm, ti, marketing_gerenciar };
 });
 
 // (admin) Publica a versão atual da Gestão de Locações pra TODOS (ou volta pra teste com versao='').
@@ -415,6 +422,7 @@ exports.getUserAccess = onCall(async (req) => {
     drives_fotografia: !!dados.drives_fotografia,
     loc_beta: !!dados.loc_beta,
     ti: !!dados.ti,
+    marketing_gerenciar: !!dados.marketing_gerenciar,
     loc_role: (userRec && userRec.customClaims && userRec.customClaims.locRole) || 'corretor',
     loc_financeiro: !!(perfilSnap.exists && perfilSnap.data().financeiro)
   };
@@ -423,7 +431,7 @@ exports.getUserAccess = onCall(async (req) => {
 // (admin) Define quais apps restritos um usuário pode ver + o perfil de Locação
 exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
-  const { uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro, ti } = req.data || {};
+  const { uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro, ti, marketing_gerenciar } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
@@ -431,6 +439,7 @@ exports.setUserAccess = onCall(async (req) => {
     drives_fotografia: !!drives_fotografia,
     loc_beta: !!loc_beta,
     ti: !!ti,
+    marketing_gerenciar: !!marketing_gerenciar,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
   // Perfil de Locação (opcional): grava na claim locRole (autoridade) + loc_perfis p/ Financeiro.
@@ -447,7 +456,7 @@ exports.setUserAccess = onCall(async (req) => {
     }, { merge: true });
   }
   await registrarAudit(req.auth, 'alterou_permissoes', { tipo: 'usuario', id: uid },
-    { apps: limpos, drives_fotografia: !!drives_fotografia, loc_beta: !!loc_beta, ti: !!ti, loc_role: loc_role ?? null, loc_financeiro: !!loc_financeiro });
+    { apps: limpos, drives_fotografia: !!drives_fotografia, loc_beta: !!loc_beta, ti: !!ti, marketing_gerenciar: !!marketing_gerenciar, loc_role: loc_role ?? null, loc_financeiro: !!loc_financeiro });
   return { ok: true };
 });
 
@@ -2025,6 +2034,118 @@ exports.contarChamadosAbertos = onCall(async (req) => {
     .where('status', '==', 'aberto')
     .get();
   return { total: snap.size };
+});
+
+// ─── Marketing: config editável (sanfonas + templates) ─────────────────────
+// Semente com o layout hardcoded original. Se marketing_config/layout não existir,
+// a leitura retorna essa semente e persiste pra próximas leituras editáveis.
+const MARKETING_SEED = {
+  sanfonas: [
+    { id: 'vendido', titulo: 'Vendido', emoji: '🏆', ordem: 0, aberta: true, templates: [
+      { id: 'v1-faixa',     arquivo: 'vendido-v1-faixa.html',     capa: 'marketing/assets/vendido-v1-thumb.jpg',            descricao: 'Selo central · fundo navy',            ordem: 0 },
+      { id: 'v2-editorial', arquivo: 'vendido-v2-editorial.html', capa: 'marketing/assets/vendido-v2-thumb.jpg',            descricao: 'Faixa diagonal · fundo claro',         ordem: 1 },
+      { id: 'v3-elegante',  arquivo: 'vendido-v3-elegante.html',  capa: 'marketing/assets/vendido-v3-thumb.jpg',            descricao: 'Elegante · fundo navy',                ordem: 2 },
+      { id: 'v4-claro',     arquivo: 'vendido-v4-claro.html',     capa: 'marketing/assets/vendido-v4-thumb.jpg',            descricao: 'Editorial · fundo claro',              ordem: 3 },
+      { id: 'v5-2dias',     arquivo: 'vendido-v5-2dias.html',     capa: 'marketing/assets/vendido-v5-thumb.jpg',            descricao: 'Selo circular · "vendido em X dias"',  ordem: 4 },
+      { id: 'v6-rede-corretor', arquivo: 'vendido-v6-rede-corretor.html', capa: 'marketing/assets/vendido-v6-thumb.jpg',        descricao: 'Rede que vende · claro · com corretor', ordem: 5 }
+    ]},
+    { id: 'para-vender', titulo: 'Para Vender', emoji: '🏠', ordem: 1, aberta: false, templates: [
+      { id: 'anuncio-v3',            arquivo: 'anuncio-v3-galeria.html',              capa: 'marketing/assets/anuncio-v3-galeria-thumb.jpg',           descricao: 'Imóvel à venda — 3 fotos + preço + corretor', ordem: 0 },
+      { id: 'sonhos-editorial',      arquivo: 'anuncio-imovel-sonhos-editorial.html', capa: 'marketing/assets/anuncio-sonhos-editorial-thumb.jpg',     descricao: 'Editorial · galeria 3 fotos · fundo claro',   ordem: 1 },
+      { id: 'sonhos-corretor',       arquivo: 'anuncio-imovel-sonhos-corretor.html',  capa: 'marketing/assets/anuncio-sonhos-corretor-thumb.jpg',      descricao: 'Editorial + corretor · galeria 3 fotos',      ordem: 2 },
+      { id: 'apto-condominio',       arquivo: 'anuncio-apto-condominio.html',         capa: 'marketing/assets/anuncio-apto-condominio-thumb.jpg',      descricao: 'Apto à venda · condomínio completo',          ordem: 3 },
+      { id: 'anuncio-v4-semfoto',    arquivo: 'anuncio-v4-galeria-semfoto.html',      capa: 'marketing/assets/anuncio-v4-galeria-semfoto-thumb.jpg',   descricao: 'Galeria 3 fotos · sem corretor',              ordem: 4 }
+    ]},
+    { id: 'aniversario', titulo: 'Aniversário', emoji: '🎉', ordem: 2, aberta: false, templates: [
+      { id: 'aniv-story-1', arquivo: 'aniversario-story-1.html', capa: 'marketing/assets/aniversario-1-thumb.jpg', descricao: 'Aniversário · glass card · story 1080×1920', ordem: 0 },
+      { id: 'aniv-story-2', arquivo: 'aniversario-story-2.html', capa: 'marketing/assets/aniversario-2-thumb.jpg', descricao: 'Aniversário · destaque · story 1080×1920',   ordem: 1 }
+    ]},
+    { id: 'prontos', titulo: 'Templates Prontos', emoji: '✅', ordem: 3, aberta: false, templates: [
+      { id: 'imovel-escondido', arquivo: 'pronto-imovel-escondido.html', capa: 'marketing/assets/pronto-imovel-escondido-thumb.jpg', descricao: 'Imóvel escondido · método', ordem: 0 }
+    ]}
+  ]
+};
+
+// Versão do seed. Ao incrementar, o listarMarketingConfig faz merge das sanfonas/
+// templates NOVOS (por id) na config já salva, sem apagar o que o admin editou.
+// Assim dá pra publicar templates novos só editando o seed + deploy (sem escrita manual no banco).
+const MARKETING_SEED_VERSION = 2;
+
+// Faz merge do seed na config salva: adiciona sanfonas que faltam e, nas que já
+// existem (mesmo id), adiciona templates que faltam. Não remove nem sobrescreve o resto.
+function mergeMarketingSeed(atuais) {
+  const out = Array.isArray(atuais) ? atuais.map(s => ({ ...s, templates: [...(s.templates || [])] })) : [];
+  const porId = new Map(out.map(s => [s.id, s]));
+  let maxOrdem = out.reduce((m, s) => Math.max(m, s.ordem ?? 0), -1);
+  for (const seedS of MARKETING_SEED.sanfonas) {
+    const existente = porId.get(seedS.id);
+    if (!existente) {
+      out.push({ ...seedS, ordem: ++maxOrdem, templates: [...(seedS.templates || [])] });
+      continue;
+    }
+    const idsTpl = new Set((existente.templates || []).map(t => t.id));
+    let maxT = (existente.templates || []).reduce((m, t) => Math.max(m, t.ordem ?? 0), -1);
+    for (const seedT of (seedS.templates || [])) {
+      if (!idsTpl.has(seedT.id)) existente.templates.push({ ...seedT, ordem: ++maxT });
+    }
+  }
+  return out;
+}
+
+// (autenticado) Lê o layout do Marketing. Semeia na 1ª chamada se não existir.
+exports.listarMarketingConfig = onCall(async (req) => {
+  exigirAutenticado(req);
+  const ref = db.collection('marketing_config').doc('layout');
+  const snap = await ref.get();
+  if (!snap.exists) {
+    await ref.set({
+      sanfonas: MARKETING_SEED.sanfonas,
+      seedVersion: MARKETING_SEED_VERSION,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      seed: true
+    });
+    return { sanfonas: MARKETING_SEED.sanfonas };
+  }
+  const dados = snap.data();
+  // Se o seed subiu de versão, injeta os templates/sanfonas novos na config salva.
+  if ((dados.seedVersion || 1) < MARKETING_SEED_VERSION) {
+    const merged = mergeMarketingSeed(dados.sanfonas || []);
+    await ref.set({ sanfonas: merged, seedVersion: MARKETING_SEED_VERSION }, { merge: true });
+    return { sanfonas: merged };
+  }
+  return { sanfonas: dados.sanfonas || [] };
+});
+
+// (marketing_gerenciar OR admin) Salva o layout inteiro. Substitui.
+exports.salvarMarketingConfig = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const pode = ehAdminAuth(auth) || (await temPermissaoMarketing(auth));
+  if (!pode) throw new HttpsError('permission-denied', 'Sem permissão para gerenciar o Marketing.');
+  const { sanfonas } = req.data || {};
+  if (!Array.isArray(sanfonas)) throw new HttpsError('invalid-argument', 'sanfonas deve ser um array.');
+  // Sanitização mínima: cada item precisa de id + título, templates são opcionais
+  const limpas = sanfonas.map((s, i) => ({
+    id: String(s.id || '').slice(0, 40) || `sanfona-${Date.now()}-${i}`,
+    titulo: String(s.titulo || '').slice(0, 60),
+    emoji: String(s.emoji || '').slice(0, 8),
+    ordem: Number.isFinite(s.ordem) ? s.ordem : i,
+    aberta: !!s.aberta,
+    templates: (Array.isArray(s.templates) ? s.templates : []).map((t, j) => ({
+      id: String(t.id || '').slice(0, 60) || `tpl-${Date.now()}-${j}`,
+      arquivo: String(t.arquivo || '').slice(0, 500),
+      capa: String(t.capa || '').slice(0, 500),
+      descricao: String(t.descricao || '').slice(0, 200),
+      ordem: Number.isFinite(t.ordem) ? t.ordem : j
+    }))
+  }));
+  await db.collection('marketing_config').doc('layout').set({
+    sanfonas: limpas,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    atualizadoPor: auth.uid
+  }, { merge: true });
+  await registrarAudit(auth, 'salvou_marketing', { tipo: 'marketing_config', id: 'layout' },
+    { sanfonas: limpas.length, templatesTotais: limpas.reduce((s,x) => s + x.templates.length, 0) });
+  return { ok: true };
 });
 
 exports.excluirChamado = onCall(async (req) => {
