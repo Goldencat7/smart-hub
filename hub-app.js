@@ -1383,7 +1383,7 @@ function montarGradeMes(ano, mes, mini=false){
       const hora = e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       return `<span class="cal-ev-pill ${cls}" data-ev-id="${e.id}" title="${escapeHtml(hora + ' ' + e.titulo)}">
         <span class="cal-ev-hora">${hora}</span>
-        <span>${escapeHtml(e.titulo)}</span>
+        <span class="cal-ev-tit-wrap"><span class="cal-ev-tit">${escapeHtml(e.titulo)}</span></span>
       </span>`;
     }).join('');
     const maisHtml = restantes > 0 ? `<span class="cal-ev-mais">+${restantes} mais</span>` : '';
@@ -1524,6 +1524,20 @@ async function renderCalendarioCompleto(){
     });
   } else {
     calGrade.innerHTML = montarGradeMes(calAno, calMes);
+    // Título que não cabe no quadrado rola de lado (LED). Mede num double-rAF
+    // (layout já assentado) e só anima os que de fato transbordam; hora/dia fixos.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      calGrade.querySelectorAll('.cal-ev-tit').forEach(t => {
+        t.classList.remove('marquee');
+        t.style.removeProperty('--shift'); t.style.removeProperty('--dur');
+        const over = Math.round(t.scrollWidth - t.parentElement.clientWidth);
+        if (over > 4) {
+          t.classList.add('marquee');
+          t.style.setProperty('--shift', `-${over}px`);
+          t.style.setProperty('--dur', `${Math.max(4, Math.round(over / 15) + 3)}s`);
+        }
+      });
+    }));
     calGrade.querySelectorAll('.cal-dia[data-dia]').forEach(b => {
       b.addEventListener('click', (e) => {
         // Se clicou numa pílula, abre o evento direto
@@ -2978,9 +2992,10 @@ function renderDetalheImovel(d) {
   </div>`;
   const esteiraHtml = sec('Esteira de Locação', locFormHtml);
 
-  // Layout em 2 colunas: dados cadastrais à esquerda · gestão/ações à direita
-  const colEsq = locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml;
-  const colDir = esteiraHtml + gestaoHtml + vistoriaHtml + fichasImovelHtml;
+  // Layout em 2 colunas: dados cadastrais + histórico à esquerda (com as fichas e
+  // o checklist logo abaixo do histórico) · gestão/vistoria à direita.
+  const colEsq = locHtml + imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml + histHtml + fichasImovelHtml + esteiraHtml;
+  const colDir = gestaoHtml + vistoriaHtml;
   const conteudo = colEsq + colDir;
   if (!conteudo) return '<p style="color:var(--text-muted)">Sem dados.</p>';
   const protocolo = im.numeroProtocolo != null ? `<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><span style="font-size:11px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:6px;letter-spacing:.06em">PROTOCOLO ${fmtProtocolo(im)}</span></div>` : '';
