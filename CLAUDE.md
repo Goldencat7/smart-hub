@@ -1,8 +1,10 @@
 # Remax Smart Hub — contexto do projeto
 
 App **Electron** (desktop Windows) da imobiliária RE/MAX Smart. Dá acesso rápido às
-plataformas de trabalho com **autologin**, tem **login próprio** (Firebase), **agenda**,
-**documentos** (Google Drive) e uma **área admin**.
+plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
+(Firebase, com 2FA), **Gestão de Locações** (módulo completo, em dark launch), **Marketing**
+(templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**, **bloco de
+notas** e uma **área admin**. Versão publicada atual: **1.0.84** (auto-update via GitHub Releases).
 
 ## Stack
 
@@ -17,6 +19,10 @@ plataformas de trabalho com **autologin**, tem **login próprio** (Firebase), **
 - **Conta só por convite**: criação via `criarContaComCodigo` (valida código). Por isso "logado = convidado" e o `getCredentials` pode confiar em qualquer autenticado.
 - **Admin** via custom claim `admin`. Bootstrap admin UID: `OwcT6wCrXMgJ0tPADMUdKdBB8h32` (em `functions/index.js` e `hub-app.js`).
 - **Apps restritos** (ex.: ClickSign): só aparecem pra quem o admin liberar (coleção `user_access/{uid}`). Admin libera em Admin → Usuários → Permissões.
+- **Permissões granulares por pessoa** (concedidas no painel de Admin, nunca elevação em bloco): `marketing_gerenciar` (editar Marketing — NÃO herda de admin), `ti` (Suporte), `drives_fotografia`, `analise_locador`, `loc_beta` (acesso de teste às Locações). Perfil de Locação = claim `locRole` (gestor/administrativo/corretor) + `loc_financeiro`.
+- **Escrita das coleções de Locação = SEMPRE via Cloud Function** (Admin SDK). Regras do Firestore negam write do cliente; leitura filtrada por `corretorUid` (regra de ouro). Idem cobranças/repasses (integridade do financeiro).
+- **Portais externos** (proprietário/inquilino) são PÚBLICOS, sem login: o **token** (`portal_tokens`, `crypto.randomBytes`) é a credencial; cada função devolve só os dados daquela pessoa. **Anonymous Auth NUNCA pode ser habilitado** (o `getCredentials` confia em qualquer autenticado).
+- **2FA (TOTP)** via Firebase MFA; **credenciais dos sistemas criptografadas** (KMS) em repouso; **auditoria** (`registrarAudit` → `audit_log`); **backup Firestore diário** (`gs://remax-smart-hub-backups/`, retenção 30d).
 
 ## Apps / autologin
 
@@ -26,16 +32,21 @@ plataformas de trabalho com **autologin**, tem **login próprio** (Firebase), **
 
 ## Funcionalidades
 
-- **Sidebar** com categorias (Captação, CRM, Vistoria, Locação, Performance, Treinamento, Agenda, Documentos, Configurações).
-- **Agenda** (`events` no Firestore): admin marca reuniões e escolhe participantes (ou "todos"); cada um cria os próprios; mini calendário + relógio no painel direito; calendário completo na aba Agenda; alerta 1h antes. Functions: `criarEvento`, `listarEventos`, `excluirEvento`, `listarPessoas`.
-- **Documentos**: embed da pasta do Google Drive (id `10dlIlDyGyvyMCZQUWbt2_YVDdXgfmlzp`, compartilhada "qualquer um com link: leitor"). Admin gerencia no Drive; o Hub só exibe. Sem upload pelo app (limitação de service account + tamanho).
-- **Configurações**: perfil (nome + foto via upload, guardada em `user_profiles` no Firestore como base64 pequena). Functions: `getMeuPerfil`, `salvarMeuPerfil`.
-- **Admin**: credenciais dos sistemas, códigos de convite, usuários (admin/excluir/permissões), "último app acessado".
+- **Sidebar** (`CATEGORIAS` em `hub-app.js`): Captação, CRM, Vistoria, **Locação** (Gestão de Locações), Performance, Treinamento, **Marketing**, ClickSign, Agenda, **Cadastro** (fichas), Fotografia, Reunião, Sala de Reunião, IA, Calculadoras, Bloco de Notas, WhatsApp, Suporte/TI, Configurações. Categorias podem ser ocultadas por permissão (`soTI`, `beta`, etc.) ou serem "app direto".
+- **Gestão de Locações** (aba Locação, **dark launch** por `loc_beta`): módulo completo — captação (ficha do locador vira imóvel na esteira) → análise do locatário + garantia → contrato → cobrança/repasse → vistorias → alertas → relatórios (com export CSV). Sub-apps: Painel, Imóveis (esteira com filtro por status), Financeiro, Alertas, Relatórios, Fichas. **Checklist automático** (6 itens marcam sozinhos; esteira avança até "Aprovado" sozinha). **Portais externos** (Fase 1.5): proprietário vê repasses, inquilino vê pagamentos — por link/token, sem login (`public/portal-proprietario.html`, `portal-inquilino.html`). Detalhes completos na memória `project-gestao-locacoes`. Fase 2 (bancária) em `FASE-2-INTEGRACAO-BANCARIA.md`.
+- **Marketing** (dinâmico, editável no painel): sanfonas + templates em Firestore `marketing_config/layout` (semente `MARKETING_SEED` + versão/merge); ⚙ Gerenciar (permissão `marketing_gerenciar`) edita/reordena/faz upload de HTML e capa pro Storage. Templates abrem em janela dedicada (`abrir-template` no `main.js`).
+- **Cadastro / Fichas** (web, Firebase Hosting — NÃO vão no .exe): locador, PF, PJ, locação c/ fiador, vendedor, proposta, fiança (`public/ficha-*.html`). Cliente preenche por link (`geraLink`); upload de documentos com **download token próprio** (ver `project-fichas-documentos`). Com a Locação ativa, as fichas de locação migram pra Locação→Fichas.
+- **Agenda** (`events` no Firestore): reuniões com participantes (ou "todos"); mini calendário + relógio; calendário completo; alerta 1h antes; **integra com Google Agenda/Tarefas**. Functions: `criarEvento`, `listarEventos`, `excluirEvento`, `listarPessoas`.
+- **Calculadoras** (`public/calculadoras.html`): aluguel proporcional + multa rescisória (conferidas com o Excel do financeiro).
+- **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.
+- **Documentos (Google Drive)**: embed da pasta do Drive — **desabilitado temporariamente** no `index.html` (limitação de service account/tamanho).
+- **Configurações**: perfil (nome + foto, `user_profiles`, base64). Functions: `getMeuPerfil`, `salvarMeuPerfil`.
+- **Admin**: credenciais dos sistemas (cripto KMS), códigos de convite, usuários (admin/excluir/**permissões granulares**), **painel de Lançamento** (controla o dark launch das Locações: "Publicar para todos"), banners (reordenáveis), "último app acessado".
 
 ## Como PUBLICAR uma nova versão (os 4 passos)
 
 1. Ajustar os arquivos.
-2. Subir a versão no `package.json` (ex.: `1.0.10` -> `1.0.11`).
+2. Subir a versão no `package.json` (ex.: `1.0.84` -> `1.0.85`).
 3. `$env:GH_TOKEN="<token github com escopo repo>"; npm run publish` (compila o .exe e sobe pro GitHub Releases; auto-update pega).
 4. `git add -A; git commit -m "..."; git push origin main`.
 
@@ -65,7 +76,7 @@ firebase deploy --only functions --project remax-smart-hub
 - **Liberar pra todos**: quando aprovar, Admin → Lançamento → "Publicar para todos" (tira o dark launch do `loc_beta`).
 - **Fase 2 — integração bancária (cobrança automática)**: BLOQUEADA por decisão + cadastro externo (conta no provedor + chave). Explicação completa e plano em **[`FASE-2-INTEGRACAO-BANCARIA.md`](FASE-2-INTEGRACAO-BANCARIA.md)**. Recomendação: Asaas. O terreno já está pronto (webhook-stub + `origemStatus`/`idExterno`).
 - **Portal do inquilino — boleto/PIX**: a página já avisa "pagamento online em breve"; exibir o boleto real depende da Fase 2.
-- **Refinamentos opcionais da Fase 1** (não bloqueiam): modelos de contrato + assinatura eletrônica (D-04), anexo real de documentos do locatário/apólice, trilha de auditoria em cobranças/repasses, painel próprio do corretor (T1), integração real do app de vistoria (D-06).
+- **Refinamentos opcionais da Fase 1** (não bloqueiam; anexo de docs, auditoria financeira e painel do corretor JÁ feitos): faltam modelos de contrato + **assinatura eletrônica** (D-04, precisa provedor ClickSign/D4Sign/ZapSign) e **integração real do app de vistoria** (D-06, hoje é registro manual de link).
 
 ### App de celular (PWA) — pendência
 - **Objetivo**: ter o Hub no celular **sem** autologin (a pessoa não precisa do login automático no cell). Dados já chegam simultâneos nos dois (Firestore é tempo real).
@@ -81,7 +92,10 @@ firebase deploy --only functions --project remax-smart-hub
 ### ✅ Já feito (era pendência, saiu)
 - **2FA / MFA**: TOTP via Firebase MFA (v1.0.80).
 - **Criptografia de credenciais em repouso**: KMS + descriptografia no `getCredentials` (v1.0.81).
-- **Log de auditoria**: `registrarAudit` grava ações sensíveis (parcial — dá pra ampliar cobertura).
+- **Log de auditoria**: `registrarAudit` → `audit_log` cobre credenciais, permissões, perfil, marketing, exclusão de imóvel/chamado e **ações financeiras** (baixa/repasse/ajuste). Dá pra ampliar mais.
+- **Backup Firestore**: export diário + retenção 30d, funcionando (ver Infra acima).
+- **CI**: `node --check` a cada push (ver pendências — falta lint/testes).
+- **Gestão de Locações Fase 1 + 1.5**: construída, publicada (v1.0.84) em dark launch.
 
 ### Ideias antigas (seguem em aberto)
 
@@ -96,10 +110,8 @@ firebase deploy --only functions --project remax-smart-hub
 
 - **LGPD — retenção e exclusão de dados**: fichas guardam CPF, RG, renda. Implementar política de expurgo automático (ex.: 2 anos) e fluxo de exclusão a pedido do titular.
 
-- **CI/CD**: pipeline automatizado (GitHub Actions) que roda lint, `node --check`, testes básicos e bloqueia deploy quebrado. Hoje é tudo manual.
+- **CI/CD**: ✅ parcial — `.github/workflows/ci.yml` roda `node --check` (CJS + módulos ES do renderer via cópia `.mjs`) e valida os JSONs a cada push/PR. Falta: lint, testes automatizados e bloquear deploy quebrado (o deploy/publish segue manual).
 
-- **Monitoramento e alertas em tempo real**: Cloud Functions falhou? Erro subiu? Hoje ninguém é avisado. Configurar alertas no Google Cloud Monitoring ou integrar com Slack/email.
-
-- **Teste de restore do backup**: backup existe, mas nunca foi testado. Simular restore num projeto de staging pra validar que os dados voltam íntegros.
+- **Monitoramento e alertas em tempo real**: parcial — há `relatorioErrosDiario` (schedule) + `logErro`. Falta alerta em tempo real (Cloud Monitoring / Slack) quando uma function falha.
 
 - **Refatoração de arquivos monolíticos**: `hub-app.js` e `functions/index.js` têm milhares de linhas. Quebrar em módulos menores facilita manutenção e reduz risco de regressão.
