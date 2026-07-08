@@ -384,13 +384,14 @@ exports.getMinhasPermissoes = onCall(async (req) => {
   const dados = snap.exists ? snap.data() : {};
   const drives_fotografia = !!dados.drives_fotografia;
   const loc_beta = !!dados.loc_beta;   // acesso de teste ao módulo de Locações (feature flag)
+  const loc_gestao = !!dados.loc_gestao; // vê as abas de gestão de Locações (Painel/Imóveis/Financeiro/Alertas/Relatórios). NÃO herda de admin.
   const ti = !!dados.ti;
   const marketing_gerenciar = !!dados.marketing_gerenciar;
   const relSnap = await db.collection('config').doc('release').get();
   const locacoesPublicadaEm = (relSnap.exists && relSnap.data().locacoesPublicadaEm) || ''; // versão liberada p/ todos
-  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, locacoesPublicadaEm, ti, marketing_gerenciar };
+  if (ehAdminAuth(auth)) return { apps: RESTRICTED_APPS, isAdmin: true, drives_fotografia, loc_beta, loc_gestao, locacoesPublicadaEm, ti, marketing_gerenciar };
   const apps = dados.apps || [];
-  return { apps, isAdmin: false, drives_fotografia, loc_beta, locacoesPublicadaEm, ti, marketing_gerenciar };
+  return { apps, isAdmin: false, drives_fotografia, loc_beta, loc_gestao, locacoesPublicadaEm, ti, marketing_gerenciar };
 });
 
 // (admin) Publica a versão atual da Gestão de Locações pra TODOS (ou volta pra teste com versao='').
@@ -421,6 +422,7 @@ exports.getUserAccess = onCall(async (req) => {
     isAdmin: alvoAdmin,
     drives_fotografia: !!dados.drives_fotografia,
     loc_beta: !!dados.loc_beta,
+    loc_gestao: !!dados.loc_gestao,
     ti: !!dados.ti,
     marketing_gerenciar: !!dados.marketing_gerenciar,
     loc_role: (userRec && userRec.customClaims && userRec.customClaims.locRole) || 'corretor',
@@ -431,13 +433,14 @@ exports.getUserAccess = onCall(async (req) => {
 // (admin) Define quais apps restritos um usuário pode ver + o perfil de Locação
 exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
-  const { uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro, ti, marketing_gerenciar } = req.data || {};
+  const { uid, apps, drives_fotografia, loc_beta, loc_gestao, loc_role, loc_financeiro, ti, marketing_gerenciar } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
     apps: limpos,
     drives_fotografia: !!drives_fotografia,
     loc_beta: !!loc_beta,
+    loc_gestao: !!loc_gestao,
     ti: !!ti,
     marketing_gerenciar: !!marketing_gerenciar,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -456,7 +459,7 @@ exports.setUserAccess = onCall(async (req) => {
     }, { merge: true });
   }
   await registrarAudit(req.auth, 'alterou_permissoes', { tipo: 'usuario', id: uid },
-    { apps: limpos, drives_fotografia: !!drives_fotografia, loc_beta: !!loc_beta, ti: !!ti, marketing_gerenciar: !!marketing_gerenciar, loc_role: loc_role ?? null, loc_financeiro: !!loc_financeiro });
+    { apps: limpos, drives_fotografia: !!drives_fotografia, loc_beta: !!loc_beta, loc_gestao: !!loc_gestao, ti: !!ti, marketing_gerenciar: !!marketing_gerenciar, loc_role: loc_role ?? null, loc_financeiro: !!loc_financeiro });
   return { ok: true };
 });
 

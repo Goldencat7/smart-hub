@@ -1086,6 +1086,7 @@ async function abrirModalPermissoes(uid, email) {
     const locRole = r.data.loc_role || 'corretor';
     const locFin = !!r.data.loc_financeiro;
     const locBeta = !!r.data.loc_beta;
+    const locGestao = !!r.data.loc_gestao;
     cont.innerHTML =
       (alvoAdmin ? '<p class="muted">Este usuário é admin — já enxerga todos os apps restritos.</p>' : '') +
       APPS_RESTRITOS.map(a => `
@@ -1112,6 +1113,10 @@ async function abrirModalPermissoes(uid, email) {
        </label>
        <hr style="border-color:var(--border);margin:10px 0">
        <p class="muted" style="font-size:11px;margin:0 0 6px">Gestão de Locações:</p>
+       <label class="auth-label-inline">
+         <input type="checkbox" id="permLocGestao" ${locGestao ? 'checked' : ''}>
+         Gestão · abas <span class="muted" style="font-size:10px">(vê Painel, Imóveis, Financeiro, Alertas e Relatórios — Fichas é de todos)</span>
+       </label>
        <label class="auth-label-inline">
          <input type="checkbox" id="permLocBeta" ${locBeta ? 'checked' : ''}>
          Acesso de teste <span class="muted" style="font-size:10px">(vê o módulo — libere só pra quem vai testar)</span>
@@ -1144,15 +1149,16 @@ document.getElementById('cancelarPermissoes').addEventListener('click', (e) => {
 document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const uid = document.getElementById('permUid').value;
-  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):not(#permTI):not(#permMarketing):checked')).map(c => c.value);
+  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):not(#permLocGestao):not(#permTI):not(#permMarketing):checked')).map(c => c.value);
   const drives_fotografia = !!(document.getElementById('permDrivesFotografia')?.checked);
   const ti = !!(document.getElementById('permTI')?.checked);
   const marketing_gerenciar = !!(document.getElementById('permMarketing')?.checked);
   const loc_beta = !!(document.getElementById('permLocBeta')?.checked);
+  const loc_gestao = !!(document.getElementById('permLocGestao')?.checked);
   const loc_role = document.getElementById('permLocRole')?.value || 'corretor';
   const loc_financeiro = !!(document.getElementById('permLocFinanceiro')?.checked);
   try {
-    await setUserAccess({ uid, apps, drives_fotografia, loc_beta, loc_role, loc_financeiro, ti, marketing_gerenciar });
+    await setUserAccess({ uid, apps, drives_fotografia, loc_beta, loc_gestao, loc_role, loc_financeiro, ti, marketing_gerenciar });
     modalPermissoes.close();
   } catch (err) { alert('Erro: ' + err.message); }
 });

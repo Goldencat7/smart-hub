@@ -266,7 +266,7 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  { id: 'locacoes',    nome: 'Locação',   icone: ICN.locacao, locacoes: true, beta: true },
+  { id: 'locacoes',    nome: 'Locação',   icone: ICN.locacao, locacoes: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -290,6 +290,7 @@ let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
 let betaLocacoes = false;       // acesso de teste ao módulo de Locações (feature flag) — gate das abas
 let locacoesPublicado = false;  // true quando a versão deste app foi publicada p/ todos (painel de Admin)
+let podeGestaoLoc = false;      // permissão loc_gestao — vê as abas de gestão (Painel/Imóveis/Financeiro/Alertas/Relatórios). Fichas é pra todos.
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
@@ -569,9 +570,11 @@ function renderCentro() {
     inputBusca.placeholder = '';
 
     if (!locSub) {
-      // Grade inicial: cards dos sub-apps
+      // Grade inicial: cards dos sub-apps. Fichas é pra todos; as abas de
+      // gestão só aparecem pra quem tem a permissão loc_gestao.
       appsGrid.hidden = false;
-      appsGrid.innerHTML = LOC_APPS.map(a => `
+      const locVisiveis = LOC_APPS.filter(a => a.id === 'fichas' || podeGestaoLoc);
+      appsGrid.innerHTML = locVisiveis.map(a => `
         <button class="hub-card" data-locsub="${a.id}">
           <span class="card-icon">${a.icone}</span>
           <span class="card-title">${a.titulo}</span>
@@ -584,7 +587,9 @@ function renderCentro() {
       return;
     }
 
-    // Sub-app aberto: título vira "voltar + nome" e mostra a seção
+    // Sub-app aberto: título vira "voltar + nome" e mostra a seção.
+    // Abas de gestão exigem a permissão loc_gestao; sem ela, só Fichas.
+    if (locSub !== 'fichas' && !podeGestaoLoc) { locSub = null; renderCentro(); return; }
     appsGrid.hidden = true;
     const sub = LOC_APPS.find(a => a.id === locSub);
     tituloCategoria.innerHTML = `<button class="loc-voltar" id="locVoltar">← Locação</button> <span>${sub ? sub.titulo : ''}</span>`;
@@ -1173,6 +1178,7 @@ onAuthStateChanged(auth, async (user) => {
     temPermTI = !!perm.data.ti;
     temPermMarketing = !!perm.data.marketing_gerenciar;
     betaLocacoes = !!perm.data.loc_beta;
+    podeGestaoLoc = !!perm.data.loc_gestao;
     try {
       const v = await window.hubApi.getAppVersion();
       locacoesPublicado = !!perm.data.locacoesPublicadaEm && v === perm.data.locacoesPublicadaEm;
@@ -4049,7 +4055,7 @@ const FICHAS_CONFIG = [
 // continua na aba Cadastro (comportamento legado).
 async function carregarDocumentos(grupo) {
   const nomeCorretor = encodeURIComponent(document.getElementById('usuarioInfo')?.textContent?.trim() || '');
-  const locAtivo = betaLocacoes || locacoesPublicado;
+  const locAtivo = true;  // Fichas de locação liberadas p/ todos → vivem em Locação→Fichas (saem do Cadastro)
   const fichas = grupo === 'locacao'
     ? FICHAS_CONFIG.filter(f => f.grupo === 'locacao')
     : (locAtivo ? FICHAS_CONFIG.filter(f => f.grupo === 'venda') : FICHAS_CONFIG);
@@ -4459,7 +4465,7 @@ function renderNotifPanel() {
       const secKey = item.dataset.tipo;
       // Com a Locação ativa, as fichas de locação ficam na aba Locação → Fichas;
       // as de venda (vendedor/proposta) seguem na aba Cadastro.
-      const locAtivo = betaLocacoes || locacoesPublicado;
+      const locAtivo = true;  // Fichas de locação liberadas p/ todos → vivem em Locação→Fichas (saem do Cadastro)
       const ficha = FICHAS_CONFIG.find(f => f.key === secKey);
       if (locAtivo && ficha && ficha.grupo === 'locacao') {
         categoriaAtiva = 'locacoes';
