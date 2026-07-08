@@ -876,6 +876,14 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             return;
           }
 
+          // Robustez (ClickSign): se clicamos em "Acessar com senha" mas o campo
+          // não apareceu (ex.: botão ainda desabilitado na hora do clique),
+          // re-clica a cada ~3s enquanto o botão específico seguir na tela.
+          if(etapa === 'aguardando-senha' && !inputPass && cfg.textosAvancar && tentativas % 6 === 0){
+            const btnEspec = acharPorTexto(cfg.textosAvancar);
+            if(btnEspec) { try { btnEspec.click(); } catch(e){} }
+          }
+
           if(etapa === 'aguardando-senha' && inputPass){
             preencher(inputPass, cfg.senha);
             blindarSenha(inputPass);

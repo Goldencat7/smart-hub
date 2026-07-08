@@ -3035,7 +3035,7 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
       try {
         const r = await locFichasParaVincular({ imovelId });
         const fichas = r.data?.fichas || [];
-        if (!fichas.length) { box.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Nenhuma ficha recebida deste corretor. Gere um link em Locação → Fichas.</span>'; return; }
+        if (!fichas.length) { box.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Nenhuma ficha recebida deste corretor. Gere um link na aba Cadastro.</span>'; return; }
         const TIPO_LBL = { pf: 'PF', pj: 'PJ', locacao_fiador: 'Loc. c/ fiador' };
         box.innerHTML = fichas.map(f => `
           <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:5px">
