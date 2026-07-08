@@ -75,7 +75,7 @@ firebase deploy --only functions --project remax-smart-hub
 - **Loja (opcional)**: Capacitor/TWA pra Play Store/App Store — mas review da loja quebra o "update simultâneo", então PWA primeiro.
 
 ### Infra / segurança
-- **backupFirestore IAM**: conceder `roles/datastore.importExportAdmin` à service account de compute (`474454438949-compute@developer.gserviceaccount.com`) — o backup agendado dava 403. Comando `gcloud` fica com o Nathan; depois validar os logs do export.
+- **Backup Firestore**: ✅ FUNCIONANDO. Export diário (03h) pra `gs://remax-smart-hub-backups/{data}`, SA de compute já tem `roles/datastore.importExportAdmin`, retenção de 30 dias (lifecycle Delete age=30). Backups presentes e íntegros (com `overall_export_metadata`). **Falta só**: testar um RESTORE (nunca validado) — importar um backup num destino que NÃO seja produção (projeto de staging ou um 2º banco Firestore) pra confirmar que os dados voltam íntegros.
 - **App Check**: validar que as chamadas às Cloud Functions (inclusive fichas anônimas e portais públicos) vêm de origem legítima. reCAPTCHA Enterprise / Device Check.
 
 ### ✅ Já feito (era pendência, saiu)
