@@ -583,13 +583,13 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   cursor: pointer;
 }
 .cal-grade .cal-dia.hoje { background: var(--surface); box-shadow: inset 0 0 0 2px var(--blue); }
-.cal-grade .cal-dia.sel  { background: var(--blue); box-shadow: none; }
-.cal-grade .cal-dia.sel.hoje { box-shadow: inset 0 0 0 2px #fff; }
+/* dia selecionado no MÊS = destaque sutil (tinta leve + borda azul), nunca a
+   célula inteira azul sólida — senão vira um bloco azul gigante no calendário */
+.cal-grade .cal-dia.sel  { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); box-shadow: inset 0 0 0 2px var(--blue); }
 .cal-grade .cal-dia:not(.vazio):hover { background: var(--blue-light); }
 .cal-grade .cal-num { font-weight: 600; color: var(--text-primary); }
 .cal-grade .cal-dia.hoje .cal-num { color: var(--blue); }
-.cal-grade .cal-dia.sel .cal-num { color: #fff; }
-.cal-grade .cal-dia.sel .cal-feriado { color: #ffe3b3; }
+.cal-grade .cal-dia.sel .cal-num { color: var(--text-primary); }
 
 .cal-dia-detalhe {
   flex: 1; min-width: 280px; max-width: 380px; padding: 14px;
