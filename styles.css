@@ -510,6 +510,9 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   background: var(--border); gap: 1px; border-radius: var(--radius-card); overflow: hidden;
 }
 .cal-grade .cal-dia {
+  /* zera o aspect-ratio:1 herdado do mini calendário — senão a célula fica
+     "quadrada" e explode de altura em telas largas (bug dos quadrados gigantes) */
+  aspect-ratio: auto;
   min-height: 110px; align-items: stretch; justify-content: flex-start;
   padding: 4px 4px 6px; font-size: 12px; background: var(--surface);
   border: none; border-radius: 0; color: var(--text-primary);
