@@ -44,5 +44,19 @@ service firebase.storage {
       return request.auth != null &&
         firestore.get(/databases/(default)/documents/user_access/$(request.auth.uid)).data.marketing_gerenciar == true;
     }
+    // Documentos da Gestão de Locações (docs do locatário, apólice da garantia).
+    // Gestor/administrativo (ou admin) enviam; autenticados leem. Só imagem/PDF, ≤20MB.
+    match /locacao/{imovelId}/{allPaths=**} {
+      allow read:   if request.auth != null;
+      allow write:  if podeLocacao() && request.resource.size < 20 * 1024 * 1024 && ehImagemOuPdf();
+      allow delete: if podeLocacao();
+    }
+    function podeLocacao() {
+      return request.auth != null && (
+        request.auth.token.admin == true ||
+        request.auth.token.locRole == 'gestor' ||
+        request.auth.token.locRole == 'administrativo'
+      );
+    }
   }
 }

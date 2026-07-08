@@ -44,6 +44,7 @@ const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
 const locExcluirImovel = httpsCallable(fns, 'locExcluirImovel');
 const locObterImovel = httpsCallable(fns, 'locObterImovel');
 const locGerarTokenPortal = httpsCallable(fns, 'locGerarTokenPortal');
+const locAddDocLocatario = httpsCallable(fns, 'locAddDocLocatario');
 const locSalvarCamposLocacao = httpsCallable(fns, 'locSalvarCamposLocacao');
 const locAddLocatario = httpsCallable(fns, 'locAddLocatario');
 const locAnalisarLocatario = httpsCallable(fns, 'locAnalisarLocatario');
@@ -2716,6 +2717,31 @@ const LOC_CHECKLIST = [
   { k: 'acompanhamento',       l: 'Acompanhamento' },
   { k: 'conferir_transf_enel', l: 'Conferir transferência ENEL' }
 ];
+// Itens que o sistema marca sozinho (derivados de análise/garantia/vistoria/contrato/ativo).
+// O backend (recomputarChecklistAuto) persiste em imovel.checklist; a UI mostra read-only.
+const CHECKLIST_AUTO = new Set(['analise', 'seguro_fianca', 'vistoria', 'contrato', 'cadastro_sistema', 'gerar_cobranca']);
+
+// Abre seletor de imagem/PDF, valida o tamanho e devolve o File (ou null).
+function _escolherDoc(maxMB = 20) {
+  return new Promise(resolve => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*,application/pdf';
+    inp.onchange = () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return resolve(null);
+      if (f.size > maxMB * 1024 * 1024) { alert(`Arquivo muito grande (máx ${maxMB}MB).`); return resolve(null); }
+      resolve(f);
+    };
+    inp.click();
+  });
+}
+// Sobe um documento da locação pro Storage e devolve a URL (gestor/admin autenticado).
+async function _uploadLocacao(imovelId, prefixo, file) {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  const sRef = storageRef(storage, `locacao/${imovelId}/${prefixo}-${Date.now()}.${ext}`);
+  const task = await uploadBytesResumable(sRef, file);
+  return await getDownloadURL(task.ref);
+}
 const fmtBRL = n => n == null || n === '' ? '' : 'R$ ' + Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const fmtDataBR = s => { if (!s) return ''; const [y,m,d] = String(s).split('-'); return (d && m && y) ? `${d}/${m}/${y}` : s; };
 // Status derivado da comissão a partir das datas das parcelas
@@ -2807,16 +2833,20 @@ function renderDetalheImovel(d) {
         <button class="topbar-btn btn-analise" data-pessoa="${l.id}" data-status="aprovado" style="font-size:10px;padding:3px 8px">✓ Aprovar</button>
         <button class="topbar-btn btn-analise" data-pessoa="${l.id}" data-status="pendencia" style="font-size:10px;padding:3px 8px">Pendência</button>
         <button class="topbar-btn btn-analise" data-pessoa="${l.id}" data-status="reprovado" style="font-size:10px;padding:3px 8px">Reprovar</button></div>` : '';
+      const ldocs = Array.isArray(l.documentos) ? l.documentos : [];
+      const ldocsHtml = ldocs.length ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">${ldocs.map(dc => `<a href="${escapeHtml(dc.url)}" target="_blank" style="font-size:10px;padding:2px 8px;border-radius:12px;background:#16a34a18;color:#16a34a;border:1px solid #16a34a40;text-decoration:none;font-weight:600">📄 ${escapeHtml(dc.nome || 'doc')}</a>`).join('')}</div>` : '';
       return `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <strong style="font-size:12px">${escapeHtml(l.nome || '')}</strong>
           <span style="font-size:10px;font-weight:600;color:${ANALISE_COR[st]};background:${ANALISE_COR[st]}18;padding:2px 7px;border-radius:5px">${ANALISE_LABEL[st] || st}</span></div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${[l.cpf, l.renda && 'Renda ' + l.renda, l.whatsapp].filter(Boolean).map(escapeHtml).join(' · ') || '—'}</div>
+        ${ldocsHtml}
         ${acoes}
-        <div style="margin-top:6px">
+        <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+          <button class="topbar-btn btn-doc-locatario" data-pessoa="${l.id}" style="font-size:10px;padding:3px 8px">📎 Documento</button>
           <button class="topbar-btn btn-link-proprietario" data-pessoa="${l.id}" style="font-size:10px;padding:3px 8px">🔗 Link do inquilino</button>
-          <div class="link-prop-box" data-pessoa="${l.id}" style="margin-top:6px"></div>
-        </div></div>`;
+        </div>
+        <div class="link-prop-box" data-pessoa="${l.id}" style="margin-top:6px"></div></div>`;
     }).join('') : '<div style="font-size:11px;color:var(--text-muted)">Nenhum locatário cadastrado.</div>';
 
     const inp = (ph, cls) => `<input class="${cls}" placeholder="${ph}" style="${_selStyle}">`;
@@ -2834,7 +2864,8 @@ function renderDetalheImovel(d) {
     const garForm = ehGestor ? `<div class="form-garantia" data-imovel="${imId}" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
       <select class="gar-mod" style="${_selStyle}">${optSel(GAR_MOD_LABEL, g.modalidade || 'seguro_fianca')}</select>
       <select class="gar-status" style="${_selStyle}">${optSel(GAR_STATUS_LABEL, g.status || 'pendente')}</select>
-      <input class="gar-apolice" placeholder="Link da apólice (opcional)" value="${escapeHtml(g.apoliceUrl || '')}" style="${_selStyle}">
+      <input class="gar-apolice" placeholder="Link da apólice (ou anexe)" value="${escapeHtml(g.apoliceUrl || '')}" style="${_selStyle}">
+      <button class="topbar-btn btn-anexar-apolice" data-imovel="${imId}" style="font-size:11px;padding:4px 10px">📎 Anexar</button>
       <button class="topbar-btn primario btn-salvar-garantia" style="font-size:11px;padding:4px 10px">Salvar garantia</button></div>`
       : `<div style="font-size:12px">${g.modalidade ? GAR_MOD_LABEL[g.modalidade] : '—'} · <strong>${g.status ? GAR_STATUS_LABEL[g.status] : 'sem garantia'}</strong></div>`;
 
@@ -2921,11 +2952,20 @@ function renderDetalheImovel(d) {
       <label style="${_lblSty}">Contrato assinado?${_sel('lf-contrato', im.contratoAssinado, SIM_NAO)}</label>
       <label style="${_lblSty}">Possui parceria?${_sel('lf-parceria', im.possuiParceria, SIM_NAO)}</label>
     </div>
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:4px 0 6px">Checklist de locação</div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:4px 0 6px">Checklist de locação <span style="font-weight:500;text-transform:none;letter-spacing:0">· itens ✓ automático são atualizados pelo sistema</span></div>
     <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
-      ${LOC_CHECKLIST.map(x => `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
-        <input type="checkbox" class="lf-chk" data-k="${x.k}"${chk[x.k] ? ' checked' : ''} style="width:15px;height:15px;flex-shrink:0;cursor:pointer">
-        <span>${escapeHtml(x.l)}</span></label>`).join('')}
+      ${LOC_CHECKLIST.map(x => {
+        const feito = !!chk[x.k];
+        if (CHECKLIST_AUTO.has(x.k)) {
+          return `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+            <span style="width:15px;flex-shrink:0;text-align:center;color:${feito ? '#16a34a' : 'var(--text-muted)'}">${feito ? '✓' : '○'}</span>
+            <span style="color:${feito ? 'var(--text-primary)' : 'var(--text-muted)'}">${escapeHtml(x.l)}</span>
+            <span style="font-size:9px;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);padding:1px 6px;border-radius:10px">automático</span></div>`;
+        }
+        return `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer">
+          <input type="checkbox" class="lf-chk" data-k="${x.k}"${feito ? ' checked' : ''} style="width:15px;height:15px;flex-shrink:0;cursor:pointer">
+          <span>${escapeHtml(x.l)}</span></label>`;
+      }).join('')}
     </div>
     <button class="topbar-btn primario btn-salvar-loc" style="font-size:11px;padding:5px 12px">Salvar</button>
     <span class="lf-msg" style="font-size:11px;margin-left:8px"></span>
@@ -3024,6 +3064,30 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
       });
     } catch (e) { box.innerHTML = `<span style="font-size:11px;color:var(--danger)">Erro: ${escapeHtml(e.message)}</span>`; }
     btn.disabled = false;
+  }));
+  // Anexar apólice da garantia (upload → preenche o campo; "Salvar garantia" persiste)
+  cont.querySelectorAll('.btn-anexar-apolice').forEach(btn => btn.addEventListener('click', async () => {
+    const file = await _escolherDoc(20);
+    if (!file) return;
+    const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Enviando...';
+    try {
+      const url = await _uploadLocacao(btn.dataset.imovel, 'apolice', file);
+      const inp = cont.querySelector('.gar-apolice');
+      if (inp) inp.value = url;
+      btn.textContent = '✓ anexado (salve a garantia)';
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    } catch (e) { alert('Erro no upload: ' + e.message); btn.textContent = orig; btn.disabled = false; }
+  }));
+  // Anexar documento do locatário (upload → salva no locatário → recarrega)
+  cont.querySelectorAll('.btn-doc-locatario').forEach(btn => btn.addEventListener('click', async () => {
+    const file = await _escolherDoc(20);
+    if (!file) return;
+    const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Enviando...';
+    try {
+      const url = await _uploadLocacao(imovelId, `locatario/${btn.dataset.pessoa}`, file);
+      await locAddDocLocatario({ pessoaId: btn.dataset.pessoa, nome: file.name, url });
+      await recarregarDetalhe(cont, imovelId);
+    } catch (e) { alert('Erro: ' + e.message); btn.textContent = orig; btn.disabled = false; }
   }));
   // Esteira de Locação: financeiro + checklist
   const formLocE = cont.querySelector('.form-loc-esteira');
@@ -3400,7 +3464,16 @@ async function carregarPainel() {
     }).join('');
     const alertaBloco = alertaPills ? titulo('Alertas') + `<div style="display:flex;gap:8px;flex-wrap:wrap">${alertaPills}</div>` : '';
 
+    // Atalhos rápidos (entrada principal do corretor: gerar link de ficha)
+    const atalho = (ic, txt, sub) => `<button class="atalho-painel" data-locsub="${sub}" style="flex:1;min-width:150px;display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)">
+      <span style="font-size:20px">${ic}</span><span style="font-size:13px;font-weight:600;color:var(--text-primary)">${txt}</span></button>`;
+    const atalhos = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      ${atalho('🔗', 'Gerar link de ficha', 'fichas')}
+      ${atalho('🏠', d.veTudo ? 'Esteira de imóveis' : 'Meus imóveis', 'imoveis')}
+      ${atalho('🔔', 'Alertas', 'alertas')}</div>`;
+
     secaoPainel.innerHTML =
+      atalhos +
       titulo(`Visão geral${d.veTudo ? '' : ' (seus imóveis)'}`) +
       `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(d.totalImoveis || 0, 'Imóveis')}${card(d.aguardandoAnalise || 0, 'Aguardando análise', '#6366f1')}${card(d.contratosAtivos || 0, 'Contratos ativos', '#16a34a')}${card(d.inadimplencia?.qtd || 0, 'Cobranças em atraso', '#DC1C2E')}${card(d.repassePendente?.qtd || 0, 'Repasses pendentes', '#b45309')}</div>` +
       titulo('Valores') +
@@ -3409,6 +3482,8 @@ async function carregarPainel() {
       titulo('Imóveis por etapa') +
       `<div style="display:flex;gap:8px;flex-wrap:wrap">${etapas.map(([k, l, c]) => card(st[k] || 0, l, c)).join('')}</div>`;
 
+    // Atalhos → sub-app
+    secaoPainel.querySelectorAll('.atalho-painel').forEach(el => el.addEventListener('click', () => { locSub = el.dataset.locsub; renderCentro(); }));
     // Clicar num alerta leva pra Central de Alertas
     secaoPainel.querySelectorAll('[data-ir-alertas]').forEach(el => el.addEventListener('click', () => { locSub = 'alertas'; renderCentro(); }));
   } catch (e) {

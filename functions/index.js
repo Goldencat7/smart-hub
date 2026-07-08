@@ -889,6 +889,7 @@ exports.locSalvarCamposLocacao = onCall(async (req) => {
     }
   }
   await ref.update(update);
+  await recomputarChecklistAuto(imovelId); // reaplica os itens automáticos por cima do save manual
   return { ok: true };
 });
 
@@ -896,6 +897,56 @@ exports.locSalvarCamposLocacao = onCall(async (req) => {
 const LOC_ANALISE_STATUS = ['em_analise', 'pendencia', 'aprovado', 'reprovado'];
 const LOC_GARANTIA_MODALIDADES = ['seguro_fianca', 'fiador', 'caucao', 'titulo_capitalizacao'];
 const LOC_GARANTIA_STATUS = ['pendente', 'aprovada', 'reprovada'];
+
+// Recomputa os itens AUTOMÁTICOS do checklist (derivados de análise/garantia/vistoria/
+// contrato/imóvel ativo) e persiste em imovel.checklist, além de avançar a tag da esteira
+// até "aprovado" (contrato/ativo continuam sendo passo manual/por ativação). Chamado após
+// qualquer ação que mexa nesses dados. Os itens manuais do checklist são preservados.
+const CHECKLIST_AUTO_KEYS = ['analise', 'seguro_fianca', 'vistoria', 'contrato', 'cadastro_sistema', 'gerar_cobranca'];
+async function recomputarChecklistAuto(imovelId) {
+  if (!imovelId) return;
+  const [imSnap, locSnap, garSnap, ctSnap, viSnap] = await Promise.all([
+    db.collection('imoveis').doc(imovelId).get(),
+    db.collection('pessoas').where('imovelId', '==', imovelId).get(),
+    db.collection('garantias').doc(imovelId).get(),
+    db.collection('contratos').doc(imovelId).get(),
+    db.collection('vistorias').where('imovelId', '==', imovelId).get()
+  ]);
+  if (!imSnap.exists) return;
+  const im = imSnap.data();
+  const locatarios = locSnap.docs.filter(d => d.data().papel === 'locatario').map(d => d.data());
+  const gar = garSnap.exists ? garSnap.data() : {};
+  const c = ctSnap.exists ? ctSnap.data() : {};
+  const vistorias = viSnap.docs.map(d => d.data());
+
+  const analiseOk = locatarios.some(l => (l.analise || {}).status === 'aprovado');
+  const garantiaOk = gar.status === 'aprovada';                                   // status é feminino
+  const seguroFiancaOk = gar.modalidade === 'seguro_fianca' && garantiaOk;
+  const vistoriaOk = vistorias.some(v => v.tipo === 'entrada' && ['laudo_emitido', 'realizada'].includes(v.status));
+  const contratoAtivo = c.status === 'ativo';
+
+  const auto = {
+    analise: analiseOk,
+    seguro_fianca: seguroFiancaOk,
+    vistoria: vistoriaOk,
+    contrato: contratoAtivo || !!c.contratoDocUrl,
+    cadastro_sistema: im.status === 'ativo',
+    gerar_cobranca: contratoAtivo
+  };
+  const checklist = { ...(im.checklist || {}), ...auto };
+
+  // Auto-tag: só avança (nunca volta), e nunca mexe em em_contrato/ativo.
+  let novoStatus = im.status;
+  if (im.status === 'recebido' && locatarios.length) novoStatus = 'em_analise';
+  if (['recebido', 'em_analise'].includes(im.status) && analiseOk && garantiaOk) novoStatus = 'aprovado';
+
+  const upd = { checklist, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+  if (novoStatus !== im.status) {
+    upd.status = novoStatus;
+    upd.historico = admin.firestore.FieldValue.arrayUnion({ de: im.status || '', para: novoStatus, por: 'sistema', porNome: 'automático', em: admin.firestore.Timestamp.now() });
+  }
+  await imSnap.ref.update(upd);
+}
 
 // (gestor/administrativo) Adiciona um locatário (candidato) a um imóvel.
 // Vira uma pessoa com papel 'locatario', ligada ao imóvel, em análise.
@@ -922,6 +973,7 @@ exports.locAddLocatario = onCall(async (req) => {
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
+  await recomputarChecklistAuto(imovelId); // 1º locatário → esteira vai pra "em análise"
   return { ok: true, id: ref.id };
 });
 
@@ -942,6 +994,29 @@ exports.locAnalisarLocatario = onCall(async (req) => {
     analise: { status, obs: obs || '', por: porNome || auth.uid, em: admin.firestore.Timestamp.now() },
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
+  await recomputarChecklistAuto(snap.data().imovelId); // análise aprovada + garantia → "aprovado"
+  return { ok: true };
+});
+
+// (gestor/admin) Adiciona/remove um documento anexado ao locatário (URL do Storage).
+exports.locAddDocLocatario = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth) && !(auth.token && auth.token.locRole === 'administrativo')) {
+    throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo.');
+  }
+  const { pessoaId, nome, url, remover } = req.data || {};
+  if (!pessoaId) throw new HttpsError('invalid-argument', 'pessoaId é obrigatório.');
+  const ref = db.collection('pessoas').doc(pessoaId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().papel !== 'locatario') throw new HttpsError('not-found', 'Locatário não encontrado.');
+  let docs = Array.isArray(snap.data().documentos) ? snap.data().documentos : [];
+  if (remover) {
+    docs = docs.filter(x => x.url !== url);
+  } else {
+    if (!url) throw new HttpsError('invalid-argument', 'url é obrigatória.');
+    docs.push({ nome: String(nome || 'Documento').slice(0, 80), url: String(url).slice(0, 600) });
+  }
+  await ref.update({ documentos: docs, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
   return { ok: true };
 });
 
@@ -1007,6 +1082,7 @@ exports.locVincularFichaLocatario = onCall(async (req) => {
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
+  await recomputarChecklistAuto(imovelId); // vínculo do locatário → esteira "em análise"
   return { ok: true, id: ref.id };
 });
 
@@ -1027,6 +1103,7 @@ exports.locSalvarGarantia = onCall(async (req) => {
     modalidade, status, apoliceUrl: apoliceUrl || '', obs: obs || '',
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
+  await recomputarChecklistAuto(imovelId); // garantia aprovada → seguro_fiança + talvez "aprovado"
   return { ok: true };
 });
 
@@ -1090,6 +1167,7 @@ exports.locCriarContrato = onCall(async (req) => {
       historico: admin.firestore.FieldValue.arrayUnion({ de: imovel.status || 'aprovado', para: 'em_contrato', por: auth.uid, porNome: 'geração de contrato', em: admin.firestore.Timestamp.now() })
     });
   }
+  await recomputarChecklistAuto(imovelId);
   return { ok: true, id: ref.id };
 });
 
@@ -1152,6 +1230,7 @@ exports.locAtivarContrato = onCall(async (req) => {
   }
   await gerarCobrancasDoContrato(c, contratoId);
   await ref.update({ status: 'ativo', ativadoEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  await recomputarChecklistAuto(c.imovelId); // ativo → contrato/cadastro/gerar_cobrança automáticos
   return { ok: true, status: 'ativo' };
 });
 
@@ -1259,6 +1338,8 @@ exports.locRegistrarPagamento = onCall(async (req) => {
     let nome = ''; try { nome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
     await ref.update({ status: 'pago', dataBaixa: admin.firestore.Timestamp.now(), origemStatus: 'manual', baixaPor: nome || auth.uid });
   }
+  const c = snap.data();
+  await registrarAudit(auth, desfazer ? 'desfez_baixa_cobranca' : 'baixou_cobranca', { tipo: 'cobranca', id: cobrancaId }, { competencia: c.competencia || '', valor: c.valor || 0, contratoId: c.contratoId || '' });
   return { ok: true };
 });
 
@@ -1276,13 +1357,15 @@ exports.locRegistrarRepasse = onCall(async (req) => {
     let nome = ''; try { nome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
     await ref.update({ status: 'repassado', dataRepasse: admin.firestore.Timestamp.now(), origemStatus: 'manual', repassePor: nome || auth.uid });
   }
+  const rr = snap.data();
+  await registrarAudit(auth, desfazer ? 'desfez_repasse' : 'repassou', { tipo: 'repasse', id: repasseId }, { competencia: rr.competencia || '', valor: rr.valorRepasse || 0, contratoId: rr.contratoId || '' });
   return { ok: true };
 });
 
 // (financeiro) Ajusta o valor do repasse (a conta automática é uma estimativa — o
 // financeiro corrige caso a caso; não considera 100% o tipo de repasse na Fase 1).
 exports.locAtualizarRepasse = onCall(async (req) => {
-  await exigirFinanceiro(req);
+  const auth = await exigirFinanceiro(req);
   const { repasseId, valorRepasse } = req.data || {};
   if (!repasseId) throw new HttpsError('invalid-argument', 'repasseId é obrigatório.');
   const valor = Number(valorRepasse);
@@ -1290,7 +1373,9 @@ exports.locAtualizarRepasse = onCall(async (req) => {
   const ref = db.collection('repasses').doc(repasseId);
   const snap = await ref.get();
   if (!snap.exists) throw new HttpsError('not-found', 'Repasse não encontrado.');
+  const antes = snap.data().valorRepasse || 0;
   await ref.update({ valorRepasse: valor, valorAjustado: true, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  await registrarAudit(auth, 'ajustou_valor_repasse', { tipo: 'repasse', id: repasseId }, { de: antes, para: valor, competencia: snap.data().competencia || '' });
   return { ok: true, valorRepasse: valor };
 });
 
@@ -1639,6 +1724,7 @@ exports.locSalvarVistoria = onCall(async (req) => {
   };
   if (!vistoriaId) base.criadoEm = admin.firestore.FieldValue.serverTimestamp();
   await ref.set(base, { merge: true });
+  await recomputarChecklistAuto(imovelId); // vistoria de entrada com laudo → item automático
   return { ok: true, id: ref.id };
 });
 

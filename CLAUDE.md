@@ -67,6 +67,13 @@ firebase deploy --only functions --project remax-smart-hub
 - **Portal do inquilino — boleto/PIX**: a página já avisa "pagamento online em breve"; exibir o boleto real depende da Fase 2.
 - **Refinamentos opcionais da Fase 1** (não bloqueiam): modelos de contrato + assinatura eletrônica (D-04), anexo real de documentos do locatário/apólice, trilha de auditoria em cobranças/repasses, painel próprio do corretor (T1), integração real do app de vistoria (D-06).
 
+### App de celular (PWA) — pendência
+- **Objetivo**: ter o Hub no celular **sem** autologin (a pessoa não precisa do login automático no cell). Dados já chegam simultâneos nos dois (Firestore é tempo real).
+- **Caminho recomendado (PWA)**: mover a UI compartilhada (`index.html` + `hub-app.js` + `styles.css` + lógica) pro **Firebase Hosting**; o Electron vira casca que faz `loadURL(hosting)` e mantém só o autologin nativo. Assim `firebase deploy --only hosting` atualiza **desktop + celular juntos** (só o .exe é republicado quando mexer no autologin).
+- **Precisa**: "shim de plataforma" (`if (window.hubApi) {…Electron…} else {…web…}`) pra esconder/adaptar autologin, `printToPDF`, janelas nativas no celular; `manifest.json` + service worker pra virar PWA instalável.
+- **NÃO ter no celular**: autologin nos sistemas externos (impossível/reprovado em loja), abertura de janelas nativas, download de ficha via printToPDF (usar compartilhar/imprimir do próprio celular).
+- **Loja (opcional)**: Capacitor/TWA pra Play Store/App Store — mas review da loja quebra o "update simultâneo", então PWA primeiro.
+
 ### Infra / segurança
 - **backupFirestore IAM**: conceder `roles/datastore.importExportAdmin` à service account de compute (`474454438949-compute@developer.gserviceaccount.com`) — o backup agendado dava 403. Comando `gcloud` fica com o Nathan; depois validar os logs do export.
 - **App Check**: validar que as chamadas às Cloud Functions (inclusive fichas anônimas e portais públicos) vêm de origem legítima. reCAPTCHA Enterprise / Device Check.
