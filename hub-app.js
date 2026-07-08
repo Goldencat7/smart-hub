@@ -247,13 +247,11 @@ const TREINAMENTO_CATS = [
 ];
 
 // Sub-apps da Gestão de Locações — viram cards dentro da aba "Locação"
+// Versão enxuta (pedido do chefe): só Painel + Imóveis. Financeiro/Alertas/
+// Relatórios saíram; as fichas voltaram pro Cadastro.
 const LOC_APPS = [
-  { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira',       icone: ICN.painel },
-  { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Esteira das captações',         icone: ICN.imoveis },
-  { id: 'financeiro', titulo: 'Financeiro', desc: 'Cobranças, repasses e alertas', icone: ICN.financeiro },
-  { id: 'alertas',    titulo: 'Alertas',    desc: 'Pendências, atrasos e vencimentos', icone: ICN.agenda },
-  { id: 'relatorios', titulo: 'Relatórios', desc: 'Carteira, inadimplência e extratos', icone: ICN.performance },
-  { id: 'fichas',     titulo: 'Fichas',     desc: 'Cadastros e propostas de locação', icone: ICN.documentos },
+  { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira', icone: ICN.painel },
+  { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Esteira das captações',   icone: ICN.imoveis },
 ];
 
 const CATEGORIAS = [
@@ -266,7 +264,7 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  { id: 'locacoes',    nome: 'Locação',   icone: ICN.locacao, locacoes: true },
+  { id: 'locacoes',    nome: 'Locação',   icone: ICN.locacao, locacoes: true, soLocGestao: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -387,7 +385,7 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
-    (!c.beta || betaLocacoes || locacoesPublicado) &&
+    (!c.soLocGestao || podeGestaoLoc) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
     (!c.soTI || temPermTI || isAdmin)
@@ -570,11 +568,10 @@ function renderCentro() {
     inputBusca.placeholder = '';
 
     if (!locSub) {
-      // Grade inicial: cards dos sub-apps. Fichas é pra todos; as abas de
-      // gestão só aparecem pra quem tem a permissão loc_gestao.
+      // Grade inicial: cards dos sub-apps (Painel e Imóveis). A aba Locação
+      // inteira já é gated por loc_gestao lá no filtro da sidebar.
       appsGrid.hidden = false;
-      const locVisiveis = LOC_APPS.filter(a => a.id === 'fichas' || podeGestaoLoc);
-      appsGrid.innerHTML = locVisiveis.map(a => `
+      appsGrid.innerHTML = LOC_APPS.map(a => `
         <button class="hub-card" data-locsub="${a.id}">
           <span class="card-icon">${a.icone}</span>
           <span class="card-title">${a.titulo}</span>
@@ -588,19 +585,14 @@ function renderCentro() {
     }
 
     // Sub-app aberto: título vira "voltar + nome" e mostra a seção.
-    // Abas de gestão exigem a permissão loc_gestao; sem ela, só Fichas.
-    if (locSub !== 'fichas' && !podeGestaoLoc) { locSub = null; renderCentro(); return; }
+    if (!podeGestaoLoc) { locSub = null; renderCentro(); return; }
     appsGrid.hidden = true;
     const sub = LOC_APPS.find(a => a.id === locSub);
     tituloCategoria.innerHTML = `<button class="loc-voltar" id="locVoltar">← Locação</button> <span>${sub ? sub.titulo : ''}</span>`;
     document.getElementById('locVoltar').addEventListener('click', () => { locSub = null; renderCentro(); });
 
-    if (locSub === 'painel')     { secaoPainel.hidden = false;     carregarPainel(); }
-    if (locSub === 'imoveis')    { secaoImoveis.hidden = false;    imoveisFiltroStatus = null; carregarImoveis(); }
-    if (locSub === 'financeiro') { secaoFinanceiro.hidden = false; carregarFinanceiro(); }
-    if (locSub === 'alertas')    { secaoAlertas.hidden = false;    carregarAlertas(); }
-    if (locSub === 'relatorios') { secaoRelatorios.hidden = false; carregarRelatorios(); }
-    if (locSub === 'fichas')     { secaoDocs.hidden = false;       carregarDocumentos('locacao'); }
+    if (locSub === 'painel')  { secaoPainel.hidden = false;  carregarPainel(); }
+    if (locSub === 'imoveis') { secaoImoveis.hidden = false; imoveisFiltroStatus = null; carregarImoveis(); }
     return;
   }
 
@@ -3481,7 +3473,7 @@ async function carregarPainel() {
     alertas.filter(a => !a.tratado).forEach(a => { contagem[a.tipo] = (contagem[a.tipo] || 0) + 1; });
     const alertaPills = Object.entries(contagem).filter(([, n]) => n).map(([tipo, n]) => {
       const [ic, lbl, cor, bg, bd] = ALERTA_INFO[tipo] || ['•', tipo, 'var(--text-muted)', 'var(--surface)', 'var(--border)'];
-      return `<div style="background:${bg};border:1px solid ${bd};color:${cor};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer" data-ir-alertas="1">${ic} ${n} ${lbl}</div>`;
+      return `<div style="background:${bg};border:1px solid ${bd};color:${cor};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600">${ic} ${n} ${lbl}</div>`;
     }).join('');
     const alertaBloco = alertaPills ? titulo('Alertas') + `<div style="display:flex;gap:8px;flex-wrap:wrap">${alertaPills}</div>` : '';
 
@@ -3489,9 +3481,7 @@ async function carregarPainel() {
     const atalho = (ic, txt, sub) => `<button class="atalho-painel" data-locsub="${sub}" style="flex:1;min-width:150px;display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)">
       <span style="font-size:20px">${ic}</span><span style="font-size:13px;font-weight:600;color:var(--text-primary)">${txt}</span></button>`;
     const atalhos = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-      ${atalho('🔗', 'Gerar link de ficha', 'fichas')}
-      ${atalho('🏠', d.veTudo ? 'Esteira de imóveis' : 'Meus imóveis', 'imoveis')}
-      ${atalho('🔔', 'Alertas', 'alertas')}</div>`;
+      ${atalho('🏠', d.veTudo ? 'Esteira de imóveis' : 'Meus imóveis', 'imoveis')}</div>`;
 
     secaoPainel.innerHTML =
       atalhos +
@@ -3505,8 +3495,6 @@ async function carregarPainel() {
 
     // Atalhos → sub-app
     secaoPainel.querySelectorAll('.atalho-painel').forEach(el => el.addEventListener('click', () => { locSub = el.dataset.locsub; renderCentro(); }));
-    // Clicar num alerta leva pra Central de Alertas
-    secaoPainel.querySelectorAll('[data-ir-alertas]').forEach(el => el.addEventListener('click', () => { locSub = 'alertas'; renderCentro(); }));
   } catch (e) {
     secaoPainel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar painel: ${escapeHtml(e.message)}</p>`;
   }
@@ -4070,7 +4058,7 @@ const FICHAS_CONFIG = [
 // continua na aba Cadastro (comportamento legado).
 async function carregarDocumentos(grupo) {
   const nomeCorretor = encodeURIComponent(document.getElementById('usuarioInfo')?.textContent?.trim() || '');
-  const locAtivo = true;  // Fichas de locação liberadas p/ todos → vivem em Locação→Fichas (saem do Cadastro)
+  const locAtivo = false;  // Fichas de locação vivem no Cadastro (a Locação não tem mais aba Fichas)
   const fichas = grupo === 'locacao'
     ? FICHAS_CONFIG.filter(f => f.grupo === 'locacao')
     : (locAtivo ? FICHAS_CONFIG.filter(f => f.grupo === 'venda') : FICHAS_CONFIG);
@@ -4478,17 +4466,9 @@ function renderNotifPanel() {
     item.addEventListener('click', () => {
       notifPanel.hidden = true;
       const secKey = item.dataset.tipo;
-      // Com a Locação ativa, as fichas de locação ficam na aba Locação → Fichas;
-      // as de venda (vendedor/proposta) seguem na aba Cadastro.
-      const locAtivo = true;  // Fichas de locação liberadas p/ todos → vivem em Locação→Fichas (saem do Cadastro)
-      const ficha = FICHAS_CONFIG.find(f => f.key === secKey);
-      if (locAtivo && ficha && ficha.grupo === 'locacao') {
-        categoriaAtiva = 'locacoes';
-        locSub = 'fichas';
-      } else {
-        categoriaAtiva = 'documentos';
-        locSub = null;
-      }
+      // Todas as fichas (locação e venda) vivem no Cadastro.
+      categoriaAtiva = 'documentos';
+      locSub = null;
       renderSidebar();
       renderCentro();
       // Abre o accordion da ficha correspondente

@@ -1115,7 +1115,7 @@ async function abrirModalPermissoes(uid, email) {
        <p class="muted" style="font-size:11px;margin:0 0 6px">Gestão de Locações:</p>
        <label class="auth-label-inline">
          <input type="checkbox" id="permLocGestao" ${locGestao ? 'checked' : ''}>
-         Gestão · abas <span class="muted" style="font-size:10px">(vê Painel, Imóveis, Financeiro, Alertas e Relatórios — Fichas é de todos)</span>
+         Gestão de Locações <span class="muted" style="font-size:10px">(vê a aba Locação — Painel e Imóveis)</span>
        </label>
        <label class="auth-label-inline">
          <input type="checkbox" id="permLocBeta" ${locBeta ? 'checked' : ''}>
