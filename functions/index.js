@@ -15,7 +15,7 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
 const db = admin.firestore();
 
 // ─── Cofre: criptografia de senhas em repouso (KMS) ─────────────────────────
-// Todas as senhas das plataformas (RE/MAX Mais, ClickSign etc) ficam
+// Todas as senhas das plataformas (REMAX Mais, ClickSign etc) ficam
 // criptografadas no Firestore com uma chave simétrica no Google Cloud KMS.
 // A chave nunca sai do KMS: a Cloud Function pede pra criptografar/decriptar
 // via API. Se o banco vazar, as senhas continuam ilegíveis.
@@ -460,7 +460,7 @@ exports.setUserAccess = onCall(async (req) => {
   return { ok: true };
 });
 
-// ─── Gestão de Locações · Perfis (Bloco 1) ──────────────────────────────────
+// ─── Gestão de Locações · Perfis de acesso ──────────────────────────────────
 // Modelo HÍBRIDO: o PERFIL (gestor/administrativo/corretor) mora numa custom claim
 // `locRole` — seguro e barato de checar nas regras do Firestore. A liberação da aba
 // FINANCEIRO mora num doc `loc_perfis/{uid}` que o gestor liga/desliga na hora (sem
@@ -531,7 +531,7 @@ exports.locMeuPerfil = onCall(async (req) => {
   return { role, financeiro };
 });
 
-// (gestor) Lista os usuários do Hub com seus perfis de locação (pra tela de admin — T12).
+// (gestor) Lista os usuários do Hub com seus perfis de locação (pra tela de admin).
 exports.locListarPessoasPerfis = onCall(async (req) => {
   await exigirGestor(req);
   const [result, perfisSnap] = await Promise.all([
@@ -548,7 +548,7 @@ exports.locListarPessoasPerfis = onCall(async (req) => {
   return { usuarios };
 });
 
-// ─── Gestão de Locações · Bloco 2 · Captação ────────────────────────────────
+// ─── Gestão de Locações · Captação ──────────────────────────────────────────
 // Quando o corretor aprova a ficha do locador e envia ao admin (status -> enviado_admin),
 // materializamos o IMÓVEL na esteira + as PESSOAS (locadores). Idempotente: o id do
 // imóvel = id da ficha (1 ficha do locador = 1 imóvel), então reenvio ATUALIZA em vez
@@ -732,7 +732,7 @@ exports.locObterImovel = onCall(async (req) => {
   const gSnap = await db.collection('garantias').doc(imovelId).get();
   const garantia = gSnap.exists ? { ...gSnap.data(), atualizadoEm: gSnap.data().atualizadoEm?.toDate?.()?.toISOString() || null } : null;
 
-  // Contrato (1 por imóvel na Fase 1)
+  // Contrato (1 por imóvel)
   const cSnap = await db.collection('contratos').doc(imovelId).get();
   const contrato = cSnap.exists ? {
     id: cSnap.id, ...cSnap.data(),
@@ -893,7 +893,7 @@ exports.locSalvarCamposLocacao = onCall(async (req) => {
   return { ok: true };
 });
 
-// ─── Gestão de Locações · Bloco 3 · Locatário + Garantia (T6) ───────────────
+// ─── Gestão de Locações · Locatário + Garantia ──────────────────────────────
 const LOC_ANALISE_STATUS = ['em_analise', 'pendencia', 'aprovado', 'reprovado'];
 const LOC_GARANTIA_MODALIDADES = ['seguro_fianca', 'fiador', 'caucao', 'titulo_capitalizacao'];
 const LOC_GARANTIA_STATUS = ['pendente', 'aprovada', 'reprovada'];
@@ -1020,7 +1020,7 @@ exports.locAddDocLocatario = onCall(async (req) => {
   return { ok: true };
 });
 
-// (gestor/admin) T14: lista fichas recebidas (PF/PJ/Locação c/ Fiador) do corretor dono
+// (gestor/admin) Lista fichas recebidas (PF/PJ/Locação c/ Fiador) do corretor dono
 // do imóvel, pra vincular uma como locatário — reusa a ficha online que o cliente já preenche.
 const LOC_FICHA_TIPOS_LOCATARIO = ['pf', 'pj', 'locacao_fiador'];
 exports.locFichasParaVincular = onCall(async (req) => {
@@ -1048,7 +1048,7 @@ exports.locFichasParaVincular = onCall(async (req) => {
   return { fichas };
 });
 
-// (gestor/admin) T14: cria o locatário (pessoa) a partir de uma ficha recebida, pendente
+// (gestor/admin) Cria o locatário (pessoa) a partir de uma ficha recebida, pendente
 // de análise. Espelha o fluxo do locador (ficha → pessoa). Idempotente por (imóvel, ficha).
 exports.locVincularFichaLocatario = onCall(async (req) => {
   const auth = exigirAutenticado(req);
@@ -1107,8 +1107,8 @@ exports.locSalvarGarantia = onCall(async (req) => {
   return { ok: true };
 });
 
-// ─── Gestão de Locações · Bloco 4 · Contratos (T7) ──────────────────────────
-// Converte "R$ 1.500,00" / "10%" em número (pra cobranças calculáveis na Fase 5).
+// ─── Gestão de Locações · Contratos ─────────────────────────────────────────
+// Converte "R$ 1.500,00" / "10%" em número (pra cobranças calculáveis).
 function loc_valorNum(s) {
   const n = Number(String(s == null ? '' : s).replace(/[^\d,]/g, '').replace(',', '.'));
   return isFinite(n) ? n : 0;
@@ -1133,7 +1133,7 @@ exports.locCriarContrato = onCall(async (req) => {
     throw new HttpsError('failed-precondition', `Falta ${falta} antes de gerar o contrato.`);
   }
 
-  const ref = db.collection('contratos').doc(imovelId); // 1 contrato por imóvel na Fase 1
+  const ref = db.collection('contratos').doc(imovelId); // 1 contrato por imóvel
   const existente = await ref.get();
   if (existente.exists && existente.data().status === 'ativo') {
     throw new HttpsError('already-exists', 'Este imóvel já tem um contrato ativo.');
@@ -1197,7 +1197,7 @@ exports.locAtualizarContrato = onCall(async (req) => {
   return { ok: true };
 });
 
-// (GESTOR) Ativa o contrato → imóvel vira "ativo". (A geração de cobranças entra no Bloco 5.)
+// (GESTOR) Ativa o contrato → imóvel vira "ativo" e gera as cobranças do contrato.
 exports.locAtivarContrato = onCall(async (req) => {
   const auth = await exigirGestor(req);
   const { contratoId } = req.data || {};
@@ -1250,7 +1250,7 @@ exports.locListarContratos = onCall(async (req) => {
   return { contratos, veTudo };
 });
 
-// ─── Gestão de Locações · Bloco 5 · Cobrança + Repasse + Alertas (T8/T10) ────
+// ─── Gestão de Locações · Cobrança + Repasse + Alertas ──────────────────────
 // Permissão Financeiro: gestor sempre; administrativo só se o gestor liberar a aba
 // (loc_perfis/{uid}.financeiro). Corretor nunca dá baixa (só consulta).
 async function podeFinanceiro(auth) {
@@ -1268,7 +1268,7 @@ async function exigirFinanceiro(req) {
 }
 
 // Gera as cobranças + repasses mensais da vigência do contrato (previsão).
-// Ids determinísticos (contratoId_competencia) → idempotente. Ganchos Fase 2:
+// Ids determinísticos (contratoId_competencia) → idempotente. Ganchos pra integração bancária:
 // origemStatus='manual' e idExterno='' já nascem aqui (o gateway só troca esses depois).
 async function gerarCobrancasDoContrato(c, contratoId) {
   const pi = String(c.vigenciaInicio || '').split('-').map(Number);
@@ -1363,7 +1363,7 @@ exports.locRegistrarRepasse = onCall(async (req) => {
 });
 
 // (financeiro) Ajusta o valor do repasse (a conta automática é uma estimativa — o
-// financeiro corrige caso a caso; não considera 100% o tipo de repasse na Fase 1).
+// financeiro corrige caso a caso; ainda não considera 100% o tipo de repasse).
 exports.locAtualizarRepasse = onCall(async (req) => {
   const auth = await exigirFinanceiro(req);
   const { repasseId, valorRepasse } = req.data || {};
@@ -1396,7 +1396,7 @@ exports.locListarFinanceiro = onCall(async (req) => {
 // competência "de hoje" vire um dia antes perto da meia-noite (Timestamp.now() é UTC).
 function agoraSP() { return new Date(admin.firestore.Timestamp.now().toDate().getTime() - 3 * 3600000); }
 
-// (autenticado) Painel/Dashboard: números agregados (T4/T11). Gestor/admin veem tudo;
+// (autenticado) Painel/Dashboard: números agregados. Gestor/admin veem tudo;
 // corretor só os seus. Evita índice composto: filtra por 1 campo e agrega em memória
 // (volume pequeno — ~12 corretores, dezenas de imóveis/mês).
 exports.locDashboard = onCall(async (req) => {
@@ -1439,7 +1439,7 @@ exports.locDashboard = onCall(async (req) => {
   };
 });
 
-// (autenticado) Relatórios (T11): contratos ativos, inadimplência, repasses do mês,
+// (autenticado) Relatórios: contratos ativos, inadimplência, repasses do mês,
 // imóveis por corretor e extrato por proprietário. Corretor só os seus; gestor/admin tudo.
 // Volume pequeno → agrega em memória (sem índice composto). A exportação (CSV) é no cliente.
 exports.locRelatorios = onCall(async (req) => {
@@ -1496,7 +1496,7 @@ exports.locRelatorios = onCall(async (req) => {
   return { veTudo, compAtual, contratosAtivos, inadimplencia, repassesMes, imoveisPorCorretor, extratoPorProprietario };
 });
 
-// (autenticado) Central de alertas (T10): atrasos, repasses pendentes, contratos vencendo,
+// (autenticado) Central de alertas: atrasos, repasses pendentes, contratos vencendo,
 // vistorias pendentes e cadastros com pendência. Corretor só os seus; gestor/admin tudo.
 // Cada alerta tem `chave` determinística e flag `tratado` (marcado em loc_alertas_tratados).
 const DIAS_CONTRATO_VENCENDO = 60;
@@ -1545,19 +1545,19 @@ exports.locTratarAlerta = onCall(async (req) => {
   return { ok: true };
 });
 
-// ─── Webhook de cobrança (STUB Fase 1 — DESATIVADO) ──────────────────────────
-// Requisito do Bloco 1 (regra 5 do Módulo 4): endpoint de entrada do gateway já
-// existe, mas INERTE na Fase 1 (pagamento é dado manualmente em locRegistrarPagamento).
-// Na Fase 2 este handler: (1) valida a assinatura/segredo do provedor (Asaas/Iugu/etc.),
-// (2) acha a cobrança/repasse por `idExterno`, (3) grava status + origemStatus='gateway'
-// — escrevendo no MESMO lugar que a baixa manual (regra 3). Nada aqui muda telas/relatórios.
-const GATEWAY_WEBHOOK_ATIVO = false; // Fase 2 liga isto (+ segredo do provedor)
+// ─── Webhook de cobrança (desativado — entra com a integração bancária) ──────
+// O endpoint de entrada do gateway já existe, mas fica inerte por enquanto
+// (o pagamento é dado manualmente em locRegistrarPagamento). Quando a integração
+// bancária entrar, este handler: (1) valida a assinatura/segredo do provedor
+// (Asaas/Iugu/etc.), (2) acha a cobrança/repasse por `idExterno`, (3) grava status
+// + origemStatus='gateway' — no MESMO lugar que a baixa manual. Nada aqui muda telas/relatórios.
+const GATEWAY_WEBHOOK_ATIVO = false; // a integração bancária liga isto (+ segredo do provedor)
 exports.locGatewayWebhook = onRequest(async (req, res) => {
   if (!GATEWAY_WEBHOOK_ATIVO) {
-    res.status(503).json({ ok: false, disabled: true, fase: 1, message: 'Webhook de cobrança desativado (Fase 1). Pagamentos são registrados manualmente.' });
+    res.status(503).json({ ok: false, disabled: true, message: 'Webhook de cobrança desativado. Pagamentos são registrados manualmente.' });
     return;
   }
-  // ── Fase 2 (a implementar ao plugar o gateway) ──
+  // ── quando plugar o gateway ──
   // if (!assinaturaValida(req)) { res.status(401).end(); return; }
   // const { idExterno, evento } = req.body || {};
   // const cob = await db.collection('cobrancas').where('idExterno','==',idExterno).limit(1).get();
@@ -1565,7 +1565,7 @@ exports.locGatewayWebhook = onRequest(async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
-// ─── Fase 1.5 · Portal externo do proprietário (consulta por token, sem login) ──
+// ─── Portal externo do proprietário (consulta por token, sem login) ─────────────
 const PORTAL_BASE = 'https://remax-smart-hub.web.app';
 
 // Papel da pessoa → papel do portal + página. Locador vê repasses; locatário vê pagamentos.
@@ -1650,7 +1650,7 @@ exports.portalProprietario = onCall(async (req) => {
 });
 
 // (PÚBLICO — sem auth do Hub) O inquilino consulta a situação dos pagamentos pelo token.
-// Fase 1.5: só CONSULTA (o boleto pagável entra na Fase 2). Cobranças da Fase 1 (status manual).
+// Só CONSULTA (o boleto pagável entra com a integração bancária). Cobranças com status manual.
 exports.portalInquilino = onCall(async (req) => {
   const { token } = req.data || {};
   if (!token || typeof token !== 'string') throw new HttpsError('invalid-argument', 'Link inválido.');
@@ -1692,8 +1692,8 @@ exports.portalInquilino = onCall(async (req) => {
   return { nome, imovel, totalPago, totalAberto, cobrancas };
 });
 
-// ─── Gestão de Locações · Bloco 6 · Vistorias (T9) ──────────────────────────
-// Fase 1 manual (D-06 em aberto): registra entrada/saída + link do laudo. O corretor
+// ─── Gestão de Locações · Vistorias ─────────────────────────────────────────
+// Registro manual: entrada/saída + link do laudo. O corretor
 // (dono) executa; gestor/admin acompanham.
 const VISTORIA_STATUS = ['agendada', 'realizada', 'laudo_emitido'];
 exports.locSalvarVistoria = onCall(async (req) => {
@@ -2802,7 +2802,7 @@ exports.listarEventos = onCall(async (req) => {
         rsvp: x.rsvp || {},
         meuRsvp: (x.rsvp && x.rsvp[auth.uid]) || 'aceito', // eventos antigos sem rsvp = aceito
         participantesNomes: x.participantesNomes || {},
-        // id do item no Google (pra Fase 2 não trazer ele de volta duplicado)
+        // id do item no Google (pra não trazer ele de volta duplicado na leitura reversa)
         googleId: (x.googleEventIds && x.googleEventIds[auth.uid]) ||
                   (x.googleTaskIds && x.googleTaskIds[auth.uid]) || null
       });
@@ -2811,7 +2811,7 @@ exports.listarEventos = onCall(async (req) => {
   return lista;
 });
 
-// ─── Fase 2: lê os itens criados DIRETO no Google (Agenda + Tarefas) ──────────
+// ─── Leitura reversa: itens criados DIRETO no Google (Agenda + Tarefas) ───────
 // Best-effort: se algo falhar, devolve o que conseguiu (não quebra a agenda do Hub).
 exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);

@@ -17,7 +17,7 @@ Lista de arquivos esperados (um por app):
   app-icons/checkvisto.png             ->  Smart Vistorias        (ok)
   app-icons/alude.png                  ->  Alude                  (ok)
   app-icons/motiva.png                 ->  Motiva Smart           (FALTA)
-  app-icons/universidade.png           ->  Universidade RE/MAX    (FALTA)
+  app-icons/universidade.png           ->  Universidade REMAX     (FALTA)
   app-icons/goiconnect.png             ->  IConnect               (FALTA)
 
 Observações:

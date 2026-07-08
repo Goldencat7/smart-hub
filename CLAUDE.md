@@ -1,6 +1,6 @@
-# Remax Smart Hub — contexto do projeto
+# REMAX Smart Hub — contexto do projeto
 
-App **Electron** (desktop Windows) da imobiliária RE/MAX Smart. Dá acesso rápido às
+App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápido às
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (módulo completo, em dark launch), **Marketing**
 (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**, **bloco de
@@ -100,7 +100,7 @@ firebase deploy --only functions --project remax-smart-hub
 ### Ideias antigas (seguem em aberto)
 
 - **Notificação WhatsApp via Meta Cloud API**: quando corretor recebe uma ficha, mandar mensagem automática no WhatsApp pessoal dele.
-  - Precisa de: chip novo (qualquer operadora) para ser o número remetente da RE/MAX Smart.
+  - Precisa de: chip novo (qualquer operadora) para ser o número remetente da REMAX Smart.
   - Fluxo: Firestore `onCreate` em `fichas` → Cloud Function → Meta Cloud API → WhatsApp do corretor.
   - Corretor salva número pessoal nas Configurações do Hub.
   - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).

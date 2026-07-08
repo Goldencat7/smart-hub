@@ -1303,7 +1303,7 @@ async function carregarEventos(de, ate){
     );
     novos.forEach(e => mapa.set(e.id, e));
 
-    // Fase 2: traz o que foi criado direto no Google (só se conectado), sem duplicar.
+    // Leitura reversa: traz o que foi criado direto no Google (só se conectado), sem duplicar.
     if (googleConectado) {
       try {
         const g = await listarGoogleAgenda({ de: de.toISOString(), ate: ate.toISOString() });
@@ -3013,7 +3013,7 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
     });
   }
-  // T14: vincular uma ficha recebida (PF/PJ/Loc. c/ fiador) como locatário
+  // vincular uma ficha recebida (PF/PJ/Loc. c/ fiador) como locatário
   const btnVinc = cont.querySelector('.btn-vincular-ficha');
   if (btnVinc) {
     const box = cont.querySelector('.vincular-ficha-box');
@@ -3040,7 +3040,7 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
       } catch (e) { box.innerHTML = `<span style="font-size:11px;color:var(--danger)">Erro: ${escapeHtml(e.message)}</span>`; }
     });
   }
-  // Fase 1.5: gerar link de consulta do proprietário (portal externo, sem senha)
+  // gerar link de consulta do proprietário (portal externo, sem senha)
   cont.querySelectorAll('.btn-link-proprietario').forEach(btn => btn.addEventListener('click', async () => {
     const box = cont.querySelector(`.link-prop-box[data-pessoa="${btn.dataset.pessoa}"]`);
     btn.disabled = true;
@@ -3430,7 +3430,7 @@ const ALERTA_INFO = {
   cadastro_pendente: ['📝', 'Cadastro(s) com pendência', '#b45309', '#fffbeb', '#fde68a'],
 };
 
-// Definição dos relatórios (T11): colunas, mapeamento de linha e colunas de dinheiro (idx).
+// Definição dos relatórios: colunas, mapeamento de linha e colunas de dinheiro (idx).
 const REL_DEFS = {
   contratosAtivos:        { titulo: 'Contratos ativos',        cols: ['Ref', 'Endereço', 'Locador', 'Locatário', 'Aluguel', 'Início', 'Fim', 'Corretor'], money: [4], row: r => [r.referencia, r.endereco, r.locador, r.locatario, r.valorAluguel, r.vigenciaInicio, r.vigenciaFim, r.corretorNome] },
   inadimplencia:          { titulo: 'Inadimplência',           cols: ['Competência', 'Ref', 'Endereço', 'Valor', 'Venceu', 'Corretor'], money: [3], row: r => [r.competencia, r.referencia, r.endereco, r.valor, r.vencimento, r.corretorNome] },
@@ -3440,7 +3440,7 @@ const REL_DEFS = {
 };
 let _relatorioDados = null;
 
-// ─── Painel / Dashboard (Gestão de Locações — T4/T11) ────────────────────────
+// ─── Painel / Dashboard (Gestão de Locações) ─────────────────────────────────
 async function carregarPainel() {
   secaoPainel.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando painel...</p>';
   try {
@@ -3491,7 +3491,7 @@ async function carregarPainel() {
   }
 }
 
-// ─── Central de Alertas (Gestão de Locações — T10) ───────────────────────────
+// ─── Central de Alertas (Gestão de Locações) ─────────────────────────────────
 function _descAlerta(a) {
   const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const ref = a.referencia ? ` · ${escapeHtml(a.referencia)}` : '';
@@ -3575,7 +3575,7 @@ async function carregarAlertas() {
   }
 }
 
-// ─── Relatórios (Gestão de Locações — T11) ───────────────────────────────────
+// ─── Relatórios (Gestão de Locações) ─────────────────────────────────────────
 function _relCSV(chave) {
   const d = _relatorioDados || {};
   const def = REL_DEFS[chave];

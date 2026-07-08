@@ -13,7 +13,7 @@ A Fase 2 automatiza isso com um **provedor de cobrança** (gateway):
 4. Com split nativo (ex.: Asaas), o **repasse ao proprietário** pode sair automático também.
 
 ## Por que não dá pra "terminar" agora
-Não é falta de código — é dependência externa que só a RE/MAX Smart resolve:
+Não é falta de código — é dependência externa que só a REMAX Smart resolve:
 
 1. **Conta no provedor, no CNPJ da imobiliária.** Gerar boleto = movimentar recebível. Exige conta aberta e verificada no CNPJ, com dados bancários de liquidação. Ninguém de fora abre isso pela empresa.
 2. **Credencial (API key) só existe após o cadastro.** E **não pode ir no código** (repositório é público) — entra no **Google Secret Manager**. Sem a chave, não há o que integrar.
@@ -39,7 +39,7 @@ Não é falta de código — é dependência externa que só a RE/MAX Smart reso
 
 ## Passos pra desbloquear (na ordem)
 1. **Decidir o provedor** (recomendação: Asaas).
-2. **Abrir a conta** no CNPJ da RE/MAX Smart + validar.
+2. **Abrir a conta** no CNPJ da REMAX Smart + validar.
 3. Pegar a **chave de sandbox** (API key de teste).
 4. **Passar a chave** pro dev → ela entra no **Google Secret Manager** (nunca no código).
 5. Dev implementa a integração do provedor + testa no **sandbox** (boleto de teste, webhook de teste).
