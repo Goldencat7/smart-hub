@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Meus repasses · RE/MAX Smart</title>
+<style>
+  :root{ --navy:#002749; --red:#DC1C2E; --bg:#eef2f7; --card:#fff; --line:#dde3ec; --muted:#6b7787; --green:#16a34a; --amber:#b45309; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--bg); font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif; color:#12212f; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:640px; margin:0 auto; min-height:100vh; background:var(--bg); }
+  .top{ background:var(--navy); color:#fff; padding:20px 22px; display:flex; align-items:center; gap:12px; }
+  .brand{ font-weight:800; letter-spacing:.5px; font-size:17px; }
+  .brand span{ color:var(--red); }
+  .brand small{ display:block; font-weight:500; font-size:10px; letter-spacing:2px; color:#9fb4c9; text-transform:uppercase; margin-top:1px; }
+  .content{ padding:18px 16px 40px; }
+  .hello{ font-size:14px; color:var(--muted); }
+  .hello strong{ color:#12212f; }
+  h1{ font-size:20px; margin:4px 0 16px; }
+  .cards{ display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+  .kpi{ flex:1; min-width:140px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,39,73,.05); }
+  .kpi .v{ font-size:22px; font-weight:800; }
+  .kpi .l{ font-size:11px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.04em; }
+  .sec-title{ font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:6px 2px 8px; }
+  .rep{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 15px; margin-bottom:9px; display:flex; align-items:center; gap:12px; box-shadow:0 1px 3px rgba(0,39,73,.04); }
+  .rep .comp{ font-weight:700; font-size:14px; min-width:74px; }
+  .rep .mid{ flex:1; min-width:0; }
+  .rep .imv{ font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rep .val{ font-weight:800; font-size:15px; }
+  .badge{ font-size:10px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+  .b-pago{ background:#e7f6ec; color:var(--green); }
+  .b-pend{ background:#fdf3e6; color:var(--amber); }
+  .state{ text-align:center; padding:60px 24px; color:var(--muted); }
+  .state .ic{ font-size:40px; margin-bottom:10px; }
+  .foot{ text-align:center; font-size:11px; color:var(--muted); padding:22px 16px 30px; }
+  .spinner{ width:26px; height:26px; border:3px solid var(--line); border-top-color:var(--navy); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 14px; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  @media (max-width:420px){ .kpi{ min-width:0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">RE<span>/</span>MAX <small>Smart · Locações</small></div>
+  </div>
+  <div class="content" id="app">
+    <div class="state"><div class="spinner"></div>Carregando seus repasses...</div>
+  </div>
+  <div class="foot">Portal do proprietário · RE/MAX Smart. Dúvidas? Fale com seu corretor.</div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+  import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
+    authDomain: "remax-smart-hub.firebaseapp.com",
+    projectId: "remax-smart-hub",
+    storageBucket: "remax-smart-hub.firebasestorage.app",
+    messagingSenderId: "474454438949",
+    appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
+  };
+  const app = initializeApp(firebaseConfig);
+  const fns = getFunctions(app, "southamerica-east1");
+  const portalProprietario = httpsCallable(fns, "portalProprietario");
+
+  const appEl = document.getElementById("app");
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = n => "R$ " + Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const MESES = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const compLabel = c => { const [y, m] = String(c || "").split("-"); return m ? `${MESES[+m - 1]}/${y}` : (c || "—"); };
+  const estado = (ic, txt) => `<div class="state"><div class="ic">${ic}</div>${esc(txt)}</div>`;
+
+  const token = new URLSearchParams(location.search).get("token");
+  if (!token) {
+    appEl.innerHTML = estado("🔒", "Link inválido. Peça um novo link ao seu corretor.");
+  } else {
+    portalProprietario({ token }).then(res => {
+      const d = res.data || {};
+      const reps = d.repasses || [];
+      const primeiroNome = (d.nome || "").split(" ")[0] || "";
+      let html = `<div class="hello">Olá${primeiroNome ? ", " : ""}<strong>${esc(primeiroNome)}</strong> 👋</div>
+        <h1>Seus repasses</h1>
+        <div class="cards">
+          <div class="kpi"><div class="v" style="color:var(--green)">${fmt(d.totalRepassado)}</div><div class="l">Já repassado</div></div>
+          <div class="kpi"><div class="v" style="color:var(--amber)">${fmt(d.totalPendente)}</div><div class="l">A repassar</div></div>
+        </div>`;
+      if (!reps.length) {
+        html += estado("🗂️", "Você ainda não tem repasses registrados.");
+      } else {
+        html += `<div class="sec-title">Histórico (${reps.length})</div>`;
+        html += reps.map(r => {
+          const pago = r.status === "repassado";
+          return `<div class="rep">
+            <div class="comp">${esc(compLabel(r.competencia))}</div>
+            <div class="mid"><div class="val">${fmt(r.valor)}</div><div class="imv">${esc(r.imovel)}${pago && r.dataRepasse ? " · pago em " + esc(r.dataRepasse.split("-").reverse().join("/")) : ""}</div></div>
+            <span class="badge ${pago ? "b-pago" : "b-pend"}">${pago ? "Repassado" : "Pendente"}</span>
+          </div>`;
+        }).join("");
+      }
+      appEl.innerHTML = html;
+    }).catch(err => {
+      const msg = /invalid|revogad|permission/i.test(err.message || "") ? "Link inválido ou expirado. Peça um novo ao seu corretor." : "Não foi possível carregar agora. Tente de novo em instantes.";
+      appEl.innerHTML = estado("⚠️", msg);
+    });
+  }
+</script>
+</body>
+</html>

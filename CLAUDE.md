@@ -60,6 +60,24 @@ firebase deploy --only functions --project remax-smart-hub
 
 ## Pendências / ideias futuras
 
+### Gestão de Locações (Fase 1 + 1.5 prontas — 2026-07-08)
+- **Publicar o `.exe`**: a UI nova de Locações (Painel/Alertas/Relatórios/filtro de imóveis/vincular ficha/portais) só chega aos corretores no próximo `npm run publish`. Backend + hosting já deployados; falta só o app.
+- **Liberar pra todos**: quando aprovar, Admin → Lançamento → "Publicar para todos" (tira o dark launch do `loc_beta`).
+- **Fase 2 — integração bancária (cobrança automática)**: BLOQUEADA por decisão + cadastro externo (conta no provedor + chave). Explicação completa e plano em **[`FASE-2-INTEGRACAO-BANCARIA.md`](FASE-2-INTEGRACAO-BANCARIA.md)**. Recomendação: Asaas. O terreno já está pronto (webhook-stub + `origemStatus`/`idExterno`).
+- **Portal do inquilino — boleto/PIX**: a página já avisa "pagamento online em breve"; exibir o boleto real depende da Fase 2.
+- **Refinamentos opcionais da Fase 1** (não bloqueiam): modelos de contrato + assinatura eletrônica (D-04), anexo real de documentos do locatário/apólice, trilha de auditoria em cobranças/repasses, painel próprio do corretor (T1), integração real do app de vistoria (D-06).
+
+### Infra / segurança
+- **backupFirestore IAM**: conceder `roles/datastore.importExportAdmin` à service account de compute (`474454438949-compute@developer.gserviceaccount.com`) — o backup agendado dava 403. Comando `gcloud` fica com o Nathan; depois validar os logs do export.
+- **App Check**: validar que as chamadas às Cloud Functions (inclusive fichas anônimas e portais públicos) vêm de origem legítima. reCAPTCHA Enterprise / Device Check.
+
+### ✅ Já feito (era pendência, saiu)
+- **2FA / MFA**: TOTP via Firebase MFA (v1.0.80).
+- **Criptografia de credenciais em repouso**: KMS + descriptografia no `getCredentials` (v1.0.81).
+- **Log de auditoria**: `registrarAudit` grava ações sensíveis (parcial — dá pra ampliar cobertura).
+
+### Ideias antigas (seguem em aberto)
+
 - **Notificação WhatsApp via Meta Cloud API**: quando corretor recebe uma ficha, mandar mensagem automática no WhatsApp pessoal dele.
   - Precisa de: chip novo (qualquer operadora) para ser o número remetente da RE/MAX Smart.
   - Fluxo: Firestore `onCreate` em `fichas` → Cloud Function → Meta Cloud API → WhatsApp do corretor.
@@ -69,17 +87,9 @@ firebase deploy --only functions --project remax-smart-hub
 
 - **Ambiente de staging** (projeto Firebase separado): testar mudanças sem risco de afetar produção. Criar um segundo projeto Firebase (ex.: `remax-smart-hub-staging`) e trocar config por variável de ambiente.
 
-- **Criptografia de credenciais em repouso**: senhas dos sistemas ficam em texto puro no Firestore. Criptografar com chave no Google Secret Manager; `getCredentials` descriptografa na hora. Protege contra vazamento do banco.
-
-- **Log de auditoria**: registrar quem acessou credenciais, editou perfil, enviou ficha, mudou permissões. Coleção `audit_log` no Firestore com retenção configurável. Necessário pra LGPD e rastreabilidade.
-
 - **LGPD — retenção e exclusão de dados**: fichas guardam CPF, RG, renda. Implementar política de expurgo automático (ex.: 2 anos) e fluxo de exclusão a pedido do titular.
 
 - **CI/CD**: pipeline automatizado (GitHub Actions) que roda lint, `node --check`, testes básicos e bloqueia deploy quebrado. Hoje é tudo manual.
-
-- **2FA / MFA**: login é só email+senha. Adicionar autenticação em dois fatores pelo menos pros admins (Firebase Auth suporta TOTP/SMS).
-
-- **App Check**: validar que as chamadas às Cloud Functions vêm do app legítimo (não de script/curl). Firebase App Check com reCAPTCHA Enterprise ou Device Check.
 
 - **Monitoramento e alertas em tempo real**: Cloud Functions falhou? Erro subiu? Hoje ninguém é avisado. Configurar alertas no Google Cloud Monitoring ou integrar com Slack/email.
 

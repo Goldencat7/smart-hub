@@ -43,9 +43,12 @@ const locListarFichasImovel = httpsCallable(fns, 'locListarFichasImovel');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
 const locExcluirImovel = httpsCallable(fns, 'locExcluirImovel');
 const locObterImovel = httpsCallable(fns, 'locObterImovel');
+const locGerarTokenPortal = httpsCallable(fns, 'locGerarTokenPortal');
 const locSalvarCamposLocacao = httpsCallable(fns, 'locSalvarCamposLocacao');
 const locAddLocatario = httpsCallable(fns, 'locAddLocatario');
 const locAnalisarLocatario = httpsCallable(fns, 'locAnalisarLocatario');
+const locFichasParaVincular = httpsCallable(fns, 'locFichasParaVincular');
+const locVincularFichaLocatario = httpsCallable(fns, 'locVincularFichaLocatario');
 const locSalvarGarantia = httpsCallable(fns, 'locSalvarGarantia');
 const locCriarContrato = httpsCallable(fns, 'locCriarContrato');
 const locAtualizarContrato = httpsCallable(fns, 'locAtualizarContrato');
@@ -55,11 +58,11 @@ const locRegistrarPagamento = httpsCallable(fns, 'locRegistrarPagamento');
 const locRegistrarRepasse = httpsCallable(fns, 'locRegistrarRepasse');
 const locAtualizarRepasse = httpsCallable(fns, 'locAtualizarRepasse');
 const locListarAlertas = httpsCallable(fns, 'locListarAlertas');
+const locTratarAlerta = httpsCallable(fns, 'locTratarAlerta');
 const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
-const locListarPessoasPerfis = httpsCallable(fns, 'locListarPessoasPerfis');
-const locDefinirPerfil = httpsCallable(fns, 'locDefinirPerfil');
 const locMeuPerfil = httpsCallable(fns, 'locMeuPerfil');
 const locDashboard = httpsCallable(fns, 'locDashboard');
+const locRelatorios = httpsCallable(fns, 'locRelatorios');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -247,6 +250,8 @@ const LOC_APPS = [
   { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira',       icone: ICN.painel },
   { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Esteira das captações',         icone: ICN.imoveis },
   { id: 'financeiro', titulo: 'Financeiro', desc: 'Cobranças, repasses e alertas', icone: ICN.financeiro },
+  { id: 'alertas',    titulo: 'Alertas',    desc: 'Pendências, atrasos e vencimentos', icone: ICN.agenda },
+  { id: 'relatorios', titulo: 'Relatórios', desc: 'Carteira, inadimplência e extratos', icone: ICN.performance },
   { id: 'fichas',     titulo: 'Fichas',     desc: 'Cadastros e propostas de locação', icone: ICN.documentos },
 ];
 
@@ -254,7 +259,6 @@ const CATEGORIAS = [
   { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
   { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
-  { id: 'locacao',     nome: 'Locação',     icone: ICN.locacao, oculto: true },
   { id: 'performance', nome: 'Performance', icone: ICN.performance },
   { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
@@ -315,8 +319,9 @@ const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
 const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
-const secaoLocAdmin       = document.getElementById('secaoLocAdmin');
 const secaoPainel         = document.getElementById('secaoPainel');
+const secaoAlertas        = document.getElementById('secaoAlertas');
+const secaoRelatorios     = document.getElementById('secaoRelatorios');
 const secaoTreinamento    = document.getElementById('secaoTreinamento');
 const secaoTI             = document.getElementById('secaoTI');
 const driveFrame     = document.getElementById('driveFrame');
@@ -406,7 +411,7 @@ function renderSidebar() {
       inputBusca.value = '';
       renderSidebar();
       renderCentro();
-      const _grid = ['captacao','crm','vistoria','locacao','performance'];
+      const _grid = ['captacao','crm','vistoria','performance'];
       if (cat && !cat.appDireto && cat.id !== 'config' && !_grid.includes(cat.id)) {
         registrarAcesso({ siteKey: cat.id, titulo: cat.nome }).catch(() => {});
       }
@@ -429,8 +434,9 @@ function renderCentro() {
   secaoNotas.hidden = true;
   secaoImoveis.hidden = true;
   secaoFinanceiro.hidden = true;
-  secaoLocAdmin.hidden = true;
   secaoPainel.hidden = true;
+  secaoAlertas.hidden = true;
+  secaoRelatorios.hidden = true;
   secaoTreinamento.hidden = true;
   secaoTI.hidden = true;
   searchWrap.hidden = true;
@@ -584,8 +590,10 @@ function renderCentro() {
     document.getElementById('locVoltar').addEventListener('click', () => { locSub = null; renderCentro(); });
 
     if (locSub === 'painel')     { secaoPainel.hidden = false;     carregarPainel(); }
-    if (locSub === 'imoveis')    { secaoImoveis.hidden = false;    carregarImoveis(); }
+    if (locSub === 'imoveis')    { secaoImoveis.hidden = false;    imoveisFiltroStatus = null; carregarImoveis(); }
     if (locSub === 'financeiro') { secaoFinanceiro.hidden = false; carregarFinanceiro(); }
+    if (locSub === 'alertas')    { secaoAlertas.hidden = false;    carregarAlertas(); }
+    if (locSub === 'relatorios') { secaoRelatorios.hidden = false; carregarRelatorios(); }
     if (locSub === 'fichas')     { secaoDocs.hidden = false;       carregarDocumentos('locacao'); }
     return;
   }
@@ -2735,6 +2743,8 @@ function fmtProtocolo(im) {
 const IMOVEL_NOMES_DOC = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio' };
 const IMOVEL_NOMES_PEND = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio', profissao:'Profissão', im_admcond:'Adm. condominial', im_admcontato:'Contato adm', im_condominio:'Condomínio', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU' };
 let imoveisRole = 'corretor'; // papel do usuário atual na aba Imóveis (setado em carregarImoveis)
+let _imoveisCache = null;        // { imoveis, veTudo, role } — evita refetch ao filtrar
+let imoveisFiltroStatus = null;  // filtro por status via quadrados (null = todos)
 const GAR_MOD_LABEL = { seguro_fianca:'Seguro fiança', fiador:'Fiador', caucao:'Caução', titulo_capitalizacao:'Título de capitalização' };
 const GAR_STATUS_LABEL = { pendente:'Pendente', aprovada:'Aprovada', reprovada:'Reprovada' };
 const ANALISE_LABEL = { em_analise:'Em análise', pendencia:'Pendência', aprovado:'Aprovado', reprovado:'Reprovado' };
@@ -2747,12 +2757,16 @@ function renderDetalheImovel(d) {
   const sec = (t, corpo) => corpo ? `<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${t}</div>${corpo}</div>` : '';
   const im = d.imovel || {};
 
+  const podeGerarLink = (imoveisRole === 'gestor' || imoveisRole === 'administrativo');
   const locHtml = (d.locadores || []).map((p, i) => {
     const e = p.endereco || {};
     const end = [e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.estado, e.cep].filter(Boolean).join(', ');
     const conj = p.conjuge ? lin('Cônjuge', [p.conjuge.nome, p.conjuge.cpf].filter(Boolean).join(' · ')) : '';
+    const linkBtn = podeGerarLink ? `<div style="margin-top:8px">
+        <button class="topbar-btn btn-link-proprietario" data-pessoa="${escapeHtml(p.id)}" style="font-size:11px;padding:3px 10px">🔗 Link de consulta do proprietário</button>
+        <div class="link-prop-box" data-pessoa="${escapeHtml(p.id)}" style="margin-top:6px"></div></div>` : '';
     return sec((d.locadores.length > 1 ? `Locador ${i + 1}` : 'Locador'),
-      lin('Nome', p.nome) + lin('CPF', p.cpf) + lin('RG', p.rg) + lin('Nascimento', p.dataNasc) + lin('Estado civil', p.estadoCivil) + lin('Profissão', p.profissao) + lin('E-mail', p.email) + lin('WhatsApp', p.whatsapp) + lin('Telefone', p.fixo) + lin('Endereço', end) + conj);
+      lin('Nome', p.nome) + lin('CPF', p.cpf) + lin('RG', p.rg) + lin('Nascimento', p.dataNasc) + lin('Estado civil', p.estadoCivil) + lin('Profissão', p.profissao) + lin('E-mail', p.email) + lin('WhatsApp', p.whatsapp) + lin('Telefone', p.fixo) + lin('Endereço', end) + conj + linkBtn);
   }).join('');
 
   const e = im.endereco || {};
@@ -2798,13 +2812,22 @@ function renderDetalheImovel(d) {
           <strong style="font-size:12px">${escapeHtml(l.nome || '')}</strong>
           <span style="font-size:10px;font-weight:600;color:${ANALISE_COR[st]};background:${ANALISE_COR[st]}18;padding:2px 7px;border-radius:5px">${ANALISE_LABEL[st] || st}</span></div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${[l.cpf, l.renda && 'Renda ' + l.renda, l.whatsapp].filter(Boolean).map(escapeHtml).join(' · ') || '—'}</div>
-        ${acoes}</div>`;
+        ${acoes}
+        <div style="margin-top:6px">
+          <button class="topbar-btn btn-link-proprietario" data-pessoa="${l.id}" style="font-size:10px;padding:3px 8px">🔗 Link do inquilino</button>
+          <div class="link-prop-box" data-pessoa="${l.id}" style="margin-top:6px"></div>
+        </div></div>`;
     }).join('') : '<div style="font-size:11px;color:var(--text-muted)">Nenhum locatário cadastrado.</div>';
 
     const inp = (ph, cls) => `<input class="${cls}" placeholder="${ph}" style="${_selStyle}">`;
-    const formLoc = `<div class="form-add-locatario" data-imovel="${imId}" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:5px">
-      ${inp('Nome*', 'ni-nome')}${inp('CPF', 'ni-cpf')}${inp('WhatsApp', 'ni-whats')}${inp('Renda', 'ni-renda')}
-      <button class="topbar-btn primario btn-add-locatario" style="font-size:11px;padding:4px 10px">+ Adicionar</button></div>`;
+    const formLoc = `<div style="margin-top:8px">
+      <button class="topbar-btn btn-vincular-ficha" data-imovel="${imId}" style="font-size:11px;padding:4px 10px">🔗 Vincular ficha recebida</button>
+      <div class="vincular-ficha-box" data-imovel="${imId}" style="margin-top:8px"></div>
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--text-muted)">ou digitar à mão</summary>
+        <div class="form-add-locatario" data-imovel="${imId}" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:5px">
+          ${inp('Nome*', 'ni-nome')}${inp('CPF', 'ni-cpf')}${inp('WhatsApp', 'ni-whats')}${inp('Renda', 'ni-renda')}
+          <button class="topbar-btn primario btn-add-locatario" style="font-size:11px;padding:4px 10px">+ Adicionar</button></div>
+      </details></div>`;
 
     const g = d.garantia || {};
     const optSel = (obj, val) => Object.entries(obj).map(([k, lbl]) => `<option value="${k}"${k === val ? ' selected' : ''}>${lbl}</option>`).join('');
@@ -2838,7 +2861,7 @@ function renderDetalheImovel(d) {
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           ${editavel ? `<button class="topbar-btn btn-salvar-contrato" style="font-size:11px;padding:4px 10px">Salvar contrato</button>` : ''}
-          ${c.status !== 'ativo' ? `<button class="topbar-btn primario btn-ativar-contrato" data-contrato="${c.id}" style="font-size:11px;padding:4px 10px">✓ Ativar contrato</button>` : '<span style="font-size:11px;color:#16a34a;align-self:center">Contrato ativo — cobranças na Fase 5.</span>'}
+          ${c.status !== 'ativo' ? `<button class="topbar-btn primario btn-ativar-contrato" data-contrato="${c.id}" style="font-size:11px;padding:4px 10px">✓ Ativar contrato</button>` : '<span style="font-size:11px;color:#16a34a;align-self:center">Contrato ativo — cobranças geradas (veja no Financeiro).</span>'}
         </div></div>`;
     } else if (c) {
       contratoHtml = `<div style="font-size:12px">Status: <strong>${CT_STATUS_LABEL[c.status] || c.status}</strong> · Aluguel R$ ${escapeHtml(String(c.valorAluguel || 0))} · Venc. dia ${escapeHtml(String(c.diaVencimento || '—'))}</div>`;
@@ -2950,6 +2973,58 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
     });
   }
+  // T14: vincular uma ficha recebida (PF/PJ/Loc. c/ fiador) como locatário
+  const btnVinc = cont.querySelector('.btn-vincular-ficha');
+  if (btnVinc) {
+    const box = cont.querySelector('.vincular-ficha-box');
+    btnVinc.addEventListener('click', async () => {
+      box.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Buscando fichas recebidas...</span>';
+      try {
+        const r = await locFichasParaVincular({ imovelId });
+        const fichas = r.data?.fichas || [];
+        if (!fichas.length) { box.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Nenhuma ficha recebida deste corretor. Gere um link em Locação → Fichas.</span>'; return; }
+        const TIPO_LBL = { pf: 'PF', pj: 'PJ', locacao_fiador: 'Loc. c/ fiador' };
+        box.innerHTML = fichas.map(f => `
+          <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin-bottom:5px">
+            <div style="flex:1;min-width:0"><strong style="font-size:12px">${escapeHtml(f.nome)}</strong>
+              <div style="font-size:10px;color:var(--text-muted)">${TIPO_LBL[f.tipo] || f.tipo}${f.cpf ? ' · ' + escapeHtml(f.cpf) : ''}</div></div>
+            ${f.jaVinculada
+              ? '<span style="font-size:10px;color:#16a34a">✓ vinculada</span>'
+              : `<button class="topbar-btn primario btn-do-vincular" data-ficha="${escapeHtml(f.id)}" style="font-size:10px;padding:3px 10px">Vincular</button>`}
+          </div>`).join('');
+        box.querySelectorAll('.btn-do-vincular').forEach(b => b.addEventListener('click', async () => {
+          b.disabled = true;
+          try { await locVincularFichaLocatario({ imovelId, fichaId: b.dataset.ficha }); await recarregarDetalhe(cont, imovelId); }
+          catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
+        }));
+      } catch (e) { box.innerHTML = `<span style="font-size:11px;color:var(--danger)">Erro: ${escapeHtml(e.message)}</span>`; }
+    });
+  }
+  // Fase 1.5: gerar link de consulta do proprietário (portal externo, sem senha)
+  cont.querySelectorAll('.btn-link-proprietario').forEach(btn => btn.addEventListener('click', async () => {
+    const box = cont.querySelector(`.link-prop-box[data-pessoa="${btn.dataset.pessoa}"]`);
+    btn.disabled = true;
+    box.innerHTML = '<span style="font-size:11px;color:var(--text-muted)">Gerando link...</span>';
+    try {
+      const r = await locGerarTokenPortal({ pessoaId: btn.dataset.pessoa });
+      const url = r.data?.url || '';
+      const ehInq = r.data?.papel === 'inquilino';
+      const quem = ehInq ? 'inquilino' : 'proprietário';
+      const oque = ehInq ? 'os pagamentos' : 'os repasses';
+      box.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input readonly value="${escapeHtml(url)}" style="flex:1;min-width:220px;font-size:11px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+          <button class="topbar-btn btn-copiar-link" style="font-size:11px;padding:4px 10px">Copiar</button>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);margin-top:4px">Envie ao ${quem} (WhatsApp/e-mail). Ele consulta ${oque} sem senha. O link é fixo — regerar invalida o anterior.</div>`;
+      const inp = box.querySelector('input');
+      inp.focus(); inp.select();
+      box.querySelector('.btn-copiar-link').addEventListener('click', async (ev) => {
+        try { await navigator.clipboard.writeText(url); } catch (_) { inp.select(); try { document.execCommand('copy'); } catch (__) {} }
+        ev.target.textContent = '✓ Copiado'; setTimeout(() => { ev.target.textContent = 'Copiar'; }, 1500);
+      });
+    } catch (e) { box.innerHTML = `<span style="font-size:11px;color:var(--danger)">Erro: ${escapeHtml(e.message)}</span>`; }
+    btn.disabled = false;
+  }));
   // Esteira de Locação: financeiro + checklist
   const formLocE = cont.querySelector('.form-loc-esteira');
   if (formLocE) {
@@ -3214,63 +3289,100 @@ async function carregarImoveis() {
       return;
     }
 
-    // Resumo por status (painel)
-    const contagem = {};
-    imoveis.forEach(im => { contagem[im.status] = (contagem[im.status] || 0) + 1; });
-    const resumo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-      ${IMOVEL_STATUS.map(s => `<div style="flex:1;min-width:88px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:10px 12px">
-        <div style="font-size:20px;font-weight:700;color:${s.cor}">${contagem[s.key] || 0}</div>
-        <div style="font-size:11px;color:var(--text-muted)">${s.label}</div></div>`).join('')}</div>`;
-
-    let corpo;
-    if (veTudo) {
-      // Gestor/Administrativo: esteira agrupada por etapa
-      const grupos = IMOVEL_STATUS.map(s => {
-        const lista = imoveis.filter(im => im.status === s.key);
-        if (!lista.length) return '';
-        return `<div style="margin-top:18px">
-          <div style="font-size:12px;font-weight:700;color:${s.cor};text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${s.label} · ${lista.length}</div>
-          <div style="display:flex;flex-direction:column;gap:10px">${lista.map(im => cardImovelHtml(im, role)).join('')}</div></div>`;
-      }).join('');
-      const fora = imoveis.filter(im => !IMOVEL_STATUS.some(s => s.key === im.status));
-      const foraHtml = fora.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">OUTROS · ${fora.length}</div><div style="display:flex;flex-direction:column;gap:10px">${fora.map(im => cardImovelHtml(im, role)).join('')}</div></div>` : '';
-      corpo = grupos + foraHtml;
-    } else {
-      // Corretor: lista simples dos seus imóveis
-      corpo = `<div style="display:flex;flex-direction:column;gap:10px">${imoveis.map(im => cardImovelHtml(im, role)).join('')}</div>`;
-    }
-
-    secaoImoveis.innerHTML = resumo + corpo;
-
-    // Controle de status (só aparece pra gestor/administrativo)
-    secaoImoveis.querySelectorAll('.imovel-status-sel').forEach(sel => {
-      sel.addEventListener('change', async () => {
-        sel.disabled = true;
-        try {
-          await locMoverImovelStatus({ imovelId: sel.dataset.id, novoStatus: sel.value });
-          carregarImoveis();
-        } catch (e) {
-          alert('Erro ao mover: ' + e.message);
-          carregarImoveis();
-        }
-      });
-    });
-
-    // Ver detalhes do imóvel (busca sob demanda)
-    secaoImoveis.querySelectorAll('.btn-det-imovel').forEach(btn => {
-      btn.addEventListener('click', () => toggleDetalheImovel(btn));
-    });
+    _imoveisCache = { imoveis, veTudo, role };
+    renderImoveis();
   } catch (e) {
     secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
   }
 }
 
+// Renderiza a esteira a partir do cache, respeitando o filtro por status (quadrados clicáveis).
+function renderImoveis() {
+  if (!_imoveisCache) return;
+  const { imoveis, veTudo, role } = _imoveisCache;
+  const contagem = {};
+  imoveis.forEach(im => { contagem[im.status] = (contagem[im.status] || 0) + 1; });
+  const filtro = imoveisFiltroStatus;
+  const ativo = k => (k === '__todos' ? filtro === null : filtro === k);
+
+  // Quadrados de resumo (clicáveis pra filtrar; o ativo fica destacado)
+  const quad = (key, label, cor, num) => `<div class="imovel-filtro" data-status="${key}" title="Filtrar: ${label}" style="flex:1;min-width:88px;background:${ativo(key) ? cor + '1f' : 'var(--surface)'};border:1px solid ${ativo(key) ? cor : 'var(--border)'};border-radius:var(--radius-card);padding:10px 12px;cursor:pointer;transition:border-color .12s">
+      <div style="font-size:20px;font-weight:700;color:${cor}">${num}</div>
+      <div style="font-size:11px;color:var(--text-muted)">${label}</div></div>`;
+  const resumo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    ${quad('__todos', 'Todos', '#0ea5e9', imoveis.length)}
+    ${IMOVEL_STATUS.map(s => quad(s.key, s.label, s.cor, contagem[s.key] || 0)).join('')}</div>`;
+
+  const lista = arr => `<div style="display:flex;flex-direction:column;gap:10px">${arr.map(im => cardImovelHtml(im, role)).join('')}</div>`;
+  let corpo;
+  if (filtro) {
+    // Filtrado: lista simples só do status escolhido
+    const visiveis = imoveis.filter(im => im.status === filtro);
+    const lbl = (IMOVEL_STATUS.find(s => s.key === filtro) || {}).label || filtro;
+    corpo = visiveis.length
+      ? `<div style="margin-top:14px">${lista(visiveis)}</div>`
+      : `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhum imóvel com status "${escapeHtml(lbl)}".</p>`;
+  } else if (veTudo) {
+    // Sem filtro (gestor/admin): agrupado por etapa
+    const grupos = IMOVEL_STATUS.map(s => {
+      const l = imoveis.filter(im => im.status === s.key);
+      if (!l.length) return '';
+      return `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:${s.cor};text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${s.label} · ${l.length}</div>${lista(l)}</div>`;
+    }).join('');
+    const fora = imoveis.filter(im => !IMOVEL_STATUS.some(s => s.key === im.status));
+    const foraHtml = fora.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">OUTROS · ${fora.length}</div>${lista(fora)}</div>` : '';
+    corpo = grupos + foraHtml;
+  } else {
+    // Corretor sem filtro: lista simples dos seus
+    corpo = `<div style="margin-top:14px">${lista(imoveis)}</div>`;
+  }
+
+  secaoImoveis.innerHTML = resumo + corpo;
+
+  // Clique nos quadrados: alterna o filtro (clicar no ativo ou em "Todos" limpa)
+  secaoImoveis.querySelectorAll('.imovel-filtro').forEach(el => el.addEventListener('click', () => {
+    const s = el.dataset.status;
+    imoveisFiltroStatus = (s === '__todos') ? null : (imoveisFiltroStatus === s ? null : s);
+    renderImoveis();
+  }));
+  // Controle de status (gestor/administrativo)
+  secaoImoveis.querySelectorAll('.imovel-status-sel').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      sel.disabled = true;
+      try { await locMoverImovelStatus({ imovelId: sel.dataset.id, novoStatus: sel.value }); carregarImoveis(); }
+      catch (e) { alert('Erro ao mover: ' + e.message); carregarImoveis(); }
+    });
+  });
+  // Ver detalhes do imóvel (busca sob demanda)
+  secaoImoveis.querySelectorAll('.btn-det-imovel').forEach(btn => btn.addEventListener('click', () => toggleDetalheImovel(btn)));
+}
+
+// Tipos de alerta da Gestão de Locações: [ícone, rótulo, cor, fundo, borda]
+const ALERTA_INFO = {
+  atraso:            ['⚠', 'Cobrança(s) em atraso',   '#DC1C2E', '#fef2f2', '#fecaca'],
+  repasse_pendente:  ['↩', 'Repasse(s) pendente(s)',  '#b45309', '#fffbeb', '#fde68a'],
+  contrato_vencendo: ['📄', 'Contrato(s) vencendo',    '#0ea5e9', '#eff6ff', '#bfdbfe'],
+  vistoria_pendente: ['🔍', 'Vistoria(s) pendente(s)', '#6366f1', '#eef2ff', '#c7d2fe'],
+  cadastro_pendente: ['📝', 'Cadastro(s) com pendência', '#b45309', '#fffbeb', '#fde68a'],
+};
+
+// Definição dos relatórios (T11): colunas, mapeamento de linha e colunas de dinheiro (idx).
+const REL_DEFS = {
+  contratosAtivos:        { titulo: 'Contratos ativos',        cols: ['Ref', 'Endereço', 'Locador', 'Locatário', 'Aluguel', 'Início', 'Fim', 'Corretor'], money: [4], row: r => [r.referencia, r.endereco, r.locador, r.locatario, r.valorAluguel, r.vigenciaInicio, r.vigenciaFim, r.corretorNome] },
+  inadimplencia:          { titulo: 'Inadimplência',           cols: ['Competência', 'Ref', 'Endereço', 'Valor', 'Venceu', 'Corretor'], money: [3], row: r => [r.competencia, r.referencia, r.endereco, r.valor, r.vencimento, r.corretorNome] },
+  repassesMes:            { titulo: 'Repasses do mês',         cols: ['Competência', 'Ref', 'Proprietário', 'Valor', 'Status', 'Corretor'], money: [3], row: r => [r.competencia, r.referencia, r.proprietario, r.valorRepasse, r.status, r.corretorNome] },
+  imoveisPorCorretor:     { titulo: 'Imóveis por corretor',    cols: ['Corretor', 'Imóveis'], money: [], row: r => [r.nome, r.qtd] },
+  extratoPorProprietario: { titulo: 'Extrato por proprietário', cols: ['Proprietário', 'Repasses', 'Total', 'Repassado', 'Pendente'], money: [2, 3, 4], row: r => [r.proprietario, r.qtd, r.total, r.repassado, r.pendente] },
+};
+let _relatorioDados = null;
+
 // ─── Painel / Dashboard (Gestão de Locações — T4/T11) ────────────────────────
 async function carregarPainel() {
   secaoPainel.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando painel...</p>';
   try {
-    const res = await locDashboard({});
+    const [res, aRes] = await Promise.all([locDashboard({}), locListarAlertas({}).catch(() => ({ data: { alertas: [] } }))]);
     const d = res.data || {};
+    const alertas = aRes.data?.alertas || [];
     const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const card = (num, label, cor) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:14px 16px;min-width:120px;flex:1">
       <div style="font-size:23px;font-weight:700;color:${cor || 'var(--text-primary)'}">${num}</div>
@@ -3278,59 +3390,181 @@ async function carregarPainel() {
     const st = d.imoveisPorStatus || {};
     const etapas = [['recebido', 'Recebido', '#b45309'], ['em_analise', 'Em análise', '#6366f1'], ['aprovado', 'Aprovado', '#16a34a'], ['em_contrato', 'Em contrato', '#0ea5e9'], ['ativo', 'Ativo', '#002749']];
     const titulo = t => `<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin:16px 0 10px">${t}</div>`;
+
+    // Bloco de alertas (genérico — reflete novos tipos automaticamente; ignora os tratados)
+    const contagem = {};
+    alertas.filter(a => !a.tratado).forEach(a => { contagem[a.tipo] = (contagem[a.tipo] || 0) + 1; });
+    const alertaPills = Object.entries(contagem).filter(([, n]) => n).map(([tipo, n]) => {
+      const [ic, lbl, cor, bg, bd] = ALERTA_INFO[tipo] || ['•', tipo, 'var(--text-muted)', 'var(--surface)', 'var(--border)'];
+      return `<div style="background:${bg};border:1px solid ${bd};color:${cor};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer" data-ir-alertas="1">${ic} ${n} ${lbl}</div>`;
+    }).join('');
+    const alertaBloco = alertaPills ? titulo('Alertas') + `<div style="display:flex;gap:8px;flex-wrap:wrap">${alertaPills}</div>` : '';
+
     secaoPainel.innerHTML =
       titulo(`Visão geral${d.veTudo ? '' : ' (seus imóveis)'}`) +
-      `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(d.totalImoveis || 0, 'Imóveis')}${card(d.contratosAtivos || 0, 'Contratos ativos', '#16a34a')}${card(d.inadimplencia?.qtd || 0, 'Cobranças em atraso', '#DC1C2E')}${card(d.repassePendente?.qtd || 0, 'Repasses pendentes', '#b45309')}</div>` +
+      `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(d.totalImoveis || 0, 'Imóveis')}${card(d.aguardandoAnalise || 0, 'Aguardando análise', '#6366f1')}${card(d.contratosAtivos || 0, 'Contratos ativos', '#16a34a')}${card(d.inadimplencia?.qtd || 0, 'Cobranças em atraso', '#DC1C2E')}${card(d.repassePendente?.qtd || 0, 'Repasses pendentes', '#b45309')}</div>` +
       titulo('Valores') +
       `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(fmt(d.inadimplencia?.valor), 'Inadimplência', '#DC1C2E')}${card(fmt(d.repassePendente?.valor), 'A repassar', '#b45309')}${card(fmt(d.repassadoMes), 'Repassado no mês', '#16a34a')}</div>` +
+      alertaBloco +
       titulo('Imóveis por etapa') +
       `<div style="display:flex;gap:8px;flex-wrap:wrap">${etapas.map(([k, l, c]) => card(st[k] || 0, l, c)).join('')}</div>`;
+
+    // Clicar num alerta leva pra Central de Alertas
+    secaoPainel.querySelectorAll('[data-ir-alertas]').forEach(el => el.addEventListener('click', () => { locSub = 'alertas'; renderCentro(); }));
   } catch (e) {
     secaoPainel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar painel: ${escapeHtml(e.message)}</p>`;
   }
 }
 
-// ─── Locação · Admin (perfis — só gestor) ────────────────────────────────────
-async function carregarLocAdmin() {
-  secaoLocAdmin.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando perfis...</p>';
-  try {
-    const res = await locListarPessoasPerfis({});
-    const usuarios = (res.data?.usuarios || []).slice().sort((a, b) => (a.nome || a.email || '').localeCompare(b.nome || b.email || ''));
-    const ROLE_OPTS = { corretor: 'Corretor', administrativo: 'Administrativo', gestor: 'Gestor' };
-    const rows = usuarios.map(u => `
-      <div class="ficha-card" data-uid="${escapeHtml(u.uid)}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-        <div style="flex:1;min-width:150px"><strong style="font-size:13px">${escapeHtml(u.nome || '(sem nome)')}</strong>
-          <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(u.email || '')}</div></div>
-        <select class="perfil-role" style="${_selStyle}">${Object.entries(ROLE_OPTS).map(([k, l]) => `<option value="${k}"${k === u.role ? ' selected' : ''}>${l}</option>`).join('')}</select>
-        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><input type="checkbox" class="perfil-fin"${u.financeiro ? ' checked' : ''}${u.role === 'corretor' ? ' disabled' : ''}> Financeiro</label>
-        <button class="topbar-btn primario btn-salvar-perfil" style="font-size:11px;padding:4px 10px">Salvar</button>
-      </div>`).join('');
-    secaoLocAdmin.innerHTML = `<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Defina o perfil de cada pessoa e libere a aba <strong>Financeiro</strong>. Após mudar o perfil, a pessoa precisa deslogar/logar pra valer.</div>${rows}`;
-
-    secaoLocAdmin.querySelectorAll('.perfil-role').forEach(sel => {
-      sel.addEventListener('change', () => {
-        const fin = sel.closest('[data-uid]').querySelector('.perfil-fin');
-        if (sel.value === 'corretor') { fin.checked = false; fin.disabled = true; } else fin.disabled = false;
-      });
-    });
-    secaoLocAdmin.querySelectorAll('.btn-salvar-perfil').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const card = btn.closest('[data-uid]');
-        btn.disabled = true;
-        try {
-          await locDefinirPerfil({
-            uid: card.dataset.uid,
-            role: card.querySelector('.perfil-role').value,
-            financeiro: card.querySelector('.perfil-fin').checked
-          });
-          carregarLocAdmin();
-        } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
-      });
-    });
-  } catch (e) {
-    secaoLocAdmin.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro: ${escapeHtml(e.message)}</p>`;
+// ─── Central de Alertas (Gestão de Locações — T10) ───────────────────────────
+function _descAlerta(a) {
+  const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const ref = a.referencia ? ` · ${escapeHtml(a.referencia)}` : '';
+  switch (a.tipo) {
+    case 'atraso':            return `Competência ${a.competencia || '?'} · ${fmt(a.valor)} · venceu ${a.vencimento || '?'}`;
+    case 'repasse_pendente':  return `Competência ${a.competencia || '?'} · ${fmt(a.valor)} a repassar`;
+    case 'contrato_vencendo': return `Vigência termina em ${a.vigenciaFim || '?'}`;
+    case 'vistoria_pendente': return `Vistoria de ${a.tipoVistoria === 'saida' ? 'saída' : 'entrada'} agendada${ref}`;
+    case 'cadastro_pendente': return `${a.qtd || 0} documento(s) pendente(s)${ref}`;
+    default: return '';
   }
 }
+
+async function carregarAlertas() {
+  secaoAlertas.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando alertas...</p>';
+  const podeTratar = (locRoleAtual === 'gestor' || locRoleAtual === 'administrativo');
+  try {
+    const res = await locListarAlertas({});
+    const alertas = res.data?.alertas || [];
+    const ativos = alertas.filter(a => !a.tratado);
+    const tratados = alertas.filter(a => a.tratado);
+
+    if (!alertas.length) {
+      secaoAlertas.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:36px 16px;line-height:1.6">✅ Nenhum alerta.<br><span style="font-size:12px">Cobranças, repasses, contratos e vistorias em dia.</span></div>`;
+      return;
+    }
+
+    const linha = (a) => {
+      const [ic, lbl, cor, bg, bd] = ALERTA_INFO[a.tipo] || ['•', a.tipo, 'var(--text-muted)', 'var(--surface)', 'var(--border)'];
+      const nome = lbl.replace(/\(s\)/g, '').replace(/\s+$/, '');
+      const btnTratar = podeTratar
+        ? `<button class="topbar-btn btn-tratar-alerta" data-chave="${escapeHtml(a.chave)}" data-desfazer="${a.tratado ? '1' : '0'}" style="font-size:11px;padding:3px 10px">${a.tratado ? '↩ Reabrir' : '✓ Tratado'}</button>`
+        : '';
+      const btnVer = a.imovelId
+        ? `<button class="topbar-btn btn-ver-alerta-imovel" data-imovel="${escapeHtml(a.imovelId)}" style="font-size:11px;padding:3px 10px">Ver imóvel</button>`
+        : '';
+      return `<div style="display:flex;gap:10px;align-items:center;background:${a.tratado ? 'var(--surface)' : bg};border:1px solid ${a.tratado ? 'var(--border)' : bd};border-radius:10px;padding:10px 12px;margin-bottom:8px;${a.tratado ? 'opacity:.55' : ''}">
+        <span style="font-size:18px">${ic}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:${a.tratado ? 'var(--text-muted)' : cor}">${nome}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${_descAlerta(a)}</div>
+        </div>
+        ${btnVer}${btnTratar}
+      </div>`;
+    };
+
+    const titulo = (t, n) => `<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin:6px 0 10px">${t}${n != null ? ` <span style="color:var(--text-muted);font-weight:600">(${n})</span>` : ''}</div>`;
+    let html = '';
+    if (ativos.length) {
+      // agrupa ativos por tipo, na ordem do ALERTA_INFO
+      const ordem = Object.keys(ALERTA_INFO);
+      const porTipo = {};
+      ativos.forEach(a => { (porTipo[a.tipo] = porTipo[a.tipo] || []).push(a); });
+      html += titulo('Pendentes', ativos.length);
+      ordem.filter(t => porTipo[t]).forEach(t => { html += porTipo[t].map(linha).join(''); });
+      // tipos fora do ALERTA_INFO conhecido
+      Object.keys(porTipo).filter(t => !ordem.includes(t)).forEach(t => { html += porTipo[t].map(linha).join(''); });
+    } else {
+      html += `<div style="font-size:13px;color:#16a34a;text-align:center;padding:16px">✅ Nenhuma pendência ativa.</div>`;
+    }
+    if (tratados.length) {
+      html += `<details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);font-weight:600">Tratados (${tratados.length})</summary><div style="margin-top:10px">${tratados.map(linha).join('')}</div></details>`;
+    }
+    secaoAlertas.innerHTML = html;
+
+    // Marcar/reabrir
+    secaoAlertas.querySelectorAll('.btn-tratar-alerta').forEach(btn => btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await locTratarAlerta({ chave: btn.dataset.chave, desfazer: btn.dataset.desfazer === '1' });
+        carregarAlertas();
+      } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    }));
+    // Ir pra aba Imóveis (o corretor localiza o card lá)
+    secaoAlertas.querySelectorAll('.btn-ver-alerta-imovel').forEach(btn => btn.addEventListener('click', () => {
+      locSub = 'imoveis';
+      renderCentro();
+    }));
+  } catch (e) {
+    secaoAlertas.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar alertas: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// ─── Relatórios (Gestão de Locações — T11) ───────────────────────────────────
+function _relCSV(chave) {
+  const d = _relatorioDados || {};
+  const def = REL_DEFS[chave];
+  if (!def) return;
+  const rows = d[chave] || [];
+  const esc = v => { const s = String(v == null ? '' : v); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const money = new Set(def.money || []);
+  // Colunas de dinheiro saem com vírgula decimal (Excel pt-BR lê como número). Separador ';'.
+  const cel = (v, i) => money.has(i) ? Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace(/\./g, '') : esc(v);
+  const linhas = [def.cols.join(';'), ...rows.map(r => def.row(r).map(cel).join(';'))];
+  const csv = '﻿' + linhas.join('\r\n'); // BOM p/ Excel abrir com acento certo
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `remax-locacoes-${chave}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+async function carregarRelatorios() {
+  secaoRelatorios.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando relatórios...</p>';
+  try {
+    const res = await locRelatorios({});
+    const d = res.data || {};
+    _relatorioDados = d;
+    const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const bloco = (chave) => {
+      const def = REL_DEFS[chave];
+      const rows = d[chave] || [];
+      const head = `<div style="display:flex;align-items:center;gap:8px;margin:18px 0 8px">
+        <span style="font-size:13px;font-weight:700;color:var(--text-primary)">${def.titulo}</span>
+        <span style="font-size:11px;color:var(--text-muted)">(${rows.length})</span>
+        ${rows.length ? `<button class="topbar-btn btn-rel-csv" data-rel="${chave}" style="margin-left:auto;font-size:11px;padding:3px 10px">⬇ Baixar CSV</button>` : ''}
+      </div>`;
+      if (!rows.length) return head + `<p style="font-size:12px;color:var(--text-muted);padding:0 0 4px">Sem dados.</p>`;
+      const th = def.cols.map(c => `<th style="text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap">${escapeHtml(c)}</th>`).join('');
+      const trs = rows.map(r => {
+        const cells = def.row(r).map((v, i) => {
+          const val = def.money.includes(i) ? fmt(v) : escapeHtml(v == null ? '' : String(v));
+          return `<td style="font-size:12px;padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap">${val}</td>`;
+        }).join('');
+        return `<tr>${cells}</tr>`;
+      }).join('');
+      return head + `<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:max-content"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>`;
+    };
+
+    const totalRepMes = (d.repassesMes || []).reduce((s, r) => s + (r.valorRepasse || 0), 0);
+    const totalInad = (d.inadimplencia || []).reduce((s, r) => s + (r.valor || 0), 0);
+    const resumo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:130px"><div style="font-size:20px;font-weight:700">${(d.contratosAtivos || []).length}</div><div style="font-size:11px;color:var(--text-muted)">Contratos ativos</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:130px"><div style="font-size:20px;font-weight:700;color:#DC1C2E">${fmt(totalInad)}</div><div style="font-size:11px;color:var(--text-muted)">Inadimplência</div></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;flex:1;min-width:130px"><div style="font-size:20px;font-weight:700;color:#16a34a">${fmt(totalRepMes)}</div><div style="font-size:11px;color:var(--text-muted)">Repasses do mês</div></div>
+    </div>`;
+
+    secaoRelatorios.innerHTML = resumo + ['contratosAtivos', 'inadimplencia', 'repassesMes', 'imoveisPorCorretor', 'extratoPorProprietario'].map(bloco).join('');
+    secaoRelatorios.querySelectorAll('.btn-rel-csv').forEach(btn => btn.addEventListener('click', () => _relCSV(btn.dataset.rel)));
+  } catch (e) {
+    secaoRelatorios.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar relatórios: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// (perfil/role e acesso ao Financeiro são geridos no painel de Admin → Permissões,
+//  não aqui — a antiga tela "Locação · Admin" foi removida por ser redundante.)
 
 // ─── Financeiro (cobranças, repasses, alertas — Gestão de Locações) ──────────
 const COB_STATUS = { previsto:['Previsto','#6366f1'], pago:['Pago','#16a34a'], atrasado:['Atrasado','#DC1C2E'] };
@@ -3435,10 +3669,11 @@ async function carregarFinanceiro() {
       const acao = podeBaixar ? (r.status === 'repassado'
         ? `<button class="topbar-btn btn-fin" data-tipo="rep-desfazer" data-id="${r.id}" style="font-size:10px;padding:3px 8px">Desfazer</button>`
         : `<button class="topbar-btn primario btn-fin" data-tipo="rep" data-id="${r.id}" style="font-size:10px;padding:3px 8px">Repassar</button>`) : '';
+      const rateio = r.revisarRateio ? `<span title="Mais de um proprietário — divida o valor manualmente" style="font-size:10px;font-weight:600;color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:2px 7px;border-radius:5px">⚠ 2 titulares · revisar rateio</span>` : '';
       return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;flex-wrap:wrap">
         <div style="min-width:66px;font-weight:600;font-size:12px">${compLabel(r.competencia)}</div>
         <div style="flex:1;font-size:12px;display:flex;align-items:center;gap:5px">${valorCell}</div>
-        <span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;padding:2px 7px;border-radius:5px">${lbl}</span>${acao}</div>`;
+        ${rateio}<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;padding:2px 7px;border-radius:5px">${lbl}</span>${acao}</div>`;
     };
     const h = t => `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-primary);margin:16px 0 8px">${t}</div>`;
 

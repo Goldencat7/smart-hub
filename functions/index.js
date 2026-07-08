@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
@@ -945,6 +945,71 @@ exports.locAnalisarLocatario = onCall(async (req) => {
   return { ok: true };
 });
 
+// (gestor/admin) T14: lista fichas recebidas (PF/PJ/Locação c/ Fiador) do corretor dono
+// do imóvel, pra vincular uma como locatário — reusa a ficha online que o cliente já preenche.
+const LOC_FICHA_TIPOS_LOCATARIO = ['pf', 'pj', 'locacao_fiador'];
+exports.locFichasParaVincular = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth) && !(auth.token && auth.token.locRole === 'administrativo')) {
+    throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo.');
+  }
+  const { imovelId } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const imovelSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+
+  const [fSnap, pSnap] = await Promise.all([
+    db.collection('fichas').where('corretorUid', '==', imovelSnap.data().corretorUid).get(),
+    db.collection('pessoas').where('imovelId', '==', imovelId).get()
+  ]);
+  const jaVinc = new Set();
+  pSnap.forEach(p => { const f = p.data().fichaVinculadaId; if (f) jaVinc.add(f); });
+  const mascCpf = c => { const s = String(c || '').replace(/\D/g, ''); return s ? '•••.' + s.slice(-5, -2) + '.' + s.slice(-2) : ''; };
+
+  const fichas = fSnap.docs
+    .filter(d => LOC_FICHA_TIPOS_LOCATARIO.includes(d.data().tipo))
+    .map(d => { const x = d.data(); const dd = x.dados || {}; return { id: d.id, tipo: x.tipo, nome: dd.nome || '(sem nome)', cpf: mascCpf(dd.cpf), status: x.status || '', jaVinculada: jaVinc.has(d.id), criadoEm: x.criadoEm && x.criadoEm.toDate ? x.criadoEm.toDate().toISOString() : null }; })
+    .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+  return { fichas };
+});
+
+// (gestor/admin) T14: cria o locatário (pessoa) a partir de uma ficha recebida, pendente
+// de análise. Espelha o fluxo do locador (ficha → pessoa). Idempotente por (imóvel, ficha).
+exports.locVincularFichaLocatario = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth) && !(auth.token && auth.token.locRole === 'administrativo')) {
+    throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo.');
+  }
+  const { imovelId, fichaId } = req.data || {};
+  if (!imovelId || !fichaId) throw new HttpsError('invalid-argument', 'imovelId e fichaId são obrigatórios.');
+  const [imovelSnap, fichaSnap] = await Promise.all([
+    db.collection('imoveis').doc(imovelId).get(),
+    db.collection('fichas').doc(fichaId).get()
+  ]);
+  if (!imovelSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  if (!fichaSnap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  // A ficha precisa ser do mesmo corretor do imóvel (regra de ouro).
+  if (fichaSnap.data().corretorUid !== imovelSnap.data().corretorUid) {
+    throw new HttpsError('permission-denied', 'A ficha não pertence ao corretor deste imóvel.');
+  }
+  const dd = fichaSnap.data().dados || {};
+  if (!dd.nome) throw new HttpsError('failed-precondition', 'A ficha não tem nome preenchido.');
+
+  const ref = db.collection('pessoas').doc(`${imovelId}_locficha_${fichaId}`);
+  if ((await ref.get()).exists) throw new HttpsError('already-exists', 'Essa ficha já foi vinculada a este imóvel.');
+  await ref.set({
+    papel: 'locatario', imovelId,
+    corretorUid: imovelSnap.data().corretorUid,
+    nome: dd.nome, cpf: dd.cpf || '', email: dd.email || '', whatsapp: dd.whatsapp || dd.celular || '',
+    renda: dd.renda || dd.rendaMensal || '', profissao: dd.profissao || '', obs: '',
+    fichaVinculadaId: fichaId, fichaTipo: fichaSnap.data().tipo || '',
+    analise: { status: 'em_analise', obs: '', por: '', em: null },
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true, id: ref.id };
+});
+
 // (GESTOR) Registra/atualiza a garantia de um imóvel (1 garantia ativa por imóvel).
 exports.locSalvarGarantia = onCall(async (req) => {
   const auth = await exigirGestor(req);
@@ -1136,8 +1201,16 @@ async function gerarCobrancasDoContrato(c, contratoId) {
   const dia = Math.min(28, Math.max(1, c.diaVencimento || 10));
   const valorAluguel = c.valorAluguel || 0, valorCond = c.valorCondominio || 0, valorIptu = c.valorIptu || 0;
   const valorCobranca = valorAluguel + valorCond + valorIptu;                 // o que o locatário paga
-  const valorRepasse = Math.max(0, valorAluguel - (valorAluguel * (c.taxaAdm || 0) / 100)); // simplificação Fase 1
-  const proprietarioId = (c.locadorIds || [])[0] || '';
+  // Repasse ao proprietário conforme tipoRepasse da ficha ('Somente aluguel' vs
+  // 'Aluguel + condomínio + IPTU'). A taxa de administração incide sobre o aluguel.
+  const incluiEncargos = /condom|iptu/i.test(String(c.tipoRepasse || ''));
+  const baseRepasse = valorAluguel + (incluiEncargos ? (valorCond + valorIptu) : 0);
+  const valorRepasse = Math.max(0, baseRepasse - (valorAluguel * (c.taxaAdm || 0) / 100));
+  // Rateio da 2ª titular: não há % de divisão no cadastro, então gera 1 repasse ao
+  // titular principal e marca revisarRateio quando há mais de um proprietário (ajuste manual).
+  const locadorIds = c.locadorIds || [];
+  const proprietarioId = locadorIds[0] || '';
+  const revisarRateio = locadorIds.length > 1;
   const ts = admin.firestore.FieldValue.serverTimestamp();
 
   // Idempotência REAL: lê o que já existe e só CRIA o que falta — nunca reescreve
@@ -1161,8 +1234,8 @@ async function gerarCobrancasDoContrato(c, contratoId) {
       status: 'previsto', dataBaixa: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
     });
     if (!temR.has(docId)) batch.set(db.collection('repasses').doc(docId), {
-      contratoId, imovelId: c.imovelId, corretorUid: c.corretorUid, proprietarioId, competencia,
-      valorRepasse, status: 'pendente', dataRepasse: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
+      contratoId, imovelId: c.imovelId, corretorUid: c.corretorUid, proprietarioId, proprietarioIds: locadorIds, revisarRateio, competencia,
+      valorRepasse, baseRepasse, tipoRepasse: c.tipoRepasse || '', status: 'pendente', dataRepasse: null, origemStatus: 'manual', idExterno: '', criadoEm: ts
     });
     count++; m++; if (m > 12) { m = 1; y++; }
   }
@@ -1234,6 +1307,10 @@ exports.locListarFinanceiro = onCall(async (req) => {
   return { cobrancas, repasses, veTudo, podeBaixar };
 });
 
+// "Agora" no fuso de São Paulo (UTC-3; Brasil sem horário de verão). Evita que a data/
+// competência "de hoje" vire um dia antes perto da meia-noite (Timestamp.now() é UTC).
+function agoraSP() { return new Date(admin.firestore.Timestamp.now().toDate().getTime() - 3 * 3600000); }
+
 // (autenticado) Painel/Dashboard: números agregados (T4/T11). Gestor/admin veem tudo;
 // corretor só os seus. Evita índice composto: filtra por 1 campo e agrega em memória
 // (volume pequeno — ~12 corretores, dezenas de imóveis/mês).
@@ -1255,7 +1332,7 @@ exports.locDashboard = onCall(async (req) => {
   cobS.forEach(d => { const x = d.data(); if (x.status === 'atrasado') { inadimplenciaQtd++; inadimplenciaValor += (x.valor || 0); } });
 
   let repassePendQtd = 0, repassePendValor = 0, repassadoMesValor = 0;
-  const compAtual = admin.firestore.Timestamp.now().toDate().toISOString().slice(0, 7);
+  const compAtual = agoraSP().toISOString().slice(0, 7);
   repS.forEach(d => {
     const x = d.data();
     if (x.status === 'pendente') { repassePendQtd++; repassePendValor += (x.valorRepasse || 0); }
@@ -1277,30 +1354,257 @@ exports.locDashboard = onCall(async (req) => {
   };
 });
 
-// (autenticado) Central de alertas: atrasos + repasses pendentes (dos seus, se corretor).
+// (autenticado) Relatórios (T11): contratos ativos, inadimplência, repasses do mês,
+// imóveis por corretor e extrato por proprietário. Corretor só os seus; gestor/admin tudo.
+// Volume pequeno → agrega em memória (sem índice composto). A exportação (CSV) é no cliente.
+exports.locRelatorios = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const flt = coll => veTudo ? db.collection(coll) : db.collection(coll).where('corretorUid', '==', auth.uid);
+
+  const [imS, ctS, cobS, repS, peS] = await Promise.all([
+    flt('imoveis').get(), flt('contratos').get(), flt('cobrancas').get(), flt('repasses').get(), flt('pessoas').get()
+  ]);
+  const pessoaNome = {}; peS.forEach(d => { pessoaNome[d.id] = d.data().nome || ''; });
+  const imById = {}; imS.forEach(d => { imById[d.id] = d.data(); });
+  const endStr = im => {
+    const e = (im && im.endereco) || {};
+    return [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', ');
+  };
+  const nomes = ids => (ids || []).map(id => pessoaNome[id]).filter(Boolean).join(', ');
+  const compAtual = agoraSP().toISOString().slice(0, 7);
+
+  // 1) Contratos ativos
+  const contratosAtivos = ctS.docs.filter(d => d.data().status === 'ativo').map(d => {
+    const c = d.data(); const im = imById[c.imovelId] || {};
+    return { imovelId: c.imovelId, referencia: im.referencia || '', endereco: endStr(im), locador: nomes(c.locadorIds) || im.locadorNome || '', locatario: nomes(c.locatarioIds), valorAluguel: c.valorAluguel || 0, vigenciaInicio: c.vigenciaInicio || '', vigenciaFim: c.vigenciaFim || '', corretorNome: im.corretorNome || '' };
+  });
+
+  // 2) Inadimplência (cobranças atrasadas)
+  const inadimplencia = cobS.docs.filter(d => d.data().status === 'atrasado').map(d => {
+    const x = d.data(); const im = imById[x.imovelId] || {};
+    return { competencia: x.competencia || '', referencia: im.referencia || '', endereco: endStr(im), valor: x.valor || 0, vencimento: x.vencimento || '', corretorNome: im.corretorNome || '' };
+  }).sort((a, b) => (a.vencimento || '').localeCompare(b.vencimento || ''));
+
+  // 3) Repasses do mês atual
+  const repassesMes = repS.docs.map(d => d.data()).filter(x => x.competencia === compAtual).map(x => {
+    const im = imById[x.imovelId] || {};
+    return { competencia: x.competencia, referencia: im.referencia || '', proprietario: pessoaNome[x.proprietarioId] || im.locadorNome || '', valorRepasse: x.valorRepasse || 0, status: x.status || '', corretorNome: im.corretorNome || '' };
+  });
+
+  // 4) Imóveis captados por corretor
+  const porCorretor = {};
+  imS.forEach(d => { const x = d.data(); const nome = x.corretorNome || x.corretorUid || '—'; porCorretor[nome] = (porCorretor[nome] || 0) + 1; });
+  const imoveisPorCorretor = Object.entries(porCorretor).map(([nome, qtd]) => ({ nome, qtd })).sort((a, b) => b.qtd - a.qtd);
+
+  // 5) Extrato por proprietário (consolida repasses)
+  const extrato = {};
+  repS.forEach(d => {
+    const x = d.data(); const pid = x.proprietarioId || '—'; const nome = pessoaNome[pid] || '(proprietário)';
+    if (!extrato[pid]) extrato[pid] = { proprietario: nome, total: 0, repassado: 0, pendente: 0, qtd: 0 };
+    const e = extrato[pid];
+    e.qtd++; e.total += x.valorRepasse || 0;
+    if (x.status === 'repassado') e.repassado += x.valorRepasse || 0; else e.pendente += x.valorRepasse || 0;
+  });
+  const extratoPorProprietario = Object.values(extrato).sort((a, b) => b.total - a.total);
+
+  return { veTudo, compAtual, contratosAtivos, inadimplencia, repassesMes, imoveisPorCorretor, extratoPorProprietario };
+});
+
+// (autenticado) Central de alertas (T10): atrasos, repasses pendentes, contratos vencendo,
+// vistorias pendentes e cadastros com pendência. Corretor só os seus; gestor/admin tudo.
+// Cada alerta tem `chave` determinística e flag `tratado` (marcado em loc_alertas_tratados).
+const DIAS_CONTRATO_VENCENDO = 60;
 exports.locListarAlertas = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
-  // Evita índice composto: veTudo filtra por status; corretor filtra por corretorUid e o status em memória.
-  let cobDocs, repDocs;
-  if (veTudo) {
-    const [c, r] = await Promise.all([
-      db.collection('cobrancas').where('status', '==', 'atrasado').get(),
-      db.collection('repasses').where('status', '==', 'pendente').get()
-    ]);
-    cobDocs = c.docs; repDocs = r.docs;
-  } else {
-    const [c, r] = await Promise.all([
-      db.collection('cobrancas').where('corretorUid', '==', auth.uid).get(),
-      db.collection('repasses').where('corretorUid', '==', auth.uid).get()
-    ]);
-    cobDocs = c.docs.filter(d => d.data().status === 'atrasado');
-    repDocs = r.docs.filter(d => d.data().status === 'pendente');
-  }
+  const flt = coll => veTudo ? db.collection(coll) : db.collection(coll).where('corretorUid', '==', auth.uid);
+
+  const [cobS, repS, ctS, viS, imS, trS] = await Promise.all([
+    flt('cobrancas').get(), flt('repasses').get(), flt('contratos').get(),
+    flt('vistorias').get(), flt('imoveis').get(),
+    db.collection('loc_alertas_tratados').get()
+  ]);
+  const tratados = new Set(trS.docs.map(d => d.id));
+
+  const hoje = agoraSP();
+  const hojeStr = hoje.toISOString().slice(0, 10);
+  const limiteStr = new Date(hoje.getTime() + DIAS_CONTRATO_VENCENDO * 86400000).toISOString().slice(0, 10);
+
   const alertas = [];
-  cobDocs.forEach(d => { const x = d.data(); alertas.push({ tipo: 'atraso', competencia: x.competencia, valor: x.valor, vencimento: x.vencimento, contratoId: x.contratoId }); });
-  repDocs.forEach(d => { const x = d.data(); alertas.push({ tipo: 'repasse_pendente', competencia: x.competencia, valor: x.valorRepasse, contratoId: x.contratoId }); });
+  const push = (tipo, refId, extra) => {
+    const chave = `${tipo}:${refId}`;
+    alertas.push({ tipo, chave, refId, tratado: tratados.has(chave), ...extra });
+  };
+
+  cobS.forEach(d => { const x = d.data(); if (x.status === 'atrasado') push('atraso', d.id, { competencia: x.competencia, valor: x.valor, vencimento: x.vencimento, contratoId: x.contratoId, imovelId: x.imovelId }); });
+  repS.forEach(d => { const x = d.data(); if (x.status === 'pendente') push('repasse_pendente', d.id, { competencia: x.competencia, valor: x.valorRepasse, contratoId: x.contratoId, imovelId: x.imovelId }); });
+  ctS.forEach(d => { const x = d.data(); if (x.status === 'ativo' && x.vigenciaFim && x.vigenciaFim >= hojeStr && x.vigenciaFim <= limiteStr) push('contrato_vencendo', d.id, { vigenciaFim: x.vigenciaFim, imovelId: x.imovelId }); });
+  viS.forEach(d => { const x = d.data(); if (x.status === 'agendada') push('vistoria_pendente', d.id, { tipoVistoria: x.tipo, imovelId: x.imovelId }); });
+  imS.forEach(d => { const x = d.data(); if (Array.isArray(x.pendentes) && x.pendentes.length) push('cadastro_pendente', d.id, { qtd: x.pendentes.length, imovelId: d.id, referencia: x.referencia || '' }); });
+
   return { alertas };
+});
+
+// (gestor/admin) Marca/desmarca um alerta como tratado (persiste em loc_alertas_tratados).
+exports.locTratarAlerta = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo) throw new HttpsError('permission-denied', 'Só gestor/administrativo pode tratar alertas.');
+  const { chave, desfazer } = req.data || {};
+  if (!chave || typeof chave !== 'string') throw new HttpsError('invalid-argument', 'chave é obrigatória.');
+  const docId = chave.replace(/\//g, '_').slice(0, 300);
+  const ref = db.collection('loc_alertas_tratados').doc(docId);
+  if (desfazer) await ref.delete();
+  else await ref.set({ chave, tratadoPor: auth.uid, tratadoEm: admin.firestore.FieldValue.serverTimestamp() });
+  return { ok: true };
+});
+
+// ─── Webhook de cobrança (STUB Fase 1 — DESATIVADO) ──────────────────────────
+// Requisito do Bloco 1 (regra 5 do Módulo 4): endpoint de entrada do gateway já
+// existe, mas INERTE na Fase 1 (pagamento é dado manualmente em locRegistrarPagamento).
+// Na Fase 2 este handler: (1) valida a assinatura/segredo do provedor (Asaas/Iugu/etc.),
+// (2) acha a cobrança/repasse por `idExterno`, (3) grava status + origemStatus='gateway'
+// — escrevendo no MESMO lugar que a baixa manual (regra 3). Nada aqui muda telas/relatórios.
+const GATEWAY_WEBHOOK_ATIVO = false; // Fase 2 liga isto (+ segredo do provedor)
+exports.locGatewayWebhook = onRequest(async (req, res) => {
+  if (!GATEWAY_WEBHOOK_ATIVO) {
+    res.status(503).json({ ok: false, disabled: true, fase: 1, message: 'Webhook de cobrança desativado (Fase 1). Pagamentos são registrados manualmente.' });
+    return;
+  }
+  // ── Fase 2 (a implementar ao plugar o gateway) ──
+  // if (!assinaturaValida(req)) { res.status(401).end(); return; }
+  // const { idExterno, evento } = req.body || {};
+  // const cob = await db.collection('cobrancas').where('idExterno','==',idExterno).limit(1).get();
+  // if (!cob.empty && evento === 'pago') await cob.docs[0].ref.update({ status:'pago', dataBaixa: admin.firestore.Timestamp.now(), origemStatus:'gateway' });
+  res.status(200).json({ ok: true });
+});
+
+// ─── Fase 1.5 · Portal externo do proprietário (consulta por token, sem login) ──
+const PORTAL_BASE = 'https://remax-smart-hub.web.app';
+
+// Papel da pessoa → papel do portal + página. Locador vê repasses; locatário vê pagamentos.
+const PORTAL_PAPEL = { locador: 'proprietario', locatario: 'inquilino' };
+const PORTAL_PAGINA = { proprietario: 'portal-proprietario.html', inquilino: 'portal-inquilino.html' };
+
+// (gestor/admin) Gera (ou reusa) o link do portal de um proprietário/inquilino. Link
+// estável por padrão; regenerar=true cria um novo e revoga os antigos.
+exports.locGerarTokenPortal = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth) && !(auth.token && auth.token.locRole === 'administrativo')) {
+    throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo.');
+  }
+  const { pessoaId, regenerar } = req.data || {};
+  if (!pessoaId) throw new HttpsError('invalid-argument', 'pessoaId é obrigatório.');
+  const pSnap = await db.collection('pessoas').doc(pessoaId).get();
+  const papelPortal = pSnap.exists ? PORTAL_PAPEL[pSnap.data().papel] : null;
+  if (!papelPortal) throw new HttpsError('not-found', 'Pessoa não encontrada ou sem portal.');
+
+  // Busca tokens da pessoa (1 campo → sem índice composto) e filtra em memória.
+  const existentes = await db.collection('portal_tokens').where('pessoaId', '==', pessoaId).get();
+  let token = null;
+  if (!regenerar) {
+    const valido = existentes.docs.find(d => d.data().papel === papelPortal && !d.data().revogado);
+    if (valido) token = valido.id;
+  }
+  if (!token) {
+    token = crypto.randomBytes(24).toString('base64url'); // ~32 chars, imprevisível
+    await db.collection('portal_tokens').doc(token).set({
+      pessoaId, papel: papelPortal, corretorUid: pSnap.data().corretorUid || '',
+      criadoEm: admin.firestore.FieldValue.serverTimestamp(), revogado: false, criadoPor: auth.uid
+    });
+    if (regenerar) { // revoga os antigos válidos do mesmo papel
+      const batch = db.batch();
+      existentes.docs.filter(d => d.data().papel === papelPortal && !d.data().revogado).forEach(d => batch.update(d.ref, { revogado: true }));
+      await batch.commit();
+    }
+  }
+  return { token, url: `${PORTAL_BASE}/${PORTAL_PAGINA[papelPortal]}?token=${token}`, nome: pSnap.data().nome || '', papel: papelPortal };
+});
+
+// (PÚBLICO — sem auth do Hub) O proprietário consulta o extrato de repasses pelo token.
+// O token É a credencial; retorna SÓ os dados desse proprietário (sem PII de terceiros).
+exports.portalProprietario = onCall(async (req) => {
+  const { token } = req.data || {};
+  if (!token || typeof token !== 'string') throw new HttpsError('invalid-argument', 'Link inválido.');
+  const tSnap = await db.collection('portal_tokens').doc(token).get();
+  if (!tSnap.exists || tSnap.data().revogado || tSnap.data().papel !== 'proprietario') {
+    throw new HttpsError('permission-denied', 'Link inválido ou revogado.');
+  }
+  const pessoaId = tSnap.data().pessoaId;
+  const pSnap = await db.collection('pessoas').doc(pessoaId).get();
+  const nome = pSnap.exists ? (pSnap.data().nome || 'Proprietário') : 'Proprietário';
+
+  // Repasses do proprietário: titular principal (proprietarioId) + 2ª titular (proprietarioIds).
+  const [r1, r2] = await Promise.all([
+    db.collection('repasses').where('proprietarioId', '==', pessoaId).get(),
+    db.collection('repasses').where('proprietarioIds', 'array-contains', pessoaId).get()
+  ]);
+  const map = {};
+  [...r1.docs, ...r2.docs].forEach(d => { map[d.id] = d.data(); });
+
+  const imIds = [...new Set(Object.values(map).map(r => r.imovelId).filter(Boolean))];
+  const imById = {};
+  await Promise.all(imIds.map(async id => { const s = await db.collection('imoveis').doc(id).get(); if (s.exists) imById[id] = s.data(); }));
+  const endStr = im => { const e = (im && im.endereco) || {}; return [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', '); };
+
+  let totalRepassado = 0, totalPendente = 0;
+  const repasses = Object.values(map)
+    .sort((a, b) => (b.competencia || '').localeCompare(a.competencia || ''))
+    .map(r => {
+      const im = imById[r.imovelId] || {};
+      const v = r.valorRepasse || 0;
+      if (r.status === 'repassado') totalRepassado += v; else totalPendente += v;
+      return {
+        competencia: r.competencia || '', valor: v, status: r.status || 'pendente',
+        imovel: im.referencia || endStr(im) || 'Imóvel',
+        dataRepasse: r.dataRepasse && r.dataRepasse.toDate ? r.dataRepasse.toDate().toISOString().slice(0, 10) : null
+      };
+    });
+  return { nome, totalRepassado, totalPendente, repasses };
+});
+
+// (PÚBLICO — sem auth do Hub) O inquilino consulta a situação dos pagamentos pelo token.
+// Fase 1.5: só CONSULTA (o boleto pagável entra na Fase 2). Cobranças da Fase 1 (status manual).
+exports.portalInquilino = onCall(async (req) => {
+  const { token } = req.data || {};
+  if (!token || typeof token !== 'string') throw new HttpsError('invalid-argument', 'Link inválido.');
+  const tSnap = await db.collection('portal_tokens').doc(token).get();
+  if (!tSnap.exists || tSnap.data().revogado || tSnap.data().papel !== 'inquilino') {
+    throw new HttpsError('permission-denied', 'Link inválido ou revogado.');
+  }
+  const pessoaId = tSnap.data().pessoaId;
+  const pSnap = await db.collection('pessoas').doc(pessoaId).get();
+  const nome = pSnap.exists ? (pSnap.data().nome || 'Inquilino') : 'Inquilino';
+  const imovelId = pSnap.exists ? pSnap.data().imovelId : null;
+  if (!imovelId) return { nome, imovel: '', totalPago: 0, totalAberto: 0, cobrancas: [] };
+
+  const [cobS, imSnap, ctSnap] = await Promise.all([
+    db.collection('cobrancas').where('imovelId', '==', imovelId).get(),
+    db.collection('imoveis').doc(imovelId).get(),
+    db.collection('contratos').doc(imovelId).get()
+  ]);
+  const im = imSnap.exists ? imSnap.data() : {};
+  const e = im.endereco || {};
+  const imovel = im.referencia || [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', ') || 'Imóvel';
+
+  // SEGURANÇA: só o(s) locatário(s) do contrato vigente veem as cobranças. Vários
+  // "pessoas" locatário podem dividir o mesmo imovelId (candidatos rejeitados, inquilino
+  // anterior após re-locação) — sem esse gate, um veria os pagamentos do outro.
+  const locatarioIds = ctSnap.exists ? (ctSnap.data().locatarioIds || []) : [];
+  if (!locatarioIds.includes(pessoaId)) {
+    return { nome, imovel, totalPago: 0, totalAberto: 0, cobrancas: [] };
+  }
+
+  let totalPago = 0, totalAberto = 0;
+  const cobrancas = cobS.docs.map(d => d.data())
+    .sort((a, b) => (b.competencia || '').localeCompare(a.competencia || ''))
+    .map(x => {
+      const v = x.valor || 0;
+      if (x.status === 'pago') totalPago += v; else totalAberto += v;
+      return { competencia: x.competencia || '', valor: v, vencimento: x.vencimento || '', status: x.status || 'previsto' };
+    });
+  return { nome, imovel, totalPago, totalAberto, cobrancas };
 });
 
 // ─── Gestão de Locações · Bloco 6 · Vistorias (T9) ──────────────────────────
