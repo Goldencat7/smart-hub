@@ -36,7 +36,6 @@
       "*.js",
       "styles.css",
       "logo.png",
-      "logo-navy.png",
       "app-icons/**",
       "marketing/**",
       "!marketing/template/**",
