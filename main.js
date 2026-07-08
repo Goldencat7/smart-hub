@@ -437,6 +437,9 @@ ipcMain.on('abrir-app', (_evt, payload) => {
       seletorUser: 'input[name="user[email]"], #user_email, input[type="email"], input[name*="email" i], input[autocomplete="username"]',
       seletorPass: 'input[name="user[password]"], #user_password, input[type="password"], input[name*="password" i]',
       seletorBtn:  'button[type="submit"], input[type="submit"]',
+      // A tela nova tem 2 botões (magic-link vs senha). Depois do email, clicar
+      // EXATAMENTE em "Acessar com senha" (nunca "Receber link de acesso").
+      textosAvancar: ['acessar com senha', 'com senha'],
       naoEnviar: true,
       partition: 'persist:clicksign' // sessão salva no disco → histórico de visitas → menos suspeito
     },
@@ -468,7 +471,7 @@ ipcMain.on('abrir-app', (_evt, payload) => {
   // Bug 11: garante que login/senha nunca sejam undefined (evita string literal "undefined" no site)
   abrirPwaComAutologin(url, cfg.seletorUser, cfg.seletorPass, cfg.seletorBtn,
                       credenciais.login || '', credenciais.password || '',
-                      { naoEnviar: !!cfg.naoEnviar, partition: cfg.partition || null });
+                      { naoEnviar: !!cfg.naoEnviar, partition: cfg.partition || null, textosAvancar: cfg.textosAvancar || null });
 });
 
 // ─── Disfarça a janela como Chrome real (anti bot-detection) ─────────────────
@@ -566,7 +569,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
 
   // Injeta no dom-ready (cedo, e uma vez por carregamento — não por frame)
   pwaWindow.webContents.on('dom-ready', () => {
-    const payload = { seletorUser, seletorPass, seletorBtn, usuario, senha, naoEnviar: !!opcoes.naoEnviar };
+    const payload = { seletorUser, seletorPass, seletorBtn, usuario, senha, naoEnviar: !!opcoes.naoEnviar, textosAvancar: opcoes.textosAvancar || null };
 
     const scriptLoop = `
       (function(){
@@ -792,11 +795,17 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
             preencher(inputUser, cfg.usuario);
 
             if(precisaSenha && !inputPass){
-              banner('usuário preenchido, clicando em Continuar...');
+              // Se o site tem botão específico pra revelar a senha (ClickSign:
+              // "Acessar com senha"), procura SÓ por ele — nunca chuta o 1º botão
+              // (que na ClickSign é "Receber link de acesso", o errado).
+              const espec = cfg.textosAvancar && cfg.textosAvancar.length;
+              const textosAv = espec ? cfg.textosAvancar
+                             : ['continuar','próximo','proximo','avançar','avancar','next','entrar','prosseguir'];
+              const btnNext = acharPorTexto(textosAv) || (espec ? null : achar('button[type="submit"], button'));
+              if(espec && !btnNext) return; // aguarda o botão específico renderizar (retenta no próximo ciclo)
+              banner('usuário preenchido, abrindo acesso com senha...');
               etapa = 'aguardando-senha';
               setTimeout(() => {
-                const btnNext = acharPorTexto(['continuar','próximo','proximo','avançar','avancar','next','entrar','prosseguir'])
-                             || achar('button[type="submit"], button');
                 if(btnNext) btnNext.click();
                 else inputUser.dispatchEvent(new KeyboardEvent('keydown', { key:'Enter', code:'Enter', keyCode:13, bubbles:true }));
               }, 400);
