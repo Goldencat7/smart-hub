@@ -99,6 +99,7 @@ const excluirFichaTipo          = httpsCallable(fns, 'excluirFichaTipo');
 const reenviarFichaTipoCliente  = httpsCallable(fns, 'reenviarFichaTipoCliente');
 const listarFichasTipoAnalise   = httpsCallable(fns, 'listarFichasTipoAnalise');
 const finalizarFichaTipo        = httpsCallable(fns, 'finalizarFichaTipo');
+const listarFotosPerfil         = httpsCallable(fns, 'listarFotosPerfil');
 const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
 const contarNotifFichas   = httpsCallable(fns, 'contarNotifFichas');
 const contarChamadosAbertos = httpsCallable(fns, 'contarChamadosAbertos');
@@ -4067,6 +4068,7 @@ const cadCor = n => CAD_CORES[[...(n||'x')].reduce((a,c)=>a+c.charCodeAt(0),0) %
 let cadFichas = [];   // cache normalizado de todas as fichas
 let cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
 let cadVisao  = '';   // admin: uid de um corretor pra enxergar a aba como ele ('' = visão geral)
+let cadFotos  = {};   // uid -> foto de perfil (base64); quem não tem cai nas iniciais
 
 // Base de tudo (KPIs, abas, tabela): com a visão de corretor ativa, o admin
 // enxerga exatamente o recorte daquele corretor.
@@ -4217,6 +4219,13 @@ async function cadCarregarFichas() {
   const partes = await Promise.all(pedidos);
   cadFichas = partes.flat().sort((a,b) => (b.criadoEm?.getTime()||0) - (a.criadoEm?.getTime()||0));
 
+  // Fotos dos corretores da tabela (quem tem). Falha aqui não pode travar a
+  // aba — sem foto, o avatar cai nas iniciais.
+  try {
+    const uids = [...new Set(cadFichas.map(f => f.corretorUid).filter(Boolean))];
+    if (uids.length) cadFotos = (await listarFotosPerfil({ uids })).data?.fotos || {};
+  } catch (_) { cadFotos = {}; }
+
   if (isAdmin) {
     // uid no value (nome pode repetir); rótulo é o nome
     const vistos = new Map();
@@ -4322,8 +4331,12 @@ function cadRenderTabela() {
     const pend = f.pendentes.length
       ? `<span class="cad-pend-x">⚠ ${f.pendentes.length} pendência${f.pendentes.length>1?'s':''}<span class="cad-det">${escapeHtml(f.pendentes.map(p=>cadNomePend(p)).join(', '))}</span></span>`
       : '<span class="cad-pend-ok">✓ Sem pendências</span>';
+    const fotoCorretor = cadFotos[f.corretorUid];
+    const avtCorretor = fotoCorretor
+      ? `<img class="cad-avt" style="width:26px;height:26px" src="${fotoCorretor}" alt="">`
+      : `<span class="cad-avt" style="width:26px;height:26px;font-size:10px;background:${cadCor(f.corretorNome)}">${cadIniciais(f.corretorNome)}</span>`;
     const corretorCel = isAdmin
-      ? `<td><div class="cad-corretor"><span class="cad-avt" style="width:26px;height:26px;font-size:10px;background:${cadCor(f.corretorNome)}">${cadIniciais(f.corretorNome)}</span><div class="cad-cr-nm">${escapeHtml(f.corretorNome||'—')}</div></div></td>`
+      ? `<td><div class="cad-corretor">${avtCorretor}<div class="cad-cr-nm">${escapeHtml(f.corretorNome||'—')}</div></div></td>`
       : '';
     return `<tr>
       <td><div class="cad-cli"><span class="cad-avt" style="background:${cadCor(f.nome)}">${cadIniciais(f.nome)}</span>

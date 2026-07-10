@@ -1897,6 +1897,20 @@ exports.setStatusApp = onCall(async (req) => {
 });
 
 // ─── Perfil do usuário (nome + foto) ─────────────────────────────────────────
+// Fotos de perfil por uid (avatar do corretor na tabela de fichas).
+// Só autenticado; devolve apenas quem tem foto. As fotos são base64 e
+// pesam — por isso o front pede só os uids que aparecem na tela.
+exports.listarFotosPerfil = onCall(async (req) => {
+  exigirAutenticado(req);
+  const { uids } = req.data || {};
+  if (!Array.isArray(uids) || !uids.length) return { fotos: {} };
+  const unicos = [...new Set(uids.filter(u => typeof u === 'string' && u))].slice(0, 100);
+  const snaps = await db.getAll(...unicos.map(u => db.collection('user_profiles').doc(u)));
+  const fotos = {};
+  snaps.forEach(s => { if (s.exists && s.data().photo) fotos[s.id] = s.data().photo; });
+  return { fotos };
+});
+
 exports.getMeuPerfil = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const userRec = await admin.auth().getUser(auth.uid).catch(() => null);

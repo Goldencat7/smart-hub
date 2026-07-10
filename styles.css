@@ -1433,6 +1433,7 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .cad-cli { display: flex; align-items: center; gap: 10px; }
 .cad-avt { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center;
   justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+img.cad-avt { object-fit: cover; border: 1px solid var(--border); }
 .cad-cli .cad-nm { font-weight: 600; }
 .cad-cli .cad-cpf { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .cad-tipo { display: inline-flex; align-items: center; gap: 6px; }
