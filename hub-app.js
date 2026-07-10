@@ -4053,274 +4053,341 @@ const FICHAS_CONFIG = [
   },
 ];
 
-// grupo: 'locacao' (aba Locação), 'cadastro' (aba Cadastro) ou undefined (tudo).
-// Com a Gestão de Locações ativa (tester ou publicado), as fichas de locação vão
-// pra aba Locação e a aba Cadastro fica só com Vendedor/Proposta. Sem isso, tudo
-// continua na aba Cadastro (comportamento legado).
-async function carregarDocumentos(grupo) {
-  const nomeCorretor = encodeURIComponent(document.getElementById('usuarioInfo')?.textContent?.trim() || '');
-  const locAtivo = false;  // Fichas de locação vivem no Cadastro (a Locação não tem mais aba Fichas)
-  const fichas = grupo === 'locacao'
-    ? FICHAS_CONFIG.filter(f => f.grupo === 'locacao')
-    : (locAtivo ? FICHAS_CONFIG.filter(f => f.grupo === 'venda') : FICHAS_CONFIG);
+// ─── Cadastro de Fichas (aba "Cadastro") ─────────────────────────────────────
+// Layout novo: KPIs + filtros + tabela única de fichas recebidas. Substituiu a
+// pilha de sanfonas por tipo. Corretor vê as suas; admin ("Broker") vê todas,
+// com coluna e filtro de corretor. Tudo client-side sobre os callables que já
+// existiam — busca as 7 fichas (locador + 6 tipos) em paralelo e filtra local.
+const CAD_TIPO_LABEL = { locador:'Locador', pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação com Fiador', vendedor:'Vendedor', proposta:'Proposta', fianca:'Fiança' };
+const CAD_TIPO_ICO   = { locador:'👤', pf:'🧍', pj:'🏢', locacao_fiador:'🤝', vendedor:'🏷️', proposta:'📄', fianca:'🛡️' };
+const CAD_CORES = ['#0052CC','#C8001A','#4ade80','#8b7cf6','#fbbf24','#0ea5e9','#ec4899'];
+const cadIniciais = n => ((n||'?').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()) || '?';
+const cadCor = n => CAD_CORES[[...(n||'x')].reduce((a,c)=>a+c.charCodeAt(0),0) % CAD_CORES.length];
 
-  // Gera um accordion para cada ficha no catálogo
-  secaoDocs.innerHTML = fichas.map(f => {
-    const link = `${BASE_HOSTING}/${f.arquivo}?corretor=${currentUid}&nome=${nomeCorretor}`;
-    return `
-      <div class="docs-accordion" id="acc-${f.key}">
-        <div class="docs-acc-head" data-key="${f.key}">
-          <div style="display:flex;align-items:center;gap:8px;min-width:0">
-            <span class="acc-chevron">►</span>
-            <svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>
-            <div>
-              <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px">${f.nome}<span class="acc-notif-dot" id="dot-${f.key}" hidden></span></div>
-              <div style="font-size:11px;color:var(--text-muted)">${f.desc}</div>
-            </div>
-          </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            ${f.geraLink ? `<button class="topbar-btn primario btn-link-${f.key}" data-link="${link}" style="font-size:11px">📋 Copiar link</button>` : ''}
-            ${f.abrirInterno ? `<button class="topbar-btn primario btn-preencher-${f.key}" data-link="${link}" style="font-size:11px">📝 Preencher ficha</button>` : ''}
-          </div>
-        </div>
-        <div class="docs-acc-body" id="body-${f.key}" style="display:none">
-          <div class="docs-acc-aviso">
-            ${f.abrirInterno
-              ? 'Clique em <strong>Preencher ficha</strong> para abrir o formulário. As fichas enviadas ao admin aparecem abaixo.'
-              : 'Clique em <strong>Copiar link</strong> e envie ao cliente pelo WhatsApp. As fichas recebidas aparecem abaixo.'}
-          </div>
-          <div id="lista-${f.key}" style="padding:12px 16px">
-            <p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando...</p>
-          </div>
-        </div>
-      </div>`;
+let cadFichas = [];   // cache normalizado de todas as fichas
+let cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+
+// O backend guarda menos granularidade que os status de exibição — aqui a gente
+// deriva o "bucket" (usado nos KPIs/abas) e o rótulo/cor da pílula.
+function cadStatusInfo(f) {
+  const temPend = (f.pendentes||[]).length > 0;
+  switch (f.status) {
+    case 'enviado_admin':             return { bucket:'enviadas',   label:'Enviada ao broker',  cls:'cad-p-broker' };
+    case 'finalizado':                return { bucket:'concluidas', label:'Concluída',          cls:'cad-p-fim' };
+    case 'correcao_solicitada':       return { bucket:'devolvidas', label:'Devolvida',          cls:'cad-p-dev' };
+    case 'aguardando_edicao_cliente': return { bucket:'pendentes',  label:'Aguardando cliente', cls:'cad-p-cli' };
+    case 'aguardando_corretor':
+    default:
+      return temPend
+        ? { bucket:'pendentes', label:'Aguardando envio',  cls:'cad-p-env' }
+        : { bucket:'pendentes', label:'Pronta para envio', cls:'cad-p-pronta' };
+  }
+}
+
+async function carregarDocumentos(grupo) {
+  const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
+  cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+
+  const painelEnviar = FICHAS_CONFIG.map(f => {
+    const link = `${BASE_HOSTING}/${f.arquivo}?corretor=${currentUid}&nome=${encodeURIComponent(nomeCorretor)}`;
+    const btn = f.geraLink
+      ? `<button class="topbar-btn primario cad-copiar" data-link="${link}" style="height:28px">Copiar link</button>`
+      : `<button class="topbar-btn cad-preencher" data-arquivo="${f.arquivo}" style="height:28px">Preencher</button>`;
+    return `<div class="cad-enviar-item"><span class="cad-ei-ico">${CAD_TIPO_ICO[f.key]||'📄'}</span>
+      <span class="cad-ei-nome">${escapeHtml(CAD_TIPO_LABEL[f.key]||f.nome)}</span>${btn}</div>`;
   }).join('');
 
-  // Inicializa cada ficha
-  fichas.forEach(f => {
-    const head    = secaoDocs.querySelector(`.docs-acc-head[data-key="${f.key}"]`);
-    const body    = document.getElementById(`body-${f.key}`);
-    const chevron = head.querySelector('.acc-chevron');
-    const btnLink = secaoDocs.querySelector(`.btn-link-${f.key}`);
+  secaoDocs.innerHTML = `
+    <div class="cad-wrap">
+      <div class="cad-head">
+        <div>
+          <h2>Cadastro de Fichas</h2>
+          <p>${isAdmin ? 'Acompanhe todas as fichas enviadas e recebidas dos corretores' : 'Acompanhe e gerencie as fichas enviadas e recebidas dos seus clientes'}</p>
+        </div>
+      </div>
+      <div class="cad-kpis" id="cadKpis"></div>
+      <div class="cad-filtros">
+        <div class="cad-fcampo grow"><label>Buscar</label><input id="cadBusca" placeholder="Buscar por nome, CPF/CNPJ..."></div>
+        <div class="cad-fcampo"><label>Tipo de ficha</label><select id="cadTipo">
+          <option value="">Todos</option>${Object.entries(CAD_TIPO_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
+        </select></div>
+        ${isAdmin ? '<div class="cad-fcampo"><label>Corretor</label><select id="cadCorretor"><option value="">Todos</option></select></div>' : ''}
+        <div class="cad-fcampo"><label>Status</label><select id="cadStatus">
+          <option value="">Todos</option>
+          <option value="pendentes">Pendente</option>
+          <option value="enviadas">Enviada ao broker</option>
+          <option value="devolvidas">Devolvida</option>
+          <option value="concluidas">Concluída</option>
+        </select></div>
+        <div class="cad-fcampo"><label>Período</label><select id="cadPeriodo">
+          <option value="30">Últimos 30 dias</option><option value="7">Últimos 7 dias</option>
+          <option value="90">Últimos 90 dias</option><option value="">Tudo</option>
+        </select></div>
+        <button class="cad-limpar" id="cadLimpar">✕ Limpar filtros</button>
+      </div>
+      <div class="cad-grid">
+        <div class="cad-panel">
+          <div class="cad-panel-h"><b>Enviar Fichas</b><span>Copie o link e envie ao cliente</span></div>
+          ${painelEnviar}
+          <div class="cad-dica"><b>Dica:</b> cada corretor tem um link exclusivo. O sistema identifica automaticamente quem enviou a ficha.</div>
+        </div>
+        <div class="cad-panel">
+          <div class="cad-tabs" id="cadTabs"></div>
+          <div class="cad-tbl-scroll"><table class="cad-tbl">
+            <thead><tr>
+              <th>Cliente</th><th>Tipo de ficha</th>
+              ${isAdmin ? '<th>Corretor</th>' : ''}
+              <th>Recebida em</th><th>Pendências</th><th>Status</th><th>Ações</th>
+            </tr></thead>
+            <tbody id="cadTbody"><tr><td colspan="7" class="cad-vazio">Carregando fichas...</td></tr></tbody>
+          </table></div>
+          <div class="cad-foot" id="cadFoot"></div>
+        </div>
+      </div>
+    </div>`;
 
-    let aberto = false;
-
-    function abrir() {
-      if (aberto) return;
-      aberto = true;
-      body.style.display = 'block';
-      chevron.textContent = '▼';
-    }
-    function fechar() {
-      aberto = false;
-      body.style.display = 'none';
-      chevron.textContent = '►';
-    }
-
-    // Toggle pelo cabeçalho (ignora cliques nos botões)
-    head.addEventListener('click', e => {
-      if (e.target.closest('button')) return;
-      if (aberto) { fechar(); return; }
-      abrir();
-      carregarListaFichas(f.key);
-      // Marca notificações desse tipo como vistas e esconde a bolinha
-      const idsDoTipo = notifDados.filter(n => n.tipo === f.key && n.id).map(n => n.id);
-      if (idsDoTipo.length) {
-        const vistos = getVistos();
-        idsDoTipo.forEach(id => vistos.add(id));
-        salvarVistos(vistos);
-        const dot = document.getElementById('dot-' + f.key);
-        if (dot) dot.hidden = true;
-        const totalNaoVistos = notifDados.filter(n => n.id && !vistos.has(n.id)).length;
-        if (totalNaoVistos > 0) { notifBadge.textContent = totalNaoVistos > 99 ? '99+' : totalNaoVistos; notifBadge.hidden = false; }
-        else { notifBadge.hidden = true; }
-      }
+  // Painel "Enviar Fichas": copiar link / preencher (ficha interna)
+  secaoDocs.querySelectorAll('.cad-copiar').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(btn.dataset.link).catch(() => prompt('Copie o link:', btn.dataset.link));
+      const t = btn.textContent; btn.textContent = '✓ Copiado!';
+      setTimeout(() => { btn.textContent = t; }, 2000);
     });
+  });
+  secaoDocs.querySelectorAll('.cad-preencher').forEach(btn => {
+    btn.addEventListener('click', () => {
+      window.hubApi.abrirFichaLocal(btn.dataset.arquivo, { corretor: currentUid, nome: encodeURIComponent(nomeCorretor) });
+    });
+  });
 
-    // Copiar link — feedback no próprio botão (visível mesmo com accordion fechado)
-    if (btnLink) {
-      btnLink.addEventListener('click', () => {
-        const link = btnLink.dataset.link;
-        navigator.clipboard.writeText(link).catch(() => prompt('Copie o link:', link));
-        const txtOrig = btnLink.textContent;
-        btnLink.textContent = '✓ Copiado!';
-        setTimeout(() => { btnLink.textContent = txtOrig; }, 2000);
-      });
+  // Filtros (todos só re-renderizam a tabela; nada refaz a busca no servidor)
+  document.getElementById('cadBusca')?.addEventListener('input',  e => { cadFiltro.busca = e.target.value.toLowerCase(); cadRenderTabela(); });
+  document.getElementById('cadTipo')?.addEventListener('change',  e => { cadFiltro.tipo = e.target.value; cadRenderTabela(); });
+  document.getElementById('cadStatus')?.addEventListener('change',e => { cadFiltro.status = e.target.value; cadRenderTabela(); });
+  document.getElementById('cadPeriodo')?.addEventListener('change',e => { cadFiltro.periodo = e.target.value; cadRenderTabela(); });
+  document.getElementById('cadCorretor')?.addEventListener('change',e => { cadFiltro.corretor = e.target.value; cadRenderTabela(); });
+  document.getElementById('cadLimpar')?.addEventListener('click', () => {
+    cadFiltro = { tab: cadFiltro.tab, busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+    ['cadBusca','cadTipo','cadStatus','cadCorretor'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const per = document.getElementById('cadPeriodo'); if (per) per.value = '30';
+    cadRenderTabela();
+  });
+
+  await cadCarregarFichas();
+}
+
+// Busca todas as fichas (locador + 6 tipos) em paralelo e normaliza num só array.
+async function cadCarregarFichas() {
+  const TIPOS = ['pf','pj','locacao_fiador','vendedor','proposta','fianca'];
+  const norm = (f, key) => ({
+    id: f.id, key,
+    tipoLabel: CAD_TIPO_LABEL[key] || key,
+    nome: f.dados?.nome || f.dados?.razao || 'Sem nome',
+    doc: f.dados?.cpf || f.dados?.cnpj || '',
+    corretorNome: f.corretorNome || '',
+    corretorUid: f.corretorUid || '',
+    criadoEm: f.criadoEm ? new Date(f.criadoEm) : null,
+    pendentes: f.pendentes || [],
+    status: f.status || 'aguardando_corretor',
+    arquivo: (FICHAS_CONFIG.find(c => c.key === key) || {}).arquivo,
+    dados: f.dados || {}
+  });
+  // Cada tipo protegido com .catch pra que uma falha isolada não derrube a tabela.
+  const pedidos = [
+    listarFichasLocador({}).then(r => (r.data||[]).map(f => norm(f,'locador'))).catch(() => []),
+    ...TIPOS.map(t => listarFichasTipo({ tipo:t }).then(r => (r.data||[]).map(f => norm(f,t))).catch(() => []))
+  ];
+  const partes = await Promise.all(pedidos);
+  cadFichas = partes.flat().sort((a,b) => (b.criadoEm?.getTime()||0) - (a.criadoEm?.getTime()||0));
+
+  if (isAdmin) {
+    const sel = document.getElementById('cadCorretor');
+    if (sel) {
+      const nomes = [...new Set(cadFichas.map(f => f.corretorNome).filter(Boolean))].sort();
+      sel.innerHTML = '<option value="">Todos</option>' + nomes.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
     }
+  }
+  cadRenderKpisTabs();
+  cadRenderTabela();
+}
 
-    // Preencher interno — abre em janela Electron local (sem precisar de deploy de hosting)
-    const btnPreencher = secaoDocs.querySelector(`.btn-preencher-${f.key}`);
-    if (btnPreencher) {
-      btnPreencher.addEventListener('click', () => {
-        const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
-        window.hubApi.abrirFichaLocal(f.arquivo, { corretor: currentUid, nome: encodeURIComponent(nomeCorretor) });
-        if (!aberto) { abrir(); carregarListaFichas(f.key); }
-      });
-    }
+function cadContagens() {
+  const c = { todas: cadFichas.length, pendentes:0, enviadas:0, devolvidas:0, concluidas:0 };
+  cadFichas.forEach(f => { c[cadStatusInfo(f).bucket]++; });
+  return c;
+}
 
+function cadRenderKpisTabs() {
+  const c = cadContagens();
+  const kpis = [
+    { k:'todas',      ico:'🏢', cls:'cad-ic-blue',   lbl: isAdmin?'Todas as fichas':'Minhas fichas', sub:'Total geral',       n:c.todas },
+    { k:'pendentes',  ico:'📄', cls:'cad-ic-amber',  lbl:'Pendentes',          sub:'Aguardando ação',    n:c.pendentes },
+    { k:'enviadas',   ico:'📤', cls:'cad-ic-green',  lbl:'Enviadas ao broker', sub:'Aguardando análise', n:c.enviadas },
+    { k:'devolvidas', ico:'↩️', cls:'cad-ic-red',    lbl:'Devolvidas',         sub:'Para correção',      n:c.devolvidas },
+    { k:'concluidas', ico:'✅', cls:'cad-ic-violet', lbl:'Concluídas',         sub:'Finalizadas',        n:c.concluidas },
+  ];
+  const kpiEl = document.getElementById('cadKpis');
+  if (kpiEl) kpiEl.innerHTML = kpis.map(x => `
+    <button class="cad-kpi ${cadFiltro.tab===x.k?'on':''}" data-tab="${x.k}">
+      <div class="cad-ico ${x.cls}">${x.ico}</div>
+      <div class="cad-lbl">${x.lbl}</div>
+      <div class="cad-num">${x.n}</div>
+      <div class="cad-sub">${x.sub}</div>
+    </button>`).join('');
+
+  const tabs = [['todas','Todas'],['pendentes','Pendentes'],['enviadas','Enviadas ao broker'],['devolvidas','Devolvidas'],['concluidas','Concluídas']];
+  const tabsEl = document.getElementById('cadTabs');
+  if (tabsEl) tabsEl.innerHTML = tabs.map(([k,label]) => `
+    <button class="${cadFiltro.tab===k?'on':''}" data-tab="${k}">${label} <span class="cad-cnt">${c[k]}</span></button>`).join('');
+
+  // KPI e aba compartilham o mesmo estado (cadFiltro.tab)
+  document.querySelectorAll('[data-tab]').forEach(el => {
+    el.addEventListener('click', () => { cadFiltro.tab = el.dataset.tab; cadRenderKpisTabs(); cadRenderTabela(); });
   });
 }
 
-async function carregarListaFichas(fichaKey = 'locador') {
-  const lista = document.getElementById(`lista-${fichaKey}`);
-  if (!lista) return;
+function cadFichasFiltradas() {
+  return cadFichas.filter(f => {
+    if (cadFiltro.tab !== 'todas' && cadStatusInfo(f).bucket !== cadFiltro.tab) return false;
+    if (cadFiltro.status && cadStatusInfo(f).bucket !== cadFiltro.status) return false;
+    if (cadFiltro.tipo && f.key !== cadFiltro.tipo) return false;
+    if (cadFiltro.corretor && f.corretorNome !== cadFiltro.corretor) return false;
+    if (cadFiltro.periodo && f.criadoEm) {
+      const dias = (Date.now() - f.criadoEm.getTime()) / 86400000;
+      if (dias > Number(cadFiltro.periodo)) return false;
+    }
+    if (cadFiltro.busca) {
+      const alvo = (f.nome + ' ' + f.doc + ' ' + f.corretorNome).toLowerCase();
+      if (!alvo.includes(cadFiltro.busca)) return false;
+    }
+    return true;
+  });
+}
 
-  const config = FICHAS_CONFIG.find(f => f.key === fichaKey);
-  if (!config?.temFirebase) {
-    lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:16px 0">
-      Envie o link ao cliente pelo botão acima.<br>
-      <span style="font-size:11px">As fichas preenchidas ficam salvas no dispositivo do cliente.</span>
-    </p>`;
+function cadNomePend(p) {
+  const nomes = { cpf:'CPF', rg:'RG', rgcpf:'RG/CPF', renda:'Renda', compRenda:'Comp. renda', compEndereco:'Comp. endereço',
+    rgFrente:'RG frente', rgVerso:'RG verso', matricula:'Matrícula', iptu:'IPTU', profissao:'Profissão' };
+  return nomes[p] || p;
+}
+
+function cadRenderTabela() {
+  const tbody = document.getElementById('cadTbody');
+  if (!tbody) return;
+  const lista = cadFichasFiltradas();
+  const colSpan = isAdmin ? 7 : 6;
+
+  if (!lista.length) {
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="cad-vazio">Nenhuma ficha encontrada com esses filtros.</td></tr>`;
+    const foot0 = document.getElementById('cadFoot'); if (foot0) foot0.textContent = '';
     return;
   }
 
-  lista.innerHTML = '<p style="font-size:12px;color:var(--text-muted);text-align:center">Carregando fichas...</p>';
+  tbody.innerHTML = lista.map(f => {
+    const st = cadStatusInfo(f);
+    const data = f.criadoEm
+      ? f.criadoEm.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' + f.criadoEm.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+      : '—';
+    const pend = f.pendentes.length
+      ? `<span class="cad-pend-x">⚠ ${f.pendentes.length} pendência${f.pendentes.length>1?'s':''}<span class="cad-det">${escapeHtml(f.pendentes.map(p=>cadNomePend(p)).join(', '))}</span></span>`
+      : '<span class="cad-pend-ok">✓ Sem pendências</span>';
+    const corretorCel = isAdmin
+      ? `<td><div class="cad-corretor"><span class="cad-avt" style="width:26px;height:26px;font-size:10px;background:${cadCor(f.corretorNome)}">${cadIniciais(f.corretorNome)}</span><div class="cad-cr-nm">${escapeHtml(f.corretorNome||'—')}</div></div></td>`
+      : '';
+    return `<tr>
+      <td><div class="cad-cli"><span class="cad-avt" style="background:${cadCor(f.nome)}">${cadIniciais(f.nome)}</span>
+        <div><div class="cad-nm">${escapeHtml(f.nome)}</div><div class="cad-cpf">${escapeHtml(f.doc||'')}</div></div></div></td>
+      <td><span class="cad-tipo"><span class="cad-ti">${CAD_TIPO_ICO[f.key]||'📄'}</span>${f.tipoLabel}</span></td>
+      ${corretorCel}
+      <td style="white-space:nowrap;color:var(--text-muted)">${data}</td>
+      <td>${pend}</td>
+      <td><span class="cad-pill ${st.cls}">${st.label}</span></td>
+      <td><div class="cad-acoes">
+        <button class="topbar-btn cad-abrir" data-id="${f.id}" data-key="${f.key}" style="height:28px">Abrir ficha</button>
+        <button class="cad-kebab" data-id="${f.id}" data-key="${f.key}" aria-label="Ações">⋮</button>
+      </div></td>
+    </tr>`;
+  }).join('');
 
-  const ehLocador = fichaKey === 'locador';
+  const foot = document.getElementById('cadFoot');
+  if (foot) foot.innerHTML = `<span>Mostrando ${lista.length} ficha${lista.length>1?'s':''}${lista.length!==cadFichas.length?` de ${cadFichas.length}`:''}</span>`;
 
-  try {
-    const res = ehLocador
-      ? await listarFichasLocador({})
-      : await listarFichasTipo({ tipo: fichaKey });
-    const fichas = res.data || [];
+  tbody.querySelectorAll('.cad-abrir').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = cadFichas.find(x => x.id === btn.dataset.id && x.key === btn.dataset.key);
+      if (f) abrirModalFicha(f.arquivo, f.id, 'corretor', '👁 ' + f.tipoLabel);
+    });
+  });
+  tbody.querySelectorAll('.cad-kebab').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const f = cadFichas.find(x => x.id === btn.dataset.id && x.key === btn.dataset.key);
+      if (f) cadAbrirMenu(btn, f);
+    });
+  });
+}
 
-    if (fichas.length === 0) {
-      lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha recebida ainda.</p>';
+// Menu de ações do kebab — anexado ao body, fecha ao clicar fora.
+function cadAbrirMenu(anchor, f) {
+  document.querySelector('.cad-menu')?.remove();
+  const ehLocador = f.key === 'locador';
+  const podeMexer = ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
+  const menu = document.createElement('div');
+  menu.className = 'cad-menu';
+  menu.innerHTML = `
+    <button data-a="editar">✏ Editar</button>
+    <button data-a="pdf">⬇ Baixar PDF</button>
+    ${podeMexer ? '<button data-a="enviar">📤 Enviar ao broker</button>' : ''}
+    ${podeMexer ? '<button data-a="reenviar">↩ Reenviar ao cliente</button>' : ''}
+    <div class="cad-menu-sep"></div>
+    <button data-a="excluir" class="perigo">🗑 Excluir</button>`;
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top  = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + 'px';
+  menu.style.left = Math.max(8, r.right - menu.offsetWidth) + 'px';
+
+  const fechar = () => { menu.remove(); document.removeEventListener('click', fora); };
+  const fora = ev => { if (!menu.contains(ev.target)) fechar(); };
+  setTimeout(() => document.addEventListener('click', fora), 0);
+
+  const fnEnviar   = ehLocador ? enviarFichaParaAdmin     : enviarFichaTipoAdmin;
+  const fnReenviar = ehLocador ? reenviarFichaParaCliente : reenviarFichaTipoCliente;
+  const fnExcluir  = ehLocador ? excluirFichaLocador      : excluirFichaTipo;
+
+  menu.querySelectorAll('button[data-a]').forEach(b => b.addEventListener('click', async () => {
+    const acao = b.dataset.a; fechar();
+    if (acao === 'editar') { abrirModalFicha(f.arquivo, f.id, 'edicao', '✏ Editar ' + f.tipoLabel); return; }
+    if (acao === 'pdf') {
+      const url = `${BASE_HOSTING}/${f.arquivo}?modo=corretor&idFicha=${f.id}&origem=hub`;
+      const nome = (f.nome || 'ficha').replace(/[^a-zA-Z0-9À-ɏ\s_-]/g,'').trim();
+      try { const rr = await hubApi.baixarFichaPDF(url, `Ficha - ${nome}.pdf`); if (!rr?.ok && rr?.erro) alert('Erro ao gerar PDF: ' + rr.erro); }
+      catch(err) { console.warn('PDF:', err); }
       return;
     }
-
-    const statusLabel = {
-      aguardando_corretor:      'Aguardando revisão',
-      aguardando_edicao_cliente:'Aguardando cliente',
-      enviado_admin:            'Enviado ao admin',
-      correcao_solicitada:      '⚠ Correção solicitada'
-    };
-    const statusCor = {
-      aguardando_corretor:      '#b45309',
-      aguardando_edicao_cliente:'#6366f1',
-      enviado_admin:            '#16a34a',
-      correcao_solicitada:      '#DC1C2E'
-    };
-    const nomesDoc = { rgFrente:'RG/CNH frente', rgVerso:'RG/CNH verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', matricula:'Matrícula', iptu:'IPTU' };
-    const nomePend = { cpf:'CPF', rg:'RG', rgcpf:'RG/CPF', profissao:'Profissão', renda:'Renda', banco:'Banco', tipoConta:'Tipo conta', agencia:'Agência', conta:'Conta', pix:'Pix', rgFrente:'RG frente', rgVerso:'RG verso', compRenda:'Comp. renda', compEndereco:'Comp. endereço', compEstadoCivil:'Estado civil', matricula:'Matrícula', iptu:'IPTU', energia:'Energia', agua:'Água', gas:'Gás', condominio:'Condomínio', condominio_doc:'Condomínio', iptu_doc:'IPTU', im_condominio:'Condomínio', im_admcond:'Adm. condominial', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU', im_entrada:'Entrada', im_financiamento:'Financiamento', im_fgts:'FGTS', com_parc_nome:'Parceira', com_parc_cnpj:'CNPJ parceira', com_parc_banco:'Banco parceira', com_parc_agencia:'Agência parceira', com_parc_conta:'Conta parceira', com_parc_valor:'Comissão parceira' };
-
-    lista.innerHTML = fichas.map(f => {
-      const data = f.criadoEm ? new Date(f.criadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
-      const pends = (f.pendentes || []).length;
-      const label = statusLabel[f.status] || f.status;
-      const cor   = statusCor[f.status]   || '#6b7280';
-      const obs   = f.observacaoCorretor  || '';
-      const podeMexer = ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
-
-      return `
-        <div class="ficha-card" data-id="${f.id}">
-          <div class="ficha-card-head">
-            <div>
-              <strong style="font-size:13px">${escapeHtml(f.dados?.nome || 'Sem nome')}</strong>
-              <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${data}</span>
-            </div>
-            <span style="font-size:11px;font-weight:600;color:${cor};background:${cor}18;padding:3px 8px;border-radius:6px">${label}</span>
-          </div>
-
-          ${obs ? `<div style="font-size:11px;color:#6366f1;margin-top:6px;background:#eef2ff;padding:5px 8px;border-radius:6px">📝 Obs. ao cliente: ${escapeHtml(obs)}</div>` : ''}
-          ${pends > 0 ? `<div style="font-size:11px;color:#b45309;margin-top:4px">⚠ Pendente: ${f.pendentes.map(p => escapeHtml(nomePend[p]||p)).join(', ')}</div>` : ''}
-          ${f.corretorNome ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px;text-align:right">Corretor: ${escapeHtml(f.corretorNome)}</div>` : ''}
-
-          <!-- Ações -->
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-            ${podeMexer ? `<button class="topbar-btn primario btn-enviar-admin" data-id="${f.id}" style="font-size:11px;padding:4px 10px">✓ Enviar ao admin</button>` : ''}
-            ${podeMexer ? `<button class="topbar-btn btn-reenviar" data-id="${f.id}" style="font-size:11px;padding:4px 10px">↩ Reenviar ao cliente</button>` : ''}
-            <button class="topbar-btn perigo btn-excluir" data-id="${f.id}" style="font-size:11px;padding:4px 10px">🗑 Excluir</button>
-            <button class="ficha-ver-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" style="font-size:11px;padding:4px 10px">👁 Visualizar</button>
-            <button class="ficha-editar-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" style="font-size:11px;padding:4px 10px">✏ Editar</button>
-            <button class="ficha-pdf-btn topbar-btn" data-id="${f.id}" data-arquivo="${config.arquivo}" data-nome="${escapeHtml(f.dados?.nome||'ficha')}" style="font-size:11px;padding:4px 10px">⬇ Baixar PDF</button>
-          </div>
-        </div>`;
-    }).join('');
-
-    const fnEnviar   = ehLocador ? enviarFichaParaAdmin    : enviarFichaTipoAdmin;
-    const fnReenviar = ehLocador ? reenviarFichaParaCliente : reenviarFichaTipoCliente;
-    const fnExcluir  = ehLocador ? excluirFichaLocador      : excluirFichaTipo;
-
-    // Enviar ao admin
-    lista.querySelectorAll('.btn-enviar-admin').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
-        btn.disabled = true; btn.textContent = 'Enviando...';
-        try { await fnEnviar({ fichaId: btn.dataset.id }); carregarListaFichas(fichaKey); atualizarNotifFichas(); }
-        catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '✓ Enviar ao admin'; }
-      });
-    });
-
-    // Reenviar ao cliente
-    lista.querySelectorAll('.btn-reenviar').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const obs = prompt('Observação para o cliente (opcional):');
-        if (obs === null) return; // cancelou o prompt → não reenvia
-        btn.disabled = true; btn.textContent = 'Gerando link...';
-        try {
-          const res = await fnReenviar({ fichaId: btn.dataset.id, observacao: obs });
-          const link = res.data.link;
-          await navigator.clipboard.writeText(link).catch(() => prompt('Copie o link:', link));
-          alert('Link copiado! Envie ao cliente pelo WhatsApp.');
-          carregarListaFichas(fichaKey);
-        } catch(e) { alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '↩ Reenviar ao cliente'; }
-      });
-    });
-
-    // Excluir
-    lista.querySelectorAll('.btn-excluir').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('Excluir esta ficha permanentemente?')) return;
-        btn.disabled = true; btn.textContent = 'Excluindo...';
-        try { await fnExcluir({ fichaId: btn.dataset.id }); }
-        catch(e) {
-          if (!e.message?.includes('não encontrada') && !e.message?.includes('not-found')) {
-            alert('Erro: ' + e.message); btn.disabled = false; btn.textContent = '🗑 Excluir'; return;
-          }
-        }
-        const card = btn.closest('.ficha-card');
-        card.style.opacity = '0'; card.style.transition = 'opacity .3s';
-        setTimeout(() => {
-          card.remove();
-          if (!lista.querySelector('.ficha-card'))
-            lista.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhuma ficha recebida ainda.</p>';
-        }, 300);
-      });
-    });
-
-    // Visualizar ficha (modo leitura)
-    lista.querySelectorAll('.ficha-ver-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        abrirModalFicha(btn.dataset.arquivo, btn.dataset.id, 'corretor', '👁 Visualizar ficha');
-      });
-    });
-
-    // Editar ficha (modo edição — para todos os corretores)
-    lista.querySelectorAll('.ficha-editar-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        abrirModalFicha(btn.dataset.arquivo, btn.dataset.id, 'edicao', '✏ Editar ficha');
-      });
-    });
-
-    // Baixar ficha como PDF
-    lista.querySelectorAll('.ficha-pdf-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const url = `${BASE_HOSTING}/${btn.dataset.arquivo}?modo=corretor&idFicha=${btn.dataset.id}&origem=hub`;
-        const nome = (btn.dataset.nome || 'ficha').replace(/[^a-zA-Z0-9À-ɏ\s_-]/g, '').trim();
-        const txtOrig = btn.textContent;
-        btn.disabled = true; btn.textContent = 'Gerando...';
-        try {
-          const r = await hubApi.baixarFichaPDF(url, `Ficha - ${nome}.pdf`);
-          if (!r?.ok && r?.erro) alert('Erro ao gerar PDF: ' + r.erro);
-        } catch(e) { console.warn('PDF:', e); }
-        finally { btn.disabled = false; btn.textContent = txtOrig; }
-      });
-    });
-
-  } catch(e) {
-    if (lista) lista.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center">Erro ao carregar fichas: ${e.message}</p>`;
-  }
+    if (acao === 'enviar') {
+      if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
+      try { await fnEnviar({ fichaId: f.id }); atualizarNotifFichas(); await cadCarregarFichas(); }
+      catch(err) { alert('Erro: ' + err.message); }
+      return;
+    }
+    if (acao === 'reenviar') {
+      const obs = prompt('Observação para o cliente (opcional):');
+      if (obs === null) return;
+      try {
+        const rr = await fnReenviar({ fichaId: f.id, observacao: obs });
+        await navigator.clipboard.writeText(rr.data.link).catch(() => prompt('Copie o link:', rr.data.link));
+        alert('Link copiado! Envie ao cliente pelo WhatsApp.');
+        await cadCarregarFichas();
+      } catch(err) { alert('Erro: ' + err.message); }
+      return;
+    }
+    if (acao === 'excluir') {
+      if (!confirm('Excluir esta ficha permanentemente?')) return;
+      try { await fnExcluir({ fichaId: f.id }); }
+      catch(err) { if (!err.message?.includes('não encontrada') && !err.message?.includes('not-found')) { alert('Erro: ' + err.message); return; } }
+      await cadCarregarFichas();
+      return;
+    }
+  }));
 }
 
 // ─── Sininho de notificações de fichas ───────────────────────────────────────
