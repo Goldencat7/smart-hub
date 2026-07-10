@@ -3293,6 +3293,154 @@ exports.criarContaComCodigo = onCall(async (req) => {
   return { ok: true, uid: user.uid, fazAdmin: !!dadosCodigo.fazAdmin };
 });
 
+// ─── Fichas: escrita do cliente (sem login) ──────────────────────────────────
+// O cliente preenche a ficha por link, sem conta. Antes ele gravava direto no
+// Firestore e as regras validavam o formato; qualquer um na internet podia criar
+// documento e sobrescrever ficha alheia sabendo o id. Agora as regras negam
+// escrita do cliente e tudo passa por aqui — mesma regra de ouro da Locação.
+// É também o ponto onde dá pra exigir App Check depois.
+
+const FICHA_COLECOES = ['fichas', 'fichas_locador'];
+const FICHA_TIPOS = ['pf', 'pj', 'vendedor', 'proposta', 'fianca', 'locacao_fiador'];
+// Só aceitamos anexo que aponte pro nosso bucket, nas pastas das fichas. Sem isso,
+// um cliente podia gravar qualquer URL em `documentos` e o corretor clicaria nela.
+// As pastas diferem por página: as fichas por tipo usam `fichas/<tipo>/...` e a do
+// locador usa `fichas-locador/...` (com hífen). O path vem urlencoded (`%2F`).
+const FICHA_DOC_BASE =
+  'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/';
+const FICHA_DOC_PASTAS = ['fichas%2F', 'fichas-locador%2F'];
+const ehUrlDeAnexoDaFicha = (url) =>
+  typeof url === 'string' &&
+  url.startsWith(FICHA_DOC_BASE) &&
+  FICHA_DOC_PASTAS.some(pasta => url.slice(FICHA_DOC_BASE.length).startsWith(pasta));
+// Depois de enviada ao admin (ou finalizada) a ficha não aceita mais escrita do cliente.
+const FICHA_STATUS_EDITAVEL = ['aguardando_corretor', 'aguardando_edicao_cliente', 'correcao_solicitada'];
+
+function validarDadosFicha(dados) {
+  if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
+    throw new HttpsError('invalid-argument', 'Dados inválidos.');
+  }
+  const chaves = Object.keys(dados);
+  if (chaves.length > 400) throw new HttpsError('invalid-argument', 'Ficha com campos demais.');
+  for (const k of chaves) {
+    if (k.length > 80) throw new HttpsError('invalid-argument', 'Nome de campo inválido.');
+    const v = dados[k];
+    const tipo = typeof v;
+    if (tipo !== 'string' && tipo !== 'number' && tipo !== 'boolean') {
+      throw new HttpsError('invalid-argument', `Campo "${k}" com tipo não suportado.`);
+    }
+    if (tipo === 'string' && v.length > 5000) {
+      throw new HttpsError('invalid-argument', `Campo "${k}" longo demais.`);
+    }
+  }
+  // Firestore trava em 1 MB por documento; recusamos antes pra dar erro legível.
+  if (Buffer.byteLength(JSON.stringify(dados), 'utf8') > 900000) {
+    throw new HttpsError('invalid-argument', 'Ficha grande demais.');
+  }
+  return dados;
+}
+
+function validarDocumentosFicha(documentos) {
+  if (documentos == null) return {};
+  if (typeof documentos !== 'object' || Array.isArray(documentos)) {
+    throw new HttpsError('invalid-argument', 'Documentos inválidos.');
+  }
+  const chaves = Object.keys(documentos);
+  if (chaves.length > 60) throw new HttpsError('invalid-argument', 'Documentos demais.');
+  for (const k of chaves) {
+    if (!ehUrlDeAnexoDaFicha(documentos[k])) {
+      throw new HttpsError('invalid-argument', `Anexo "${k}" fora do storage do Hub.`);
+    }
+  }
+  return documentos;
+}
+
+function validarPendentes(pendentes) {
+  if (pendentes == null) return [];
+  if (!Array.isArray(pendentes) || pendentes.length > 60) {
+    throw new HttpsError('invalid-argument', 'Pendências inválidas.');
+  }
+  for (const p of pendentes) {
+    if (typeof p !== 'string' || p.length > 80) {
+      throw new HttpsError('invalid-argument', 'Pendências inválidas.');
+    }
+  }
+  return pendentes;
+}
+
+// Cria ou atualiza a ficha preenchida pelo cliente. SEM login por design —
+// o link é a credencial, igual aos portais. Quem chama nunca escolhe o status.
+exports.salvarFichaPublica = onCall(async (req) => {
+  const {
+    colecao, fichaId, tipo, corretorUid, corretorNome, imovelId,
+    dados, documentos, pendentes
+  } = req.data || {};
+
+  if (!FICHA_COLECOES.includes(colecao)) {
+    throw new HttpsError('invalid-argument', 'Coleção inválida.');
+  }
+  const dadosOk = validarDadosFicha(dados);
+  const docsOk = validarDocumentosFicha(documentos);
+  const pendOk = validarPendentes(pendentes);
+  const agora = admin.firestore.FieldValue.serverTimestamp();
+
+  // ── Atualização: o cliente reabre o link e reenvia ──
+  if (fichaId) {
+    if (typeof fichaId !== 'string' || fichaId.length > 200) {
+      throw new HttpsError('invalid-argument', 'fichaId inválido.');
+    }
+    const ref = db.collection(colecao).doc(fichaId);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+
+    const atual = snap.data();
+    if (!FICHA_STATUS_EDITAVEL.includes(atual.status)) {
+      throw new HttpsError('failed-precondition', 'Esta ficha não aceita mais alterações.');
+    }
+    // corretorUid e tipo são imutáveis: o que veio do cliente é ignorado de propósito.
+    await ref.update({
+      status: 'aguardando_corretor',
+      observacaoCorretor: '',
+      dados: dadosOk,
+      documentos: { ...(atual.documentos || {}), ...docsOk },
+      pendentes: pendOk,
+      atualizadoEm: agora
+    });
+    return { ok: true, fichaId };
+  }
+
+  // ── Criação ──
+  if (typeof corretorUid !== 'string' || !corretorUid) {
+    throw new HttpsError('invalid-argument', 'corretorUid obrigatório.');
+  }
+  // O link carrega o uid do corretor na query. Confirmamos que existe mesmo,
+  // pra não acumular ficha órfã apontando pra uid inventado.
+  try {
+    await admin.auth().getUser(corretorUid);
+  } catch (_) {
+    throw new HttpsError('invalid-argument', 'Corretor não encontrado.');
+  }
+
+  const novo = {
+    corretorUid,
+    corretorNome: typeof corretorNome === 'string' ? corretorNome.slice(0, 200) : '',
+    status: 'aguardando_corretor',
+    observacaoCorretor: '',
+    dados: dadosOk,
+    documentos: docsOk,
+    pendentes: pendOk,
+    criadoEm: agora
+  };
+  if (colecao === 'fichas') {
+    if (!FICHA_TIPOS.includes(tipo)) throw new HttpsError('invalid-argument', 'Tipo de ficha inválido.');
+    novo.tipo = tipo;
+  }
+  if (typeof imovelId === 'string' && imovelId) novo.imovelId = imovelId;
+
+  const ref = await db.collection(colecao).add(novo);
+  return { ok: true, fichaId: ref.id };
+});
+
 // ─── Fichas do Locador ───────────────────────────────────────────────────────
 
 // Lista as fichas recebidas pelo corretor autenticado.

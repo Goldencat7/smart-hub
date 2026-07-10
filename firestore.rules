@@ -24,42 +24,27 @@ service cloud.firestore {
                    && request.resource.data.notas is list;
     }
 
-    // Fichas do locador — cliente anônimo cria/edita, mas com validação:
-    // - corretorUid obrigatório e imutável (impede trocar o dono)
-    // - status do client-side sempre 'aguardando_corretor' (Admin SDK muda pra outros)
+    // Fichas — o cliente preenche por link, sem login.
+    //
+    // ESCRITA é sempre negada aqui: toda criação/edição passa pela Cloud Function
+    // `salvarFichaPublica` (Admin SDK, que ignora estas regras). Antes o cliente
+    // gravava direto e a regra tentava validar o formato — mas regra não checa
+    // tamanho, nem tipo dos campos, nem se a URL de um anexo aponta pro nosso
+    // bucket, e qualquer um podia sobrescrever ficha alheia sabendo o id.
+    //
+    // LEITURA por id segue aberta: o id é a credencial (mesmo modelo dos portais),
+    // e a janela de revisão do corretor abre no Hosting, sem sessão de login.
+    // Fechar isso exige token de acesso — próximo passo.
     match /fichas_locador/{id} {
-      allow get: if true;
-      allow create: if request.resource.data.corretorUid is string
-                    && request.resource.data.corretorUid.size() > 0
-                    && request.resource.data.status == 'aguardando_corretor'
-                    && semObsCorretor();
-      allow update: if request.resource.data.corretorUid == resource.data.corretorUid
-                    && request.resource.data.status == 'aguardando_corretor'
-                    && semObsCorretor();
-      allow list: if request.auth != null && request.auth.token.admin == true;
+      allow get:   if true;
+      allow list:  if request.auth != null && request.auth.token.admin == true;
+      allow write: if false;
     }
 
-    // Fichas genéricas (pf, pj, vendedor, locacao_fiador, proposta) — mesmo modelo + tipo imutável.
     match /fichas/{id} {
-      allow get: if true;
-      allow create: if request.resource.data.corretorUid is string
-                    && request.resource.data.corretorUid.size() > 0
-                    && request.resource.data.tipo is string
-                    && request.resource.data.status == 'aguardando_corretor'
-                    && semObsCorretor();
-      allow update: if request.resource.data.corretorUid == resource.data.corretorUid
-                    && request.resource.data.tipo == resource.data.tipo
-                    && request.resource.data.status == 'aguardando_corretor'
-                    && semObsCorretor();
-      allow list: if request.auth != null && request.auth.token.admin == true;
-    }
-
-    // A observação do corretor só é escrita pelas Cloud Functions (Admin SDK, que
-    // ignora estas regras). No caminho anônimo (cliente preenchendo/editando) ela
-    // precisa ficar vazia — impede plantar payload de XSS via write direto.
-    function semObsCorretor() {
-      return !('observacaoCorretor' in request.resource.data)
-             || request.resource.data.observacaoCorretor == '';
+      allow get:   if true;
+      allow list:  if request.auth != null && request.auth.token.admin == true;
+      allow write: if false;
     }
 
     // ─── Gestão de Locações · Bloco 1 ──────────────────────────────────────

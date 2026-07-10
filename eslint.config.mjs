@@ -21,9 +21,21 @@ export default [
     ignores: [
       'node_modules/**', 'functions/node_modules/**',
       'release/**', 'build/**', '.firebase/**',
-      'marketing/**', 'public/**',   // HTML com script inline
+      '.claude/**',                  // worktrees do Claude Code duplicam o repo
+      'marketing/**',
       '_*.js',                       // scratch local
     ],
+  },
+  {
+    // Módulos das páginas públicas (fichas, portais) — browser, ES modules.
+    // O script inline dos .html fica de fora: o ESLint não lê HTML.
+    files: ['public/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: globals.browser,
+    },
+    rules: regras,
   },
   {
     // Node puro

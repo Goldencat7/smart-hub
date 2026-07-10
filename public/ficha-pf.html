@@ -52,7 +52,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
-import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
 
@@ -66,6 +66,14 @@ const app = initializeApp({
 });
 const db = getFirestore(app);
 const storage = getStorage(app);
+
+// A escrita da ficha passa sempre por Cloud Function (o Firestore nega write do
+// cliente). Import dinâmico pra não carregar o SDK de functions em quem só lê.
+async function chamarFn(nome, payload){
+  const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js');
+  return httpsCallable(getFunctions(app,'southamerica-east1'), nome)(payload);
+}
+
 const tipo = 'pf';
 
 const params = new URLSearchParams(location.search);
@@ -389,15 +397,16 @@ form.addEventListener('submit', async e=>{
   }
 
   try{
-    if(modo==='edicao' && idFicha){
-      const ex = await getDoc(doc(db,'fichas',idFicha));
-      const docsAntigos = ex.exists()?(ex.data().documentos||{}):{};
-      await updateDoc(doc(db,'fichas',idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
-    } else {
-      const fichaDoc = { tipo, id:fichaId, corretorUid, corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() };
-      if(imovelId) fichaDoc.imovelId = imovelId;
-      await addDoc(collection(db,'fichas'), fichaDoc);
-    }
+    // A function decide status/corretorUid e faz o merge dos documentos antigos.
+    await chamarFn('salvarFichaPublica', {
+      colecao: 'fichas',
+      fichaId: (modo==='edicao' && idFicha) ? idFicha : null,
+      tipo, corretorUid, corretorNome,
+      imovelId: imovelId || null,
+      dados,
+      documentos: urlsDocs,
+      pendentes: Array.from(pendentes),
+    });
     form.style.display='none';
     document.getElementById('tela-sucesso').style.display='block';
     const t=document.getElementById('sucessoTitulo'), m=document.getElementById('sucessoMsg');
@@ -405,14 +414,19 @@ form.addEventListener('submit', async e=>{
     if(m) m.textContent = modo==='edicao'?'Suas informações foram atualizadas.':'Seu corretor receberá suas informações em breve.';
     document.getElementById('progressFill').style.width='100%';
     window.scrollTo({top:0,behavior:'smooth'});
-  }catch(err){ mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.'); btn.disabled=false; btn.textContent='Enviar ficha'; }
+  }catch(err){
+    // Erro vindo da function (ficha grande demais, link expirado...) tem mensagem útil.
+    const daFuncao = typeof err?.code === 'string' && err.code.startsWith('functions/') && err.code !== 'functions/internal';
+    mostrarErro(daFuncao ? err.message : 'Erro ao enviar. Verifique sua conexão e tente novamente.');
+    btn.disabled=false; btn.textContent='Enviar ficha';
+  }
 });
 
 // ── Ações do corretor ──
 window.enviarParaAdmin = async function(){
   if(!window.__fichaId) return;
   if(!confirm('Confirma envio ao administrativo?')) return;
-  try{ const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js'); const fns=getFunctions(app,'southamerica-east1'); await httpsCallable(fns,'enviarFichaTipoAdmin')({ fichaId:window.__fichaId }); alert('Ficha enviada ao administrativo!'); window.close(); }
+  try{ await chamarFn('enviarFichaTipoAdmin',{ fichaId:window.__fichaId }); alert('Ficha enviada ao administrativo!'); window.close(); }
   catch(e){ alert('Erro: '+e.message); }
 };
 window.solicitarCorrecao = function(){

@@ -1,7 +1,7 @@
 // Motor compartilhado das fichas (estilo Hub) — usado por PJ, Vendedor, Locação c/ Fiador e Proposta.
 // Cada ficha importa daqui e chama iniciarFicha(config). PF e Locador têm engine próprio inline.
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
-import { getFirestore, collection, addDoc, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
+import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
 
@@ -15,6 +15,13 @@ const app = initializeApp({
 });
 const db = getFirestore(app);
 const storage = getStorage(app);
+
+// A escrita da ficha passa sempre por Cloud Function (o Firestore nega write do
+// cliente). Import dinâmico pra não carregar o SDK de functions em quem só lê.
+async function chamarFn(nome, payload){
+  const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js');
+  return httpsCallable(getFunctions(app, 'southamerica-east1'), nome)(payload);
+}
 
 export const UF = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 export const CIVIL = ['Solteiro(a)','Casado(a)','Divorciado(a)','Viúvo(a)','União estável'];
@@ -303,26 +310,36 @@ async function enviar(e){
     for(const k of docsKeys){ try{ const _p=`fichas/${CFG.tipo}/${fichaId}/${k}`, _t=_fbToken(); await uploadBytes(ref(storage,_p),arquivos[k],{ customMetadata:{ firebaseStorageDownloadTokens:_t } }); urlsDocs[k]=_fbDownloadUrl(_p,_t); }catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); } fill.style.width=Math.round((++n/docsKeys.length)*100)+'%'; }
   }
   try{
-    if(CFG._modo==='edicao'&&CFG._idFicha){
-      const ex=await getDoc(doc(db,'fichas',CFG._idFicha)); const docsAntigos=ex.exists()?(ex.data().documentos||{}):{};
-      await updateDoc(doc(db,'fichas',CFG._idFicha),{ status:'aguardando_corretor', dados, documentos:{...docsAntigos,...urlsDocs}, pendentes:Array.from(pendentes), observacaoCorretor:'', atualizadoEm:serverTimestamp() });
-    } else {
-      const fichaDoc = { tipo:CFG.tipo, id:fichaId, corretorUid:CFG._corretorUid, corretorNome:CFG._corretorNome, status:'aguardando_corretor', dados, documentos:urlsDocs, pendentes:Array.from(pendentes), criadoEm:serverTimestamp() };
-      if(CFG._imovelId) fichaDoc.imovelId = CFG._imovelId;
-      await addDoc(collection(db,'fichas'), fichaDoc);
-    }
+    // A function decide status/corretorUid e faz o merge dos documentos antigos.
+    await chamarFn('salvarFichaPublica', {
+      colecao: 'fichas',
+      fichaId: (CFG._modo==='edicao' && CFG._idFicha) ? CFG._idFicha : null,
+      tipo: CFG.tipo,
+      corretorUid: CFG._corretorUid,
+      corretorNome: CFG._corretorNome,
+      imovelId: CFG._imovelId || null,
+      dados,
+      documentos: urlsDocs,
+      pendentes: Array.from(pendentes),
+    });
     document.getElementById('formFicha').style.display='none'; document.getElementById('tela-sucesso').style.display='block';
     const t=document.getElementById('sucessoTitulo'),m=document.getElementById('sucessoMsg');
     if(t) t.textContent=CFG._modo==='edicao'?'Alterações salvas!':'Ficha enviada!';
     if(m) m.textContent=CFG._modo==='edicao'?'Suas informações foram atualizadas.':'Seu corretor receberá suas informações em breve.';
     document.getElementById('progressFill').style.width='100%'; window.scrollTo({top:0,behavior:'smooth'});
-  }catch(err){ mostrarErro('Erro ao enviar. Verifique sua conexão e tente novamente.'); btn.disabled=false; btn.textContent='Enviar ficha'; }
+  }catch(err){
+    // Erro vindo da function (ficha grande demais, link expirado...) tem mensagem
+    // útil; o resto quase sempre é conexão.
+    const daFuncao = typeof err?.code === 'string' && err.code.startsWith('functions/') && err.code !== 'functions/internal';
+    mostrarErro(daFuncao ? err.message : 'Erro ao enviar. Verifique sua conexão e tente novamente.');
+    btn.disabled=false; btn.textContent='Enviar ficha';
+  }
 }
 
 // ── Ações do corretor (fichas tipo: enviarFichaTipoAdmin) ──
 async function enviarParaAdmin(){
   if(!CFG._idFicha) return; if(!confirm('Confirma envio ao administrativo?')) return;
-  try{ const {getFunctions,httpsCallable}=await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js'); const fns=getFunctions(app,'southamerica-east1'); await httpsCallable(fns,'enviarFichaTipoAdmin')({fichaId:CFG._idFicha}); alert('Ficha enviada ao administrativo!'); window.close(); }catch(e){ alert('Erro: '+e.message); }
+  try{ await chamarFn('enviarFichaTipoAdmin',{fichaId:CFG._idFicha}); alert('Ficha enviada ao administrativo!'); window.close(); }catch(e){ alert('Erro: '+e.message); }
 }
 function solicitarCorrecao(){
   const msg=prompt('Descreva o que precisa ser corrigido:'); if(!msg) return;
