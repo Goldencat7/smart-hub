@@ -4,7 +4,7 @@ App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápi
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
 **Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
-**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.92** (auto-update via GitHub Releases).
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.93** (auto-update via GitHub Releases).
 
 ## Stack
 
