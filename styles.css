@@ -1378,23 +1378,21 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .cad-head p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 
 .cad-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 16px; }
-.cad-kpi { background: color-mix(in srgb, var(--surface) 86%, #fff 4%); border: 1px solid var(--border);
+/* Cartões brancos com texto escuro (estilo do mockup) */
+.cad-kpi { background: #fff; border: 1px solid #e5e7eb;
   border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; cursor: pointer;
   text-align: left; font-family: inherit; box-shadow: 0 1px 2px rgba(0,0,0,.25);
   transition: border-color .15s, box-shadow .15s, transform .1s; }
-.cad-kpi:hover { border-color: rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.35); transform: translateY(-1px); }
-/* Cartão selecionado = branco com texto escuro (destaque forte da aba ativa) */
-.cad-kpi.on { background: #fff; border-color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
-.cad-kpi.on .cad-num { color: #0f1115; }
-.cad-kpi.on .cad-lbl { color: #4b5563; }
-.cad-kpi.on .cad-sub { color: #6b7280; }
+.cad-kpi:hover { box-shadow: 0 6px 18px rgba(0,0,0,.35); transform: translateY(-1px); }
+/* Selecionado: anel azul (todos são brancos, então o destaque é a borda) */
+.cad-kpi.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 6px 18px rgba(0,0,0,.35); }
 .cad-kpi-top { display: flex; align-items: center; gap: 10px; }
 .cad-kpi .cad-ico { width: 42px; height: 42px; border-radius: 11px; display: inline-flex; flex-shrink: 0;
   align-items: center; justify-content: center; }
 .cad-kpi .cad-ico svg { width: 21px; height: 21px; }
-.cad-kpi .cad-lbl { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
-.cad-kpi .cad-num { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-.cad-kpi .cad-sub { font-size: 11px; color: var(--text-muted); }
+.cad-kpi .cad-lbl { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: #6b7280; font-weight: 700; }
+.cad-kpi .cad-num { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: #0f1115; }
+.cad-kpi .cad-sub { font-size: 11px; color: #6b7280; }
 /* Badges de ícone pastel (fundo claro + ícone na cor forte) — estilo do mockup */
 .cad-ic-blue   { background: #dbeafe; color: #2563eb; }
 .cad-ic-amber  { background: #fef3c7; color: #d97706; }
