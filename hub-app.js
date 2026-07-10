@@ -4066,6 +4066,13 @@ const cadCor = n => CAD_CORES[[...(n||'x')].reduce((a,c)=>a+c.charCodeAt(0),0) %
 
 let cadFichas = [];   // cache normalizado de todas as fichas
 let cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+let cadVisao  = '';   // admin: uid de um corretor pra enxergar a aba como ele ('' = visão geral)
+
+// Base de tudo (KPIs, abas, tabela): com a visão de corretor ativa, o admin
+// enxerga exatamente o recorte daquele corretor.
+function cadBase() {
+  return cadVisao ? cadFichas.filter(f => f.corretorUid === cadVisao) : cadFichas;
+}
 
 // O backend guarda menos granularidade que os status de exibição — aqui a gente
 // deriva o "bucket" (usado nos KPIs/abas) e o rótulo/cor da pílula.
@@ -4087,6 +4094,7 @@ function cadStatusInfo(f) {
 async function carregarDocumentos(grupo) {
   const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
   cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+  cadVisao = '';
 
   const painelEnviar = FICHAS_CONFIG.map(f => {
     const link = `${BASE_HOSTING}/${f.arquivo}?corretor=${currentUid}&nome=${encodeURIComponent(nomeCorretor)}`;
@@ -4104,6 +4112,9 @@ async function carregarDocumentos(grupo) {
           <h2>Cadastro de Fichas</h2>
           <p>${isAdmin ? 'Acompanhe todas as fichas enviadas e recebidas dos corretores' : 'Acompanhe e gerencie as fichas enviadas e recebidas dos seus clientes'}</p>
         </div>
+        ${isAdmin ? `<div class="cad-fcampo"><label>👁 Visão</label><select id="cadVisao">
+          <option value="">Visão geral (todos)</option>
+        </select></div>` : ''}
       </div>
       <div class="cad-kpis" id="cadKpis"></div>
       <div class="cad-filtros">
@@ -4111,7 +4122,6 @@ async function carregarDocumentos(grupo) {
         <div class="cad-fcampo"><label>Tipo de ficha</label><select id="cadTipo">
           <option value="">Todos</option>${Object.entries(CAD_TIPO_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
         </select></div>
-        ${isAdmin ? '<div class="cad-fcampo"><label>Corretor</label><select id="cadCorretor"><option value="">Todos</option></select></div>' : ''}
         <div class="cad-fcampo"><label>Status</label><select id="cadStatus">
           <option value="">Todos</option>
           <option value="pendentes">Pendente</option>
@@ -4165,10 +4175,15 @@ async function carregarDocumentos(grupo) {
   document.getElementById('cadTipo')?.addEventListener('change',  e => { cadFiltro.tipo = e.target.value; cadRenderTabela(); });
   document.getElementById('cadStatus')?.addEventListener('change',e => { cadFiltro.status = e.target.value; cadRenderTabela(); });
   document.getElementById('cadPeriodo')?.addEventListener('change',e => { cadFiltro.periodo = e.target.value; cadRenderTabela(); });
-  document.getElementById('cadCorretor')?.addEventListener('change',e => { cadFiltro.corretor = e.target.value; cadRenderTabela(); });
+  // Visão de corretor (admin): muda a base de TUDO — KPIs, abas e tabela.
+  document.getElementById('cadVisao')?.addEventListener('change', e => {
+    cadVisao = e.target.value;
+    cadRenderKpisTabs();
+    cadRenderTabela();
+  });
   document.getElementById('cadLimpar')?.addEventListener('click', () => {
     cadFiltro = { tab: cadFiltro.tab, busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
-    ['cadBusca','cadTipo','cadStatus','cadCorretor'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['cadBusca','cadTipo','cadStatus'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     const per = document.getElementById('cadPeriodo'); if (per) per.value = '30';
     cadRenderTabela();
   });
@@ -4201,10 +4216,15 @@ async function cadCarregarFichas() {
   cadFichas = partes.flat().sort((a,b) => (b.criadoEm?.getTime()||0) - (a.criadoEm?.getTime()||0));
 
   if (isAdmin) {
-    const sel = document.getElementById('cadCorretor');
+    const sel = document.getElementById('cadVisao');
     if (sel) {
-      const nomes = [...new Set(cadFichas.map(f => f.corretorNome).filter(Boolean))].sort();
-      sel.innerHTML = '<option value="">Todos</option>' + nomes.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+      // uid no value (nome pode repetir); rótulo é o nome
+      const vistos = new Map();
+      cadFichas.forEach(f => { if (f.corretorUid && f.corretorNome && !vistos.has(f.corretorUid)) vistos.set(f.corretorUid, f.corretorNome); });
+      const ordenados = [...vistos.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+      sel.innerHTML = '<option value="">Visão geral (todos)</option>'
+        + ordenados.map(([uid, nome]) => `<option value="${escapeHtml(uid)}">${escapeHtml(nome)}</option>`).join('');
+      sel.value = cadVisao;
     }
   }
   cadRenderKpisTabs();
@@ -4212,15 +4232,17 @@ async function cadCarregarFichas() {
 }
 
 function cadContagens() {
-  const c = { todas: cadFichas.length, pendentes:0, enviadas:0, devolvidas:0, concluidas:0 };
-  cadFichas.forEach(f => { c[cadStatusInfo(f).bucket]++; });
+  const base = cadBase();
+  const c = { todas: base.length, pendentes:0, enviadas:0, devolvidas:0, concluidas:0 };
+  base.forEach(f => { c[cadStatusInfo(f).bucket]++; });
   return c;
 }
 
 function cadRenderKpisTabs() {
   const c = cadContagens();
+  const nomeVisao = cadVisao ? (cadFichas.find(f => f.corretorUid === cadVisao)?.corretorNome || 'Corretor') : '';
   const kpis = [
-    { k:'todas',      ico:'🏢', cls:'cad-ic-blue',   lbl: isAdmin?'Todas as fichas':'Minhas fichas', sub:'Total geral',       n:c.todas },
+    { k:'todas',      ico:'🏢', cls:'cad-ic-blue',   lbl: nomeVisao ? `Fichas de ${nomeVisao}` : (isAdmin?'Todas as fichas':'Minhas fichas'), sub:'Total geral', n:c.todas },
     { k:'pendentes',  ico:'📄', cls:'cad-ic-amber',  lbl:'Pendentes',          sub:'Aguardando ação',    n:c.pendentes },
     { k:'enviadas',   ico:'📤', cls:'cad-ic-green',  lbl:'Enviadas ao broker', sub:'Aguardando análise', n:c.enviadas },
     { k:'devolvidas', ico:'↩️', cls:'cad-ic-red',    lbl:'Devolvidas',         sub:'Para correção',      n:c.devolvidas },
@@ -4247,11 +4269,10 @@ function cadRenderKpisTabs() {
 }
 
 function cadFichasFiltradas() {
-  return cadFichas.filter(f => {
+  return cadBase().filter(f => {
     if (cadFiltro.tab !== 'todas' && cadStatusInfo(f).bucket !== cadFiltro.tab) return false;
     if (cadFiltro.status && cadStatusInfo(f).bucket !== cadFiltro.status) return false;
     if (cadFiltro.tipo && f.key !== cadFiltro.tipo) return false;
-    if (cadFiltro.corretor && f.corretorNome !== cadFiltro.corretor) return false;
     if (cadFiltro.periodo && f.criadoEm) {
       const dias = (Date.now() - f.criadoEm.getTime()) / 86400000;
       if (dias > Number(cadFiltro.periodo)) return false;
@@ -4309,7 +4330,7 @@ function cadRenderTabela() {
   }).join('');
 
   const foot = document.getElementById('cadFoot');
-  if (foot) foot.innerHTML = `<span>Mostrando ${lista.length} ficha${lista.length>1?'s':''}${lista.length!==cadFichas.length?` de ${cadFichas.length}`:''}</span>`;
+  if (foot) foot.innerHTML = `<span>Mostrando ${lista.length} ficha${lista.length>1?'s':''}${lista.length!==cadBase().length?` de ${cadBase().length}`:''}</span>`;
 
   tbody.querySelectorAll('.cad-abrir').forEach(btn => {
     btn.addEventListener('click', () => {
