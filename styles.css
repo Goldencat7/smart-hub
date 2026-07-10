@@ -1383,7 +1383,11 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   text-align: left; font-family: inherit; box-shadow: 0 1px 2px rgba(0,0,0,.25);
   transition: border-color .15s, box-shadow .15s, transform .1s; }
 .cad-kpi:hover { border-color: rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.35); transform: translateY(-1px); }
-.cad-kpi.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 6px 18px rgba(0,0,0,.35); }
+/* Cartão selecionado = branco com texto escuro (destaque forte da aba ativa) */
+.cad-kpi.on { background: #fff; border-color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.cad-kpi.on .cad-num { color: #0f1115; }
+.cad-kpi.on .cad-lbl { color: #4b5563; }
+.cad-kpi.on .cad-sub { color: #6b7280; }
 .cad-kpi-top { display: flex; align-items: center; gap: 10px; }
 .cad-kpi .cad-ico { width: 42px; height: 42px; border-radius: 11px; display: inline-flex; flex-shrink: 0;
   align-items: center; justify-content: center; }
