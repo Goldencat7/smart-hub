@@ -4363,6 +4363,9 @@ function cadAbrirMenu(anchor, f) {
   document.querySelector('.cad-menu')?.remove();
   const ehLocador = f.key === 'locador';
   const podeMexer = ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
+  // Finalizar é ação de análise (broker): admin ou quem tem analise_locador,
+  // e só quando a ficha já chegou nele (mesma regra do backend).
+  const podeFinalizar = f.status === 'enviado_admin' && (isAdmin || appsPermitidos.includes('analise_locador'));
   const menu = document.createElement('div');
   menu.className = 'cad-menu';
   menu.innerHTML = `
@@ -4370,6 +4373,7 @@ function cadAbrirMenu(anchor, f) {
     <button data-a="pdf">⬇ Baixar PDF</button>
     ${podeMexer ? '<button data-a="enviar">📤 Enviar ao broker</button>' : ''}
     ${podeMexer ? '<button data-a="reenviar">↩ Reenviar ao cliente</button>' : ''}
+    ${podeFinalizar ? '<button data-a="finalizar">✅ Finalizar ficha</button>' : ''}
     <div class="cad-menu-sep"></div>
     <button data-a="excluir" class="perigo">🗑 Excluir</button>`;
   document.body.appendChild(menu);
@@ -4381,9 +4385,10 @@ function cadAbrirMenu(anchor, f) {
   const fora = ev => { if (!menu.contains(ev.target)) fechar(); };
   setTimeout(() => document.addEventListener('click', fora), 0);
 
-  const fnEnviar   = ehLocador ? enviarFichaParaAdmin     : enviarFichaTipoAdmin;
-  const fnReenviar = ehLocador ? reenviarFichaParaCliente : reenviarFichaTipoCliente;
-  const fnExcluir  = ehLocador ? excluirFichaLocador      : excluirFichaTipo;
+  const fnEnviar    = ehLocador ? enviarFichaParaAdmin     : enviarFichaTipoAdmin;
+  const fnReenviar  = ehLocador ? reenviarFichaParaCliente : reenviarFichaTipoCliente;
+  const fnExcluir   = ehLocador ? excluirFichaLocador      : excluirFichaTipo;
+  const fnFinalizar = ehLocador ? finalizarFichaLocador    : finalizarFichaTipo;
 
   menu.querySelectorAll('button[data-a]').forEach(b => b.addEventListener('click', async () => {
     const acao = b.dataset.a; fechar();
@@ -4398,6 +4403,12 @@ function cadAbrirMenu(anchor, f) {
     if (acao === 'enviar') {
       if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
       try { await fnEnviar({ fichaId: f.id }); atualizarNotifFichas(); await cadCarregarFichas(); }
+      catch(err) { alert('Erro: ' + err.message); }
+      return;
+    }
+    if (acao === 'finalizar') {
+      if (!confirm(`Finalizar a ficha de ${f.nome}? Ela vai pra "Concluídas" e o cliente não pode mais editar.`)) return;
+      try { await fnFinalizar({ fichaId: f.id }); await cadCarregarFichas(); }
       catch(err) { alert('Erro: ' + err.message); }
       return;
     }
