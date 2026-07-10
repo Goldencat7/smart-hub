@@ -482,9 +482,9 @@ ipcMain.on('abrir-app', (_evt, payload) => {
 function disfarcarComoChrome(win) {
   const wc = win.webContents;
   const uaOrig     = wc.getUserAgent();
-  const chromeVer  = (uaOrig.match(/Chrome\/([\d.]+)/) || [, '131.0.0.0'])[1];
+  const chromeVer  = uaOrig.match(/Chrome\/([\d.]+)/)?.[1] ?? '131.0.0.0';
   const chromeMaj  = chromeVer.split('.')[0];
-  const plataforma = (uaOrig.match(/\(([^)]*)\)/) || [, 'Windows NT 10.0; Win64; x64'])[1];
+  const plataforma = uaOrig.match(/\(([^)]*)\)/)?.[1] ?? 'Windows NT 10.0; Win64; x64';
   const ua = `Mozilla/5.0 (${plataforma}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVer} Safari/537.36`;
   wc.setUserAgent(ua);
   wc.session.setUserAgent(ua);

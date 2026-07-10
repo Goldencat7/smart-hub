@@ -2515,7 +2515,8 @@ function renderFotoPessoal(driveLink, gestorPreview = false) {
   document.getElementById('btnAbrirFotoDrive')?.addEventListener('click', () => window.open(driveLink, '_blank'));
   document.getElementById('btnAtualizarFoto')?.addEventListener('click', (e) => {
     const frame = document.getElementById('fotoDriveFrame');
-    if (frame) frame.src = frame.src; // recarrega o embed (puxa o conteúdo atual do Drive)
+    // eslint-disable-next-line no-self-assign -- reatribuir src recarrega o iframe (puxa o conteúdo atual do Drive)
+    if (frame) frame.src = frame.src;
     const b = e.currentTarget; const t = b.textContent;
     b.disabled = true; b.textContent = '↻ Atualizando...';
     setTimeout(() => { b.disabled = false; b.textContent = t; }, 1200);

@@ -18,6 +18,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        # Pula o binário do Electron (~100 MB) — o lint não precisa dele.
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: Lint (ESLint)
+        # Só erro derruba o build; aviso (ex.: código morto conhecido) passa.
+        run: npm run lint
 
       - name: Verificar sintaxe do main process (Electron)
         run: node --check main.js

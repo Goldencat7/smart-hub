@@ -2,9 +2,9 @@
 
 App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápido às
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
-(Firebase, com 2FA), **Gestão de Locações** (módulo completo, em dark launch), **Marketing**
-(templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**, **bloco de
-notas** e uma **área admin**. Versão publicada atual: **1.0.84** (auto-update via GitHub Releases).
+(Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
+**Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.91** (auto-update via GitHub Releases).
 
 ## Stack
 
@@ -19,7 +19,7 @@ notas** e uma **área admin**. Versão publicada atual: **1.0.84** (auto-update 
 - **Conta só por convite**: criação via `criarContaComCodigo` (valida código). Por isso "logado = convidado" e o `getCredentials` pode confiar em qualquer autenticado.
 - **Admin** via custom claim `admin`. Bootstrap admin UID: `OwcT6wCrXMgJ0tPADMUdKdBB8h32` (em `functions/index.js` e `hub-app.js`).
 - **Apps restritos** (ex.: ClickSign): só aparecem pra quem o admin liberar (coleção `user_access/{uid}`). Admin libera em Admin → Usuários → Permissões.
-- **Permissões granulares por pessoa** (concedidas no painel de Admin, nunca elevação em bloco): `marketing_gerenciar` (editar Marketing — NÃO herda de admin), `ti` (Suporte), `drives_fotografia`, `analise_locador`, `loc_beta` (acesso de teste às Locações), `loc_gestao` (vê a aba Locação inteira — Painel + Imóveis; NÃO herda de admin). Perfil de Locação = claim `locRole` (gestor/administrativo/corretor) + `loc_financeiro`.
+- **Permissões granulares por pessoa** (concedidas no painel de Admin, nunca elevação em bloco): `marketing_gerenciar` (editar Marketing — NÃO herda de admin), `ti` (Suporte), `drives_fotografia`, `analise_locador`, `loc_gestao` (vê a aba Locação inteira — Painel + Imóveis; NÃO herda de admin). Existe também `loc_beta` (antigo dark launch), hoje **inerte** — ver "Dívida técnica intencional". Perfil de Locação = claim `locRole` (gestor/administrativo/corretor) + `loc_financeiro`.
 - **Escrita das coleções de Locação = SEMPRE via Cloud Function** (Admin SDK). Regras do Firestore negam write do cliente; leitura filtrada por `corretorUid` (regra de ouro). Idem cobranças/repasses (integridade do financeiro).
 - **Portais externos** (proprietário/inquilino) são PÚBLICOS, sem login: o **token** (`portal_tokens`, `crypto.randomBytes`) é a credencial; cada função devolve só os dados daquela pessoa. **Anonymous Auth NUNCA pode ser habilitado** (o `getCredentials` confia em qualquer autenticado).
 - **2FA (TOTP)** via Firebase MFA; **credenciais dos sistemas criptografadas** (KMS) em repouso; **auditoria** (`registrarAudit` → `audit_log`); **backup Firestore diário** (`gs://remax-smart-hub-backups/`, retenção 30d).
@@ -41,7 +41,7 @@ notas** e uma **área admin**. Versão publicada atual: **1.0.84** (auto-update 
 - **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.
 - **Documentos (Google Drive)**: embed da pasta do Drive — **desabilitado temporariamente** no `index.html` (limitação de service account/tamanho).
 - **Configurações**: perfil (nome + foto, `user_profiles`, base64). Functions: `getMeuPerfil`, `salvarMeuPerfil`.
-- **Admin**: credenciais dos sistemas (cripto KMS), códigos de convite, usuários (admin/excluir/**permissões granulares**), **painel de Lançamento** (controla o dark launch das Locações: "Publicar para todos"), banners (reordenáveis), "último app acessado".
+- **Admin**: credenciais dos sistemas (cripto KMS), códigos de convite, usuários (admin/excluir/**permissões granulares**), banners (reordenáveis), "último app acessado". O **painel de Lançamento** ("Publicar para todos") e o checkbox "Acesso de teste" ainda aparecem na tela mas **não fazem nada** — ver "Dívida técnica intencional".
 
 ## Como PUBLICAR uma nova versão (os 4 passos)
 
@@ -71,12 +71,24 @@ firebase deploy --only functions --project remax-smart-hub
 
 ## Pendências / ideias futuras
 
-### Gestão de Locações (Fase 1 + 1.5 prontas — 2026-07-08)
-- **Publicar o `.exe`**: a UI nova de Locações (Painel/Alertas/Relatórios/filtro de imóveis/vincular ficha/portais) só chega aos corretores no próximo `npm run publish`. Backend + hosting já deployados; falta só o app.
-- **Liberar pra todos**: quando aprovar, Admin → Lançamento → "Publicar para todos" (tira o dark launch do `loc_beta`).
-- **Fase 2 — integração bancária (cobrança automática)**: BLOQUEADA por decisão + cadastro externo (conta no provedor + chave). Explicação completa e plano em **[`FASE-2-INTEGRACAO-BANCARIA.md`](FASE-2-INTEGRACAO-BANCARIA.md)**. Recomendação: Asaas. O terreno já está pronto (webhook-stub + `origemStatus`/`idExterno`).
+### Bloqueado por dependência externa (não dá pra resolver só codando)
+- **Fase 2 — integração bancária (cobrança automática)**: precisa abrir conta no provedor + gerar a chave. Recomendação: Asaas. Plano completo em **[`FASE-2-INTEGRACAO-BANCARIA.md`](FASE-2-INTEGRACAO-BANCARIA.md)**. O terreno já está pronto (webhook-stub + `origemStatus`/`idExterno`).
 - **Portal do inquilino — boleto/PIX**: a página já avisa "pagamento online em breve"; exibir o boleto real depende da Fase 2.
-- **Refinamentos opcionais da Fase 1** (não bloqueiam; anexo de docs, auditoria financeira e painel do corretor JÁ feitos): faltam modelos de contrato + **assinatura eletrônica** (D-04, precisa provedor ClickSign/D4Sign/ZapSign) e **integração real do app de vistoria** (D-06, hoje é registro manual de link).
+- **Assinatura eletrônica de contrato** + modelos de contrato: precisa contratar provedor (ClickSign/D4Sign/ZapSign).
+- **Integração real do app de vistoria**: hoje é registro manual de link; precisa da API do app usado.
+- **Notificação WhatsApp via Meta Cloud API**: quando corretor recebe uma ficha, mandar mensagem automática no WhatsApp pessoal dele.
+  - Precisa de: chip novo (qualquer operadora) para ser o número remetente da REMAX Smart.
+  - Fluxo: Firestore `onCreate` em `fichas` → Cloud Function → Meta Cloud API → WhatsApp do corretor.
+  - Corretor salva número pessoal nas Configurações do Hub.
+  - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).
+  - Setup: Meta for Developers → Meta Business Account → cadastrar número → aprovar template de mensagem (~24h) → token na Cloud Function.
+
+### Dívida técnica intencional (NÃO remover sem o Nathan pedir)
+A "versão enxuta" das Locações (v1.0.90) tirou telas da UI mas deixou o código no lugar,
+porque o Nathan vai voltar nessa parte ("vão ter mais atualizações dessa parte, eu vou mecher depois").
+- `hub-app.js`: `carregarFinanceiro`, `carregarAlertas`, `carregarRelatorios`, `REL_DEFS`, `_relCSV`, `_descAlerta`, `_relatorioDados`, as flags `betaLocacoes`/`locacoesPublicado` e o branch `grupo === 'locacao'` do `carregarDocumentos`.
+- `admin.html`/`admin-app.js`: o painel de **Lançamento** ("Publicar para todos") e o checkbox **"Acesso de teste"** (`loc_beta`) — visíveis, porém inertes (a visibilidade da aba Locação hoje é só `loc_gestao`).
+- Cloud Functions `locFinanceiro` / `locListarAlertas` / `locRelatorios`: continuam no backend, sem tela.
 
 ### App de celular (PWA) — pendência
 - **Objetivo**: ter o Hub no celular **sem** autologin (a pessoa não precisa do login automático no cell). Dados já chegam simultâneos nos dois (Firestore é tempo real).
@@ -86,32 +98,52 @@ firebase deploy --only functions --project remax-smart-hub
 - **Loja (opcional)**: Capacitor/TWA pra Play Store/App Store — mas review da loja quebra o "update simultâneo", então PWA primeiro.
 
 ### Infra / segurança
-- **Backup Firestore**: ✅ FUNCIONANDO. Export diário (03h) pra `gs://remax-smart-hub-backups/{data}`, SA de compute já tem `roles/datastore.importExportAdmin`, retenção de 30 dias (lifecycle Delete age=30). Backups presentes e íntegros (com `overall_export_metadata`). **Falta só**: testar um RESTORE (nunca validado) — importar um backup num destino que NÃO seja produção (projeto de staging ou um 2º banco Firestore) pra confirmar que os dados voltam íntegros.
 - **App Check**: validar que as chamadas às Cloud Functions (inclusive fichas anônimas e portais públicos) vêm de origem legítima. reCAPTCHA Enterprise / Device Check.
+
+#### Como testar o restore do backup (validado em 2026-07-10)
+Restaura num **2º banco do mesmo projeto**, nunca em produção. ⚠️ `gcloud firestore import` **sem**
+`--database` escreve no `(default)` e sobrescreve produção — a flag é obrigatória em toda chamada.
+
+```bash
+gcloud firestore databases create --database=restore-test --location=southamerica-east1 \
+  --type=firestore-native --project=remax-smart-hub
+gcloud firestore import gs://remax-smart-hub-backups/AAAA-MM-DD --database=restore-test \
+  --project=remax-smart-hub
+gcloud firestore operations list --database=restore-test --project=remax-smart-hub  # espera SUCCESSFUL
+# comparar doc a doc (ordena chaves, ignora createTime/updateTime e o nome do banco no path)
+gcloud firestore databases delete --database=restore-test --project=remax-smart-hub --quiet
+```
+
+Resultado de 2026-07-10 (backup do dia, 162 docs, 24 coleções): **0 documentos perdidos, 0 conteúdo
+corrompido**. As únicas diferenças foram drift esperado desde o export das 03h — `user_presence` /
+`user_activity` (o app reescreve `updatedAt` o tempo todo) e um doc a mais em `_erros` no restore,
+que o `relatorioErrosDiario` apagou da produção depois do backup (limpa erros > 7 dias).
+Ao comparar, normalize: a ordem das chaves no JSON da REST API **não** é estável e o campo `name`
+embute o nome do banco — comparar texto cru dá falso positivo em tudo.
 
 ### ✅ Já feito (era pendência, saiu)
 - **2FA / MFA**: TOTP via Firebase MFA (v1.0.80).
 - **Criptografia de credenciais em repouso**: KMS + descriptografia no `getCredentials` (v1.0.81).
 - **Log de auditoria**: `registrarAudit` → `audit_log` cobre credenciais, permissões, perfil, marketing, exclusão de imóvel/chamado e **ações financeiras** (baixa/repasse/ajuste). Dá pra ampliar mais.
-- **Backup Firestore**: export diário + retenção 30d, funcionando (ver Infra acima).
+- **Backup Firestore**: export diário + retenção 30d, funcionando. **Restore validado em 2026-07-10** (0 docs perdidos) — procedimento em Infra acima.
 - **CI**: `node --check` a cada push (ver pendências — falta lint/testes).
-- **Gestão de Locações Fase 1 + 1.5**: construída, publicada (v1.0.84) em dark launch.
+- **Gestão de Locações Fase 1 + 1.5**: construída e publicada. O `.exe` com a UI nova já saiu; o dark launch (`loc_beta`) foi substituído pela permissão `loc_gestao` (por pessoa, no Admin).
 
 ### Ideias antigas (seguem em aberto)
 
-- **Notificação WhatsApp via Meta Cloud API**: quando corretor recebe uma ficha, mandar mensagem automática no WhatsApp pessoal dele.
-  - Precisa de: chip novo (qualquer operadora) para ser o número remetente da REMAX Smart.
-  - Fluxo: Firestore `onCreate` em `fichas` → Cloud Function → Meta Cloud API → WhatsApp do corretor.
-  - Corretor salva número pessoal nas Configurações do Hub.
-  - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).
-  - Setup: Meta for Developers → Meta Business Account → cadastrar número → aprovar template de mensagem (~24h) → token na Cloud Function.
-
-- **Ambiente de staging** (projeto Firebase separado): testar mudanças sem risco de afetar produção. Criar um segundo projeto Firebase (ex.: `remax-smart-hub-staging`) e trocar config por variável de ambiente.
+- **Ambiente de staging** (projeto Firebase separado): testar mudanças sem risco de afetar produção. Criar um segundo projeto Firebase (ex.: `remax-smart-hub-staging`) e trocar config por variável de ambiente. Destrava também o teste de restore do backup.
 
 - **LGPD — retenção e exclusão de dados**: fichas guardam CPF, RG, renda. Implementar política de expurgo automático (ex.: 2 anos) e fluxo de exclusão a pedido do titular.
 
-- **CI/CD**: ✅ parcial — `.github/workflows/ci.yml` roda `node --check` (CJS + módulos ES do renderer via cópia `.mjs`) e valida os JSONs a cada push/PR. Falta: lint, testes automatizados e bloquear deploy quebrado (o deploy/publish segue manual).
+- **CI/CD**: ✅ parcial — `.github/workflows/ci.yml` roda **ESLint** (`npm run lint`), `node --check` (CJS + módulos ES do renderer via cópia `.mjs`) e valida os JSONs a cada push/PR. Falta: testes automatizados e bloquear deploy quebrado (o deploy/publish segue manual).
+  - Config em `eslint.config.mjs` (flat config). Três ambientes: Node puro (`main.js`, `functions/index.js`), preloads (Node + DOM) e renderers (módulos ES + globals de browser + `hubApi`).
+  - Regra do jogo: **só erro derruba o build**; aviso passa. `no-unused-vars` é aviso — e é ele que sinaliza o código morto intencional da Locação, sem quebrar a CI.
+  - Achou um bug real na estreia: `escapeHtml` era usado no `admin-app.js` sem existir lá (ele é declarado no `hub-app.js`, e módulos ES não compartilham escopo) — a tela Admin → Materiais travava em "carregando...".
+  - No CI, `npm ci` roda com `ELECTRON_SKIP_BINARY_DOWNLOAD=1` pra não baixar os ~100 MB do Electron.
 
-- **Monitoramento e alertas em tempo real**: parcial — há `relatorioErrosDiario` (schedule) + `logErro`. Falta alerta em tempo real (Cloud Monitoring / Slack) quando uma function falha.
+- **Monitoramento e alertas em tempo real**: ✅ FEITO (2026-07-10). Alerta do Cloud Monitoring `Hub — falha em Cloud Function (tempo real)` (policy `6131141434551857038`) dispara e-mail pra `nathangabriel@remax.com.br` (canal `14857592127522318626`) quando qualquer function loga severidade ERROR. Filtro: `(resource.type="cloud_run_revision" OR resource.type="cloud_function") AND severity>=ERROR` — as functions v2 aparecem como `cloud_run_revision`, não `cloud_function`. Limite de 1 notificação a cada 5 min (`notificationRateLimit`), incidente fecha sozinho em 30 min.
+  - Complementa (não substitui) o `relatorioErrosDiario` das 08h e o `logErro` → `_erros`. O `logErro` cobre só 7 functions; o alerta pega qualquer `throw` não tratado, porque lê o Cloud Logging.
+  - Pra testar sem quebrar nada: escrever um log sintético via `logging.googleapis.com/v2/entries:write` com `resource.type=cloud_run_revision` e `severity=ERROR`.
+  - Nada disso vive no repo — é config do projeto GCP. `gcloud alpha/beta monitoring` não está instalado nesta máquina; usar a REST API com `gcloud auth print-access-token`.
 
 - **Refatoração de arquivos monolíticos**: `hub-app.js` e `functions/index.js` têm milhares de linhas. Quebrar em módulos menores facilita manutenção e reduz risco de regressão.

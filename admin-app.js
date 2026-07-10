@@ -53,6 +53,10 @@ const reordenarBanners = httpsCallable(fns, 'reordenarBanners');
 const listarChamados   = httpsCallable(fns, 'listarChamados');
 const responderChamado = httpsCallable(fns, 'responderChamado');
 const excluirChamado   = httpsCallable(fns, 'excluirChamado');
+
+// Cópia da do hub-app.js: admin.html carrega este arquivo como <script type="module">,
+// que tem escopo próprio e não enxerga funções declaradas nos outros renderers.
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const listarAuditoria  = httpsCallable(fns, 'listarAuditoria');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
