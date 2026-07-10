@@ -4389,14 +4389,18 @@ function cadAbrirMenu(anchor, f) {
   const podeMexer = ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
   // Finalizar é ação de análise (broker): admin ou quem tem analise_locador,
   // e só quando a ficha já chegou nele (mesma regra do backend).
-  const podeFinalizar = f.status === 'enviado_admin' && (isAdmin || appsPermitidos.includes('analise_locador'));
+  const ehAnalise = isAdmin || appsPermitidos.includes('analise_locador');
+  const podeFinalizar = f.status === 'enviado_admin' && ehAnalise;
+  // O broker também pode DEVOLVER uma ficha já enviada pro cliente completar
+  // (ex.: chegou sem os documentos) — vira "Aguardando cliente".
+  const podeReenviar = podeMexer || (f.status === 'enviado_admin' && ehAnalise);
   const menu = document.createElement('div');
   menu.className = 'cad-menu';
   menu.innerHTML = `
     <button data-a="editar">✏ Editar</button>
     <button data-a="pdf">⬇ Baixar PDF</button>
     ${podeMexer ? '<button data-a="enviar">📤 Enviar ao broker</button>' : ''}
-    ${podeMexer ? '<button data-a="reenviar">↩ Reenviar ao cliente</button>' : ''}
+    ${podeReenviar ? '<button data-a="reenviar">↩ Reenviar ao cliente</button>' : ''}
     ${podeFinalizar ? '<button data-a="finalizar">✅ Finalizar ficha</button>' : ''}
     <div class="cad-menu-sep"></div>
     <button data-a="excluir" class="perigo">🗑 Excluir</button>`;
@@ -4425,7 +4429,10 @@ function cadAbrirMenu(anchor, f) {
       return;
     }
     if (acao === 'enviar') {
-      if (!confirm('Confirma envio desta ficha para o administrativo?')) return;
+      const aviso = f.pendentes.length
+        ? `⚠ Esta ficha tem ${f.pendentes.length} pendência(s): ${f.pendentes.map(p=>cadNomePend(p)).join(', ')}.\n\nEnviar ao administrativo mesmo assim?`
+        : 'Confirma envio desta ficha para o administrativo?';
+      if (!confirm(aviso)) return;
       try { await fnEnviar({ fichaId: f.id }); atualizarNotifFichas(); await cadCarregarFichas(); }
       catch(err) { alert('Erro: ' + err.message); }
       return;

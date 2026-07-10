@@ -327,8 +327,9 @@ const arquivos  = {};
 
 // URL de download sem getDownloadURL() (que exige READ, negado ao cliente anônimo):
 // definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
-function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
-function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+// O token de download é gerado na Cloud Function (salvarFichaPublica): cliente
+// anônimo não pode setar firebaseStorageDownloadTokens (Firebase rejeita desde
+// 2026-07-03) nem chamar getDownloadURL (read negado pelas regras).
 
 // Escape p/ inserção segura em innerHTML — dados do Firestore vêm de cliente anônimo.
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -655,16 +656,33 @@ document.getElementById('formFicha').addEventListener('submit', async function(e
   const erroCpfFone = validarCpfsETelefones(dados);
   if (erroCpfFone) { mostrarErro(erroCpfFone); btn.disabled = false; btn.textContent = 'Enviar ficha'; return; }
 
+  // Documentos obrigatórios sem anexo e sem arquivo anterior: confirma com o
+  // cliente e registra como pendência — antes passavam em silêncio.
+  const DOCS_OBRIG = { rgcpf:'RG e CPF', energia:'Conta de energia' };
+  const docsFaltando = Object.keys(DOCS_OBRIG).filter(k => !arquivos[k] && !docsExistentes[k] && !pendentes.has(k));
+  if (docsFaltando.length) {
+    if (!confirm('A ficha está sem documentos obrigatórios:\n\n• ' + docsFaltando.map(k=>DOCS_OBRIG[k]).join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) {
+      btn.disabled = false; btn.textContent = 'Enviar ficha'; return;
+    }
+    docsFaltando.forEach(k => pendentes.add(k));
+  }
+
   const fichaId = Date.now().toString(36) + Math.random().toString(36).slice(2);
-  const urlsDocs = {}, docsKeys = Object.keys(arquivos);
+  // Upload SEM token no metadata (o Firebase passou a rejeitar isso em cliente
+  // anônimo — 2026-07-03). Mandamos só o caminho; a function gera o token.
+  const caminhosDocs = {}, falhasUpload = [], docsKeys = Object.keys(arquivos);
   if (docsKeys.length) {
     const prog = document.getElementById('upload-progress'), fill = document.getElementById('upload-progress-fill');
     prog.style.display = 'block'; let n = 0;
     for (const k of docsKeys) {
-      try { const _p = `fichas-locador/${fichaId}/${k}`, _t = _fbToken(); await uploadBytes(ref(storage, _p), arquivos[k], { customMetadata: { firebaseStorageDownloadTokens: _t } }); urlsDocs[k] = _fbDownloadUrl(_p, _t); }
-      catch(err) { pendentes.add(k); }
+      const _p = `fichas-locador/${fichaId}/${k}`;
+      try { await uploadBytes(ref(storage, _p), arquivos[k]); caminhosDocs[k] = _p; }
+      catch(err) { console.warn('Upload falhou:', k, err.message); pendentes.add(k); falhasUpload.push(DOCS_OBRIG[k]||k); }
       fill.style.width = Math.round((++n / docsKeys.length) * 100) + '%';
     }
+  }
+  if (falhasUpload.length) {
+    alert('Não foi possível enviar alguns anexos:\n\n• ' + falhasUpload.join('\n• ') + '\n\nA ficha será enviada mesmo assim e eles ficarão como pendência. Você pode reabrir o link e tentar de novo.');
   }
   try {
     // A function decide status/corretorUid e faz o merge dos documentos antigos.
@@ -674,7 +692,7 @@ document.getElementById('formFicha').addEventListener('submit', async function(e
       corretorUid, corretorNome,
       imovelId: imovelId || null,
       dados,
-      documentos: urlsDocs,
+      documentosPaths: caminhosDocs,
       pendentes: Array.from(pendentes),
     });
     this.style.display = 'none'; document.getElementById('tela-sucesso').style.display = 'block';

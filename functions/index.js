@@ -3369,6 +3369,39 @@ function validarDocumentosFicha(documentos) {
   return documentos;
 }
 
+const FICHA_BUCKET = 'remax-smart-hub.firebasestorage.app';
+
+// O cliente sobe o arquivo sem token e manda só o CAMINHO; o token de download
+// é gerado AQUI com o Admin SDK. Em 2026-07-03 o Firebase passou a rejeitar
+// upload anônimo que seta firebaseStorageDownloadTokens no customMetadata —
+// todo anexo de ficha falhou em silêncio desde então (virava "pendência").
+async function resolverDocumentosPorCaminho(paths) {
+  if (paths == null) return {};
+  if (typeof paths !== 'object' || Array.isArray(paths)) {
+    throw new HttpsError('invalid-argument', 'Documentos inválidos.');
+  }
+  const chaves = Object.keys(paths);
+  if (chaves.length > 60) throw new HttpsError('invalid-argument', 'Documentos demais.');
+
+  const bucket = admin.storage().bucket(FICHA_BUCKET);
+  const urls = {};
+  for (const k of chaves) {
+    const p = paths[k];
+    const ok = typeof p === 'string' && p.length < 500 && !p.includes('..')
+      && (p.startsWith('fichas/') || p.startsWith('fichas-locador/'));
+    if (!ok) throw new HttpsError('invalid-argument', `Anexo "${k}" fora do storage do Hub.`);
+
+    const file = bucket.file(p);
+    const [existe] = await file.exists();
+    if (!existe) throw new HttpsError('invalid-argument', `Anexo "${k}" não encontrado no storage.`);
+
+    const token = crypto.randomUUID();
+    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+    urls[k] = `https://firebasestorage.googleapis.com/v0/b/${FICHA_BUCKET}/o/${encodeURIComponent(p)}?alt=media&token=${token}`;
+  }
+  return urls;
+}
+
 function validarPendentes(pendentes) {
   if (pendentes == null) return [];
   if (!Array.isArray(pendentes) || pendentes.length > 60) {
@@ -3387,14 +3420,16 @@ function validarPendentes(pendentes) {
 exports.salvarFichaPublica = onCall(async (req) => {
   const {
     colecao, fichaId, tipo, corretorUid, corretorNome, imovelId,
-    dados, documentos, pendentes
+    dados, documentos, documentosPaths, pendentes
   } = req.data || {};
 
   if (!FICHA_COLECOES.includes(colecao)) {
     throw new HttpsError('invalid-argument', 'Coleção inválida.');
   }
   const dadosOk = validarDadosFicha(dados);
-  const docsOk = validarDocumentosFicha(documentos);
+  // Caminho novo: `documentosPaths` (a function gera o token de download).
+  // `documentos` com URL completa segue aceito por compatibilidade.
+  const docsOk = { ...validarDocumentosFicha(documentos), ...(await resolverDocumentosPorCaminho(documentosPaths)) };
   const pendOk = validarPendentes(pendentes);
   const agora = admin.firestore.FieldValue.serverTimestamp();
 

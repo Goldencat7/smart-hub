@@ -41,8 +41,9 @@ let CFG = null;
 // Gera a URL de download SEM chamar getDownloadURL() — que exige permissão de READ no
 // Storage e é negada ao cliente anônimo da ficha (upload/create é liberado, read não).
 // Definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
-function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
-function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+// O token de download é gerado na Cloud Function (salvarFichaPublica): cliente
+// anônimo não pode setar firebaseStorageDownloadTokens (Firebase rejeita desde
+// 2026-07-03) nem chamar getDownloadURL (read negado pelas regras).
 
 // ── Helpers de leitura ──
 export function v(k){ return valores[k]!=null ? valores[k] : ''; }
@@ -296,6 +297,16 @@ async function enviar(e){
   const erroCpfFone = validarCpfsETelefones();
   if(erroCpfFone){ mostrarErro(erroCpfFone); return; }
 
+  // Documentos obrigatórios sem anexo, sem "não tenho agora" e sem arquivo
+  // anterior: confirma com o cliente e registra como pendência — antes
+  // passavam em silêncio e a ficha chegava "sem pendências" faltando tudo.
+  const docsFaltando = (CFG.docs||[]).filter(d => d.badge==='obrig'
+    && !arquivos[d.key] && !docsExistentes[d.key] && !pendentes.has(d.key) && !naoExiste.has(d.key));
+  if(docsFaltando.length){
+    if(!confirm('A ficha está sem documentos obrigatórios:\n\n• ' + docsFaltando.map(d=>d.label).join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) return;
+    docsFaltando.forEach(d => pendentes.add(d.key));
+  }
+
   const btn=document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
   document.getElementById('erroFinal').style.display='none';
 
@@ -304,10 +315,20 @@ async function enviar(e){
 
   const dados={}; Object.entries(valores).forEach(([k,val])=>{ if(val&&(''+val).trim()) dados[k]=val; });
   const fichaId=Date.now().toString(36)+Math.random().toString(36).slice(2);
-  const urlsDocs={}; const docsKeys=Object.keys(arquivos);
+  // Upload SEM token no metadata (o Firebase passou a rejeitar isso em cliente
+  // anônimo — 2026-07-03). Mandamos só o caminho; a function gera o token.
+  const caminhosDocs={}; const falhasUpload=[]; const docsKeys=Object.keys(arquivos);
   if(docsKeys.length){
     const prog=document.getElementById('upload-progress'),fill=document.getElementById('upload-progress-fill'); prog.style.display='block'; let n=0;
-    for(const k of docsKeys){ try{ const _p=`fichas/${CFG.tipo}/${fichaId}/${k}`, _t=_fbToken(); await uploadBytes(ref(storage,_p),arquivos[k],{ customMetadata:{ firebaseStorageDownloadTokens:_t } }); urlsDocs[k]=_fbDownloadUrl(_p,_t); }catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); } fill.style.width=Math.round((++n/docsKeys.length)*100)+'%'; }
+    for(const k of docsKeys){
+      const _p=`fichas/${CFG.tipo}/${fichaId}/${k}`;
+      try{ await uploadBytes(ref(storage,_p),arquivos[k]); caminhosDocs[k]=_p; }
+      catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); falhasUpload.push(((CFG.docs||[]).find(d=>d.key===k)||{}).label||k); }
+      fill.style.width=Math.round((++n/docsKeys.length)*100)+'%';
+    }
+  }
+  if(falhasUpload.length){
+    alert('Não foi possível enviar alguns anexos:\n\n• ' + falhasUpload.join('\n• ') + '\n\nA ficha será enviada mesmo assim e eles ficarão como pendência. Você pode reabrir o link e tentar de novo.');
   }
   try{
     // A function decide status/corretorUid e faz o merge dos documentos antigos.
@@ -319,7 +340,7 @@ async function enviar(e){
       corretorNome: CFG._corretorNome,
       imovelId: CFG._imovelId || null,
       dados,
-      documentos: urlsDocs,
+      documentosPaths: caminhosDocs,
       pendentes: Array.from(pendentes),
     });
     document.getElementById('formFicha').style.display='none'; document.getElementById('tela-sucesso').style.display='block';

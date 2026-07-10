@@ -96,10 +96,9 @@ const valores   = {};        // chave -> valor
 const pendentes = new Set();
 const arquivos  = {};
 const docsExistentes = {};
-// URL de download sem getDownloadURL() (que exige READ, negado ao cliente anônimo):
-// definimos nosso próprio download token via metadata; a URL com token dispensa as regras.
-function _fbToken(){ try{ return crypto.randomUUID(); }catch(_){ return 'tk'+Date.now().toString(36)+Math.random().toString(36).slice(2,12)+Math.random().toString(36).slice(2,12); } }
-function _fbDownloadUrl(path, token){ return 'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/'+encodeURIComponent(path)+'?alt=media&token='+token; }
+// O token de download é gerado na Cloud Function (salvarFichaPublica), não aqui:
+// cliente anônimo não pode setar firebaseStorageDownloadTokens (Firebase rejeita
+// desde 2026-07-03) nem chamar getDownloadURL (read negado pelas regras).
 function escHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 let nProponentes = 1;        // quantos blocos de proponente estão visíveis
 let somenteLeitura = false;
@@ -377,6 +376,25 @@ form.addEventListener('submit', async e=>{
   const erroCpfFone = validarCpfsETelefones();
   if(erroCpfFone){ mostrarErro(erroCpfFone); return; }
 
+  // Itens rotulados "Obrigatório" sem preencher/anexar e sem "não tenho agora":
+  // confirma com o cliente e registra como pendência — antes passavam em
+  // silêncio e a ficha chegava "sem pendências" faltando tudo.
+  const DOCS_OBRIG = { rgcpf:'RG, CPF ou CNH', compEndereco:'Comprovante de endereço', compRenda:'Comprovante de renda' };
+  const docsFaltando = Object.keys(DOCS_OBRIG).filter(k => !arquivos[k] && !docsExistentes[k] && !isPend(k));
+  const camposFaltando = [...form.querySelectorAll('.field')].filter(f => {
+    if(!f.querySelector('.badge-obrig') || !f.offsetParent) return false; // só visíveis
+    const inp = f.querySelector('[data-key]'); if(!inp) return false;
+    const nta = f.querySelector('[data-campo]');
+    return !(valores[inp.dataset.key] && (''+valores[inp.dataset.key]).trim()) && !(nta && nta.checked);
+  }).map(f => ({ k: f.querySelector('[data-key]').dataset.key,
+                 label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[data-key]').dataset.key }));
+  if(docsFaltando.length || camposFaltando.length){
+    const itens = [...camposFaltando.map(c=>c.label), ...docsFaltando.map(k=>DOCS_OBRIG[k])];
+    if(!confirm('A ficha está sem itens obrigatórios:\n\n• ' + itens.join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) return;
+    camposFaltando.forEach(c => pendentes.add(c.k));
+    docsFaltando.forEach(k => pendentes.add(k));
+  }
+
   const btn = document.getElementById('btnSubmit'); btn.disabled=true; btn.textContent='Enviando...';
   document.getElementById('erroFinal').style.display='none';
 
@@ -384,16 +402,23 @@ form.addEventListener('submit', async e=>{
   Object.entries(valores).forEach(([k,val])=>{ if(val&&(''+val).trim()) dados[k]=val; });
 
   const fichaId = Date.now().toString(36)+Math.random().toString(36).slice(2);
-  const urlsDocs = {};
+  // Upload SEM token no metadata (o Firebase passou a rejeitar isso em cliente
+  // anônimo — 2026-07-03). Mandamos só o caminho; a function gera o token.
+  const caminhosDocs = {};
+  const falhasUpload = [];
   const docsKeys = Object.keys(arquivos);
   if(docsKeys.length){
     const prog=document.getElementById('upload-progress'); const fill=document.getElementById('upload-progress-fill'); prog.style.display='block';
     let n=0;
     for(const k of docsKeys){
-      try{ const _p=`fichas/${tipo}/${fichaId}/${k}`, _t=_fbToken(); await uploadBytes(ref(storage,_p),arquivos[k],{ customMetadata:{ firebaseStorageDownloadTokens:_t } }); urlsDocs[k]=_fbDownloadUrl(_p,_t); }
-      catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); }
+      const _p=`fichas/${tipo}/${fichaId}/${k}`;
+      try{ await uploadBytes(ref(storage,_p),arquivos[k]); caminhosDocs[k]=_p; }
+      catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); falhasUpload.push(DOCS_OBRIG[k]||k); }
       fill.style.width = Math.round((++n/docsKeys.length)*100)+'%';
     }
+  }
+  if(falhasUpload.length){
+    alert('Não foi possível enviar alguns anexos:\n\n• ' + falhasUpload.join('\n• ') + '\n\nA ficha será enviada mesmo assim e eles ficarão como pendência. Você pode reabrir o link e tentar de novo.');
   }
 
   try{
@@ -404,7 +429,7 @@ form.addEventListener('submit', async e=>{
       tipo, corretorUid, corretorNome,
       imovelId: imovelId || null,
       dados,
-      documentos: urlsDocs,
+      documentosPaths: caminhosDocs,
       pendentes: Array.from(pendentes),
     });
     form.style.display='none';
