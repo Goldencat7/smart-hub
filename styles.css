@@ -1386,17 +1386,17 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .cad-kpi.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 6px 18px rgba(0,0,0,.35); }
 .cad-kpi-top { display: flex; align-items: center; gap: 10px; }
 .cad-kpi .cad-ico { width: 42px; height: 42px; border-radius: 11px; display: inline-flex; flex-shrink: 0;
-  align-items: center; justify-content: center; color: #fff; }
+  align-items: center; justify-content: center; }
 .cad-kpi .cad-ico svg { width: 21px; height: 21px; }
 .cad-kpi .cad-lbl { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
 .cad-kpi .cad-num { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .cad-kpi .cad-sub { font-size: 11px; color: var(--text-muted); }
-/* Badges de ícone com cor sólida (ícone branco) */
-.cad-ic-blue   { background: #2563eb; }
-.cad-ic-amber  { background: #f59e0b; }
-.cad-ic-green  { background: #0ea5e9; }
-.cad-ic-red    { background: #ef4444; }
-.cad-ic-violet { background: #22c55e; }
+/* Badges de ícone pastel (fundo claro + ícone na cor forte) — estilo do mockup */
+.cad-ic-blue   { background: #dbeafe; color: #2563eb; }
+.cad-ic-amber  { background: #fef3c7; color: #d97706; }
+.cad-ic-green  { background: #e0f2fe; color: #0284c7; }
+.cad-ic-red    { background: #fee2e2; color: #dc2626; }
+.cad-ic-violet { background: #dcfce7; color: #16a34a; }
 
 .cad-filtros { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px; margin-bottom: 16px; }
