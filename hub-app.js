@@ -4122,6 +4122,7 @@ async function carregarDocumentos(grupo) {
         <div class="cad-fcampo"><label>Tipo de ficha</label><select id="cadTipo">
           <option value="">Todos</option>${Object.entries(CAD_TIPO_LABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}
         </select></div>
+        ${isAdmin ? '<div class="cad-fcampo"><label>Corretor</label><select id="cadCorretor"><option value="">Todos</option></select></div>' : ''}
         <div class="cad-fcampo"><label>Status</label><select id="cadStatus">
           <option value="">Todos</option>
           <option value="pendentes">Pendente</option>
@@ -4175,6 +4176,7 @@ async function carregarDocumentos(grupo) {
   document.getElementById('cadTipo')?.addEventListener('change',  e => { cadFiltro.tipo = e.target.value; cadRenderTabela(); });
   document.getElementById('cadStatus')?.addEventListener('change',e => { cadFiltro.status = e.target.value; cadRenderTabela(); });
   document.getElementById('cadPeriodo')?.addEventListener('change',e => { cadFiltro.periodo = e.target.value; cadRenderTabela(); });
+  document.getElementById('cadCorretor')?.addEventListener('change',e => { cadFiltro.corretor = e.target.value; cadRenderTabela(); });
   // Visão de corretor (admin): muda a base de TUDO — KPIs, abas e tabela.
   document.getElementById('cadVisao')?.addEventListener('change', e => {
     cadVisao = e.target.value;
@@ -4183,7 +4185,7 @@ async function carregarDocumentos(grupo) {
   });
   document.getElementById('cadLimpar')?.addEventListener('click', () => {
     cadFiltro = { tab: cadFiltro.tab, busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
-    ['cadBusca','cadTipo','cadStatus'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['cadBusca','cadTipo','cadStatus','cadCorretor'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     const per = document.getElementById('cadPeriodo'); if (per) per.value = '30';
     cadRenderTabela();
   });
@@ -4216,15 +4218,23 @@ async function cadCarregarFichas() {
   cadFichas = partes.flat().sort((a,b) => (b.criadoEm?.getTime()||0) - (a.criadoEm?.getTime()||0));
 
   if (isAdmin) {
-    const sel = document.getElementById('cadVisao');
-    if (sel) {
-      // uid no value (nome pode repetir); rótulo é o nome
-      const vistos = new Map();
-      cadFichas.forEach(f => { if (f.corretorUid && f.corretorNome && !vistos.has(f.corretorUid)) vistos.set(f.corretorUid, f.corretorNome); });
-      const ordenados = [...vistos.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-      sel.innerHTML = '<option value="">Visão geral (todos)</option>'
+    // uid no value (nome pode repetir); rótulo é o nome
+    const vistos = new Map();
+    cadFichas.forEach(f => { if (f.corretorUid && f.corretorNome && !vistos.has(f.corretorUid)) vistos.set(f.corretorUid, f.corretorNome); });
+    const ordenados = [...vistos.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+
+    const selVisao = document.getElementById('cadVisao');
+    if (selVisao) {
+      selVisao.innerHTML = '<option value="">Visão geral (todos)</option>'
         + ordenados.map(([uid, nome]) => `<option value="${escapeHtml(uid)}">${escapeHtml(nome)}</option>`).join('');
-      sel.value = cadVisao;
+      selVisao.value = cadVisao;
+    }
+    // filtro rápido da tabela (por nome) — convive com a Visão, que muda a base toda
+    const selFiltro = document.getElementById('cadCorretor');
+    if (selFiltro) {
+      selFiltro.innerHTML = '<option value="">Todos</option>'
+        + ordenados.map(([, nome]) => `<option value="${escapeHtml(nome)}">${escapeHtml(nome)}</option>`).join('');
+      selFiltro.value = cadFiltro.corretor;
     }
   }
   cadRenderKpisTabs();
@@ -4273,6 +4283,7 @@ function cadFichasFiltradas() {
     if (cadFiltro.tab !== 'todas' && cadStatusInfo(f).bucket !== cadFiltro.tab) return false;
     if (cadFiltro.status && cadStatusInfo(f).bucket !== cadFiltro.status) return false;
     if (cadFiltro.tipo && f.key !== cadFiltro.tipo) return false;
+    if (cadFiltro.corretor && f.corretorNome !== cadFiltro.corretor) return false;
     if (cadFiltro.periodo && f.criadoEm) {
       const dias = (Date.now() - f.criadoEm.getTime()) / 86400000;
       if (dias > Number(cadFiltro.periodo)) return false;
