@@ -4062,6 +4062,15 @@ const FICHAS_CONFIG = [
 const CAD_TIPO_LABEL = { locador:'Locador', pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação com Fiador', vendedor:'Vendedor', proposta:'Proposta', fianca:'Fiança' };
 const CAD_TIPO_ICO   = { locador:'👤', pf:'🧍', pj:'🏢', locacao_fiador:'🤝', vendedor:'🏷️', proposta:'📄', fianca:'🛡️' };
 const CAD_CORES = ['#0052CC','#C8001A','#4ade80','#8b7cf6','#fbbf24','#0ea5e9','#ec4899'];
+// Ícones dos KPIs (SVG branco, badge com cor sólida). Feather-style.
+const _sv = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const CAD_KPI_ICO = {
+  todas:      _sv('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'),
+  pendentes:  _sv('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+  enviadas:   _sv('<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>'),
+  devolvidas: _sv('<polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/>'),
+  concluidas: _sv('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>'),
+};
 const cadIniciais = n => ((n||'?').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()) || '?';
 const cadCor = n => CAD_CORES[[...(n||'x')].reduce((a,c)=>a+c.charCodeAt(0),0) % CAD_CORES.length];
 
@@ -4261,17 +4270,19 @@ function cadRenderKpisTabs() {
   const c = cadContagens();
   const nomeVisao = cadVisao ? (cadFichas.find(f => f.corretorUid === cadVisao)?.corretorNome || 'Corretor') : '';
   const kpis = [
-    { k:'todas',      ico:'🏢', cls:'cad-ic-blue',   lbl: nomeVisao ? `Fichas de ${nomeVisao}` : (isAdmin?'Todas as fichas':'Minhas fichas'), sub:'Total geral', n:c.todas },
-    { k:'pendentes',  ico:'📄', cls:'cad-ic-amber',  lbl:'Pendentes',          sub:'Aguardando ação',    n:c.pendentes },
-    { k:'enviadas',   ico:'📤', cls:'cad-ic-green',  lbl:'Enviadas ao broker', sub:'Aguardando análise', n:c.enviadas },
-    { k:'devolvidas', ico:'↩️', cls:'cad-ic-red',    lbl:'Devolvidas',         sub:'Para correção',      n:c.devolvidas },
-    { k:'concluidas', ico:'✅', cls:'cad-ic-violet', lbl:'Concluídas',         sub:'Finalizadas',        n:c.concluidas },
+    { k:'todas',      cls:'cad-ic-blue',   lbl: nomeVisao ? `Fichas de ${nomeVisao}` : (isAdmin?'Todas as fichas':'Minhas fichas'), sub:'Total geral', n:c.todas },
+    { k:'pendentes',  cls:'cad-ic-amber',  lbl:'Pendentes',          sub:'Aguardando ação',    n:c.pendentes },
+    { k:'enviadas',   cls:'cad-ic-green',  lbl:'Enviadas ao broker', sub:'Aguardando análise', n:c.enviadas },
+    { k:'devolvidas', cls:'cad-ic-red',    lbl:'Devolvidas',         sub:'Para correção',      n:c.devolvidas },
+    { k:'concluidas', cls:'cad-ic-violet', lbl:'Concluídas',         sub:'Finalizadas',        n:c.concluidas },
   ];
   const kpiEl = document.getElementById('cadKpis');
   if (kpiEl) kpiEl.innerHTML = kpis.map(x => `
     <button class="cad-kpi ${cadFiltro.tab===x.k?'on':''}" data-tab="${x.k}">
-      <div class="cad-ico ${x.cls}">${x.ico}</div>
-      <div class="cad-lbl">${x.lbl}</div>
+      <div class="cad-kpi-top">
+        <div class="cad-ico ${x.cls}">${CAD_KPI_ICO[x.k]}</div>
+        <div class="cad-lbl">${x.lbl}</div>
+      </div>
       <div class="cad-num">${x.n}</div>
       <div class="cad-sub">${x.sub}</div>
     </button>`).join('');

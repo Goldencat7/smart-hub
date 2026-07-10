@@ -1377,22 +1377,26 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .cad-head h2 { margin: 0; font-size: 20px; font-weight: 700; }
 .cad-head p { margin: 4px 0 0; font-size: 13px; color: var(--text-muted); }
 
-.cad-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 16px; }
-.cad-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
-  padding: 14px; display: flex; flex-direction: column; gap: 8px; cursor: pointer; text-align: left;
-  transition: border-color .15s, background .15s; font-family: inherit; }
-.cad-kpi:hover { border-color: rgba(0,82,204,.5); }
-.cad-kpi.on { border-color: var(--blue); background: var(--blue-light); }
-.cad-kpi .cad-ico { width: 34px; height: 34px; border-radius: var(--radius-card); display: inline-flex;
-  align-items: center; justify-content: center; font-size: 17px; }
-.cad-kpi .cad-lbl { font-size: 10.5px; letter-spacing: .4px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
-.cad-kpi .cad-num { font-size: 26px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+.cad-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 16px; }
+.cad-kpi { background: color-mix(in srgb, var(--surface) 86%, #fff 4%); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; cursor: pointer;
+  text-align: left; font-family: inherit; box-shadow: 0 1px 2px rgba(0,0,0,.25);
+  transition: border-color .15s, box-shadow .15s, transform .1s; }
+.cad-kpi:hover { border-color: rgba(255,255,255,.16); box-shadow: 0 6px 18px rgba(0,0,0,.35); transform: translateY(-1px); }
+.cad-kpi.on { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue), 0 6px 18px rgba(0,0,0,.35); }
+.cad-kpi-top { display: flex; align-items: center; gap: 10px; }
+.cad-kpi .cad-ico { width: 42px; height: 42px; border-radius: 11px; display: inline-flex; flex-shrink: 0;
+  align-items: center; justify-content: center; color: #fff; }
+.cad-kpi .cad-ico svg { width: 21px; height: 21px; }
+.cad-kpi .cad-lbl { font-size: 10.5px; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+.cad-kpi .cad-num { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .cad-kpi .cad-sub { font-size: 11px; color: var(--text-muted); }
-.cad-ic-blue   { background: var(--blue-light); color: #5b9bff; }
-.cad-ic-amber  { background: rgba(251,191,36,.14); color: var(--warning); }
-.cad-ic-green  { background: rgba(74,222,128,.14); color: var(--success); }
-.cad-ic-red    { background: rgba(255,128,117,.14); color: var(--danger); }
-.cad-ic-violet { background: rgba(139,124,246,.16); color: #b3a6ff; }
+/* Badges de ícone com cor sólida (ícone branco) */
+.cad-ic-blue   { background: #2563eb; }
+.cad-ic-amber  { background: #f59e0b; }
+.cad-ic-green  { background: #0ea5e9; }
+.cad-ic-red    { background: #ef4444; }
+.cad-ic-violet { background: #22c55e; }
 
 .cad-filtros { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px; margin-bottom: 16px; }
