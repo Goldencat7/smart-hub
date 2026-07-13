@@ -100,6 +100,7 @@ const reenviarFichaTipoCliente  = httpsCallable(fns, 'reenviarFichaTipoCliente')
 const listarFichasTipoAnalise   = httpsCallable(fns, 'listarFichasTipoAnalise');
 const finalizarFichaTipo        = httpsCallable(fns, 'finalizarFichaTipo');
 const listarFotosPerfil         = httpsCallable(fns, 'listarFotosPerfil');
+const fichaDefinirVisibilidade  = httpsCallable(fns, 'fichaDefinirVisibilidade');
 const listarStatusApps    = httpsCallable(fns, 'listarStatusApps');
 const contarNotifFichas   = httpsCallable(fns, 'contarNotifFichas');
 const contarChamadosAbertos = httpsCallable(fns, 'contarChamadosAbertos');
@@ -4228,7 +4229,8 @@ async function cadCarregarFichas() {
     pendentes: f.pendentes || [],
     status: f.status || 'aguardando_corretor',
     arquivo: (FICHAS_CONFIG.find(c => c.key === key) || {}).arquivo,
-    dados: f.dados || {}
+    dados: f.dados || {},
+    visivelPara: f.visivelPara || []   // compartilhamento (admin → "Quem pode ver")
   });
   // Cada tipo protegido com .catch pra que uma falha isolada não derrube a tabela.
   const pedidos = [
@@ -4396,7 +4398,10 @@ function cadRenderTabela() {
 function cadAbrirMenu(anchor, f) {
   document.querySelector('.cad-menu')?.remove();
   const ehLocador = f.key === 'locador';
-  const podeMexer = ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
+  // Quem recebeu a ficha por compartilhamento (visivelPara) só VÊ: as ações de
+  // dono (enviar/reenviar/excluir) ficam com o corretor da ficha e com o admin.
+  const ehDono = isAdmin || f.corretorUid === currentUid;
+  const podeMexer = ehDono && ['aguardando_corretor','aguardando_edicao_cliente'].includes(f.status);
   // Finalizar é ação de análise (broker): admin ou quem tem analise_locador,
   // e só quando a ficha já chegou nele (mesma regra do backend).
   const ehAnalise = isAdmin || appsPermitidos.includes('analise_locador');
@@ -4404,6 +4409,7 @@ function cadAbrirMenu(anchor, f) {
   // O broker também pode DEVOLVER uma ficha já enviada pro cliente completar
   // (ex.: chegou sem os documentos) — vira "Aguardando cliente".
   const podeReenviar = podeMexer || (f.status === 'enviado_admin' && ehAnalise);
+  const qtdVis = (f.visivelPara || []).length;
   const menu = document.createElement('div');
   menu.className = 'cad-menu';
   menu.innerHTML = `
@@ -4412,8 +4418,8 @@ function cadAbrirMenu(anchor, f) {
     ${podeMexer ? '<button data-a="enviar">📤 Enviar ao broker</button>' : ''}
     ${podeReenviar ? '<button data-a="reenviar">↩ Reenviar ao cliente</button>' : ''}
     ${podeFinalizar ? '<button data-a="finalizar">✅ Finalizar ficha</button>' : ''}
-    <div class="cad-menu-sep"></div>
-    <button data-a="excluir" class="perigo">🗑 Excluir</button>`;
+    ${isAdmin ? `<button data-a="quem">👁 Quem pode ver${qtdVis ? ` (${qtdVis})` : ''}</button>` : ''}
+    ${ehDono ? '<div class="cad-menu-sep"></div><button data-a="excluir" class="perigo">🗑 Excluir</button>' : ''}`;
   document.body.appendChild(menu);
   const r = anchor.getBoundingClientRect();
   menu.style.top  = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + 'px';
@@ -4431,6 +4437,7 @@ function cadAbrirMenu(anchor, f) {
   menu.querySelectorAll('button[data-a]').forEach(b => b.addEventListener('click', async () => {
     const acao = b.dataset.a; fechar();
     if (acao === 'editar') { abrirModalFicha(f.arquivo, f.id, 'edicao', '✏ Editar ' + f.tipoLabel); return; }
+    if (acao === 'quem') { cadAbrirVisibilidade(f); return; }
     if (acao === 'pdf') {
       const url = `${BASE_HOSTING}/${f.arquivo}?modo=corretor&idFicha=${f.id}&origem=hub`;
       const nome = (f.nome || 'ficha').replace(/[^a-zA-Z0-9À-ɏ\s_-]/g,'').trim();
@@ -4472,6 +4479,52 @@ function cadAbrirMenu(anchor, f) {
       return;
     }
   }));
+}
+
+// ─── "Quem pode ver" (admin): compartilha a ficha com outras pessoas ─────────
+// Grava `visivelPara` via Cloud Function; quem entra na lista vê a ficha na
+// própria aba Cadastro e passa a receber os avisos por e-mail junto com o dono.
+async function cadAbrirVisibilidade(f) {
+  document.querySelector('.cad-vis-overlay')?.remove();
+  if (!pessoasCache || (Date.now() - pessoasCacheAt) > 300000) {
+    try { const r = await listarPessoas(); pessoasCache = r.data || []; pessoasCacheAt = Date.now(); }
+    catch (e) { alert('Erro ao listar pessoas: ' + e.message); return; }
+  }
+  const atuais = new Set(f.visivelPara || []);
+  // Dono fica de fora da lista (ele sempre vê a própria ficha).
+  const pessoas = pessoasCache.filter(p => p.uid !== f.corretorUid);
+
+  const ov = document.createElement('div');
+  ov.className = 'cad-vis-overlay';
+  ov.innerHTML = `
+    <div class="cad-vis-panel">
+      <h3>👁 Quem pode ver esta ficha</h3>
+      <p class="muted">Ficha de <strong>${escapeHtml(f.nome || 'Cliente')}</strong> · corretor ${escapeHtml(f.corretorNome || '—')}.<br>
+      Quem for marcado vê a ficha na aba Cadastro e recebe os avisos por e-mail. Admins já veem tudo.</p>
+      <div class="cad-vis-lista">
+        ${pessoas.map(p => `<label class="auth-label-inline"><input type="checkbox" value="${p.uid}" ${atuais.has(p.uid) ? 'checked' : ''}> ${escapeHtml(formatarNome(p.nome))}</label>`).join('') || '<p class="muted">Nenhum outro usuário.</p>'}
+      </div>
+      <div class="cad-vis-acoes">
+        <button class="topbar-btn" data-v="cancelar">Cancelar</button>
+        <button class="topbar-btn primario" data-v="salvar">Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', ev => { if (ev.target === ov) ov.remove(); });
+  ov.querySelector('[data-v="cancelar"]').addEventListener('click', () => ov.remove());
+  ov.querySelector('[data-v="salvar"]').addEventListener('click', async () => {
+    const btn = ov.querySelector('[data-v="salvar"]');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    const uids = [...ov.querySelectorAll('.cad-vis-lista input:checked')].map(c => c.value);
+    try {
+      await fichaDefinirVisibilidade({ colecao: f.key === 'locador' ? 'fichas_locador' : 'fichas', fichaId: f.id, uids });
+      ov.remove();
+      await cadCarregarFichas();
+    } catch (e) {
+      alert('Erro ao salvar: ' + e.message);
+      btn.disabled = false; btn.textContent = 'Salvar';
+    }
+  });
 }
 
 // ─── Sininho de notificações de fichas ───────────────────────────────────────

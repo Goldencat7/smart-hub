@@ -3532,12 +3532,20 @@ exports.listarFichasLocador = onCall(async (req) => {
 
   // Sem orderBy aqui: where + orderBy em campos diferentes exigiria índice composto.
   // Ordenamos em memória (mais novo primeiro).
-  let query = db.collection('fichas_locador');
-  if (!isAdmin) query = query.where('corretorUid', '==', uid);
-
-  const snap = await query.limit(100).get();
+  let docs;
+  if (isAdmin) {
+    docs = (await db.collection('fichas_locador').limit(100).get()).docs;
+  } else {
+    // Vê as próprias + as que o admin compartilhou com ele (visivelPara).
+    const [minhas, compartilhadas] = await Promise.all([
+      db.collection('fichas_locador').where('corretorUid', '==', uid).limit(100).get(),
+      db.collection('fichas_locador').where('visivelPara', 'array-contains', uid).limit(100).get()
+    ]);
+    const vistos = new Set();
+    docs = [...minhas.docs, ...compartilhadas.docs].filter(d => !vistos.has(d.id) && vistos.add(d.id));
+  }
   // id: d.id (Firestore doc ID) vem DEPOIS do spread pra não ser sobrescrito pelo campo interno 'id'
-  return snap.docs
+  return docs
     .map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() }))
     .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
 });
@@ -3698,10 +3706,20 @@ exports.listarFichasTipo = onCall(async (req) => {
   const uid = req.auth.uid;
   const isAdm = req.auth.token.admin;
 
-  let q = db.collection('fichas').where('tipo', '==', tipo);
-  if (!isAdm) q = q.where('corretorUid', '==', uid);
-  const snap = await q.limit(100).get();
-  return snap.docs
+  const base = db.collection('fichas').where('tipo', '==', tipo);
+  let docs;
+  if (isAdm) {
+    docs = (await base.limit(100).get()).docs;
+  } else {
+    // Vê as próprias + as que o admin compartilhou com ele (visivelPara).
+    const [minhas, compartilhadas] = await Promise.all([
+      base.where('corretorUid', '==', uid).limit(100).get(),
+      base.where('visivelPara', 'array-contains', uid).limit(100).get()
+    ]);
+    const vistos = new Set();
+    docs = [...minhas.docs, ...compartilhadas.docs].filter(d => !vistos.has(d.id) && vistos.add(d.id));
+  }
+  return docs
     .map(d => ({ ...d.data(), id: d.id, criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() }))
     .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
 });
@@ -3815,6 +3833,70 @@ exports.finalizarFichaTipo = onCall(async (req) => {
 // ─── Trigger: avisa o corretor por email quando recebe ficha do cliente ───────
 const NOMES_FICHA = { locador:'Ficha do Locador', pf:'Ficha Locatário (PF)', pj:'Ficha Locatário (PJ)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
 
+// ─── Compartilhamento de ficha (admin escolhe quem mais pode ver) ──────────────
+// Grava `visivelPara: [uid...]` no doc. Quem está na lista passa a ver a ficha na
+// própria aba Cadastro (listarFichas* faz o OR com corretorUid) e entra nos avisos
+// por e-mail junto com o corretor dono. Só admin define; o dono sempre vê.
+exports.fichaDefinirVisibilidade = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
+  const auth = await exigirAdmin(req);
+  const { colecao, fichaId, uids } = req.data || {};
+  if (!['fichas', 'fichas_locador'].includes(colecao)) throw new HttpsError('invalid-argument', 'Coleção inválida.');
+  if (!fichaId || typeof fichaId !== 'string' || fichaId.length > 128) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
+  if (!Array.isArray(uids) || uids.length > 30 || uids.some(u => typeof u !== 'string' || !u || u.length > 128)) {
+    throw new HttpsError('invalid-argument', 'Lista de usuários inválida (máx. 30).');
+  }
+
+  const ref = db.collection(colecao).doc(fichaId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  const ficha = snap.data();
+
+  // Dono sempre vê — não precisa (nem deve) entrar na lista.
+  const unicos = [...new Set(uids)].filter(u => u !== ficha.corretorUid);
+  const users = [];
+  for (const u of unicos) {
+    try { users.push(await admin.auth().getUser(u)); }
+    catch (_) { throw new HttpsError('invalid-argument', 'Usuário não encontrado.'); }
+  }
+
+  const antes = Array.isArray(ficha.visivelPara) ? ficha.visivelPara : [];
+  await ref.update({ visivelPara: unicos });
+  await registrarAudit(auth, 'definiu_visibilidade_ficha', { tipo: 'ficha', id: fichaId }, { colecao, quantidade: unicos.length });
+
+  // Avisa por e-mail (de login) só quem GANHOU acesso agora.
+  const novos = users.filter(u => !antes.includes(u.uid) && u.email);
+  if (novos.length) {
+    const tipoNome = ficha.tipo ? (NOMES_FICHA[ficha.tipo] || 'Ficha') : 'Ficha do Locador';
+    const nomeCliente = ficha.dados?.nome || 'Cliente';
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+    });
+    try {
+      await transporter.sendMail({
+        from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
+        to: SUPORTE_EMAIL,
+        bcc: novos.map(u => u.email),
+        subject: `[Hub] Você recebeu acesso a uma ficha — ${nomeCliente}`,
+        html: `<div style="font-family:system-ui,sans-serif;max-width:520px">`
+            + `<p>Olá!</p>`
+            + `<p>O administrador liberou pra você o acesso a uma ficha no Hub:</p>`
+            + `<table style="border-collapse:collapse;font-size:14px;margin:12px 0">`
+            + `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>Tipo</strong></td><td>${escaparHtml(tipoNome)}</td></tr>`
+            + `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>Cliente</strong></td><td>${escaparHtml(nomeCliente)}</td></tr>`
+            + `<tr><td style="padding:3px 10px 3px 0;color:#666"><strong>Corretor</strong></td><td>${escaparHtml(ficha.corretorNome || '—')}</td></tr>`
+            + `</table>`
+            + `<p>Ela já aparece na sua aba <strong>Cadastro</strong> do Hub.</p>`
+            + `<hr style="border:none;border-top:1px solid #ddd;margin:20px 0">`
+            + `<p style="font-size:12px;color:#999">E-mail automático do Hub REMAX Smart.</p>`
+            + `</div>`,
+        text: `Você recebeu acesso à ficha (${tipoNome}) de ${nomeCliente}. Ela aparece na sua aba Cadastro do Hub.`
+      });
+    } catch (e) { await logErro('fichaDefinirVisibilidade.email', e, { fichaId }); }
+  }
+  return { ok: true, visivelPara: unicos };
+});
+
 async function avisarCorretorFichaRecebida(event) {
   const before = event.data.before?.data();
   const after  = event.data.after?.data();
@@ -3832,6 +3914,17 @@ async function avisarCorretorFichaRecebida(event) {
   const tipo = after.tipo ? (NOMES_FICHA[after.tipo] || 'Ficha') : 'Ficha do Locador';
   const reenvio = !!before;
 
+  // Quem tem a ficha compartilhada (visivelPara) recebe o mesmo aviso, em BCC,
+  // no e-mail de login de cada um.
+  const extras = [];
+  for (const u of (Array.isArray(after.visivelPara) ? after.visivelPara : []).slice(0, 30)) {
+    if (u === corretorUid) continue;
+    try {
+      const e2 = (await admin.auth().getUser(u)).email;
+      if (e2 && e2 !== email && !extras.includes(e2)) extras.push(e2);
+    } catch (_) { /* usuário removido — ignora */ }
+  }
+
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
@@ -3840,6 +3933,7 @@ async function avisarCorretorFichaRecebida(event) {
     await transporter.sendMail({
       from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
       to: email,
+      bcc: extras.length ? extras : undefined,
       subject: `[Hub] ${tipo} recebida — ${nomeCliente}`,
       html: `<div style="font-family:system-ui,sans-serif;max-width:520px">`
           + `<p>Olá, ${escaparHtml(after.corretorNome || 'corretor')}!</p>`
