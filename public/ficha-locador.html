@@ -656,14 +656,24 @@ document.getElementById('formFicha').addEventListener('submit', async function(e
   const erroCpfFone = validarCpfsETelefones(dados);
   if (erroCpfFone) { mostrarErro(erroCpfFone); btn.disabled = false; btn.textContent = 'Enviar ficha'; return; }
 
-  // Documentos obrigatórios sem anexo e sem arquivo anterior: confirma com o
-  // cliente e registra como pendência — antes passavam em silêncio.
+  // Itens rotulados "Obrigatório" (campos e documentos) sem preencher/anexar
+  // e sem "não tenho agora": confirma com o cliente e registra como
+  // pendência — antes passavam em silêncio e a ficha chegava "sem
+  // pendências" faltando tudo.
+  const camposFaltando = [...document.querySelectorAll('#formFicha .field')].filter(f => {
+    if (!f.querySelector('.badge-obrig') || !f.offsetParent) return false; // só visíveis
+    const inp = f.querySelector('[name]'); if (!inp) return false;
+    return !inp.value.trim() && !pendentes.has(inp.name);
+  }).map(f => ({ name: f.querySelector('[name]').name,
+                 label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[name]').name }));
   const DOCS_OBRIG = { rgcpf:'RG e CPF', energia:'Conta de energia' };
   const docsFaltando = Object.keys(DOCS_OBRIG).filter(k => !arquivos[k] && !docsExistentes[k] && !pendentes.has(k));
-  if (docsFaltando.length) {
-    if (!confirm('A ficha está sem documentos obrigatórios:\n\n• ' + docsFaltando.map(k=>DOCS_OBRIG[k]).join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) {
+  if (camposFaltando.length || docsFaltando.length) {
+    const itens = [...camposFaltando.map(c=>c.label), ...docsFaltando.map(k=>DOCS_OBRIG[k])];
+    if (!confirm('A ficha está sem itens obrigatórios:\n\n• ' + itens.join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) {
       btn.disabled = false; btn.textContent = 'Enviar ficha'; return;
     }
+    camposFaltando.forEach(c => pendentes.add(c.name));
     docsFaltando.forEach(k => pendentes.add(k));
   }
 

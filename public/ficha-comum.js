@@ -297,13 +297,23 @@ async function enviar(e){
   const erroCpfFone = validarCpfsETelefones();
   if(erroCpfFone){ mostrarErro(erroCpfFone); return; }
 
-  // Documentos obrigatórios sem anexo, sem "não tenho agora" e sem arquivo
-  // anterior: confirma com o cliente e registra como pendência — antes
-  // passavam em silêncio e a ficha chegava "sem pendências" faltando tudo.
+  // Itens rotulados "Obrigatório" (campos e documentos) sem preencher/anexar
+  // e sem "não tenho agora": confirma com o cliente e registra como
+  // pendência — antes passavam em silêncio e a ficha chegava "sem
+  // pendências" faltando tudo.
+  const camposFaltando = [...document.querySelectorAll('#formFicha .field')].filter(f => {
+    if(!f.querySelector('.badge-obrig') || !f.offsetParent) return false; // só visíveis
+    const inp = f.querySelector('[data-key]'); if(!inp) return false;
+    const k = inp.dataset.key;
+    return !(valores[k] && (''+valores[k]).trim()) && !pendentes.has(k) && !naoExiste.has(k);
+  }).map(f => ({ k: f.querySelector('[data-key]').dataset.key,
+                 label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[data-key]').dataset.key }));
   const docsFaltando = (CFG.docs||[]).filter(d => d.badge==='obrig'
     && !arquivos[d.key] && !docsExistentes[d.key] && !pendentes.has(d.key) && !naoExiste.has(d.key));
-  if(docsFaltando.length){
-    if(!confirm('A ficha está sem documentos obrigatórios:\n\n• ' + docsFaltando.map(d=>d.label).join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) return;
+  if(camposFaltando.length || docsFaltando.length){
+    const itens = [...camposFaltando.map(c=>c.label), ...docsFaltando.map(d=>d.label)];
+    if(!confirm('A ficha está sem itens obrigatórios:\n\n• ' + itens.join('\n• ') + '\n\nEnviar mesmo assim? Eles ficarão marcados como pendência para o corretor.')) return;
+    camposFaltando.forEach(c => pendentes.add(c.k));
     docsFaltando.forEach(d => pendentes.add(d.key));
   }
 
