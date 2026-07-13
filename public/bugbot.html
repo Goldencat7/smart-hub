@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Caça-Bugs · REMAX Smart</title>
+<style>
+  :root{ --navy:#002749; --red:#DC1C2E; --bg:#eef2f7; --card:#fff; --line:#dde3ec; --muted:#6b7787; --green:#16a34a; --amber:#b45309; --blue:#0b5fff; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{ background:var(--bg); font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif; color:#12212f; -webkit-font-smoothing:antialiased; }
+  .wrap{ max-width:640px; margin:0 auto; min-height:100vh; background:var(--bg); }
+  .top{ background:var(--navy); color:#fff; padding:20px 22px; display:flex; align-items:center; gap:12px; }
+  .brand{ font-weight:800; letter-spacing:.5px; font-size:17px; }
+  .brand span{ color:var(--red); }
+  .brand small{ display:block; font-weight:500; font-size:10px; letter-spacing:2px; color:#9fb4c9; text-transform:uppercase; margin-top:1px; }
+  .content{ padding:18px 16px 40px; }
+  h1{ font-size:20px; margin:4px 0 6px; }
+  .sub{ font-size:13px; color:var(--muted); margin-bottom:16px; }
+  .bug{ background:var(--card); border:1px solid var(--line); border-left-width:4px; border-radius:14px; padding:14px 16px; margin-bottom:12px; box-shadow:0 1px 3px rgba(0,39,73,.05); }
+  .bug.g-alta{ border-left-color:#dc2626; } .bug.g-media{ border-left-color:#d97706; } .bug.g-baixa{ border-left-color:#2563eb; }
+  .bug h3{ font-size:15px; margin:0 0 6px; display:flex; gap:8px; align-items:flex-start; }
+  .bug .resumo{ font-size:13.5px; color:#333; line-height:1.5; }
+  .bug .arq{ font-size:11.5px; color:var(--muted); margin-top:6px; font-family:ui-monospace,Consolas,monospace; word-break:break-all; }
+  .acoes{ display:flex; gap:10px; margin-top:12px; }
+  .btn{ flex:1; border:0; border-radius:10px; padding:12px 10px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .btn:disabled{ opacity:.55; cursor:default; }
+  .btn-ok{ background:var(--blue); color:#fff; }
+  .btn-ig{ background:#e7ebf2; color:#44536a; }
+  .badge{ font-size:10px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+  .b-aprov{ background:#e7f6ec; color:var(--green); }
+  .b-desc{ background:#eee; color:#777; }
+  .aviso{ background:#fff8e6; border:1px solid #f2dfa9; color:#7a5b00; border-radius:12px; padding:12px 14px; font-size:12.5px; margin-bottom:16px; line-height:1.5; }
+  .state{ text-align:center; padding:60px 24px; color:var(--muted); }
+  .state .ic{ font-size:40px; margin-bottom:10px; }
+  .foot{ text-align:center; font-size:11px; color:var(--muted); padding:22px 16px 30px; }
+  .spinner{ width:26px; height:26px; border:3px solid var(--line); border-top-color:var(--navy); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 14px; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">RE<span>MAX</span> <small>Smart · Caça-Bugs</small></div>
+  </div>
+  <div class="content" id="app">
+    <div class="state"><div class="spinner"></div>Carregando achados...</div>
+  </div>
+  <div class="foot">🤖 Bug Fix Bot · nada é alterado sem a sua autorização — e toda correção vira um Pull Request pra sua revisão.</div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+  import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
+    authDomain: "remax-smart-hub.firebaseapp.com",
+    projectId: "remax-smart-hub",
+    storageBucket: "remax-smart-hub.firebasestorage.app",
+    messagingSenderId: "474454438949",
+    appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
+  };
+  const app = initializeApp(firebaseConfig);
+  const fns = getFunctions(app, "southamerica-east1");
+  const listar  = httpsCallable(fns, "botListarAchados");
+  const aprovar = httpsCallable(fns, "botAprovarAchado");
+  const ignorar = httpsCallable(fns, "botIgnorarAchado");
+
+  const appEl = document.getElementById("app");
+  const token = new URLSearchParams(location.search).get("t") || "";
+  const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const EMOJI = { alta:"🔴", media:"🟡", baixa:"🔵" };
+  let achados = [];
+
+  function estadoHtml(a){
+    if(a.estado === "aprovado")   return '<span class="badge b-aprov">✓ Correção autorizada — o bot vai abrir um PR</span>';
+    if(a.estado === "descartado") return '<span class="badge b-desc">Ignorado</span>';
+    return `<div class="acoes">
+      <button class="btn btn-ok" data-ac="aprovar" data-idx="${a.idx}">✓ Autorizar correção</button>
+      <button class="btn btn-ig" data-ac="ignorar" data-idx="${a.idx}">Ignorar</button>
+    </div>`;
+  }
+
+  function render(){
+    const data = achados._criadoEm ? new Date(achados._criadoEm).toLocaleDateString("pt-BR") : "";
+    appEl.innerHTML = `
+      <h1>🤖 Achados do caça-bugs</h1>
+      <div class="sub">${achados.length} possível(is) bug(s)${data ? " · varredura de " + data : ""}</div>
+      <div class="aviso">Ao autorizar, o bot tenta corrigir e abre um <strong>Pull Request</strong> — nada entra no app sem você revisar e publicar.</div>
+      ${achados.map(a => `
+        <div class="bug g-${esc(a.gravidade)}" id="bug-${a.idx}">
+          <h3>${EMOJI[a.gravidade]||"🟡"} ${esc(a.titulo)}</h3>
+          <div class="resumo">${esc(a.resumo)}</div>
+          ${a.arquivo ? `<div class="arq">📄 ${esc(a.arquivo)}</div>` : ""}
+          <div id="acao-${a.idx}">${estadoHtml(a)}</div>
+        </div>`).join("")}`;
+  }
+
+  appEl.addEventListener("click", async ev => {
+    const btn = ev.target.closest("button[data-ac]");
+    if(!btn) return;
+    const idx = Number(btn.dataset.idx);
+    const ac = btn.dataset.ac;
+    if(ac === "aprovar" && !confirm("Autorizar o bot a corrigir este bug?\n\nEle vai abrir um Pull Request pra sua revisão — nada é publicado sozinho.")) return;
+    const caixa = document.getElementById("acao-"+idx);
+    caixa.querySelectorAll("button").forEach(b => b.disabled = true);
+    btn.textContent = ac === "aprovar" ? "Acionando o bot..." : "Ignorando...";
+    try{
+      if(ac === "aprovar") await aprovar({ token, idx });
+      else await ignorar({ token, idx });
+      const a = achados.find(x => x.idx === idx);
+      a.estado = ac === "aprovar" ? "aprovado" : "descartado";
+      caixa.innerHTML = estadoHtml(a);
+    }catch(e){
+      alert("Não deu certo: " + (e.message || e) + "\n\nTente de novo em instantes.");
+      caixa.innerHTML = estadoHtml(achados.find(x => x.idx === idx));
+    }
+  });
+
+  async function init(){
+    if(!token){ appEl.innerHTML = '<div class="state"><div class="ic">🔒</div>Link inválido.</div>'; return; }
+    try{
+      const r = await listar({ token });
+      achados = r.data.achados || [];
+      achados._criadoEm = r.data.criadoEm;
+      if(!achados.length){ appEl.innerHTML = '<div class="state"><div class="ic">🎉</div>Nenhum achado neste lote.</div>'; return; }
+      render();
+    }catch(e){
+      appEl.innerHTML = `<div class="state"><div class="ic">😕</div>${esc(e.message || "Erro ao carregar.")}</div>`;
+    }
+  }
+  init();
+</script>
+</body></html>

@@ -80,6 +80,9 @@ const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
 const SUPPORT_EMAIL_PASS = defineSecret('SUPPORT_EMAIL_PASS');
 // Fine-grained PAT (Contents+Pull requests: write) que dispara o Bug Fix Bot no GitHub Actions.
 const BOT_GH_TOKEN = defineSecret('BOT_GH_TOKEN');
+// Segredo compartilhado com o workflow do caça-bugs (header x-bot-secret) — só ele
+// pode entregar achados pro botReceberAchados. Gerado por nós; não é credencial de conta.
+const BOT_HOOK_SECRET = defineSecret('BOT_HOOK_SECRET');
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
@@ -4024,4 +4027,137 @@ exports.onErroParaBot = onDocumentCreated({
       ultimoDispatch: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
   }
+});
+
+// ─── Caça-Bugs diário (Fase 2): achados → e-mail → página de aprovação ─────────
+// O workflow bug-hunter.yml roda todo dia 00h (Brasília), o Claude varre o código
+// e POSTa os achados aqui. Fluxo: valida o segredo → dedupe (7 dias) → grava o
+// lote em `_bot_achados` com token → e-mail com resumo simples + link da página
+// `bugbot.html?t=<token>`, onde o Nathan toca "Autorizar correção" (isso dispara
+// o Bug Fix Bot, que abre o PR — a decisão continua 100% humana).
+
+// Recebe os achados do workflow (POST JSON, header x-bot-secret).
+exports.botReceberAchados = onRequest({ secrets: [BOT_HOOK_SECRET, SUPPORT_EMAIL_PASS] }, async (req, res) => {
+  if (req.method !== 'POST') { res.status(405).json({ ok: false }); return; }
+  const segredo = req.get('x-bot-secret') || '';
+  const esperado = BOT_HOOK_SECRET.value() || '';
+  if (!esperado || segredo.length !== esperado.length ||
+      !crypto.timingSafeEqual(Buffer.from(segredo), Buffer.from(esperado))) {
+    res.status(401).json({ ok: false }); return;
+  }
+
+  const brutos = Array.isArray(req.body) ? req.body : [];
+  // Sanitiza: só os campos esperados, com limite de tamanho e no máximo 5 achados.
+  const GRAVIDADES = ['alta', 'media', 'baixa'];
+  const achados = brutos.slice(0, 5).map(a => ({
+    titulo: String(a?.titulo || '').slice(0, 140),
+    resumo: String(a?.resumo || '').slice(0, 600),
+    arquivo: String(a?.arquivo || '').slice(0, 200),
+    gravidade: GRAVIDADES.includes(a?.gravidade) ? a.gravidade : 'media'
+  })).filter(a => a.titulo && a.resumo);
+  if (!achados.length) { res.json({ ok: true, novos: 0 }); return; }
+
+  // Dedupe: mesmo achado (título+arquivo) não repete e-mail por 7 dias.
+  const novos = [];
+  for (const a of achados) {
+    const sig = _botAssinatura(a.arquivo, a.titulo);
+    const ref = db.collection('_bot_achados_sigs').doc(sig);
+    const visto = await ref.get();
+    const ultimo = visto.exists ? (visto.data().visto?.toDate?.()?.getTime?.() || 0) : 0;
+    if (Date.now() - ultimo < 7 * 24 * 60 * 60 * 1000) continue;
+    await ref.set({ titulo: a.titulo, arquivo: a.arquivo, visto: admin.firestore.FieldValue.serverTimestamp() });
+    novos.push({ ...a, estado: 'pendente' });
+  }
+  if (!novos.length) { res.json({ ok: true, novos: 0, motivo: 'todos repetidos (7d)' }); return; }
+
+  const token = crypto.randomBytes(24).toString('base64url');
+  const lote = await db.collection('_bot_achados').add({
+    achados: novos, token, status: 'aberto',
+    criadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  const link = `${PORTAL_BASE}/bugbot.html?t=${token}`;
+  const emoji = { alta: '🔴', media: '🟡', baixa: '🔵' };
+  const linhas = novos.map(a => `${emoji[a.gravidade]} ${a.titulo}\n   ${a.resumo}`);
+  try {
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+    });
+    await transporter.sendMail({
+      from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
+      to: SUPORTE_EMAIL,
+      subject: `[Hub] 🤖 Caça-bugs achou ${novos.length} possível(is) bug(s)`,
+      html: `<div style="font-family:system-ui,sans-serif;max-width:600px">`
+          + `<h3 style="color:#002749">🤖 Caça-bugs diário — ${novos.length} achado(s)</h3>`
+          + novos.map(a => `<div style="margin:10px 0;padding:10px 14px;background:#f6f8fa;border-left:4px solid ${a.gravidade === 'alta' ? '#dc2626' : a.gravidade === 'media' ? '#d97706' : '#2563eb'};border-radius:6px">`
+              + `<strong>${emoji[a.gravidade]} ${a.titulo}</strong>`
+              + `<div style="font-size:13px;color:#444;margin-top:4px">${a.resumo}</div>`
+              + `<div style="font-size:12px;color:#888;margin-top:4px">${a.arquivo}</div></div>`).join('')
+          + `<p style="margin:18px 0"><a href="${link}" style="background:#0b5fff;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Ver e autorizar correções</a></p>`
+          + `<p style="font-size:12px;color:#999">Nada é corrigido sem a sua autorização. Mesmo autorizado, a correção vira um Pull Request pra sua revisão.</p></div>`,
+      text: `Caça-bugs diário — ${novos.length} achado(s):\n\n${linhas.join('\n\n')}\n\nVer e autorizar: ${link}`
+    });
+  } catch (e) { await logErro('botReceberAchados.email', e, { loteId: lote.id }); }
+
+  res.json({ ok: true, novos: novos.length, loteId: lote.id });
+});
+
+// Página de aprovação lista os achados do lote (token é a credencial, como nos portais).
+exports.botListarAchados = onCall(async (req) => {
+  const token = String(req.data?.token || '');
+  if (!token || token.length > 64) throw new HttpsError('invalid-argument', 'Token inválido.');
+  const snap = await db.collection('_bot_achados').where('token', '==', token).limit(1).get();
+  if (snap.empty) throw new HttpsError('not-found', 'Link inválido ou expirado.');
+  const d = snap.docs[0].data();
+  return {
+    criadoEm: d.criadoEm?.toDate?.()?.toISOString?.() || null,
+    achados: (d.achados || []).map((a, i) => ({ idx: i, ...a }))
+  };
+});
+
+// "Autorizar correção": marca o achado e dispara o Bug Fix Bot (que abre o PR).
+exports.botAprovarAchado = onCall({ secrets: [BOT_GH_TOKEN] }, async (req) => {
+  const token = String(req.data?.token || '');
+  const idx = Number(req.data?.idx);
+  if (!token || token.length > 64 || !Number.isInteger(idx) || idx < 0) {
+    throw new HttpsError('invalid-argument', 'Pedido inválido.');
+  }
+  const snap = await db.collection('_bot_achados').where('token', '==', token).limit(1).get();
+  if (snap.empty) throw new HttpsError('not-found', 'Link inválido ou expirado.');
+  const ref = snap.docs[0].ref;
+  const d = snap.docs[0].data();
+  const achados = d.achados || [];
+  const a = achados[idx];
+  if (!a) throw new HttpsError('not-found', 'Achado não encontrado.');
+  if (a.estado === 'aprovado') return { ok: true, jaAprovado: true };
+
+  const descricao = `Bug encontrado pelo caça-bugs diário e AUTORIZADO para correção:\n\n`
+    + `${a.titulo}\n\n${a.resumo}\n\nArquivo: ${a.arquivo || '(não informado)'}\nGravidade: ${a.gravidade}`;
+  const ok = await _botDispatch(descricao, { origem: 'cacabugs', loteId: ref.id, idx });
+  if (!ok) throw new HttpsError('internal', 'Falha ao acionar o bot no GitHub. Tente de novo em instantes.');
+
+  achados[idx] = { ...a, estado: 'aprovado', aprovadoEm: new Date().toISOString() };
+  await ref.update({ achados });
+  await registrarAudit(null, 'aprovou_correcao_bugbot', { tipo: 'bugbot', id: ref.id }, { idx, titulo: a.titulo });
+  return { ok: true };
+});
+
+// "Ignorar": marca como descartado (só organiza a página; o dedupe de 7d já evita spam).
+exports.botIgnorarAchado = onCall(async (req) => {
+  const token = String(req.data?.token || '');
+  const idx = Number(req.data?.idx);
+  if (!token || token.length > 64 || !Number.isInteger(idx) || idx < 0) {
+    throw new HttpsError('invalid-argument', 'Pedido inválido.');
+  }
+  const snap = await db.collection('_bot_achados').where('token', '==', token).limit(1).get();
+  if (snap.empty) throw new HttpsError('not-found', 'Link inválido ou expirado.');
+  const ref = snap.docs[0].ref;
+  const achados = snap.docs[0].data().achados || [];
+  if (!achados[idx]) throw new HttpsError('not-found', 'Achado não encontrado.');
+  if (achados[idx].estado === 'pendente') {
+    achados[idx] = { ...achados[idx], estado: 'descartado' };
+    await ref.update({ achados });
+  }
+  return { ok: true };
 });

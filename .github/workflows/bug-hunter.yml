@@ -1,0 +1,97 @@
+name: Caça-Bugs Diário
+
+# Todo dia à meia-noite (Brasília), o Claude varre o código atrás de bugs REAIS.
+# Ele NÃO corrige nada aqui — só produz uma lista (ACHADOS.json), que é entregue
+# à Cloud Function botReceberAchados. Ela deduplica, manda e-mail com o resumo
+# pro Nathan e gera o link da página bugbot.html, onde ele autoriza (ou ignora)
+# cada correção. Só a autorização dispara o Bug Fix Bot (bug-fix-bot.yml) → PR.
+#
+# Pré-requisitos (1x): secrets CLAUDE_CODE_OAUTH_TOKEN e BOT_HOOK_SECRET no repo
+# (o mesmo BOT_HOOK_SECRET vai nos secrets do Firebase Functions).
+
+on:
+  schedule:
+    - cron: '0 3 * * *'   # 03:00 UTC = 00:00 em Brasília (sem horário de verão)
+  workflow_dispatch: {}    # permite rodar manualmente pra testar
+
+permissions:
+  contents: read
+  id-token: write          # exigido pela claude-code-action (OIDC)
+
+concurrency:
+  group: bug-hunter
+  cancel-in-progress: false
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repo
+        uses: actions/checkout@v4
+
+      - name: Claude procura bugs (só diagnóstico, não corrige)
+        uses: anthropics/claude-code-action@v1
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        with:
+          claude_args: "--max-turns 40 --permission-mode acceptEdits"
+          prompt: |
+            Você é um caçador de bugs no projeto REMAX Smart Hub (app Electron + Firebase).
+            Sua missão HOJE é só ENCONTRAR bugs — você NÃO deve corrigir nada nesta sessão.
+
+            Leia o `CLAUDE.md` primeiro para entender o projeto e suas regras.
+            Depois varra o código atrás de BUGS REAIS, focando em:
+            - erros de lógica que causam comportamento errado pro usuário;
+            - exceções não tratadas que quebram uma tela ou function;
+            - problemas de segurança (validação faltando, dado sensível exposto);
+            - race conditions e estados inconsistentes.
+            Priorize: hub-app.js, functions/index.js, main.js, admin-app.js, public/ficha-*.html, public/ficha-comum.js.
+
+            O QUE NÃO É ACHADO (não reporte):
+            - estilo, refatoração, código repetido, performance micro;
+            - o "código morto intencional" da Locação descrito no CLAUDE.md (é proposital);
+            - variáveis não usadas que o ESLint já aponta como warning;
+            - hipóteses sem evidência no código — só reporte o que você CONFIRMOU lendo o código.
+
+            NÃO rode comandos de shell (npm/node/npx) — ficam bloqueados neste ambiente.
+            Trabalhe só lendo arquivos (Read/Grep/Glob) e escrevendo o resultado.
+
+            RESULTADO OBRIGATÓRIO — grave o arquivo `ACHADOS.json` na raiz, um array JSON
+            (máximo 5 itens, os mais graves primeiro; array vazio `[]` se não achou nada):
+            [
+              {
+                "titulo": "frase curta do problema",
+                "resumo": "2-3 frases SIMPLES: o que acontece de errado, quando acontece e o impacto. Sem jargão desnecessário — quem lê decide se autoriza a correção.",
+                "arquivo": "caminho/do/arquivo.js (linha ~N)",
+                "gravidade": "alta" | "media" | "baixa"
+              }
+            ]
+            O arquivo DEVE ser JSON válido, sem comentários e sem texto fora do array.
+
+      - name: Entregar achados pra Cloud Function (e-mail + página de aprovação)
+        env:
+          BOT_HOOK_SECRET: ${{ secrets.BOT_HOOK_SECRET }}
+        run: |
+          set -e
+          if [ ! -f ACHADOS.json ]; then
+            echo "Claude não gerou ACHADOS.json — nada a entregar."
+            echo "> ⚠️ Sem ACHADOS.json nesta run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Valida o JSON e conta os achados
+          COUNT=$(node -p "const a=JSON.parse(require('fs').readFileSync('ACHADOS.json','utf8')); Array.isArray(a)?a.length:-1")
+          if [ "$COUNT" = "-1" ]; then echo "ACHADOS.json não é um array válido"; exit 1; fi
+          echo "## 🐛 Caça-bugs: $COUNT achado(s)" >> "$GITHUB_STEP_SUMMARY"
+          node -p "JSON.parse(require('fs').readFileSync('ACHADOS.json','utf8')).map(a=>'- ['+a.gravidade+'] '+a.titulo).join('\n')" >> "$GITHUB_STEP_SUMMARY" || true
+          if [ "$COUNT" = "0" ]; then
+            echo "Nenhum bug encontrado hoje — sem e-mail. 🎉"
+            exit 0
+          fi
+          RESP=$(curl -sf -X POST \
+            "https://southamerica-east1-remax-smart-hub.cloudfunctions.net/botReceberAchados" \
+            -H "Content-Type: application/json" \
+            -H "x-bot-secret: ${BOT_HOOK_SECRET}" \
+            --data-binary @ACHADOS.json)
+          echo "Resposta da function: $RESP"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Entregue à Cloud Function: \`$RESP\`" >> "$GITHUB_STEP_SUMMARY"
