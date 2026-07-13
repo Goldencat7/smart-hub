@@ -89,6 +89,7 @@
       <h1>🤖 Achados do caça-bugs</h1>
       <div class="sub">${achados.length} possível(is) bug(s)${data ? " · varredura de " + data : ""}</div>
       <div class="aviso">Ao autorizar, o bot tenta corrigir e abre um <strong>Pull Request</strong> — nada entra no app sem você revisar e publicar.</div>
+      ${achados.some(a => a.estado === "pendente") ? `<button class="btn btn-ok" id="btnTodos" style="width:100%;margin-bottom:14px;padding:14px">✓ Autorizar TODOS os ${achados.filter(a=>a.estado==="pendente").length} pendentes</button>` : ""}
       ${achados.map(a => `
         <div class="bug g-${esc(a.gravidade)}" id="bug-${a.idx}">
           <h3>${EMOJI[a.gravidade]||"🟡"} ${esc(a.titulo)}</h3>
@@ -98,24 +99,47 @@
         </div>`).join("")}`;
   }
 
-  appEl.addEventListener("click", async ev => {
-    const btn = ev.target.closest("button[data-ac]");
-    if(!btn) return;
-    const idx = Number(btn.dataset.idx);
-    const ac = btn.dataset.ac;
-    if(ac === "aprovar" && !confirm("Autorizar o bot a corrigir este bug?\n\nEle vai abrir um Pull Request pra sua revisão — nada é publicado sozinho.")) return;
+  // Aprova um achado, mostrando o resultado DENTRO do card (sem alert — em
+  // celular/webview o alert às vezes some, e aí parece que "nada aconteceu").
+  async function aprovarUm(idx){
     const caixa = document.getElementById("acao-"+idx);
-    caixa.querySelectorAll("button").forEach(b => b.disabled = true);
-    btn.textContent = ac === "aprovar" ? "Acionando o bot..." : "Ignorando...";
+    if(caixa) caixa.innerHTML = '<div style="text-align:center;color:#6b7787;font-size:13px;padding:10px">⏳ Acionando o bot...</div>';
     try{
-      if(ac === "aprovar") await aprovar({ token, idx });
-      else await ignorar({ token, idx });
-      const a = achados.find(x => x.idx === idx);
-      a.estado = ac === "aprovar" ? "aprovado" : "descartado";
-      caixa.innerHTML = estadoHtml(a);
+      await aprovar({ token, idx });
+      const a = achados.find(x => x.idx === idx); if(a) a.estado = "aprovado";
+      if(caixa) caixa.innerHTML = estadoHtml(a);
+      return true;
     }catch(e){
-      alert("Não deu certo: " + (e.message || e) + "\n\nTente de novo em instantes.");
-      caixa.innerHTML = estadoHtml(achados.find(x => x.idx === idx));
+      if(caixa) caixa.innerHTML = `<div style="background:#fdeaea;border:1px solid #f3c0c0;color:#a11;border-radius:10px;padding:10px 12px;font-size:12.5px">❌ ${esc(e.message||e)}<br><button class="btn btn-ok" style="margin-top:8px" data-ac="aprovar" data-idx="${idx}">Tentar de novo</button></div>`;
+      return false;
+    }
+  }
+
+  appEl.addEventListener("click", async ev => {
+    // Autorizar TODOS os pendentes
+    const todos = ev.target.closest("#btnTodos");
+    if(todos){
+      if(!confirm("Autorizar a correção de TODOS os pendentes?\n\nCada um vira um Pull Request pra sua revisão — nada é publicado sozinho.")) return;
+      todos.disabled = true; todos.textContent = "⏳ Acionando o bot...";
+      for(const idx of achados.filter(a => a.estado === "pendente").map(a => a.idx)){ await aprovarUm(idx); }
+      todos.remove();
+      return;
+    }
+    // Ignorar
+    const ig = ev.target.closest('button[data-ac="ignorar"]');
+    if(ig){
+      const idx = Number(ig.dataset.idx);
+      const caixa = document.getElementById("acao-"+idx);
+      if(caixa) caixa.querySelectorAll("button").forEach(b => b.disabled = true);
+      try{ await ignorar({ token, idx }); const a = achados.find(x=>x.idx===idx); if(a) a.estado="descartado"; if(caixa) caixa.innerHTML = estadoHtml(a); }
+      catch(e){ if(caixa) caixa.innerHTML = estadoHtml(achados.find(x=>x.idx===idx)); }
+      return;
+    }
+    // Autorizar um
+    const ap = ev.target.closest('button[data-ac="aprovar"]');
+    if(ap){
+      if(!confirm("Autorizar o bot a corrigir este bug?\n\nEle abre um Pull Request pra sua revisão — nada é publicado sozinho.")) return;
+      await aprovarUm(Number(ap.dataset.idx));
     }
   });
 

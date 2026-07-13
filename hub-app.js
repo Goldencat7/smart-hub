@@ -1831,7 +1831,10 @@ document.getElementById('formEvento').addEventListener('submit', async (e)=>{
     if (eventoEditandoId) {
       await editarEvento({ id: eventoEditandoId, ...payload });
     } else {
-      if(document.getElementById('evTodos').checked && isAdmin) {
+      if(document.getElementById('evTodos').checked) {
+        // Sem admin, "para todos" não é enviado; antes caía no else e criava
+        // evento SEM ninguém convidado, em silêncio. Agora avisa e não cria vazio.
+        if(!isAdmin){ alert('Só o admin pode criar evento para todos. Selecione os participantes manualmente.'); return; }
         payload.todos = true;
       } else {
         const selecionados = Array.from(document.querySelectorAll('#evPessoas input:checked')).map(c => c.value);
@@ -4611,13 +4614,12 @@ function renderNotifPanel() {
       // Todas as fichas (locação e venda) vivem no Cadastro.
       categoriaAtiva = 'documentos';
       locSub = null;
+      // A tela nova do Cadastro é uma TABELA (não mais sanfonas). O antigo
+      // .docs-acc-head não existe mais — em vez de clicar num elemento inexistente,
+      // já abre o Cadastro filtrado pelo tipo da ficha (mostra todo o período).
+      cadFiltro = { tab:'todas', busca:'', tipo: secKey || '', status:'', periodo:'', corretor:'' };
       renderSidebar();
       renderCentro();
-      // Abre o accordion da ficha correspondente
-      setTimeout(() => {
-        const head = document.querySelector(`.docs-acc-head[data-key="${secKey}"]`);
-        if (head) head.click();
-      }, 250);
     });
   });
 }

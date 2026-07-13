@@ -1153,7 +1153,10 @@ document.getElementById('cancelarPermissoes').addEventListener('click', (e) => {
 document.getElementById('formPermissoes').addEventListener('submit', async (e) => {
   e.preventDefault();
   const uid = document.getElementById('permUid').value;
-  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):not(#permLocGestao):not(#permTI):not(#permMarketing):checked')).map(c => c.value);
+  // :not(:disabled) — pra um usuário admin, os apps restritos aparecem marcados+desabilitados
+  // só como indicação visual ("já tem por ser admin"); sem excluir os disabled, salvar QUALQUER
+  // permissão gravava o ClickSign como concessão explícita e permanente em user_access.
+  const apps = Array.from(document.querySelectorAll('#permLista input[type="checkbox"]:not(#permDrivesFotografia):not(#permLocFinanceiro):not(#permLocBeta):not(#permLocGestao):not(#permTI):not(#permMarketing):checked:not(:disabled)')).map(c => c.value);
   const drives_fotografia = !!(document.getElementById('permDrivesFotografia')?.checked);
   const ti = !!(document.getElementById('permTI')?.checked);
   const marketing_gerenciar = !!(document.getElementById('permMarketing')?.checked);

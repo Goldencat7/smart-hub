@@ -219,6 +219,10 @@ function ehBootstrapAdmin(uid) {
 
 // Apps "restritos": só aparecem/funcionam pra quem o admin liberar (ou pra admins).
 const RESTRICTED_APPS = ['clicksign'];
+// Apps concedíveis por pessoa no painel de Admin (não só os de credencial). Sem
+// isso o setUserAccess descartava silenciosamente `analise_locador` (filtrava só
+// por RESTRICTED_APPS), e a permissão nunca chegava a ninguém.
+const GRANTABLE_APPS = [...RESTRICTED_APPS, 'analise_locador'];
 
 function ehAdminAuth(auth) {
   return !!(auth && ((auth.token && auth.token.admin === true) || ehBootstrapAdmin(auth.uid)));
@@ -441,7 +445,7 @@ exports.setUserAccess = onCall(async (req) => {
   await exigirAdmin(req);
   const { uid, apps, drives_fotografia, loc_beta, loc_gestao, loc_role, loc_financeiro, ti, marketing_gerenciar } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
-  const limpos = Array.isArray(apps) ? apps.filter(a => RESTRICTED_APPS.includes(a)) : [];
+  const limpos = Array.isArray(apps) ? apps.filter(a => GRANTABLE_APPS.includes(a)) : [];
   await db.collection('user_access').doc(uid).set({
     apps: limpos,
     drives_fotografia: !!drives_fotografia,
