@@ -504,6 +504,19 @@ function aplicarFicha(ficha){
       }
     }
   });
+
+  // Preenche os campos ESTÁTICOS (seção "Imóvel de interesse" etc.) a partir dos
+  // dados salvos. renderProponentes() só cobre os proponentes (seção 1); sem este
+  // loop os campos im_* apareciam VAZIOS no modo corretor/edição mesmo com os
+  // dados no banco (o modo de preenchimento novo já fazia isso, a aplicarFicha não).
+  document.querySelectorAll('#formFicha [data-key]').forEach(el => {
+    const val = valores[el.dataset.key];
+    if(val == null || (''+val).trim() === '') return;
+    if(el.value !== val) el.value = val;
+    const b = el.closest('.field')?.querySelector('.badge-obrig');
+    if(b){ b.textContent = 'Preenchido'; b.className = 'badge-preen'; }
+  });
+
   atualizarProgresso();
 }
 
