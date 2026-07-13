@@ -148,4 +148,15 @@ embute o nome do banco — comparar texto cru dá falso positivo em tudo.
   - Pra testar sem quebrar nada: escrever um log sintético via `logging.googleapis.com/v2/entries:write` com `resource.type=cloud_run_revision` e `severity=ERROR`.
   - Nada disso vive no repo — é config do projeto GCP. `gcloud alpha/beta monitoring` não está instalado nesta máquina; usar a REST API com `gcloud auth print-access-token`.
 
+- **Bug Fix Bot** (autônomo, "propõe → você dispõe"): ⚠ CÓDIGO PRONTO, FALTA SETUP + DEPLOY. O Claude roda no GitHub Actions, investiga um bug num branch isolado, roda os checks da CI e **abre um Pull Request** pra você revisar. **Nunca** faz merge, sobe versão ou publica — isso segue 100% manual.
+  - **Peças no repo**: `.github/workflows/bug-fix-bot.yml` (usa `anthropics/claude-code-action@v1` → abre PR via `gh pr create`) + 3 coisas no `functions/index.js`: `botCorrigirBug` (onCall admin, disparo manual), `onErroParaBot` (onDocumentCreated `_erros/{id}`, disparo automático **desligado por padrão**) e o helper `_botDispatch` (repository_dispatch).
+  - **Kill switch do automático**: `onErroParaBot` só dispara se `_bot_config/bugfix.habilitado === true` (doc no Firestore). Vem OFF. Mesmo ON tem dedupe por assinatura do erro (função + mensagem sem números) e rate-limit de 1 PR a cada 24h por tipo de erro; ignora erros do próprio bot (anti-laço).
+  - **Setup manual (só o Nathan faz — 1x):**
+    1. GitHub → Settings → Secrets and variables → Actions → **`CLAUDE_CODE_OAUTH_TOKEN`** — gerado com `claude setup-token` (usa a **assinatura** Claude, Pro já basta; token dura 1 ano; **não** gasta crédito de API). Vai no `env:` do step, não no `with:`. NÃO usar `--bare` (só funciona com API key). Alternativa paga: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`.
+    2. Criar **fine-grained PAT** (repo `Goldencat7/remax-smart-hub`, permissões **Contents: write** + **Pull requests: write**) e pôr como secret do Firebase: `firebase functions:secrets:set BOT_GH_TOKEN`.
+    3. `firebase deploy --only functions:botCorrigirBug,functions:onErroParaBot`.
+  - **Testar sem esperar bug real**: aba **Actions → Bug Fix Bot → Run workflow** (input `descricao`) — não precisa nem do PAT nem da Cloud Function. O `botCorrigirBug` (admin) é o disparo manual pelo backend; o auto só liga quando você criar `_bot_config/bugfix` com `habilitado:true`.
+  - **Substrato**: escolhido GitHub Actions (sempre-ligado, zero manutenção) em vez do PC da empresa. O PC só entraria como *self-hosted runner* se quiser evitar minutos do Actions.
+  - **Falta (fase 2, quando confiar no reativo)**: varredura proativa procurando bug sozinho; botão no Admin pra disparar o `botCorrigirBug` sem abrir o GitHub.
+
 - **Refatoração de arquivos monolíticos**: `hub-app.js` e `functions/index.js` têm milhares de linhas. Quebrar em módulos menores facilita manutenção e reduz risco de regressão.

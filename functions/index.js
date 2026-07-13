@@ -1,6 +1,6 @@
 const { onCall, onRequest, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onDocumentWritten, onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { setGlobalOptions } = require('firebase-functions/v2');
 const admin = require('firebase-admin');
 const crypto = require('crypto');
@@ -78,6 +78,9 @@ const { defineSecret } = require('firebase-functions/params');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
 // Senha de app (Google Workspace) da conta que envia/recebe os chamados de suporte.
 const SUPPORT_EMAIL_PASS = defineSecret('SUPPORT_EMAIL_PASS');
+// Fine-grained PAT (Contents+Pull requests: write) que dispara o Bug Fix Bot no GitHub Actions.
+const BOT_GH_TOKEN = defineSecret('BOT_GH_TOKEN');
+const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
 const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
@@ -3925,4 +3928,100 @@ exports.relatorioErrosDiario = onSchedule({
   }
 
   console.log(`Relatório: ${snap.empty ? '0' : snap.size} erro(s); ${antigos?.size || 0} antigo(s) removido(s).`);
+});
+
+// ─── Bug Fix Bot: dispara o Claude no GitHub Actions pra propor um fix ─────────
+// Regra de ouro: o bot PROPÕE (abre PR), o humano DISPÕE (revisa e publica).
+// Nada aqui faz deploy nem publica o .exe — só abre um repository_dispatch no
+// GitHub, que roda o Claude num branch e abre um Pull Request pra revisão.
+//
+// Dois caminhos:
+//  1. botCorrigirBug  — disparo MANUAL (admin), pra testar/pedir um fix sob demanda.
+//  2. onErroParaBot   — disparo AUTOMÁTICO quando cai um erro em `_erros`.
+//     Vem DESLIGADO por padrão (kill switch `_bot_config/bugfix.habilitado`);
+//     só liga quando você quiser, e mesmo ligado tem dedupe + rate-limit pra
+//     não abrir 50 PRs do mesmo erro nem estourar gasto de token.
+
+// Assinatura estável de um erro (função + mensagem sem números) pra dedupe.
+function _botAssinatura(funcao, mensagem) {
+  const msg = String(mensagem || '').toLowerCase().replace(/\d+/g, '#').slice(0, 160);
+  return crypto.createHash('sha1').update(`${funcao}|${msg}`).digest('hex').slice(0, 16);
+}
+
+// Dispara o workflow no GitHub via repository_dispatch. Não lança: loga e segue.
+async function _botDispatch(descricao, contexto = {}) {
+  const token = BOT_GH_TOKEN.value();
+  if (!token) { await logErro('botDispatch', new Error('BOT_GH_TOKEN vazio — configure o secret')); return false; }
+  const resp = await fetch(`https://api.github.com/repos/${BOT_REPO}/dispatches`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+      'User-Agent': 'remax-hub-bugbot'
+    },
+    body: JSON.stringify({
+      event_type: 'bug-encontrado',
+      client_payload: { descricao: String(descricao || '').slice(0, 4000), contexto }
+    })
+  });
+  if (!resp.ok) {
+    await logErro('botDispatch', new Error(`${resp.status}: ${await resp.text()}`), { descricao: String(descricao).slice(0, 200) });
+    return false;
+  }
+  return true;
+}
+
+// Disparo manual (admin): { descricao, erroId? }. Se vier erroId, anexa o erro.
+exports.botCorrigirBug = onCall({ secrets: [BOT_GH_TOKEN] }, async (req) => {
+  await exigirAdmin(req);
+  const descricao = (req.data?.descricao || '').trim();
+  const erroId = (req.data?.erroId || '').trim();
+  let contexto = { origem: 'manual', por: req.auth?.token?.email || req.auth?.uid || '' };
+  if (erroId) {
+    const doc = await db.collection('_erros').doc(erroId).get();
+    if (doc.exists) contexto = { ...contexto, erro: doc.data() };
+  }
+  if (!descricao && !erroId) throw new HttpsError('invalid-argument', 'Informe uma descrição do bug ou um erroId.');
+  const ok = await _botDispatch(descricao || 'Ver erro anexado no contexto.', contexto);
+  if (!ok) throw new HttpsError('internal', 'Falha ao disparar o bot no GitHub. Confira o secret BOT_GH_TOKEN e as permissões do token.');
+  await registrarAudit(req.auth, 'disparou_bugbot', { tipo: 'bugbot' }, { descricao: descricao.slice(0, 200), erroId });
+  return { ok: true };
+});
+
+// Disparo automático ao cair um erro novo em `_erros`. DESLIGADO por padrão.
+exports.onErroParaBot = onDocumentCreated({
+  document: '_erros/{erroId}',
+  secrets: [BOT_GH_TOKEN]
+}, async (event) => {
+  const erro = event.data?.data();
+  if (!erro) return;
+
+  // Kill switch: só roda se _bot_config/bugfix.habilitado === true.
+  const cfgSnap = await db.collection('_bot_config').doc('bugfix').get();
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  if (cfg.habilitado !== true) return;
+
+  // Nunca deixar o bot reagir a erros do próprio bot (evita laço).
+  if (['botDispatch', 'botCorrigirBug', 'onErroParaBot'].includes(erro.funcao)) return;
+
+  // Dedupe + rate-limit por assinatura: 1 disparo a cada 24h por tipo de erro.
+  const sig = _botAssinatura(erro.funcao, erro.mensagem);
+  const ref = db.collection('_bot_bugfix_sigs').doc(sig);
+  const jaViu = await ref.get();
+  const agora = Date.now();
+  if (jaViu.exists) {
+    const ultimo = jaViu.data().ultimoDispatch?.toDate?.()?.getTime?.() || 0;
+    if (agora - ultimo < 24 * 60 * 60 * 1000) return; // já abriu PR desse erro nas últimas 24h
+  }
+
+  const descricao = `Erro recorrente na Cloud Function "${erro.funcao}":\n${erro.mensagem}`;
+  const ok = await _botDispatch(descricao, { origem: 'auto', erro });
+  if (ok) {
+    await ref.set({
+      funcao: erro.funcao, assinatura: sig,
+      ultimoDispatch: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  }
 });
