@@ -3385,7 +3385,12 @@ const FICHA_BUCKET = 'remax-smart-hub.firebasestorage.app';
 // é gerado AQUI com o Admin SDK. Em 2026-07-03 o Firebase passou a rejeitar
 // upload anônimo que seta firebaseStorageDownloadTokens no customMetadata —
 // todo anexo de ficha falhou em silêncio desde então (virava "pendência").
-async function resolverDocumentosPorCaminho(paths) {
+//
+// `donoChave` (colecao/fichaId) é carimbado no arquivo (customMetadata.remaxFichaDono)
+// na primeira vez que ele é resolvido. Sem isso, bastava descobrir o caminho de um
+// anexo de OUTRA ficha (ex.: lendo o link já salvo no Firestore) pra anexar o mesmo
+// arquivo na própria ficha e gerar um link de download válido pra ele.
+async function resolverDocumentosPorCaminho(paths, donoChave) {
   if (paths == null) return {};
   if (typeof paths !== 'object' || Array.isArray(paths)) {
     throw new HttpsError('invalid-argument', 'Documentos inválidos.');
@@ -3405,8 +3410,14 @@ async function resolverDocumentosPorCaminho(paths) {
     const [existe] = await file.exists();
     if (!existe) throw new HttpsError('invalid-argument', `Anexo "${k}" não encontrado no storage.`);
 
+    const [meta] = await file.getMetadata();
+    const donoAtual = meta.metadata && meta.metadata.remaxFichaDono;
+    if (donoAtual && donoAtual !== donoChave) {
+      throw new HttpsError('invalid-argument', `Anexo "${k}" já pertence a outra ficha.`);
+    }
+
     const token = crypto.randomUUID();
-    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token, remaxFichaDono: donoChave } });
     urls[k] = `https://firebasestorage.googleapis.com/v0/b/${FICHA_BUCKET}/o/${encodeURIComponent(p)}?alt=media&token=${token}`;
   }
   return urls;
@@ -3437,9 +3448,6 @@ exports.salvarFichaPublica = onCall(async (req) => {
     throw new HttpsError('invalid-argument', 'Coleção inválida.');
   }
   const dadosOk = validarDadosFicha(dados);
-  // Caminho novo: `documentosPaths` (a function gera o token de download).
-  // `documentos` com URL completa segue aceito por compatibilidade.
-  const docsOk = { ...validarDocumentosFicha(documentos), ...(await resolverDocumentosPorCaminho(documentosPaths)) };
   const pendOk = validarPendentes(pendentes);
   const agora = admin.firestore.FieldValue.serverTimestamp();
 
@@ -3456,6 +3464,12 @@ exports.salvarFichaPublica = onCall(async (req) => {
     if (!FICHA_STATUS_EDITAVEL.includes(atual.status)) {
       throw new HttpsError('failed-precondition', 'Esta ficha não aceita mais alterações.');
     }
+    // Caminho novo: `documentosPaths` (a function gera o token de download).
+    // `documentos` com URL completa segue aceito por compatibilidade.
+    const docsOk = {
+      ...validarDocumentosFicha(documentos),
+      ...(await resolverDocumentosPorCaminho(documentosPaths, `${colecao}/${fichaId}`))
+    };
     // corretorUid e tipo são imutáveis: o que veio do cliente é ignorado de propósito.
     await ref.update({
       status: 'aguardando_corretor',
@@ -3480,6 +3494,14 @@ exports.salvarFichaPublica = onCall(async (req) => {
     throw new HttpsError('invalid-argument', 'Corretor não encontrado.');
   }
 
+  // Aloca o ID antes de resolver os anexos: é ele que vira o "dono" carimbado em
+  // cada arquivo (ver resolverDocumentosPorCaminho), então precisa existir antes.
+  const novoRef = db.collection(colecao).doc();
+  const docsOk = {
+    ...validarDocumentosFicha(documentos),
+    ...(await resolverDocumentosPorCaminho(documentosPaths, `${colecao}/${novoRef.id}`))
+  };
+
   const novo = {
     corretorUid,
     corretorNome: typeof corretorNome === 'string' ? corretorNome.slice(0, 200) : '',
@@ -3496,8 +3518,8 @@ exports.salvarFichaPublica = onCall(async (req) => {
   }
   if (typeof imovelId === 'string' && imovelId) novo.imovelId = imovelId;
 
-  const ref = await db.collection(colecao).add(novo);
-  return { ok: true, fichaId: ref.id };
+  await novoRef.set(novo);
+  return { ok: true, fichaId: novoRef.id };
 });
 
 // ─── Fichas do Locador ───────────────────────────────────────────────────────
