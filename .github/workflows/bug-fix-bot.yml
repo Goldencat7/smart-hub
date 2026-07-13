@@ -172,6 +172,9 @@ jobs:
           fi
 
           git commit -m "bot: fix automático proposto pelo Bug Fix Bot"
+          # A action do Claude limpa as credenciais de git do checkout; reautentica o push
+          # com o GITHUB_TOKEN (usuário x-access-token) antes de subir o branch.
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin "${{ steps.branch.outputs.branch }}"
 
           BODY_FILE="$(mktemp)"
