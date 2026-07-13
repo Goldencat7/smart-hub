@@ -88,6 +88,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
+          show_full_output: true   # TEMP: debug — reverter depois (log é público)
           claude_args: "--max-turns 25 --permission-mode acceptEdits"
           prompt: |
             Você é um engenheiro de plantão no projeto REMAX Smart Hub (app Electron + Firebase).
