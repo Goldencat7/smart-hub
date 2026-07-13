@@ -1689,13 +1689,22 @@ exports.portalInquilino = onCall(async (req) => {
   // SEGURANÇA: só o(s) locatário(s) do contrato vigente veem as cobranças. Vários
   // "pessoas" locatário podem dividir o mesmo imovelId (candidatos rejeitados, inquilino
   // anterior após re-locação) — sem esse gate, um veria os pagamentos do outro.
-  const locatarioIds = ctSnap.exists ? (ctSnap.data().locatarioIds || []) : [];
+  const contrato = ctSnap.exists ? ctSnap.data() : {};
+  const locatarioIds = contrato.locatarioIds || [];
   if (!locatarioIds.includes(pessoaId)) {
     return { nome, imovel, totalPago: 0, totalAberto: 0, cobrancas: [] };
   }
 
+  // SEGURANÇA: `contratos/{imovelId}` é reaproveitado a cada re-locação ("1 contrato por
+  // imóvel"), então cobranças de uma vigência anterior ficam no banco com o MESMO
+  // contratoId/imovelId. Sem restringir à vigência do contrato atual, o inquilino de agora
+  // veria também os valores/status de pagamento de um morador anterior do mesmo endereço.
+  const vigInicio = String(contrato.vigenciaInicio || '').slice(0, 7);  // 'AAAA-MM'
+  const vigFim = String(contrato.vigenciaFim || '').slice(0, 7);
+
   let totalPago = 0, totalAberto = 0;
   const cobrancas = cobS.docs.map(d => d.data())
+    .filter(x => (!vigInicio || (x.competencia || '') >= vigInicio) && (!vigFim || (x.competencia || '') <= vigFim))
     .sort((a, b) => (b.competencia || '').localeCompare(a.competencia || ''))
     .map(x => {
       const v = x.valor || 0;
