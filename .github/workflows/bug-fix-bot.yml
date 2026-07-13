@@ -88,7 +88,6 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
-          show_full_output: true   # TEMP: debug — reverter depois (log é público)
           # acceptEdits: auto-aprova edições de arquivo (não bash). Os checks rodam
           # num passo separado do workflow, então o Claude não precisa de shell.
           claude_args: "--max-turns 25 --permission-mode acceptEdits"
