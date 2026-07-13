@@ -27,8 +27,10 @@ permissions:
   id-token: write        # exigido pela claude-code-action (OIDC)
 
 concurrency:
-  # No máximo um bot rodando por vez — evita PRs concorrentes e gasto duplicado.
-  group: bug-fix-bot
+  # Grupo ÚNICO por run — vários "Autorizar" seguidos (ex.: "Autorizar todos") NÃO
+  # se cancelam. Cada fix roda no seu branch isolado, então rodar em paralelo é seguro.
+  # Antes o grupo era fixo e o GitHub descartava os runs pendentes do meio.
+  group: bug-fix-bot-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
