@@ -988,16 +988,23 @@ function pedirSenhaModal() {
     const btnCancelar = document.getElementById('reauthCancelar');
     const btnFechar   = document.getElementById('reauthFechar');
     inp.value = ''; msg.hidden = true;
+    let resolvido = false;
     const encerrar = (senha) => {
+      if (resolvido) return;
+      resolvido = true;
       form.onsubmit = null;
       btnCancelar.onclick = null;
       btnFechar.onclick = null;
-      modal.close();
+      modal.removeEventListener('close', onClose);
+      if (modal.open) modal.close();
       resolve(senha);
     };
+    // ESC fecha o <dialog> nativo sem passar pelos botões — sem isso a Promise nunca resolvia.
+    const onClose = () => encerrar(null);
     form.onsubmit = (e) => { e.preventDefault(); encerrar(inp.value || null); };
     btnCancelar.onclick = () => encerrar(null);
     btnFechar.onclick = () => encerrar(null);
+    modal.addEventListener('close', onClose);
     modal.showModal();
     setTimeout(() => inp.focus(), 50);
   });
