@@ -1121,9 +1121,16 @@ exports.locSalvarGarantia = onCall(async (req) => {
 });
 
 // ─── Gestão de Locações · Contratos ─────────────────────────────────────────
-// Converte "R$ 1.500,00" / "10%" em número (pra cobranças calculáveis).
+// Converte em número. Aceita dois formatos:
+// - BR ("R$ 1.500,50" / "10,5%", vem das fichas): vírgula = decimal, ponto = milhar (removido).
+// - Simples ("1500.50", vem dos inputs type=number do painel do gestor): ponto = decimal.
+// Diferencia pela presença de vírgula — sem ela, o ponto NÃO é removido (senão 1500.50 vira 150050).
 function loc_valorNum(s) {
-  const n = Number(String(s == null ? '' : s).replace(/[^\d,]/g, '').replace(',', '.'));
+  const str = String(s == null ? '' : s).trim();
+  if (str === '') return 0;
+  const n = str.includes(',')
+    ? Number(str.replace(/[^\d,]/g, '').replace(',', '.'))
+    : Number(str.replace(/[^\d.]/g, ''));
   return isFinite(n) ? n : 0;
 }
 
