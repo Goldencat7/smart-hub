@@ -24,6 +24,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write        # exigido pela claude-code-action (OIDC)
 
 concurrency:
   # No máximo um bot rodando por vez — evita PRs concorrentes e gasto duplicado.
