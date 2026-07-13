@@ -143,6 +143,7 @@ const SITES = [
 let presenceMap = {};
 let totalUsuariosAdmin = 0; // total de usuários (para calcular % dos avisos)
 let notificacoesCache = []; // cache para re-renderizar quando usuários carregarem
+let permReqId = 0; // contador da chamada mais recente ao modal de Permissões (evita corrida)
 
 const elListaCred  = document.getElementById('listaCredenciais');
 const elListaUser  = document.getElementById('listaUsuarios');
@@ -1075,6 +1076,7 @@ document.getElementById('formResponderChamado').addEventListener('submit', async
 
 // ─── Modal de permissões (apps restritos por usuário) ────────────────────────
 async function abrirModalPermissoes(uid, email) {
+  const reqId = ++permReqId; // se outro clique chamar essa função antes desta terminar, esta vira obsoleta
   document.getElementById('permUid').value = uid;
   document.getElementById('permEmail').textContent = email || '(sem email)';
   const cont = document.getElementById('permLista');
@@ -1082,6 +1084,7 @@ async function abrirModalPermissoes(uid, email) {
   modalPermissoes.showModal();
   try {
     const r = await getUserAccess({ uid });
+    if (reqId !== permReqId) return; // um clique mais novo já assumiu o modal — não sobrescrever
     const liberados = r.data.apps || [];
     const alvoAdmin = !!r.data.isAdmin;
     const temFoto = !!r.data.drives_fotografia;
@@ -1145,6 +1148,7 @@ async function abrirModalPermissoes(uid, email) {
       if (selRole.value === 'corretor') { fin.checked = false; fin.disabled = true; } else fin.disabled = false;
     });
   } catch (e) {
+    if (reqId !== permReqId) return; // um clique mais novo já assumiu o modal — não sobrescrever
     cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
   }
 }
