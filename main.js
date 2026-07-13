@@ -456,7 +456,15 @@ ipcMain.on('abrir-app', (_evt, payload) => {
   };
 
   if (!credenciais) {
-    // Apps sem autologin (Smart Vistorias / Motiva)
+    // CheckVisto (Smart Vistorias) é app PRÓPRIO e precisa de tratamento especial:
+    // permissões de dispositivo (GPS/notificações/microfone), popup de OAuth do Drive
+    // e — importante — SEM o disfarce de Chrome, pra que a detecção de Electron do
+    // próprio CheckVisto funcione (senão ele recarrega o messaging e reintroduz bugs).
+    if (/checkvisto-app\./i.test(url)) {
+      abrirCheckVisto(url);
+      return;
+    }
+    // Demais apps sem autologin (Motiva)
     abrirJanelaSimples(url);
     return;
   }
@@ -516,6 +524,53 @@ function abrirJanelaSimples(url) {
   contentsComCertLiberado.add(cidSimples);
   win.on('closed', () => contentsComCertLiberado.delete(cidSimples));
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
+}
+
+// ─── Janela do CheckVisto (Smart Vistorias) — app próprio ─────────────────────
+// Diferente de abrirJanelaSimples: (1) partição própria 'persist:checkvisto' pra
+// que as permissões abaixo valham SÓ pro CheckVisto (não afeta Motiva/outros);
+// (2) NÃO disfarça de Chrome — assim navigator.userAgent mantém "Electron" e a
+// camada de adaptação do próprio CheckVisto funciona (pula messaging/FCM/App Check
+// e faz o auto-reload de versão); (3) concede GPS/notificações/microfone, que a
+// janela padrão do Electron nega; (4) libera o popup de OAuth do Google Drive.
+const CHECKVISTO_HOST = 'checkvisto-app.web.app';
+const CHECKVISTO_PERMS = new Set(['geolocation', 'notifications', 'media', 'clipboard-read']);
+function _origemEhCheckVisto(origem) {
+  try {
+    const h = new URL(origem).host;
+    return h === CHECKVISTO_HOST || h === 'checkvisto-app.firebaseapp.com';
+  } catch (_) { return false; }
+}
+function abrirCheckVisto(url) {
+  const win = new BrowserWindow({
+    width: 1200, height: 800, autoHideMenuBar: true,
+    webPreferences: {
+      partition: 'persist:checkvisto', // isola sessão + permissões só do CheckVisto
+      devTools: DEVTOOLS_HABILITADO
+    }
+  });
+
+  const ses = win.webContents.session;
+  // Concede as permissões APENAS para a origem do CheckVisto e só as necessárias.
+  ses.setPermissionRequestHandler((wc, permission, callback, details) => {
+    const origem = (details && details.requestingUrl) || (wc && wc.getURL()) || '';
+    callback(_origemEhCheckVisto(origem) && CHECKVISTO_PERMS.has(permission));
+  });
+  ses.setPermissionCheckHandler((_wc, permission, requestingOrigin) => {
+    return _origemEhCheckVisto(requestingOrigin) && CHECKVISTO_PERMS.has(permission);
+  });
+
+  // Popup de login do Google (OAuth do Drive) abre como janela filha; qualquer
+  // outro link externo vai pro navegador padrão em vez de abrir dentro do app.
+  win.webContents.setWindowOpenHandler(({ url: u }) => {
+    if (/^https:\/\/(accounts\.google\.com|checkvisto-app\.(web\.app|firebaseapp\.com))/i.test(u)) {
+      return { action: 'allow' };
+    }
+    shell.openExternal(u).catch(() => {});
+    return { action: 'deny' };
+  });
+
+  win.loadURL(url).catch(err => console.error(`Erro ao carregar CheckVisto: ${err}`));
 }
 
 // ─── Janela com autologin ────────────────────────────────────────────────────
@@ -621,7 +676,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
           if(!ok || el.value !== valor){
             setNativeValue(el, valor);
             // truque pro framework detectar a mudança (React usa _valueTracker)
-            if(el._valueTracker){ try { el._valueTracker.setValue(' '); } catch(e){} }
+            if(el._valueTracker){ try { el._valueTracker.setValue(''); } catch(e){} }
           }
           disparar(el);
         }
