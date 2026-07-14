@@ -368,8 +368,23 @@ ipcMain.on('abrir-ficha', (_e, { url, titulo }) => {
 });
 
 // ─── Abrir ficha interna (corretor preenche ele mesmo) ────────────────────────
-// Carrega do disco local (public/) em vez do Firebase Hosting — funciona no
-// npm start e no .exe instalado sem precisar de deploy de hosting.
+// Instalado (.exe) → carrega do Firebase Hosting. Em desenvolvimento → do disco.
+//
+// Antes carregava SEMPRE do disco (public/), "pra não depender de deploy de
+// hosting". O preço disso era alto e não era óbvio:
+//   • a ficha dentro do .exe é uma CÓPIA congelada na hora do build. Corrigir uma
+//     ficha passava a exigir republicar o .exe e esperar o auto-update chegar em
+//     cada corretor — enquanto isso, cada máquina roda uma versão diferente. Foi
+//     exatamente esse descompasso que segurou o deploy das regras do Firestore.
+//   • `file://` não tem origem, então o reCAPTCHA não consegue atestar a página —
+//     era o que impedia ligar o App Check no `salvarFichaPublica` (hoje qualquer
+//     um pode chamar essa function).
+// Do Hosting, a ficha é sempre a última publicada e tem origem de verdade.
+//
+// Em dev segue do disco: senão o `npm start` mostraria a ficha JÁ PUBLICADA, e não
+// a que você acabou de editar — daria pra "corrigir" uma ficha e não ver diferença.
+const BASE_HOSTING = 'https://remax-smart-hub.web.app';
+
 ipcMain.on('abrir-ficha-local', (_e, { arquivo, params }) => {
   const win = new BrowserWindow({
     width: 940, height: 860, autoHideMenuBar: true,
@@ -381,10 +396,34 @@ ipcMain.on('abrir-ficha-local', (_e, { arquivo, params }) => {
     if (/^https?:\/\//i.test(u)) shell.openExternal(u);
     return { action: 'deny' };
   });
-  // basename evita path traversal (ex.: '..\\..\\algo.html') — só abre arquivos de public/
-  const filePath = path.join(__dirname, 'public', path.basename(arquivo || ''));
-  win.loadFile(filePath, { query: params || {} })
-     .catch(err => console.error('Erro ao abrir ficha local:', err));
+  // basename evita path traversal (ex.: '..\\..\\algo.html') — e, no Hosting, evita
+  // que um `arquivo` malformado escape pra outro caminho do site.
+  const nome = path.basename(arquivo || '');
+  if (!/^[\w.-]+\.html$/.test(nome)) {
+    console.error('Ficha inválida:', arquivo);
+    win.destroy();
+    return;
+  }
+
+  const alvo = app.isPackaged
+    ? `${BASE_HOSTING}/${nome}?${new URLSearchParams(params || {})}`
+    : null;
+
+  const p = alvo
+    ? win.loadURL(alvo)
+    : win.loadFile(path.join(__dirname, 'public', nome), { query: params || {} });
+
+  p.catch(err => {
+    console.error('Erro ao abrir ficha:', err.message);
+    // Sem internet o Hosting não responde. Diz isso em vez de deixar a janela branca.
+    if (win.isDestroyed()) return;
+    dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'Não foi possível abrir a ficha',
+      message: 'A ficha não carregou.',
+      detail: 'As fichas são carregadas pela internet, sempre na versão mais recente. Verifique sua conexão e tente de novo.'
+    }).finally(() => { if (!win.isDestroyed()) win.destroy(); });
+  });
 });
 
 // ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────

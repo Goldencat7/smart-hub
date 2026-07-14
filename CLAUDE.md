@@ -4,7 +4,7 @@ App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápi
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
 **Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
-**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.99** (auto-update via GitHub Releases).
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.100** (auto-update via GitHub Releases).
 
 ## Stack
 
@@ -44,7 +44,19 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - **Sidebar** (`CATEGORIAS` em `hub-app.js`): Captação, CRM, Vistoria, **Locação** (Gestão de Locações), Performance, Treinamento, **Marketing**, ClickSign, Agenda, **Cadastro** (fichas), Fotografia, Reunião, Sala de Reunião, IA, Calculadoras, Bloco de Notas, WhatsApp, Suporte/TI, Configurações. Categorias podem ser ocultadas por permissão (`soTI`, `beta`, etc.) ou serem "app direto".
 - **Gestão de Locações** (aba Locação): módulo completo — captação (ficha do locador vira imóvel na esteira) → análise do locatário + garantia → contrato → cobrança/repasse → vistorias → alertas → relatórios (com export CSV). **Versão enxuta (pedido do chefe, v1.0.90):** sub-apps = só **Painel** e **Imóveis** (esteira com filtro por status). Financeiro/Alertas/Relatórios saíram da UI (as Cloud Functions `locFinanceiro`/`locListarAlertas`/`locRelatorios` continuam no backend, só não têm mais tela) e as **fichas voltaram pro Cadastro**. **Visibilidade**: a aba Locação inteira só aparece com a permissão `loc_gestao` (por pessoa no Admin, não herda de admin). **Checklist automático** (6 itens marcam sozinhos; esteira avança até "Aprovado" sozinha). **Portais externos** (Fase 1.5): proprietário vê repasses, inquilino vê pagamentos — por link/token, sem login (`public/portal-proprietario.html`, `portal-inquilino.html`). Detalhes completos na memória `project-gestao-locacoes`. Fase 2 (bancária) em `FASE-2-INTEGRACAO-BANCARIA.md`.
 - **Marketing** (dinâmico, editável no painel): sanfonas + templates em Firestore `marketing_config/layout` (semente `MARKETING_SEED` + versão/merge); ⚙ Gerenciar (permissão `marketing_gerenciar`) edita/reordena/faz upload de HTML e capa pro Storage. Templates abrem em janela dedicada (`abrir-template` no `main.js`).
-- **Cadastro / Fichas** (web, Firebase Hosting — NÃO vão no .exe): locador, PF, PJ, locação c/ fiador, vendedor, proposta, fiança (`public/ficha-*.html`). Cliente preenche por link (`geraLink`); upload de documentos com **download token próprio** (ver `project-fichas-documentos`). Todas as fichas (locação e venda) vivem no Cadastro.
+- **Cadastro / Fichas** (web, Firebase Hosting): locador, PF, PJ, locação c/ fiador, vendedor, proposta, fiança (`public/ficha-*.html`). Cliente preenche por link (`geraLink`); upload de documentos com **download token próprio** (ver `project-fichas-documentos`). Todas as fichas (locação e venda) vivem no Cadastro.
+  - **A ficha vem SEMPRE do Hosting, inclusive dentro do .exe** (v1.0.100). Antes o `abrir-ficha-local`
+    do `main.js` carregava do disco (`public/` empacotado no instalador) — a ficha virava uma **cópia
+    congelada no build**: corrigir uma ficha exigia republicar o `.exe` e esperar o auto-update chegar
+    em cada máquina, e nesse meio-tempo cada corretor rodava uma versão diferente. Foi esse descompasso
+    que segurou o deploy das regras do Firestore. Além disso, `file://` não tem origem — o reCAPTCHA não
+    consegue atestar a página, e era isso que impedia ligar o **App Check** no `salvarFichaPublica`.
+    Agora: `app.isPackaged` → Hosting; em dev → disco (senão o `npm start` mostraria a ficha **publicada**,
+    não a que você acabou de editar). Sem internet, a janela avisa em vez de ficar branca.
+  - Consequência: **depois que a 1.0.100 alcançar todos**, nenhuma máquina consegue mais rodar ficha
+    velha — o que destrava o `firebase deploy --only firestore:rules` (e o App Check).
+  - ⚠️ `public/ficha-engine.js` é **código morto** (não é importado por ninguém) e é o **último** lugar
+    que ainda grava ficha direto no Firestore (`addDoc`). Candidato a apagar — confirmar com o Nathan.
 - **Agenda** (`events` no Firestore): reuniões com participantes (ou "todos"); mini calendário + relógio; calendário completo; alerta 1h antes; **integra com Google Agenda/Tarefas**. Functions: `criarEvento`, `listarEventos`, `excluirEvento`, `listarPessoas`.
 - **Calculadoras** (`public/calculadoras.html`): aluguel proporcional + multa rescisória (conferidas com o Excel do financeiro).
 - **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.

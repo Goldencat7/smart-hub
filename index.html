@@ -84,7 +84,13 @@
             <iframe id="driveFrame" class="drive-frame" title="Documentos da empresa"></iframe>
           </div>
           -->
-          <iframe class="drive-frame" src="ficha-locador.html" title="Ficha Cadastral Locador" style="height:80vh;display:block;border-radius:var(--radius-card);border:1px solid var(--border);"></iframe>
+          <!-- Sem markup fixo aqui: o carregarDocumentos() (hub-app.js) escreve o
+               conteúdo desta aba inteiro por innerHTML assim que ela abre. Havia um
+               <iframe src="ficha-locador.html"> nesta linha que NUNCA chegava a
+               aparecer (era sobrescrito), mas, como `hidden` não impede um iframe de
+               carregar, o Hub baixava 690 KB de uma cópia velha da ficha em toda
+               inicialização. A ficha de verdade mora em public/ e abre em janela
+               própria pelo botão "Preencher". -->
         </section>
 
         <!-- ──── Aba Treinamento (accordion) ──── -->

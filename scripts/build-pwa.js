@@ -85,11 +85,10 @@ function cabecalhoPwa() {
 
 function transformarTela(html) {
   if (!/<\/head>/i.test(html)) throw new Error('Tela sem </head> — não sei onde injetar o PWA');
-  let out = html.replace(/<\/head>/i, cabecalhoPwa() + '  </head>');
-
-  // O Hub mora em /app/, mas as fichas moram na RAIZ do Hosting (public/).
-  // O iframe do index.html aponta pra ficha-locador.html relativo — vira absoluto.
-  out = out.replace(/(<iframe[^>]*\ssrc=")(ficha-[^"]+)(")/gi, '$1/$2$3');
+  const out = html.replace(/<\/head>/i, cabecalhoPwa() + '  </head>');
+  // Antes havia aqui um replace que reescrevia <iframe src="ficha-*.html"> pra
+  // caminho absoluto (o Hub mora em /app/, as fichas na raiz do Hosting). O iframe
+  // que motivava isso era morto e saiu do index.html — nenhuma tela embute ficha.
   return out;
 }
 
