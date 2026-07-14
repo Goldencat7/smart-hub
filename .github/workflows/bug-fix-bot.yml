@@ -92,7 +92,9 @@ jobs:
         with:
           # acceptEdits: auto-aprova edições de arquivo (não bash). Os checks rodam
           # num passo separado do workflow, então o Claude não precisa de shell.
-          claude_args: "--max-turns 40 --permission-mode acceptEdits"
+          # --disallowedTools: sem agentes em background/wakeup — em automação a sessão
+          # morre quando o loop principal para e nada assíncrono volta (bug visto no hunter).
+          claude_args: "--max-turns 40 --permission-mode acceptEdits --disallowedTools Agent Task ScheduleWakeup"
           prompt: |
             Você é um engenheiro de plantão no projeto REMAX Smart Hub (app Electron + Firebase).
             Você TEM permissão para editar/criar arquivos (Edit/Write) e rodar Bash diretamente,

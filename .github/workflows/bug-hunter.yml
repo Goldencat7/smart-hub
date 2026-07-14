@@ -38,7 +38,10 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
           show_full_output: true   # TEMP: debug — remover depois (log é público)
-          claude_args: "--max-turns 40 --permission-mode acceptEdits"
+          # Sem agentes em background nem wakeup: em modo automação a sessão morre
+          # quando o loop principal para — agente assíncrono nunca volta, e a run
+          # terminava "com sucesso" sem gravar o ACHADOS.json (bug de 14/07).
+          claude_args: "--max-turns 40 --permission-mode acceptEdits --disallowedTools Agent Task ScheduleWakeup"
           prompt: |
             Você é um caçador de bugs no projeto REMAX Smart Hub (app Electron + Firebase).
             Sua missão HOJE é só ENCONTRAR bugs — você NÃO deve corrigir nada nesta sessão.
@@ -59,6 +62,9 @@ jobs:
 
             NÃO rode comandos de shell (npm/node/npx) — ficam bloqueados neste ambiente.
             Trabalhe só lendo arquivos (Read/Grep/Glob) e escrevendo o resultado.
+            IMPORTANTE: trabalhe SEQUENCIALMENTE, você mesmo, no loop principal. NÃO use
+            agentes em segundo plano nem espere por tarefas assíncronas — nesta automação
+            a sessão termina quando você para, e nada assíncrono volta.
 
             RESULTADO OBRIGATÓRIO — a sua ÚLTIMA AÇÃO nesta sessão DEVE ser usar a ferramenta
             Write para gravar o arquivo `ACHADOS.json` na raiz do repositório. Essa é a única
