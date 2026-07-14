@@ -3494,6 +3494,13 @@ exports.salvarFichaPublica = onCall(async (req) => {
     throw new HttpsError('invalid-argument', 'Corretor não encontrado.');
   }
 
+  // Valida o tipo ANTES de carimbar os anexos: se isso falhar depois de resolver
+  // os documentos, o arquivo já fica marcado como dono de uma ficha que nunca é
+  // criada, e um reenvio passa a falhar com "Anexo já pertence a outra ficha".
+  if (colecao === 'fichas' && !FICHA_TIPOS.includes(tipo)) {
+    throw new HttpsError('invalid-argument', 'Tipo de ficha inválido.');
+  }
+
   // Aloca o ID antes de resolver os anexos: é ele que vira o "dono" carimbado em
   // cada arquivo (ver resolverDocumentosPorCaminho), então precisa existir antes.
   const novoRef = db.collection(colecao).doc();
@@ -3513,7 +3520,6 @@ exports.salvarFichaPublica = onCall(async (req) => {
     criadoEm: agora
   };
   if (colecao === 'fichas') {
-    if (!FICHA_TIPOS.includes(tipo)) throw new HttpsError('invalid-argument', 'Tipo de ficha inválido.');
     novo.tipo = tipo;
   }
   if (typeof imovelId === 'string' && imovelId) novo.imovelId = imovelId;
