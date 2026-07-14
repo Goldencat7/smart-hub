@@ -22,7 +22,17 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - **Permissões granulares por pessoa** (concedidas no painel de Admin, nunca elevação em bloco): `marketing_gerenciar` (editar Marketing — NÃO herda de admin), `ti` (Suporte), `drives_fotografia`, `analise_locador`, `loc_gestao` (vê a aba Locação inteira — Painel + Imóveis; NÃO herda de admin). Existe também `loc_beta` (antigo dark launch), hoje **inerte** — ver "Dívida técnica intencional". Perfil de Locação = claim `locRole` (gestor/administrativo/corretor) + `loc_financeiro`.
 - **Escrita das coleções de Locação = SEMPRE via Cloud Function** (Admin SDK). Regras do Firestore negam write do cliente; leitura filtrada por `corretorUid` (regra de ouro). Idem cobranças/repasses (integridade do financeiro).
 - **Escrita das fichas = SEMPRE via Cloud Function** (`salvarFichaPublica`), mesma regra de ouro. O cliente preenche sem login, mas não grava direto: a function valida tamanho, tipo dos campos, e que cada anexo aponta pro nosso bucket (`fichas/<tipo>/…` ou `fichas-locador/…`). `corretorUid`, `tipo` e `status` são decididos no servidor. **Leitura** por id ainda é aberta (`allow get: if true`) — o id é a credencial, como nos portais; fechar isso exige token e é o próximo passo.
-  - **Rollout (2026-07-10)**: functions + hosting DEPLOYADOS (páginas no ar já usam a function; smoke test em produção: cria ok, recusa coleção inválida/anexo externo/corretor falso). **As regras novas (`write: if false`) AINDA NÃO subiram** — o `.exe` 1.0.91 instalado carrega a ficha Fiança do disco local (versão antiga com `addDoc`), e as regras a quebrariam. Deployar `firestore:rules` só DEPOIS de publicar o `.exe` novo e dar tempo do auto-update alcançar os corretores.
+  - **✅ FECHADO (2026-07-14, v1.0.100).** As regras `write: if false` **estão no ar**. A escrita direta
+    do cliente na coleção `fichas` agora devolve `PERMISSION_DENIED` — testado em produção. A
+    `salvarFichaPublica` continua funcionando (o Admin SDK **ignora** as regras; o smoke test bate na
+    validação dela, não em permissão). O que segurava esse deploy era o `.exe` antigo, que carregava a
+    ficha do **disco** (cópia congelada no build, e a de 1.0.91 ainda usava `addDoc`); desde a 1.0.100 a
+    ficha vem **sempre do Hosting**, então versão velha de ficha não existe mais em máquina nenhuma.
+    Junto subiu outra mudança que já estava no arquivo: `locGestor()` **não herda mais de `admin`**
+    (alinha com "permissão granular por pessoa"). Não quebra tela — **nenhuma** tela lê as coleções de
+    Locação pelo SDK do cliente; tudo passa por Cloud Function.
+  - **Leitura** por id segue aberta (`allow get: if true`) — o id é a credencial, como nos portais.
+    Fechar isso exige token de acesso e é o próximo passo.
 - **Portais externos** (proprietário/inquilino) são PÚBLICOS, sem login: o **token** (`portal_tokens`, `crypto.randomBytes`) é a credencial; cada função devolve só os dados daquela pessoa. **Anonymous Auth NUNCA pode ser habilitado** (o `getCredentials` confia em qualquer autenticado).
 - **2FA (TOTP)** via Firebase MFA; **credenciais dos sistemas criptografadas** (KMS) em repouso; **auditoria** (`registrarAudit` → `audit_log`); **backup Firestore diário** (`gs://remax-smart-hub-backups/`, retenção 30d).
 
