@@ -130,6 +130,21 @@
   /* Cards de app: 2 colunas em celular comum, 1 em telas bem estreitas. */
   .hub-buttons-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 
+  /* ── Banner: põe um TETO na altura ──────────────────────────────────────
+     O vídeo tem `height: 160px` fixo, mas a imagem tem `height: auto` — ou seja,
+     a altura dela é a proporção da imagem, sem limite nenhum. Num banner largo
+     (1600x400) isso dá 88px e ninguém percebe; num quadrado (1080x1080) dá 351px,
+     que é 43% da tela do celular — um paredão. E como o 1º banner costuma ser um
+     dos comportados, o problema só aparecia DEPOIS da primeira troca.
+     `object-fit: cover` faz o excesso ser CORTADO, não espremido (sem max-height
+     o `height` forçado distorceria a imagem). Banner que já cabe no teto continua
+     inteiro, sem corte nenhum. */
+  .banner-img {
+    max-height: 180px;
+    object-fit: cover;
+    object-position: center;
+  }
+
   /* ── Agenda ─────────────────────────────────────────────────────────────
      Calendário em cima, detalhe do dia embaixo (o styles.css já empilha). */
   /* `align-items: flex-start` (styles.css) faz sentido lado a lado, mas empilhado
