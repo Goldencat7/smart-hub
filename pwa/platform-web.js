@@ -163,8 +163,9 @@
   function montarMenuMobile() {
     const layout = document.querySelector('.hub-layout');
     const marca = document.querySelector('.topbar .brand');
+    const sidebar = document.querySelector('.sidebar');
     if (document.getElementById('btnMenuMobile')) return;
-    if (!layout || !marca) {
+    if (!layout || !marca || !sidebar) {
       // login.html/admin.html não têm .hub-layout — silêncio é o esperado. Mas no
       // index a falta significa que alguém renomeou a estrutura no HTML
       // compartilhado e o celular ficou SEM MENU — grita no console.
@@ -198,6 +199,17 @@
       veu.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
     };
+
+    // Cabeçalho da gaveta: a gaveta cobre a topbar inteira, então sem a logo os
+    // itens ficariam soltos encostados no topo da tela (e sem jeito óbvio de fechar).
+    const topo = document.createElement('div');
+    topo.className = 'menu-mobile-topo';
+    const logoTopbar = document.querySelector('.topbar .brand-logo');
+    topo.innerHTML =
+      `<img class="brand-logo" src="${logoTopbar ? logoTopbar.getAttribute('src') : 'logo.png'}" alt="REMAX Smart">
+       <button type="button" class="menu-mobile-fechar" aria-label="Fechar menu">✕</button>`;
+    sidebar.prepend(topo);
+    topo.querySelector('.menu-mobile-fechar').addEventListener('click', () => fechar());
 
     btn.addEventListener('click', () => {
       document.body.classList.contains('menu-aberto') ? fechar() : abrir();

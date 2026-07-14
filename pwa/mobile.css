@@ -16,10 +16,12 @@
 /* Área de arrastar a janela: não existe no navegador, e atrapalha o toque. */
 .topbar, .brand-logo, .topbar-right { -webkit-app-region: initial; }
 
-/* Botão ☰ e véu da gaveta: criados pelo platform-web.js, escondidos por padrão.
-   Só aparecem na largura de celular (media query lá embaixo). */
+/* Botão ☰, véu e cabeçalho da gaveta: criados pelo platform-web.js, escondidos
+   por padrão. Só aparecem na largura de celular (media query lá embaixo) — em
+   tela grande o PWA é o Hub de 3 colunas normal, sem gaveta. */
 .menu-mobile-btn { display: none; }
 .menu-mobile-veu { display: none; }
+.menu-mobile-topo { display: none; }
 
 /* ── Celular / tablet estreito ────────────────────────────────────────────── */
 @media (max-width: 900px) {
@@ -59,17 +61,56 @@
     height: calc(100dvh - 52px);
   }
 
-  /* Sidebar vira gaveta deslizante */
+  /* ── Sidebar vira gaveta deslizante ────────────────────────────────────
+     ⚠ O styles.css tem um @media (max-width:720px) ANTIGO (de quando a janela
+     do Electron ficava estreita) que virava a sidebar numa TIRA HORIZONTAL:
+     `.sidebar-nav { flex-direction: row; overflow-x: auto }`. Numa gaveta isso
+     empilha os 16 itens lado a lado, esticados de cima a baixo — feio e
+     inutilizável. Aqui desfazemos aquilo e devolvemos a coluna igual à do PC. */
   .sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
-    width: 232px; max-width: 82vw;
-    padding-top: calc(14px + env(safe-area-inset-top));
+    width: 224px; max-width: 80vw;
+    padding: calc(10px + env(safe-area-inset-top)) 10px 16px;
+    border-right: 1px solid var(--navy-dark); border-bottom: none;
     transform: translateX(-100%);
     transition: transform 200ms ease;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
   }
   body.menu-aberto .sidebar { transform: translateX(0); }
-  .nav-item { padding: 10px 10px; font-size: 13px; } /* alvo de toque maior */
+
+  /* Volta a ser coluna (desfaz o `row` do bloco de 720px do styles.css) */
+  .sidebar-nav {
+    flex-direction: column;
+    overflow-x: visible;
+    gap: 2px;
+  }
+  /* Item igual ao do PC (mesmo ícone, mesma fonte), só com mais respiro vertical
+     pro dedo. Sem mexer na fonte de propósito: o `font:` do styles.css é inválido
+     (family `inherit` no shorthand), então o item cai nos ~13px padrão do botão —
+     e é assim que ele aparece no PC. Forçar outro tamanho aqui desalinharia os dois. */
+  .nav-item { padding: 9px 10px; }
+  /* "Configurações" volta pro rodapé da coluna (no modo tira ia pra direita) */
+  .nav-item-fim {
+    margin-top: auto; margin-left: 0;
+    border-top: 1px solid var(--navy-dark); padding-top: 10px;
+  }
+
+  /* Cabeçalho da gaveta: a logo + ✕ (a gaveta cobre a topbar, então sem isso os
+     itens ficam soltos encostados no topo da tela). Criado no platform-web.js. */
+  .menu-mobile-topo {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 0 2px 10px; margin-bottom: 8px;
+    border-bottom: 1px solid var(--navy-dark);
+  }
+  .menu-mobile-topo .brand-logo { height: 22px; }
+  .menu-mobile-fechar {
+    display: flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; flex: 0 0 auto; padding: 0;
+    background: transparent; color: var(--text-nav-inactive);
+    border: 1px solid var(--navy-dark); border-radius: var(--radius-btn);
+    font-size: 14px; line-height: 1; cursor: pointer;
+  }
+  .menu-mobile-fechar:active { background: rgba(255, 255, 255, 0.07); }
 
   /* Painel direito (relógio + mini calendário + próximos) sai: a categoria
      "Agenda" já tem o calendário inteiro, e no celular ele só rouba espaço. */
@@ -103,8 +144,52 @@
   /* iOS dá zoom automático em input com fonte < 16px. Trava em 16 pra não pular. */
   input, select, textarea { font-size: 16px !important; }
 
-  /* Tabelas largas (admin, relatórios) rolam na horizontal em vez de estourar. */
-  .admin-table, .loc-tabela-wrap { overflow-x: auto; }
+  /* ── Marketing: carrossel vira "arrastável" ────────────────────────────
+     No PC os cards (220px) passam de 3 em 3 pelos botões ‹ ›, e o trilho é
+     `overflow-x: hidden`. No celular cabe 1 card e o resto fica CORTADO, sem
+     jeito de chegar neles com o dedo. Aqui o trilho passa a rolar no toque
+     (com encaixe) e os botões somem — ninguém aperta setinha no celular. */
+  .mkt-carousel {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-left: 2px;
+  }
+  .mkt-carousel .mkt-card { width: min(220px, 68vw); }
+  .mkt-nav-btn { display: none; }
+  .mkt-carousel-wrap { padding: 12px 10px; gap: 0; }
+
+  /* ── Cadastro de Fichas: a tabela vira cartões ─────────────────────────
+     A tabela tem 7 colunas e `min-width: 700px` — em 375px ela rolava numa
+     janelinha de 351px, mostrando ~1 coluna e meia por vez (ilegível). No
+     celular cada ficha vira um cartão empilhado, que é como se lê no dedo. */
+  .cad-tbl-scroll { overflow-x: visible; }
+  .cad-tbl { min-width: 0; }
+  .cad-tbl thead { display: none; }                  /* sem cabeçalho: cada campo se explica */
+  .cad-tbl, .cad-tbl tbody, .cad-tbl tr, .cad-tbl td { display: block; width: auto; }
+  .cad-tbl tr {
+    border: 1px solid var(--border); border-radius: var(--radius-card);
+    padding: 10px 12px; margin: 0 10px 8px;
+  }
+  .cad-tbl td { border-bottom: none; padding: 4px 0; }
+  .cad-tbl td:first-child { padding-bottom: 8px; }   /* o nome do cliente é o "título" do cartão */
+  .cad-acoes { justify-content: flex-start; margin-top: 6px; }
+
+  .cad-wrap { padding: 4px 0 32px; }
+  .cad-head { flex-direction: column; gap: 10px; }
+  .cad-kpis { gap: 8px; }
+  .cad-kpi { padding: 12px; }
+  .cad-filtros { padding: 10px; gap: 8px; }
+  .cad-fcampo, .cad-fcampo.grow { flex: 1 1 100%; min-width: 0; }
+  .cad-fcampo input, .cad-fcampo select { min-width: 0; width: 100%; }
+
+  /* ── Tabelas que não têm contêiner rolável próprio ─────────────────────
+     .users-table (Chamados de Suporte, Fotografia) tem ~700px e estourava a
+     PÁGINA inteira — a tela ganhava rolagem lateral. Rola dentro da caixa dela. */
+  #listaChamadosHub, .foto-gerenciar, .admin-table, .loc-tabela-wrap { overflow-x: auto; }
+  .users-table { min-width: 520px; }                 /* abaixo disso as colunas viram papa */
+
+  /* O padding de 24px é inline no index.html (aba Suporte) — só !important vence. */
+  #secaoTI > div { padding: 14px 12px !important; }
 
   /* Tela de Admin: o menu lateral de 220px + 64px de padding estouram a largura
      de um celular (a página inteira ganhava scroll horizontal). Vira uma linha
