@@ -4350,3 +4350,262 @@ exports.botSetAuto = onCall(async (req) => {
   await registrarAudit(req.auth, 'alterou_bugbot_auto', { tipo: 'bugbot' }, { habilitado });
   return { ok: true, habilitado };
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LGPD — retenção e exclusão dos dados pessoais das fichas
+// ═══════════════════════════════════════════════════════════════════════════════
+// ⚠️ NADA DESTE BLOCO ESTÁ DEPLOYADO. Desativado a pedido do Nathan (2026-07-14):
+// o código fica pronto, mas as functions NÃO subiram e a aba do Admin está
+// comentada no admin.html. Não deployar sem resolver o que está abaixo.
+//
+// O QUE FALTA DECIDIR (é o que trava): a ficha do locador não vive só na ficha.
+// O gatilho `onFichaLocadorEnviadaAdmin` COPIA os dados pessoais pra:
+//   • `pessoas/{fichaId}_loc1|_loc2` — nome, RG, CPF, nascimento, endereço, cônjuge;
+//   • `imoveis/{fichaId}`            — endereço, nome do locador, links dos anexos.
+// Anonimizar só a ficha deixaria o CPF e o RG inteiros no `pessoas` — pior que não
+// fazer nada, porque passa a sensação de conformidade sem a conformidade.
+// Mas apagar `pessoas` de um imóvel com CONTRATO VIGENTE quebra a operação (e a
+// LGPD nem pede isso: enquanto dura o contrato existe base legal pra guardar).
+// Caminho recomendado quando for retomar: expurgar ficha + pessoas + PII do imóvel,
+// PULANDO os imóveis com contrato ativo (eles entram na fila quando o contrato cair).
+//
+// As fichas guardam CPF, RG, renda, endereço. A LGPD não deixa guardar isso "pra
+// sempre": passado o tempo em que o dado é necessário, ele tem que sair.
+//
+// Duas operações, com intenções DIFERENTES — não confundir:
+//
+//   • EXPURGO por retenção (lgpdExpurgar) → ANONIMIZA. Apaga os dados pessoais e
+//     os anexos, mas mantém a casca da ficha (qual corretor, tipo, status, data).
+//     Assim o histórico do negócio não some dos relatórios, e o dado pessoal sim.
+//
+//   • EXCLUSÃO a pedido do titular (lgpdExcluirTitular) → APAGA TUDO. O direito ao
+//     esquecimento é sobre o registro inteiro, não sobre "quase tudo". Sem volta.
+//
+// Nada disso roda sozinho por padrão: o automático mensal tem interruptor próprio
+// (`_lgpd_config/retencao.automatico`) e vem DESLIGADO.
+
+const LGPD_DIAS_MIN = 180;      // menos que isso é quase certo que foi engano de digitação
+const LGPD_DIAS_PADRAO = 730;   // 2 anos
+const LGPD_LOTE_MAX = 200;      // por chamada, pra não estourar o tempo da function
+
+// O caminho do arquivo no Storage está embutido na URL de download que gravamos na
+// ficha (…/o/<caminho-encodado>?alt=media&token=…). É de lá que o tiramos.
+function _caminhoDoAnexo(url) {
+  const m = /\/o\/([^?]+)/.exec(String(url || ''));
+  if (!m) return null;
+  let p;
+  try { p = decodeURIComponent(m[1]); } catch (_) { return null; }
+  if (p.includes('..')) return null;
+  // Cinto de segurança: só apagamos dentro das pastas de ficha, nunca fora delas.
+  if (!p.startsWith('fichas/') && !p.startsWith('fichas-locador/')) return null;
+  return p;
+}
+
+// Apaga os anexos de uma ficha. Não lança: um arquivo que já sumiu não pode
+// impedir o resto do expurgo de acontecer. Os deletes vão em paralelo — em série,
+// uma ficha com 10 anexos já custa ~1s, e 200 fichas estouram o tempo da function.
+async function _apagarAnexosDaFicha(documentos) {
+  const bucket = admin.storage().bucket(FICHA_BUCKET);
+  const caminhos = Object.values(documentos || {}).map(_caminhoDoAnexo).filter(Boolean);
+  const r = await Promise.all(caminhos.map(async (p) => {
+    try { await bucket.file(p).delete({ ignoreNotFound: true }); return 1; }
+    catch (e) { await logErro('lgpd.apagarAnexo', e, { caminho: p }); return 0; }
+  }));
+  return r.reduce((a, b) => a + b, 0);
+}
+
+async function _lgpdConfig() {
+  const snap = await db.collection('_lgpd_config').doc('retencao').get();
+  const c = snap.exists ? snap.data() : {};
+  return {
+    dias: Number.isInteger(c.dias) && c.dias >= LGPD_DIAS_MIN ? c.dias : LGPD_DIAS_PADRAO,
+    automatico: c.automatico === true
+  };
+}
+
+function _lgpdCorte(dias) {
+  return admin.firestore.Timestamp.fromMillis(Date.now() - dias * 86400000);
+}
+
+// CONTA quantas fichas passaram do prazo — o número que a tela mostra antes de
+// perguntar qualquer coisa, então ele precisa ser o número REAL, sem teto. Puxa só
+// o campo `expurgadoEm` de cada doc (select), o que deixa a leitura barata mesmo
+// com milhares de fichas — nenhum dado pessoal sai do servidor.
+//
+// Por que filtrar em memória e não no Firestore: doc que NUNCA foi expurgado não
+// tem o campo `expurgadoEm`, e no Firestore um doc sem o campo não casa com
+// comparação nenhuma (nem `== null`). Não dá pra pedir "os que não têm".
+//
+// Fichas antigas sem `criadoEm` (se houver) não entram: a comparação não as pega.
+// Isso erra pro lado seguro — deixa de apagar, nunca apaga demais.
+async function _lgpdContar(dias) {
+  const corte = _lgpdCorte(dias);
+  const porColecao = {};
+  let total = 0;
+  for (const colecao of FICHA_COLECOES) {
+    const snap = await db.collection(colecao)
+      .where('criadoEm', '<', corte)
+      .select('expurgadoEm')
+      .get();
+    const n = snap.docs.filter(d => !d.data().expurgadoEm).length;
+    porColecao[colecao] = n;
+    total += n;
+  }
+  return { fichas: total, porColecao };
+}
+
+// APLICA o expurgo, no máximo LGPD_LOTE_MAX fichas por chamada (pra não estourar o
+// tempo da function). Devolve quantas sobraram, pra tela pedir de novo.
+async function _lgpdExpurgar(dias, auth) {
+  const corte = _lgpdCorte(dias);
+  const antes = await _lgpdContar(dias);
+  const resumo = { fichas: 0, anexos: 0, restantes: 0, porColecao: {} };
+  let orcamento = LGPD_LOTE_MAX;
+
+  for (const colecao of FICHA_COLECOES) {
+    resumo.porColecao[colecao] = 0;
+    if (orcamento <= 0) continue;
+
+    // PAGINA de verdade (startAfter), não "pega os N primeiros e filtra".
+    // Como a ordem é por criadoEm asc, as já-expurgadas são justamente as MAIS
+    // ANTIGAS — numa janela fixa elas ocupariam o resultado inteiro e as fichas
+    // recém-vencidas nunca apareceriam. O expurgo pararia de funcionar em silêncio.
+    let cursor = null;
+    while (orcamento > 0) {
+      let q = db.collection(colecao)
+        .where('criadoEm', '<', corte)
+        .orderBy('criadoEm', 'asc')
+        .limit(300);
+      if (cursor) q = q.startAfter(cursor);
+      const snap = await q.get();
+      if (snap.empty) break;
+      cursor = snap.docs[snap.docs.length - 1];
+
+      const alvos = snap.docs.filter(d => !d.data().expurgadoEm).slice(0, orcamento);
+      for (const doc of alvos) {
+        resumo.anexos += await _apagarAnexosDaFicha(doc.data().documentos);
+        // Anonimiza: o dado pessoal sai, a casca do negócio fica.
+        await doc.ref.update({
+          dados: {},
+          documentos: {},
+          pendentes: [],
+          observacaoCorretor: '',
+          expurgado: true,
+          expurgadoEm: admin.firestore.FieldValue.serverTimestamp(),
+          expurgadoPor: auth?.token?.email || auth?.uid || 'automatico'
+        });
+      }
+      resumo.porColecao[colecao] += alvos.length;
+      resumo.fichas += alvos.length;
+      orcamento -= alvos.length;
+      if (snap.size < 300) break;   // acabou a coleção
+    }
+  }
+
+  resumo.restantes = Math.max(0, antes.fichas - resumo.fichas);
+  if (resumo.fichas) {
+    await registrarAudit(auth, 'expurgou_fichas_lgpd', { tipo: 'lgpd' },
+      { dias, fichas: resumo.fichas, anexos: resumo.anexos, restantes: resumo.restantes });
+  }
+  return resumo;
+}
+
+// ─── CHAVE MESTRA ─────────────────────────────────────────────────────────────
+// Enquanto isto for `false`, NENHUMA function de LGPD é exportada — nem um
+// `firebase deploy --only functions` (que o CLAUDE.md documenta, sem nome de
+// função) consegue subir isso por acidente. O firebase-functions descobre o que
+// deployar lendo os `exports` no carregamento do módulo: sem export, sem deploy.
+// Vira `true` só quando o alcance do expurgo estiver resolvido (ver o cabeçalho
+// deste bloco: falta cobrir `pessoas` e `imoveis`, pulando contrato vigente).
+const LGPD_ATIVO = false;
+
+if (LGPD_ATIVO) {
+
+// Painel do Admin: o prazo configurado e quantas fichas já passaram dele.
+// Devolve SÓ contagens — nenhum dado pessoal sai daqui.
+exports.lgpdPainel = onCall(async (req) => {
+  await exigirAdmin(req);
+  const cfg = await _lgpdConfig();
+  const dias = Number.isInteger(req.data?.dias) ? req.data.dias : cfg.dias;
+  if (dias < LGPD_DIAS_MIN) throw new HttpsError('invalid-argument', `O prazo mínimo é ${LGPD_DIAS_MIN} dias.`);
+
+  const previa = await _lgpdContar(dias);
+
+  const totais = {};
+  for (const colecao of FICHA_COLECOES) {
+    const [tudo, expurgadas] = await Promise.all([
+      db.collection(colecao).count().get(),
+      db.collection(colecao).where('expurgado', '==', true).count().get()
+    ]);
+    totais[colecao] = { total: tudo.data().count, expurgadas: expurgadas.data().count };
+  }
+
+  return { cfg, diasConsultado: dias, previa, totais, minimo: LGPD_DIAS_MIN };
+});
+
+// Salva o prazo de retenção e o interruptor do automático.
+exports.lgpdSetConfig = onCall(async (req) => {
+  await exigirAdmin(req);
+  const dias = Number(req.data?.dias);
+  const automatico = req.data?.automatico === true;
+  if (!Number.isInteger(dias) || dias < LGPD_DIAS_MIN || dias > 3650) {
+    throw new HttpsError('invalid-argument', `O prazo tem que ser um número entre ${LGPD_DIAS_MIN} e 3650 dias.`);
+  }
+  await db.collection('_lgpd_config').doc('retencao').set({
+    dias, automatico,
+    alteradoEm: admin.firestore.FieldValue.serverTimestamp(),
+    alteradoPor: req.auth?.token?.email || req.auth?.uid || ''
+  }, { merge: true });
+  await registrarAudit(req.auth, 'alterou_config_lgpd', { tipo: 'lgpd' }, { dias, automatico });
+  return { ok: true, dias, automatico };
+});
+
+// Executa o expurgo (anonimização) das fichas mais velhas que o prazo.
+// A tela sempre mostra a prévia antes — esta chamada é o "sim, pode".
+// timeoutSeconds: um lote de 200 fichas com anexos passa MUITO dos 60s padrão.
+exports.lgpdExpurgar = onCall({ timeoutSeconds: 540 }, async (req) => {
+  await exigirAdmin(req);
+  const cfg = await _lgpdConfig();
+  const dias = Number.isInteger(req.data?.dias) ? req.data.dias : cfg.dias;
+  if (dias < LGPD_DIAS_MIN) throw new HttpsError('invalid-argument', `O prazo mínimo é ${LGPD_DIAS_MIN} dias.`);
+  return await _lgpdExpurgar(dias, req.auth);
+});
+
+// Direito ao esquecimento: o titular pede, a ficha inteira sai (doc + anexos).
+// Diferente do expurgo, aqui NÃO sobra casca — é exatamente isso que ele pediu.
+exports.lgpdExcluirTitular = onCall(async (req) => {
+  await exigirAdmin(req);
+  const colecao = String(req.data?.colecao || '');
+  const fichaId = String(req.data?.fichaId || '');
+  if (!FICHA_COLECOES.includes(colecao)) throw new HttpsError('invalid-argument', 'Coleção inválida.');
+  if (!fichaId || fichaId.length > 200) throw new HttpsError('invalid-argument', 'ID da ficha inválido.');
+
+  const ref = db.collection(colecao).doc(fichaId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+
+  const anexos = await _apagarAnexosDaFicha(snap.data().documentos);
+  await ref.delete();
+  await registrarAudit(req.auth, 'excluiu_ficha_lgpd', { tipo: 'lgpd', id: fichaId },
+    { colecao, anexos, motivo: 'pedido do titular' });
+  return { ok: true, anexos };
+});
+
+// Expurgo automático mensal — dia 1, 04h. Só roda com o interruptor ligado
+// (`_lgpd_config/retencao.automatico`), que vem DESLIGADO. Enquanto estiver
+// desligado, o expurgo só acontece pelo botão do Admin.
+exports.lgpdExpurgoAutomatico = onSchedule({ schedule: '0 4 1 * *', timeZone: TZ, timeoutSeconds: 540 }, async () => {
+  const cfg = await _lgpdConfig();
+  if (!cfg.automatico) return;
+  // Roda em lotes até esvaziar (cada _lgpdExpurgar cobre até LGPD_LOTE_MAX fichas).
+  // O teto de voltas existe pra um bug nunca virar laço infinito dentro da function.
+  let voltas = 0, fichas = 0, anexos = 0, restantes = 0;
+  do {
+    const r = await _lgpdExpurgar(cfg.dias, null);
+    fichas += r.fichas; anexos += r.anexos; restantes = r.restantes;
+    if (!r.fichas) break;   // nada saiu nesta volta: para, senão gira à toa
+  } while (restantes > 0 && ++voltas < 20);
+  console.log(`[LGPD] expurgo automático: ${fichas} ficha(s), ${anexos} anexo(s), faltam ${restantes}`);
+});
+
+}  // ← fim do if (LGPD_ATIVO). Acima daqui, nada é exportado enquanto a chave for false.

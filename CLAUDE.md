@@ -102,6 +102,32 @@ firebase deploy --only functions --project remax-smart-hub
   - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).
   - Setup: Meta for Developers → Meta Business Account → cadastrar número → aprovar template de mensagem (~24h) → token na Cloud Function.
 
+### LGPD — código PRONTO, porém DESATIVADO de propósito (2026-07-14)
+Escrito e revisado, mas **não deployado** e **fora do ar** — o Nathan pediu pra deixar parado
+("não vamos colocar a lgpd agr"). Não ligar sem resolver o item que trava.
+
+- **Onde está**: bloco `LGPD` no fim do `functions/index.js` (`lgpdPainel`, `lgpdSetConfig`,
+  `lgpdExpurgar`, `lgpdExcluirTitular`, `lgpdExpurgoAutomatico`) + `carregarLgpd()` no
+  `admin-app.js` + a `<section data-aba="lgpd">` no `admin.html`. O **botão da aba está
+  comentado** no `admin.html`, então a tela é inalcançável; as functions **nunca subiram**.
+- **O que trava** (decisão do Nathan, não de código): a ficha do locador **não vive só na ficha**.
+  O gatilho `onFichaLocadorEnviadaAdmin` **copia** os dados pessoais pra `pessoas/{fichaId}_loc1|_loc2`
+  (nome, RG, **CPF**, nascimento, endereço, cônjuge) e pra `imoveis/{fichaId}` (endereço, nome do
+  locador, links dos anexos). Anonimizar **só a ficha** deixaria CPF/RG intactos no `pessoas` —
+  pior que não fazer nada, porque dá sensação de conformidade sem conformidade. Mas apagar
+  `pessoas` de imóvel com **contrato vigente** quebra a operação — e a LGPD não pede isso
+  (enquanto dura o contrato há base legal pra guardar).
+- **Caminho recomendado quando retomar**: expurgar ficha + `pessoas` + PII do imóvel, **pulando
+  os imóveis com contrato ativo** (voltam pra fila quando o contrato cair).
+- **Desenho já decidido**: *expurgo por retenção* = **anonimiza** (apaga `dados`/`documentos`/anexos,
+  mantém a casca: corretor, tipo, status, data) — o relatório não perde nada. *Exclusão a pedido do
+  titular* = **apaga tudo**. Prazo em `_lgpd_config/retencao` (padrão 730 dias, mínimo 180);
+  automático mensal com interruptor próprio, que vem OFF.
+- **Bugs já corrigidos na revisão** (não reintroduzir): `prompt()` **não existe no Electron** — a
+  confirmação digitada é um `<dialog>` (`confirmarDigitando`); a varredura **pagina com `startAfter`**
+  (uma janela fixa encheria de fichas já expurgadas — as mais antigas — e o expurgo pararia em
+  silêncio); os deletes de anexo vão em paralelo e as functions têm `timeoutSeconds: 540`.
+
 ### Dívida técnica intencional (NÃO remover sem o Nathan pedir)
 A "versão enxuta" das Locações (v1.0.90) tirou telas da UI mas deixou o código no lugar,
 porque o Nathan vai voltar nessa parte ("vão ter mais atualizações dessa parte, eu vou mecher depois").

@@ -63,6 +63,10 @@ const botSetAuto       = httpsCallable(fns, 'botSetAuto');
 const botCorrigirBug   = httpsCallable(fns, 'botCorrigirBug');
 const botAprovarAchado = httpsCallable(fns, 'botAprovarAchado');
 const botIgnorarAchado = httpsCallable(fns, 'botIgnorarAchado');
+const lgpdPainelFn       = httpsCallable(fns, 'lgpdPainel');
+const lgpdSetConfig      = httpsCallable(fns, 'lgpdSetConfig');
+const lgpdExpurgar       = httpsCallable(fns, 'lgpdExpurgar');
+const lgpdExcluirTitular = httpsCallable(fns, 'lgpdExcluirTitular');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -309,6 +313,181 @@ function ativarAba(aba) {
   });
   if (aba === 'auditoria') carregarAuditoria();
   if (aba === 'bugbot')    carregarBugBot();
+  if (aba === 'lgpd')      carregarLgpd();
+}
+
+// ─── LGPD ───────────────────────────────────────────────────────────────────
+// Duas operações que parecem a mesma e NÃO são:
+//   • Expurgo por retenção = ANONIMIZA. Apaga CPF/RG/renda e os anexos, mas deixa
+//     a casca da ficha (corretor, tipo, status, data) — o relatório não perde nada.
+//   • Exclusão a pedido do titular = APAGA TUDO. Direito ao esquecimento, sem volta.
+// A tela sempre mostra a PRÉVIA (quantas fichas) antes de perguntar qualquer coisa.
+
+const LGPD_COL_NOME = { fichas: 'Fichas (PF, PJ, vendedor, proposta, fiança…)', fichas_locador: 'Fichas do locador' };
+
+// Confirmação digitada pra operação sem volta. NÃO usar prompt(): o Electron não
+// implementa prompt() (ver hub-app.js) — ele devolve nada e a confirmação nunca
+// passaria, deixando o botão morto no .exe. Aqui é um <dialog> de verdade.
+function confirmarDigitando(titulo, aviso, palavra) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'modal';
+    dlg.innerHTML = `
+      <form method="dialog" class="modal-form">
+        <h3>${escapeHtml(titulo)}</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;line-height:1.5">${aviso}</p>
+        <label class="auth-label">Digite <strong>${escapeHtml(palavra)}</strong> pra confirmar
+          <input type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="topbar-btn" data-x="nao">Cancelar</button>
+          <button type="button" class="topbar-btn perigo" data-x="sim" disabled>Confirmar</button>
+        </div>
+      </form>`;
+    document.body.appendChild(dlg);
+    const input = dlg.querySelector('input');
+    const ok = dlg.querySelector('[data-x="sim"]');
+    input.addEventListener('input', () => { ok.disabled = input.value.trim() !== palavra; });
+    const fechar = (v) => { dlg.close(); dlg.remove(); resolve(v); };
+    ok.addEventListener('click', () => fechar(true));
+    dlg.querySelector('[data-x="nao"]').addEventListener('click', () => fechar(false));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); fechar(false); });   // Esc
+    dlg.showModal();
+    input.focus();
+  });
+}
+
+async function carregarLgpd(diasConsulta) {
+  const cont = document.getElementById('lgpdPainel');
+  if (!cont) return;
+  cont.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const { data } = await lgpdPainelFn(Number.isInteger(diasConsulta) ? { dias: diasConsulta } : {});
+    const { cfg, diasConsultado, previa, totais, minimo } = data;
+    const anos = (d) => (d / 365).toFixed(1).replace('.0', '').replace('.', ',');
+
+    const totaisHtml = Object.entries(totais).map(([col, t]) => `
+      <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-top:1px solid var(--border)">
+        <span>${escapeHtml(LGPD_COL_NOME[col] || col)}</span>
+        <span style="color:var(--text-muted)">${t.total} no total · <strong style="color:var(--text-primary)">${t.expurgadas}</strong> já anonimizadas</span>
+      </div>`).join('');
+
+    cont.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">📅 Prazo de retenção</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:2px 0 8px">Depois de quantos dias uma ficha deixa de ser necessária? Passado o prazo, os dados pessoais dela são apagados. Mínimo ${minimo} dias.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="lgpdDias" type="number" min="${minimo}" max="3650" value="${diasConsultado}" style="width:110px;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
+          <span style="font-size:12px;color:var(--text-muted)">dias (≈ ${anos(diasConsultado)} anos)</span>
+          <button class="topbar-btn" id="lgpdVer">Ver o que passou do prazo</button>
+          <button class="topbar-btn primario" id="lgpdSalvar">Salvar prazo</button>
+        </div>
+        <div id="lgpdCfgMsg" class="muted" style="font-size:11px;margin-top:6px">Prazo salvo hoje: <strong>${cfg.dias} dias</strong> · expurgo automático mensal: <strong>${cfg.automatico ? '🟢 ligado' : '⚪ desligado'}</strong></div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🧹 Fichas que já passaram de ${diasConsultado} dias</div>
+        <div style="font-size:28px;font-weight:700;margin-top:4px">${previa.fichas}${previa.restantes ? ` <span style="font-size:13px;font-weight:400;color:var(--text-muted)">+ ${previa.restantes} na fila</span>` : ''}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
+          Apagar significa <strong>anonimizar</strong>: saem o CPF, o RG, a renda, o endereço e os <strong>anexos</strong>.
+          Fica a casca — qual corretor, tipo, status e data — pra não furar os relatórios. <strong>Não tem volta.</strong>
+        </div>
+        <button class="topbar-btn perigo" id="lgpdExpurgar" style="margin-top:10px" ${previa.fichas ? '' : 'disabled'}>🧹 Anonimizar essas ${previa.fichas} fichas</button>
+        <span id="lgpdExpMsg" class="muted" style="font-size:11px;margin-left:8px"></span>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">⏱ Fazer isso sozinho, todo mês</div>
+        <div style="font-size:20px;font-weight:700;margin-top:4px">${cfg.automatico ? '🟢 Ligado' : '⚪ Desligado'}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Todo dia 1º, às 4h, anonimiza sozinho tudo que passou do prazo. Ligue só depois de rodar uma vez no botão e conferir o resultado.</div>
+        <button class="topbar-btn ${cfg.automatico ? '' : 'primario'}" id="lgpdAuto" style="margin-top:10px">${cfg.automatico ? '⚪ Desligar' : '⏱ Ligar'}</button>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🗑 Exclusão a pedido do titular</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:2px 0 8px">Quando o cliente exerce o direito ao esquecimento. Aqui a ficha sai <strong>inteira</strong> — não sobra casca. O ID aparece na URL do link da ficha.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="lgpdCol" style="font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
+            <option value="fichas">Ficha comum</option>
+            <option value="fichas_locador">Ficha do locador</option>
+          </select>
+          <input id="lgpdFichaId" type="text" placeholder="ID da ficha" style="flex:1;min-width:200px;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
+          <button class="topbar-btn perigo" id="lgpdExcluir">🗑 Excluir para sempre</button>
+        </div>
+        <div id="lgpdExcMsg" class="muted" style="font-size:11px;margin-top:6px"></div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">📦 O que existe hoje</div>
+        <div style="margin-top:6px">${totaisHtml}</div>
+      </div>`;
+
+    const lerDias = () => parseInt(document.getElementById('lgpdDias').value, 10);
+
+    document.getElementById('lgpdVer').addEventListener('click', () => {
+      const d = lerDias();
+      if (!Number.isInteger(d) || d < minimo) { alert(`O prazo mínimo é ${minimo} dias.`); return; }
+      carregarLgpd(d);
+    });
+
+    document.getElementById('lgpdSalvar').addEventListener('click', async () => {
+      const d = lerDias();
+      const msg = document.getElementById('lgpdCfgMsg');
+      try {
+        await lgpdSetConfig({ dias: d, automatico: cfg.automatico });
+        msg.textContent = '✓ Prazo salvo.';
+        carregarLgpd(d);
+      } catch (e) { msg.textContent = 'Erro: ' + e.message; }
+    });
+
+    document.getElementById('lgpdAuto').addEventListener('click', async () => {
+      const ligar = !cfg.automatico;
+      if (!confirm(ligar
+        ? `Ligar o automático? Todo dia 1º, às 4h, as fichas com mais de ${cfg.dias} dias serão anonimizadas sozinhas. Não tem volta.`
+        : 'Desligar? A partir de agora nada é apagado sem você clicar.')) return;
+      try { await lgpdSetConfig({ dias: cfg.dias, automatico: ligar }); carregarLgpd(diasConsultado); }
+      catch (e) { alert('Erro: ' + e.message); }
+    });
+
+    const btnExp = document.getElementById('lgpdExpurgar');
+    btnExp.addEventListener('click', async () => {
+      const d = lerDias();
+      // Confirmação DIGITADA de propósito: é operação sem volta, não pode sair no reflexo.
+      const ok = await confirmarDigitando(
+        `Anonimizar ${previa.fichas} ficha(s)?`,
+        `Todas as fichas com mais de <strong>${d} dias</strong>. Saem o CPF, o RG, a renda, o endereço e os <strong>anexos</strong>. Fica só a casca (corretor, tipo, status, data). <strong>Não tem volta.</strong>`,
+        'APAGAR');
+      if (!ok) return;
+      const msg = document.getElementById('lgpdExpMsg');
+      btnExp.disabled = true; msg.textContent = 'apagando...';
+      try {
+        const r = await lgpdExpurgar({ dias: d });
+        msg.textContent = `✓ ${r.data.fichas} ficha(s) anonimizada(s), ${r.data.anexos} anexo(s) apagado(s).`
+          + (r.data.restantes ? ` Faltam ${r.data.restantes} — clique de novo.` : '');
+        setTimeout(() => carregarLgpd(d), 1500);
+      } catch (e) { msg.textContent = 'Erro: ' + e.message; btnExp.disabled = false; }
+    });
+
+    document.getElementById('lgpdExcluir').addEventListener('click', async () => {
+      const colecao = document.getElementById('lgpdCol').value;
+      const fichaId = document.getElementById('lgpdFichaId').value.trim();
+      const msg = document.getElementById('lgpdExcMsg');
+      if (!fichaId) { msg.textContent = 'Informe o ID da ficha.'; return; }
+      const ok = await confirmarDigitando(
+        'Excluir a ficha para sempre?',
+        `A ficha <strong>${escapeHtml(fichaId)}</strong> sai inteira (documento + anexos). Use isto só quando o <strong>titular pedir</strong>. <strong>Não tem volta.</strong>`,
+        'EXCLUIR');
+      if (!ok) return;
+      msg.textContent = 'excluindo...';
+      try {
+        const r = await lgpdExcluirTitular({ colecao, fichaId });
+        msg.textContent = `✓ Ficha excluída (${r.data.anexos} anexo(s) apagado(s)).`;
+        document.getElementById('lgpdFichaId').value = '';
+      } catch (e) { msg.textContent = 'Erro: ' + e.message; }
+    });
+  } catch (err) {
+    cont.innerHTML = `<p class="muted">Erro ao carregar: ${escapeHtml(err.message)}</p>`;
+  }
 }
 
 // ─── Bug Bot ────────────────────────────────────────────────────────────────

@@ -34,6 +34,13 @@
         <button class="admin-nav-item" data-aba="cofre"><i class="ti ti-shield-lock"></i>Modo cofre</button>
         <button class="admin-nav-item" data-aba="auditoria"><i class="ti ti-file-search"></i>Auditoria</button>
         <button class="admin-nav-item" data-aba="bugbot"><i class="ti ti-bug"></i>Bug Bot</button>
+        <!-- LGPD: DESATIVADO a pedido do Nathan (2026-07-14). A tela e as Cloud Functions
+             existem (admin-app.js: carregarLgpd; functions/index.js: bloco LGPD), mas as
+             functions NÃO estão deployadas e este botão está fora do ar de propósito.
+             Falta decidir o alcance do expurgo: a ficha do locador é COPIADA pro `pessoas`
+             (com CPF/RG) e pro `imoveis` pelo gatilho onFichaLocadorEnviadaAdmin — limpar
+             só a ficha daria falsa sensação de conformidade. Ver CLAUDE.md. -->
+        <!-- <button class="admin-nav-item" data-aba="lgpd"><i class="ti ti-lock-access"></i>LGPD — dados dos clientes</button> -->
         <button class="admin-nav-item" data-aba="lancamento"><i class="ti ti-rocket"></i>Lançamento — Locações</button>
       </nav>
 
@@ -56,6 +63,16 @@
             </div>
           </div>
           <div id="bugbotPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="lgpd" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>LGPD — dados dos clientes</h2>
+              <p class="admin-sub">As fichas guardam <strong>CPF, RG, renda e endereço</strong>. A LGPD não deixa guardar isso pra sempre: passado o tempo em que o dado é necessário, ele tem que sair. Aqui você define esse prazo, vê o que já passou dele e manda apagar.</p>
+            </div>
+          </div>
+          <div id="lgpdPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
         </section>
 
         <section class="admin-section" data-aba="cofre" hidden>
