@@ -4,7 +4,7 @@ App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápi
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
 **Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
-**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.100** (auto-update via GitHub Releases).
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.101** (auto-update via GitHub Releases).
 
 ## Stack
 
@@ -193,7 +193,28 @@ O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável
 - **Loja (opcional)**: Capacitor/TWA pra Play Store — mas review de loja quebra o "update simultâneo".
 
 ### Infra / segurança
-- **App Check**: validar que as chamadas às Cloud Functions (inclusive fichas anônimas e portais públicos) vêm de origem legítima. reCAPTCHA Enterprise / Device Check.
+- **App Check** (2026-07-14): **LIGADO em modo OBSERVAÇÃO** — emite crachá e alimenta as métricas,
+  mas **NÃO recusa ninguém**. A imposição (`enforcementMode`) segue **OFF** de propósito.
+  - **Onde está**: `public/app-check.js` (módulo único) importado por `ficha-comum.js` (cobre PJ,
+    vendedor, fiança, locação c/ fiador, proposta), `ficha-locador.html`, `ficha-pf.html`,
+    `portal-proprietario.html`, `portal-inquilino.html`. Chave pública (site key, tipo SCORE —
+    invisível): `6Lfa9FMtAAAAAPcB1WwGieeCGF45Y5nUBCaoemDr`. Domínios: `remax-smart-hub.web.app`,
+    `.firebaseapp.com`, `localhost`. Score mínimo 0.5, TTL do crachá 1h.
+  - ⛔ **NUNCA importar no `hub-app.js` / `auth-login.js` / `admin-app.js`**: essas telas rodam em
+    `file://` dentro do `.exe`, e página `file://` não tem origem — o reCAPTCHA não teria o que
+    atestar. Pelo mesmo motivo **não dá pra impor** App Check no `criarContaComCodigo` (chamado do
+    `login.html`, que roda no `.exe`).
+  - **Só foi possível a partir da v1.0.100**, quando a ficha passou a vir do Hosting (`https://`)
+    também dentro do `.exe` — antes ela era `file://`.
+  - **Como LIGAR a recusa, quando as métricas confirmarem** (console → App Check → APIs → Cloud
+    Functions → Enforce). Alvos seguros: `salvarFichaPublica`, `portalProprietario`,
+    `portalInquilino` (só são chamados de páginas `https://`). **Antes de ligar**: confirmar no
+    console que ~100% das requisições verificadas têm crachá. Se houver tráfego legítimo sem crachá,
+    NÃO ligar — investigar.
+  - **Armadilha que custou debug**: o `PATCH .../recaptchaEnterpriseConfig` precisa de
+    `updateMask=siteKey` — mandar `updateMask=siteSecret` (campo que não existe aqui) retorna 200
+    e **não grava a chave**; o cliente então leva `400 App not registered`. Conferir sempre com um
+    `GET` depois. A config também leva alguns minutos pra propagar.
 
 #### Como testar o restore do backup (validado em 2026-07-10)
 Restaura num **2º banco do mesmo projeto**, nunca em produção. ⚠️ `gcloud firestore import` **sem**

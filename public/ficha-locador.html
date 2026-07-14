@@ -298,11 +298,13 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
+import { ligarAppCheck } from './app-check.js';
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
 
 const app = initializeApp({ apiKey:"AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8", authDomain:"remax-smart-hub.firebaseapp.com", projectId:"remax-smart-hub", storageBucket:"remax-smart-hub.firebasestorage.app", messagingSenderId:"474454438949", appId:"1:474454438949:web:ba1e10e6b343af0408fbcc" });
+ligarAppCheck(app);   // crachá do App Check — logo após o initializeApp
 const db = getFirestore(app);
 const storage = getStorage(app);
 
