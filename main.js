@@ -87,13 +87,33 @@ app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkReq
 
 // webContents.id das janelas de autologin/PWA autorizadas a aceitar cert inválido.
 const contentsComCertLiberado = new Set();
+
+// Fixa (pin) o certificado de cada site legado na 1ª vez que ele aparece — como o
+// known_hosts do SSH. Se o certificado mudar depois, REGISTRA o aviso e re-fixa
+// (confia no novo) em vez de bloquear: esses sites trocam de cert com frequência,
+// e bloquear derrubaria o autologin. O log fica de rastro caso um dia precise
+// investigar (mudança pode ser rotação legítima OU, em tese, um MITM).
+function certPinsPath() { return path.join(app.getPath('userData'), 'cert-pins.json'); }
+function lerCertPins() { try { return JSON.parse(fs.readFileSync(certPinsPath(), 'utf8')); } catch (e) { return {}; } }
+function salvarCertPins(p) { try { fs.writeFileSync(certPinsPath(), JSON.stringify(p)); } catch (e) { /* disco cheio/sem permissão — segue confiando */ } }
+
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-  if (webContents && contentsComCertLiberado.has(webContents.id)) {
-    event.preventDefault();
-    callback(true);   // confia — apenas nos sites legados de autologin/PWA
-  } else {
-    callback(false);  // verificação TLS padrão para Firebase, Google e o Hub
+  // Fora das janelas de autologin/PWA: verificação TLS padrão (Firebase, Google, o Hub).
+  if (!webContents || !contentsComCertLiberado.has(webContents.id)) { callback(false); return; }
+
+  const fingerprint = certificate && certificate.fingerprint;
+  let host; try { host = new URL(url).host; } catch (_) { host = null; }
+  if (!fingerprint || !host) { event.preventDefault(); callback(true); return; } // sem dados p/ pin: mantém o comportamento antigo
+
+  const pins = lerCertPins();
+  if (pins[host] && pins[host] !== fingerprint) {
+    // Certificado mudou desde a 1ª vez — registra e re-fixa (não bloqueia).
+    console.warn(`[cert] ${host}: certificado mudou (${pins[host]} → ${fingerprint}). Re-fixando (site legado).`);
   }
+  pins[host] = fingerprint;
+  salvarCertPins(pins);
+  event.preventDefault();
+  callback(true);
 });
 
 // ─── Auto-update via GitHub Releases ────────────────────────────────────────
