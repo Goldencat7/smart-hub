@@ -17,6 +17,19 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 
 - **Senhas dos sistemas NÃO ficam no código** — ficam no Firestore (`credentials/{siteKey}`) e só saem pela Cloud Function `getCredentials` (usuário autenticado). Autologin injeta no site e **nunca revela a senha** (campo de senha é "blindado": observer força `type=password` + bloqueia o "olho").
 - **Conta só por convite**: criação via `criarContaComCodigo` (valida código). Por isso "logado = convidado" e o `getCredentials` pode confiar em qualquer autenticado.
+  - ⚠️ **Isso SÓ é verdade porque o cadastro pelo cliente está BLOQUEADO** (fechado em 2026-07-14).
+    Até então, o endpoint público `accounts:signUp` da apiKey (que é pública e está no repo) aceitava
+    **qualquer** e-mail — um estranho criava conta sem convite, logava e o `getCredentials` entregava
+    as senhas dos sistemas. Descoberto ao investigar um alerta do GitGuardian (a apiKey NÃO é segredo;
+    o alerta é falso positivo — o buraco era o cadastro aberto, não a chave).
+  - **Trava**: Identity Platform → `config.client.permissions.disabledUserSignup = true`
+    (`PATCH .../admin/v2/projects/remax-smart-hub/config`, `updateMask=client.permissions.disabledUserSignup`).
+    Efeito: `signUp` do cliente → `ADMIN_ONLY_OPERATION`; **login** (`signInWithPassword`) intacto;
+    **convite** (`criarContaComCodigo`, Admin SDK) intacto — o Admin SDK ignora essa trava. Tudo
+    verificado por sonda em produção. Reversível (mesma chamada com `false`).
+  - **Próxima camada recomendada** (defesa em profundidade, só Cloud Functions): `criarContaComCodigo`
+    carimba uma claim `membro:true` e o `getCredentials` passa a EXIGIR essa claim, em vez de confiar
+    em "qualquer autenticado". Assim, se o cadastro reabrir por acidente, ninguém tira credencial.
 - **Admin** via custom claim `admin`. Bootstrap admin UID: `OwcT6wCrXMgJ0tPADMUdKdBB8h32` (em `functions/index.js` e `hub-app.js`).
 - **Apps restritos** (ex.: ClickSign): só aparecem pra quem o admin liberar (coleção `user_access/{uid}`). Admin libera em Admin → Usuários → Permissões.
 - **Permissões granulares por pessoa** (concedidas no painel de Admin, nunca elevação em bloco): `marketing_gerenciar` (editar Marketing — NÃO herda de admin), `ti` (Suporte), `drives_fotografia`, `analise_locador`, `loc_gestao` (vê a aba Locação inteira — Painel + Imóveis; NÃO herda de admin). Existe também `loc_beta` (antigo dark launch), hoje **inerte** — ver "Dívida técnica intencional". Perfil de Locação = claim `locRole` (gestor/administrativo/corretor) + `loc_financeiro`.
