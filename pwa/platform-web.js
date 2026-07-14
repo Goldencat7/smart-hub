@@ -36,11 +36,28 @@
   // mora em /app/. Por isso o caminho absoluto — nada de path relativo aqui.
   const RAIZ_HOSTING = '/';
 
+  // Abre em ABA NOVA, sempre — o Hub nunca é substituído pelo site que ele abriu.
+  //
+  // Por que um <a target="_blank"> e não window.open(): no celular o window.open()
+  // é tratado como pop-up e vários navegadores o bloqueiam (ou o abrem na MESMA
+  // aba, engolindo o Hub). O clique num link é o gesto que todo navegador respeita
+  // — e, no app instalado (standalone), é ele que joga o site pro navegador do
+  // celular em vez de abrir dentro da janela do Hub.
+  //
+  // rel="noopener noreferrer": a aba nova não ganha referência ao Hub
+  // (`window.opener`), então o site aberto não consegue mexer na nossa página.
   function abrirAba(url) {
-    // noopener: a aba nova não ganha referência ao Hub (window.opener).
-    const w = window.open(url, '_blank', 'noopener');
-    if (!w) alert('Seu navegador bloqueou a janela. Libere os pop-ups deste site e tente de novo.');
-    return w;
+    const u = String(url || '');
+    // Só http(s) ou caminho do próprio Hosting — nada de javascript:/data:.
+    if (!/^https?:\/\//i.test(u) && !u.startsWith('/') && !/^[\w.-]+\//.test(u)) return;
+    const a = document.createElement('a');
+    a.href = u;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.hidden = true;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   function comParams(base, params) {

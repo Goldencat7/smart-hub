@@ -55,8 +55,15 @@
   .menu-mobile-veu[hidden] { display: none; }
 
   /* Layout de 3 colunas → 1 coluna. dvh (não vh) porque a barra do navegador
-     no celular aparece/some e vh mede a tela "cheia" — corta o rodapé. */
-  .hub-layout {
+     no celular aparece/some e vh mede a tela "cheia" — corta o rodapé.
+     ⚠ `.na-agenda` (ligada na aba Agenda) e `.agenda-oculta` também definem as
+     colunas no styles.css, e com 2 classes elas GANHAM de `.hub-layout` sozinho —
+     mesmo vindo de um arquivo anterior. Sem citá-las aqui, a Agenda ficava com
+     160px reservados pra uma sidebar que no celular virou gaveta, e o conteúdo
+     todo espremido em ~215px de 375. Por isso só ELA parecia quebrada. */
+  .hub-layout,
+  .hub-layout.na-agenda,
+  .hub-layout.agenda-oculta {
     grid-template-columns: 1fr;
     height: calc(100dvh - 52px);
   }
@@ -123,16 +130,49 @@
   /* Cards de app: 2 colunas em celular comum, 1 em telas bem estreitas. */
   .hub-buttons-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 
-  /* Agenda cheia: calendário em cima, detalhe do dia embaixo. */
-  .agenda-full { flex-direction: column; gap: 14px; }
+  /* ── Agenda ─────────────────────────────────────────────────────────────
+     Calendário em cima, detalhe do dia embaixo (o styles.css já empilha). */
+  /* `align-items: flex-start` (styles.css) faz sentido lado a lado, mas empilhado
+     ele encolhe os filhos pro tamanho do conteúdo: o calendário ficava com 219px
+     de 351 no mês, e estourava pra 640 na semana. Aqui os dois ocupam a largura. */
+  .agenda-full { flex-direction: column; gap: 14px; align-items: stretch; }
+  .cal-coluna { width: 100%; min-width: 0; }
   .cal-head { grid-template-columns: 1fr; gap: 8px; }
-  .cal-acoes, .cal-visao { flex-wrap: wrap; }
+  .cal-acoes, .cal-visao { flex-wrap: wrap; justify-content: center; }
   .cal-dia-detalhe {
     position: static; max-width: none; min-width: 0; width: 100%;
     max-height: none;
   }
-  .cal-grade .cal-dia { min-height: 64px; font-size: 11px; }
-  .cal-ev-pill { font-size: 9px; padding: 1px 4px; }
+
+  /* View MÊS: 7 colunas em 375px = ~49px por dia. A pílula do evento
+     (hora + título) fica com ~6px pro título — ou seja, texto nenhum. No celular
+     ela vira um PONTO colorido (a cor já diz o tipo) e quem lê o compromisso é o
+     cartão do dia, logo abaixo — é só tocar no dia. Mesmo padrão do Google
+     Agenda no celular. */
+  .cal-grade .cal-dia { min-height: 54px; padding: 3px 2px 5px; font-size: 11px; }
+  .cal-grade .cal-ev-lista {
+    flex-direction: row; flex-wrap: wrap; justify-content: center;
+    gap: 3px; margin-top: 4px;
+  }
+  .cal-grade .cal-ev-pill {
+    width: 6px; height: 6px; padding: 0; gap: 0;
+    border-radius: 999px; flex: 0 0 auto;
+  }
+  .cal-grade .cal-ev-pill > * { display: none; }   /* esconde hora e título */
+  .cal-grade .cal-ev-mais { display: none; }       /* 3 pontos já dizem "tem coisa" */
+  /* Nome do feriado não cabe em 45px (virava "Rev…"). A célula já fica laranja e
+     o número em destaque; o nome aparece no cartão do dia. */
+  .cal-grade .cal-feriado { display: none; }
+
+  /* View SEMANA: são 8 colunas (hora + 7 dias). Espremidas em 351px cada dia fica
+     com 43px e o evento não mostra nada. Rola de lado, com os dias legíveis. */
+  .cal-grade { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* minmax(0, 1fr): sem isso o `1fr` vira `minmax(auto, 1fr)` e o título do evento
+     (que é nowrap) infla a coluna dele — os dias saem com larguras diferentes. */
+  .cal-semana-grid {
+    min-width: 640px;
+    grid-template-columns: 48px repeat(7, minmax(0, 1fr));
+  }
 
   /* Modais quase em tela cheia, e roláveis (teclado do celular come metade da tela) */
   .modal { width: min(460px, 94vw); max-height: 88dvh; }
