@@ -23,8 +23,39 @@ export default [
       'release/**', 'build/**', '.firebase/**',
       '.claude/**',                  // worktrees do Claude Code duplicam o repo
       'marketing/**',
+      'public/app/**',               // PWA gerado (é cópia do que já é lintado)
       '_*.js',                       // scratch local
     ],
+  },
+  {
+    // Scripts de build (Node puro, rodados na mão / npm run)
+    files: ['scripts/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+    rules: regras,
+  },
+  {
+    // Shim de plataforma do PWA: script clássico, roda no browser.
+    // O service worker tem os globals dele (self, caches, clients…).
+    files: ['pwa/platform-web.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'script',
+      globals: globals.browser,
+    },
+    rules: regras,
+  },
+  {
+    files: ['pwa/sw.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'script',
+      globals: globals.serviceworker,
+    },
+    rules: regras,
   },
   {
     // Módulos das páginas públicas (fichas, portais) — browser, ES modules.

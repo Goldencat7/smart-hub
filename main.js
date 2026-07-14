@@ -250,6 +250,17 @@ ipcMain.on('voltar-para-hub', () => {
   if (janelaPrincipal) janelaPrincipal.loadFile('index.html');
 });
 
+// ─── Abrir link no navegador padrão do Windows ───────────────────────────────
+// Saída de emergência do aviso de status: quando a janela nativa de um app não
+// está confiável (hoje o CheckVisto), o aviso oferece abrir o site no navegador.
+// Só http/https — qualquer outro esquema (file:, javascript:) seria abrir a porta
+// pra o shell executar coisa arbitrária.
+ipcMain.on('abrir-no-navegador', (_e, url) => {
+  const u = String(url || '');
+  if (!/^https?:\/\//i.test(u)) return;
+  shell.openExternal(u).catch(err => console.warn('Abrir no navegador:', err.message));
+});
+
 // ─── Iniciar com o Windows (lido/alterado nas Configurações) ─────────────────
 ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());

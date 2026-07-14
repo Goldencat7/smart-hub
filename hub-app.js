@@ -141,7 +141,11 @@ const APPS = [
   {
     key: 'checkvisto', categoria: 'vistoria',
     titulo: 'Smart Vistorias', icone: 'SV', desc: 'Controle de visitas',
-    url: 'https://checkvisto-app.web.app', autologin: false
+    url: 'https://checkvisto-app.web.app', autologin: false,
+    // Alternativa oferecida quando o admin marca o app como instável/indisponível:
+    // o aviso ganha um botão que abre o site no navegador padrão. É a saída
+    // enquanto a janela nativa do CheckVisto dentro do Hub não está confiável.
+    linkNavegador: 'https://checkvisto-app.web.app'
   },
   {
     key: 'alude', categoria: 'captacao',
@@ -755,27 +759,76 @@ async function carregarStatusApps() {
   }
 }
 
+// Abre uma URL no navegador PADRÃO do sistema (Chrome/Edge), não numa janela do
+// Hub. É o caminho de fuga quando a janela nativa do app não está funcionando.
+function abrirNoNavegador(url) {
+  if (window.hubApi?.abrirNoNavegador) window.hubApi.abrirNoNavegador(url);
+  else window.open(url, '_blank', 'noopener');
+}
+
+// ─── Aviso de status do app (postado pelo admin) ─────────────────────────
+// Existe em vez de alert()/confirm() porque estes não aceitam botão: quando o
+// app tem `linkNavegador`, o aviso precisa oferecer "abra pelo navegador
+// enquanto isso" (caso do CheckVisto). Resolve `true` = pode abrir no Hub.
+function avisoStatusApp(app, status) {
+  return new Promise((resolve) => {
+    const bloqueia = status === 'Indisponível' || status === 'Em manutenção';
+    const icone = status === 'Em manutenção' ? '🔧' : (bloqueia ? '⛔' : '⚠️');
+    const texto = bloqueia
+      ? `O <strong>${escapeHtml(app.titulo)}</strong> está <strong>${escapeHtml(status.toLowerCase())}</strong> no Hub no momento.`
+      : `O <strong>${escapeHtml(app.titulo)}</strong> pode apresentar instabilidade agora.`;
+
+    const dlg = document.createElement('dialog');
+    dlg.className = 'modal';
+    dlg.innerHTML = `
+      <div class="modal-form">
+        <h3>${icone} ${escapeHtml(status)}</h3>
+        <p class="app-aviso-txt">${texto}</p>
+        ${app.linkNavegador ? `
+          <div class="app-aviso-alt">
+            <p class="app-aviso-alt-txt">Use este link para acessar o app pelo navegador por enquanto:</p>
+            <button type="button" class="topbar-btn primario" data-acao="navegador">
+              🌐 Abrir no navegador ↗
+            </button>
+            <p class="muted app-aviso-url">${escapeHtml(app.linkNavegador)}</p>
+          </div>` : ''}
+        <div class="modal-actions">
+          <button type="button" class="topbar-btn" data-acao="fechar">Fechar</button>
+          ${bloqueia ? '' : '<button type="button" class="topbar-btn primario" data-acao="abrir">Abrir mesmo assim</button>'}
+        </div>
+      </div>`;
+    document.body.appendChild(dlg);
+
+    const fim = (podeAbrir) => { dlg.close(); dlg.remove(); resolve(podeAbrir); };
+    dlg.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-acao]');
+      if (!b) return;
+      if (b.dataset.acao === 'navegador') { abrirNoNavegador(app.linkNavegador); fim(false); return; }
+      fim(b.dataset.acao === 'abrir');
+    });
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); fim(false); }); // ESC
+    dlg.showModal();
+  });
+}
+
 // ─── Abrir app (com ou sem autologin) ────────────────────────────────────
 async function abrirApp(siteKey) {
   const app = APPS.find(a => a.key === siteKey);
   if (!app) return;
 
-  // Status: bloqueia (Indisponível/Em manutenção) ou avisa (Instável)
+  // Status postado pelo admin: "Indisponível"/"Em manutenção" bloqueiam a
+  // abertura no Hub; "Instável" só avisa. Nos dois casos, se o app tiver
+  // linkNavegador, o aviso oferece a alternativa pelo navegador.
   const statusAtual = statusApps[siteKey];
-  if (statusAtual) {
-    if (statusAtual === 'Indisponível' || statusAtual === 'Em manutenção') {
-      const icone = statusAtual === 'Em manutenção' ? '🔧' : '⛔';
-      alert(`${icone} ${statusAtual}\n\nEste sistema está ${statusAtual.toLowerCase()} no momento. Tente novamente mais tarde.`);
-      return;
-    }
-    // Instável: avisa mas permite abrir
-    if (!confirm(`⚠️ Instável\n\nEste sistema pode apresentar instabilidade agora. Deseja abrir mesmo assim?`)) return;
-  }
+  if (statusAtual && !(await avisoStatusApp(app, statusAtual))) return;
 
   // Registra o acesso (não bloqueia a abertura)
   registrarAcesso({ siteKey, titulo: app.titulo }).catch(() => {});
 
-  if (!app.autologin) {
+  // No PWA (celular) o autologin não existe — `hubApi.autologin` é false e o app
+  // abre como link normal, sem NUNCA pedir a senha ao getCredentials.
+  const autologinDisponivel = app.autologin && window.hubApi.autologin !== false;
+  if (!autologinDisponivel) {
     window.hubApi.abrirApp({ siteKey, url: app.url, credenciais: null });
     return;
   }

@@ -788,6 +788,17 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
+/* ── Aviso de status do app (instável / em manutenção) ─────────────── */
+.app-aviso-txt { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-primary); }
+/* Bloco do "abra pelo navegador enquanto isso" — só aparece pros apps que têm
+   um link alternativo (hoje: CheckVisto). */
+.app-aviso-alt {
+  padding: 12px; border-radius: var(--radius-card);
+  background: var(--bg); border: 1px solid var(--border);
+}
+.app-aviso-alt-txt { margin: 0 0 10px; font-size: 12px; color: var(--text-primary); }
+.app-aviso-url { margin: 8px 0 0; font-size: 11px; word-break: break-all; }
+
 /* ── Admin ──────────────────────────────────────────────────────── */
 .admin-container { max-width: 1100px; }
 .admin-section   { margin-bottom: 28px; width: 100%; }

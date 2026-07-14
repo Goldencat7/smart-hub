@@ -14,7 +14,10 @@
     "lint": "eslint .",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
-    "publish": "electron-builder --publish always"
+    "publish": "electron-builder --publish always",
+    "build:pwa": "node scripts/build-pwa.js",
+    "serve:pwa": "node scripts/serve-pwa.js",
+    "deploy:pwa": "node scripts/build-pwa.js && firebase deploy --only hosting --project remax-smart-hub"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -44,6 +47,7 @@
       "marketing/**",
       "!marketing/template/**",
       "public/**",
+      "!public/app/**",
       "!functions/**",
       "!release/**",
       "!.firebase/**",

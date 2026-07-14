@@ -5,6 +5,15 @@ contextBridge.exposeInMainWorld('hubApi', {
   // Manda o main abrir uma janela do PWA (com ou sem credenciais)
   abrirApp: (payload) => ipcRenderer.send('abrir-app', payload),
 
+  // Abre uma URL no navegador PADRÃO do Windows (não numa janela do Hub).
+  // Usado pelo aviso de status: quando a janela nativa de um app não está
+  // confiável (ex.: CheckVisto), oferecemos o site pelo navegador.
+  abrirNoNavegador: (url) => ipcRenderer.send('abrir-no-navegador', url),
+
+  // O desktop TEM autologin. No PWA (pwa/platform-web.js) esta flag é false, e
+  // é ela que impede o hub-app.js de pedir as senhas dos sistemas no celular.
+  autologin: true,
+
   // Navegação entre páginas (login → index → admin)
   voltarParaLogin: () => ipcRenderer.send('voltar-para-login'),
   abrirAdmin: () => ipcRenderer.send('abrir-admin'),

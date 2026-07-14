@@ -1,0 +1,139 @@
+/* =============================================================================
+ * mobile.css — SÓ o PWA carrega este arquivo (o .exe nunca).
+ *
+ * Ele não reescreve o layout: entra DEPOIS do styles.css e só corrige o que o
+ * desktop assume e o celular não tem (janela larga, mouse, barra de título do
+ * Electron). Em tela grande (corretor abrindo o PWA no PC) quase nada aqui vale
+ * — o Hub continua com as 3 colunas de sempre.
+ * ========================================================================== */
+
+/* ── Correções válidas em qualquer tamanho de tela ────────────────────────── */
+
+/* O espaço de 148px à direita existe pros botões de janela do Electron
+   (minimizar/maximizar/fechar). No navegador não há janela — é buraco. */
+.topbar-right { padding-right: 0; }
+
+/* Área de arrastar a janela: não existe no navegador, e atrapalha o toque. */
+.topbar, .brand-logo, .topbar-right { -webkit-app-region: initial; }
+
+/* Botão ☰ e véu da gaveta: criados pelo platform-web.js, escondidos por padrão.
+   Só aparecem na largura de celular (media query lá embaixo). */
+.menu-mobile-btn { display: none; }
+.menu-mobile-veu { display: none; }
+
+/* ── Celular / tablet estreito ────────────────────────────────────────────── */
+@media (max-width: 900px) {
+
+  /* Topbar mais alta (dedo, não mouse) e sem estourar a largura. */
+  .topbar {
+    height: auto; min-height: 52px;
+    padding: 6px 10px;
+    padding-top: calc(6px + env(safe-area-inset-top)); /* entalhe do iPhone */
+    gap: 8px; flex-wrap: nowrap;
+  }
+  .topbar-right { gap: 6px; min-width: 0; }
+  .topbar-btn { height: 34px; padding: 0 10px; font-size: 12px; }
+  .brand-logo { height: 22px; }
+  .brand-version { display: none; }
+
+  /* Botão ☰ (abre a gaveta) */
+  .menu-mobile-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; flex: 0 0 auto; padding: 0;
+    background: transparent; color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: var(--radius-btn);
+    cursor: pointer;
+  }
+
+  /* Véu escuro por trás da gaveta aberta */
+  .menu-mobile-veu {
+    display: block; position: fixed; inset: 0; z-index: 90;
+    background: rgba(0, 0, 0, 0.55);
+  }
+  .menu-mobile-veu[hidden] { display: none; }
+
+  /* Layout de 3 colunas → 1 coluna. dvh (não vh) porque a barra do navegador
+     no celular aparece/some e vh mede a tela "cheia" — corta o rodapé. */
+  .hub-layout {
+    grid-template-columns: 1fr;
+    height: calc(100dvh - 52px);
+  }
+
+  /* Sidebar vira gaveta deslizante */
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
+    width: 232px; max-width: 82vw;
+    padding-top: calc(14px + env(safe-area-inset-top));
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
+  }
+  body.menu-aberto .sidebar { transform: translateX(0); }
+  .nav-item { padding: 10px 10px; font-size: 13px; } /* alvo de toque maior */
+
+  /* Painel direito (relógio + mini calendário + próximos) sai: a categoria
+     "Agenda" já tem o calendário inteiro, e no celular ele só rouba espaço. */
+  .agenda-panel, .agenda-expand { display: none !important; }
+
+  .hub-main { padding: 12px 12px 28px; gap: 12px; }
+  .hub-main-head { gap: 8px; }
+  .search-wrap { max-width: none; flex: 1 1 100%; }
+
+  /* Cards de app: 2 colunas em celular comum, 1 em telas bem estreitas. */
+  .hub-buttons-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+
+  /* Agenda cheia: calendário em cima, detalhe do dia embaixo. */
+  .agenda-full { flex-direction: column; gap: 14px; }
+  .cal-head { grid-template-columns: 1fr; gap: 8px; }
+  .cal-acoes, .cal-visao { flex-wrap: wrap; }
+  .cal-dia-detalhe {
+    position: static; max-width: none; min-width: 0; width: 100%;
+    max-height: none;
+  }
+  .cal-grade .cal-dia { min-height: 64px; font-size: 11px; }
+  .cal-ev-pill { font-size: 9px; padding: 1px 4px; }
+
+  /* Modais quase em tela cheia, e roláveis (teclado do celular come metade da tela) */
+  .modal { width: min(460px, 94vw); max-height: 88dvh; }
+  .modal-form { max-height: 88dvh; overflow-y: auto; }
+
+  .config-card { max-width: none; }
+  .config-linha { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+  /* iOS dá zoom automático em input com fonte < 16px. Trava em 16 pra não pular. */
+  input, select, textarea { font-size: 16px !important; }
+
+  /* Tabelas largas (admin, relatórios) rolam na horizontal em vez de estourar. */
+  .admin-table, .loc-tabela-wrap { overflow-x: auto; }
+
+  /* Tela de Admin: o menu lateral de 220px + 64px de padding estouram a largura
+     de um celular (a página inteira ganhava scroll horizontal). Vira uma linha
+     de botões que quebra em várias linhas, acima do conteúdo. */
+  .admin-layout {
+    grid-template-columns: 1fr;
+    gap: 12px; padding: 12px 12px 40px;
+    height: calc(100dvh - 52px);
+  }
+  .admin-nav {
+    position: static; max-height: none;
+    flex-direction: row; flex-wrap: wrap; gap: 4px;
+  }
+  .admin-nav-grupo { width: 100%; padding: 6px 4px 2px; }
+  .admin-nav-item { flex: 0 0 auto; }
+
+  .suporte-fab {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    right: 16px;
+  }
+
+  /* Painel de notificações: colado na largura da tela, não 290px fixos. */
+  .notif-panel { width: min(300px, calc(100vw - 24px)); right: -8px; }
+}
+
+/* ── Celular estreito (iPhone SE etc.) ────────────────────────────────────── */
+@media (max-width: 520px) {
+  /* O e-mail do usuário come a topbar inteira — o avatar já identifica quem é. */
+  .user-pill { display: none; }
+  .hub-buttons-grid { grid-template-columns: 1fr 1fr; }
+  .topbar-btn { padding: 0 8px; }
+}

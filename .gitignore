@@ -52,6 +52,9 @@ coverage
 .env.*
 !.env.example
 
+# PWA gerado (npm run build:pwa monta do zero a partir do código-fonte)
+public/app/
+
 # Firebase
 .firebase/
 firebase-debug.log

@@ -31,6 +31,13 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - Catálogo em `hub-app.js` (array `APPS`): chave, categoria, título, url, `autologin`, `restrito`.
 - Config de seletores de login por site em `main.js` (objeto `configs`). Sites ASP.NET, 2 etapas, CAPTCHA são tratados lá.
 - **ClickSign**: app restrito; admin abre com login próprio; não-admin liberado usa conta compartilhada (autologin **preenche mas NÃO envia** — `naoEnviar: true` — por causa do reCAPTCHA; a pessoa resolve o captcha e clica Entrar). Credenciais por pessoa: CheckVisto e Motiva (esses não têm autologin).
+- **Aviso de status com saída pelo navegador** (v1.0.98): quando o admin marca um app como
+  *Instável/Em manutenção* (Admin → Status dos apps), o Hub mostra um **modal** (não mais `alert()`,
+  que não aceita botão). Se o app tiver `linkNavegador` no catálogo (`APPS` do `hub-app.js`), o aviso
+  oferece **"🌐 Abrir no navegador ↗"** — abre no Chrome/Edge do Windows via `shell.openExternal`
+  (IPC `abrir-no-navegador`), fora da janela do Electron. Hoje só o **CheckVisto** usa isso: a janela
+  nativa dele dentro do Hub não está confiável, então o aviso de manutenção vira também a saída.
+  Pra dar essa saída a outro app, é só acrescentar `linkNavegador` na entrada dele em `APPS`.
 
 ## Funcionalidades
 
@@ -55,6 +62,16 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - `publish.releaseType` = `release` (sai publicado, não rascunho). Não usar `npm run build` sozinho pra distribuir.
 - Link de download/instalação: `https://github.com/Goldencat7/remax-smart-hub/releases/latest`.
 - Ícone do app: `build/icon.ico`.
+
+## Deploy do PWA (celular) — separado do .exe
+
+```
+npm run deploy:pwa      # monta public/app/ e sobe pro Firebase Hosting
+```
+
+Publica em `https://remax-smart-hub.web.app/app/`. **Mexeu numa tela** (`hub-app.js`, `index.html`,
+`styles.css`, `admin*`)? Precisa dos **dois**: publicar o `.exe` (4 passos acima) **e** rodar o
+`deploy:pwa` — senão desktop e celular ficam em versões diferentes. Ver a seção do PWA nas pendências.
 
 ## Deploy das Cloud Functions (separado do .exe)
 
@@ -92,12 +109,40 @@ porque o Nathan vai voltar nessa parte ("vão ter mais atualizações dessa part
 - `admin.html`/`admin-app.js`: o painel de **Lançamento** ("Publicar para todos") e o checkbox **"Acesso de teste"** (`loc_beta`) — visíveis, porém inertes (a visibilidade da aba Locação hoje é só `loc_gestao`).
 - Cloud Functions `locFinanceiro` / `locListarAlertas` / `locRelatorios`: continuam no backend, sem tela.
 
-### App de celular (PWA) — pendência
-- **Objetivo**: ter o Hub no celular **sem** autologin (a pessoa não precisa do login automático no cell). Dados já chegam simultâneos nos dois (Firestore é tempo real).
-- **Caminho recomendado (PWA)**: mover a UI compartilhada (`index.html` + `hub-app.js` + `styles.css` + lógica) pro **Firebase Hosting**; o Electron vira casca que faz `loadURL(hosting)` e mantém só o autologin nativo. Assim `firebase deploy --only hosting` atualiza **desktop + celular juntos** (só o .exe é republicado quando mexer no autologin).
-- **Precisa**: "shim de plataforma" (`if (window.hubApi) {…Electron…} else {…web…}`) pra esconder/adaptar autologin, `printToPDF`, janelas nativas no celular; `manifest.json` + service worker pra virar PWA instalável.
-- **NÃO ter no celular**: autologin nos sistemas externos (impossível/reprovado em loja), abertura de janelas nativas, download de ficha via printToPDF (usar compartilhar/imprimir do próprio celular).
-- **Loja (opcional)**: Capacitor/TWA pra Play Store/App Store — mas review da loja quebra o "update simultâneo", então PWA primeiro.
+### App de celular (PWA) — Fase 1 PRONTA (2026-07-14), falta publicar
+O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável). Não existe
+"código do celular": as telas são **as mesmas** do `.exe` (`index.html`, `hub-app.js`, `styles.css`,
+`admin.html`, `login.html`). Quem muda é a **ponte**, não a tela.
+
+- **Como funciona**: `scripts/build-pwa.js` copia as telas pra `public/app/` e pluga 3 coisas que só
+  a web precisa (tudo em `pwa/`, nada disso vai no `.exe`):
+  - **`pwa/platform-web.js`** — reimplementa `window.hubApi` (a ponte que o `preload.js` dá no
+    Electron) em cima do navegador: `abrirApp`→aba nova, `abrirFicha`→aba, `baixarFichaPDF`→abre a
+    ficha (o celular imprime/salva em PDF), `voltarParaHub`→navegação. Também vira a sidebar em
+    **gaveta** (botão ☰) e registra o service worker.
+  - **`pwa/mobile.css`** — só ajustes de tela pequena (entra depois do `styles.css`). Em tela grande
+    quase nada vale: abrir o PWA no PC dá o Hub de 3 colunas de sempre.
+  - **`pwa/manifest.webmanifest` + `pwa/sw.js` + `pwa/icons/`** — instalável e rápido no 4G. O SW
+    cacheia **só o casco** (HTML/CSS/JS/ícones); Firestore/Functions/Auth passam **sempre** pela rede.
+- **⚠ AUTOLOGIN NÃO EXISTE NO PWA — de propósito.** O contrato é a flag `hubApi.autologin`
+  (`true` no `preload.js`, `false` no `platform-web.js`). Com ela `false`, o `abrirApp()` do
+  `hub-app.js` **nunca** chama o `getCredentials` → **nenhuma senha de sistema trafega pro celular**.
+  Os apps continuam listados, mas abrem como link normal e a pessoa entra com o login dela.
+  **Não "consertar" isso**: injetar senha em site de terceiro é impossível na web e reprovado em loja.
+- **Só no desktop** (escondidos no celular pelo `platform-web.js`): autologin, "Iniciar com o Windows",
+  "Conectar Google Agenda" (o OAuth usa servidor loopback, que não existe no navegador),
+  "Verificar atualização" (o PWA se atualiza sozinho).
+- **Comandos**: `npm run build:pwa` (monta) · `npm run serve:pwa` (testa em `localhost:5055/app/`)
+  · `npm run deploy:pwa` (monta + `firebase deploy --only hosting`).
+- **`public/app/` é gerado** — está no `.gitignore` e fora do `.exe` (`!public/app/**` no `package.json`).
+  Nunca editar lá dentro: editar a fonte na raiz (ou em `pwa/`) e rodar o build.
+- **Verificado** (localhost, viewport 375×812): login redireciona certo pelo shim, `autologin:false`,
+  SW ativo no escopo `/app/`, manifest com 3 ícones, gaveta abre/fecha, sem scroll horizontal.
+  **Falta**: `npm run deploy:pwa` + testar no celular de verdade (login, 2FA, fichas).
+- **Fase 2 (opcional)**: o Electron virar casca que faz `loadURL(hosting)` — aí
+  `firebase deploy --only hosting` atualiza **desktop + celular juntos** e o `.exe` só é republicado
+  quando mexer no autologin. Hoje ainda são dois deploys (o `.exe` carrega os arquivos do disco).
+- **Loja (opcional)**: Capacitor/TWA pra Play Store — mas review de loja quebra o "update simultâneo".
 
 ### Infra / segurança
 - **App Check**: validar que as chamadas às Cloud Functions (inclusive fichas anônimas e portais públicos) vêm de origem legítima. reCAPTCHA Enterprise / Device Check.
