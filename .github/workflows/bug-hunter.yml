@@ -34,14 +34,16 @@ jobs:
 
       - name: Claude procura bugs (só diagnóstico, não corrige)
         uses: anthropics/claude-code-action@v1
+        # Se estourar o teto de turnos, o passo falha mas o ACHADOS.json parcial
+        # (gravado incrementalmente) ainda é entregue pelo passo seguinte.
+        continue-on-error: true
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         with:
-          show_full_output: true   # TEMP: debug — remover depois (log é público)
           # Sem agentes em background nem wakeup: em modo automação a sessão morre
           # quando o loop principal para — agente assíncrono nunca volta, e a run
           # terminava "com sucesso" sem gravar o ACHADOS.json (bug de 14/07).
-          claude_args: "--max-turns 40 --permission-mode acceptEdits --disallowedTools Agent Task ScheduleWakeup"
+          claude_args: "--max-turns 60 --permission-mode acceptEdits --disallowedTools Agent Task ScheduleWakeup"
           prompt: |
             Você é um caçador de bugs no projeto REMAX Smart Hub (app Electron + Firebase).
             Sua missão HOJE é só ENCONTRAR bugs — você NÃO deve corrigir nada nesta sessão.
@@ -66,10 +68,12 @@ jobs:
             agentes em segundo plano nem espere por tarefas assíncronas — nesta automação
             a sessão termina quando você para, e nada assíncrono volta.
 
-            RESULTADO OBRIGATÓRIO — a sua ÚLTIMA AÇÃO nesta sessão DEVE ser usar a ferramenta
-            Write para gravar o arquivo `ACHADOS.json` na raiz do repositório. Essa é a única
-            saída que conta: responder em texto NÃO vale, e terminar sem gravar o arquivo faz a
-            run inteira falhar. Se não encontrou nenhum bug, grave um array vazio: `[]`.
+            RESULTADO OBRIGATÓRIO — o arquivo `ACHADOS.json` na raiz do repositório é a única
+            saída que conta (responder em texto NÃO vale). Trabalhe INCREMENTALMENTE:
+            1. PRIMEIRA AÇÃO da sessão: grave `ACHADOS.json` com `[]` (Write).
+            2. A cada bug que você CONFIRMAR no código, reescreva o arquivo já incluindo ele —
+               não acumule pra gravar só no final (se a sessão for cortada, o parcial vale).
+            3. Termine quando cobrir as áreas prioritárias ou atingir 5 achados.
             Formato — um array JSON (máximo 5 itens, os mais graves primeiro):
             [
               {
