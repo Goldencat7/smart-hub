@@ -4,7 +4,7 @@ App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápi
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
 **Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
-**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.98** (auto-update via GitHub Releases).
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.99** (auto-update via GitHub Releases).
 
 ## Stack
 
@@ -204,6 +204,7 @@ embute o nome do banco — comparar texto cru dá falso positivo em tudo.
     3. `firebase deploy --only functions:botCorrigirBug,functions:onErroParaBot`.
   - **Testar sem esperar bug real**: aba **Actions → Bug Fix Bot → Run workflow** (input `descricao`) — não precisa nem do PAT nem da Cloud Function. O `botCorrigirBug` (admin) é o disparo manual pelo backend; o auto só liga quando você criar `_bot_config/bugfix` com `habilitado:true`.
   - **Substrato**: escolhido GitHub Actions (sempre-ligado, zero manutenção) em vez do PC da empresa. O PC só entraria como *self-hosted runner* se quiser evitar minutos do Actions.
-  - **Falta (opcional)**: botão no Admin pra disparar o `botCorrigirBug` sem abrir o GitHub; ligar o reativo (`onErroParaBot` via `_bot_config/bugfix.habilitado:true`) quando confiar. (A varredura proativa e a Fase 2 inteira — e-mail + página de aprovação — já estão prontas e no ar.)
+  - **Painel no Admin** (v1.0.99): aba **Admin → Bug Bot**. Junta num lugar só o que antes exigia abrir o e-mail, o GitHub ou o Firestore na mão: os achados da última varredura (com **"Autorizar correção"** — mesmo efeito do link do e-mail, porque a function devolve o `token` do lote pro admin), **"Pedir correção agora"** (texto livre → `botCorrigirBug`), o **interruptor do automático** (`_bot_config/bugfix.habilitado`, o kill switch do `onErroParaBot` — vem OFF) e os **15 erros mais recentes** de `_erros`, cada um com um botão "Corrigir". Functions novas: `botPainel` e `botSetAuto` (ambas `exigirAdmin`).
+  - **Onde a varredura das 00h NÃO passa**: ela é do GitHub Actions (cron `17 3 * * *` UTC = **00:17 de Brasília**; o minuto quebrado é de propósito — às 03:00 cheias o Actions congestiona e atrasa o cron em 1–2h). Ela roda independente do interruptor do Admin, que só governa o disparo **reativo a erro**.
 
 - **Refatoração de arquivos monolíticos**: `hub-app.js` e `functions/index.js` têm milhares de linhas. Quebrar em módulos menores facilita manutenção e reduz risco de regressão.

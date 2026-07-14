@@ -4293,3 +4293,60 @@ exports.botIgnorarAchado = onCall(async (req) => {
   }
   return { ok: true };
 });
+
+// ─── Painel do Bug Bot no Admin ───────────────────────────────────────────────
+// Junta num lugar só o que antes exigia abrir o e-mail, o GitHub ou o Firestore:
+// a última varredura (com o token, pra aprovar direto do Hub), os erros recentes
+// e o estado do disparo automático. Não faz nada novo — só dá tela pro que existe.
+
+exports.botPainel = onCall(async (req) => {
+  await exigirAdmin(req);
+
+  const cfgSnap = await db.collection('_bot_config').doc('bugfix').get();
+  const autoHabilitado = cfgSnap.exists && cfgSnap.data().habilitado === true;
+
+  // Última varredura do caça-bugs. O `token` vai junto de propósito: é a mesma
+  // credencial do link do e-mail, e quem está aqui já passou pelo exigirAdmin.
+  let ultimoLote = null;
+  const loteSnap = await db.collection('_bot_achados')
+    .orderBy('criadoEm', 'desc').limit(1).get();
+  if (!loteSnap.empty) {
+    const d = loteSnap.docs[0].data();
+    ultimoLote = {
+      token: d.token,
+      criadoEm: d.criadoEm?.toDate?.()?.toISOString?.() || null,
+      achados: (d.achados || []).map((a, i) => ({ idx: i, ...a }))
+    };
+  }
+
+  // Erros recentes das Cloud Functions (o relatorioErrosDiario limpa > 7 dias).
+  const errosSnap = await db.collection('_erros')
+    .orderBy('timestamp', 'desc').limit(15).get();
+  const erros = errosSnap.docs.map(doc => {
+    const e = doc.data();
+    return {
+      id: doc.id,
+      funcao: e.funcao || '',
+      mensagem: String(e.mensagem || '').slice(0, 300),
+      quando: e.timestamp?.toDate?.()?.toISOString?.() || null
+    };
+  });
+
+  return { autoHabilitado, ultimoLote, erros };
+});
+
+// Liga/desliga o disparo AUTOMÁTICO em cima de erro (o kill switch que o
+// onErroParaBot lê). A varredura das 00:17 é do GitHub Actions e não passa por
+// aqui — ela roda de qualquer jeito e só manda e-mail; quem decide continua sendo
+// você. O que este botão libera é o bot abrir PR sozinho quando um erro estoura.
+exports.botSetAuto = onCall(async (req) => {
+  await exigirAdmin(req);
+  const habilitado = req.data?.habilitado === true;
+  await db.collection('_bot_config').doc('bugfix').set({
+    habilitado,
+    alteradoEm: admin.firestore.FieldValue.serverTimestamp(),
+    alteradoPor: req.auth?.token?.email || req.auth?.uid || ''
+  }, { merge: true });
+  await registrarAudit(req.auth, 'alterou_bugbot_auto', { tipo: 'bugbot' }, { habilitado });
+  return { ok: true, habilitado };
+});

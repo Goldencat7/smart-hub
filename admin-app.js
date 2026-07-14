@@ -58,6 +58,11 @@ const excluirChamado   = httpsCallable(fns, 'excluirChamado');
 // que tem escopo próprio e não enxerga funções declaradas nos outros renderers.
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 const listarAuditoria  = httpsCallable(fns, 'listarAuditoria');
+const botPainel        = httpsCallable(fns, 'botPainel');
+const botSetAuto       = httpsCallable(fns, 'botSetAuto');
+const botCorrigirBug   = httpsCallable(fns, 'botCorrigirBug');
+const botAprovarAchado = httpsCallable(fns, 'botAprovarAchado');
+const botIgnorarAchado = httpsCallable(fns, 'botIgnorarAchado');
 
 // Estrutura de treinamentos (espelho do hub-app.js)
 const TREINAMENTO_CATS = [
@@ -303,6 +308,134 @@ function ativarAba(aba) {
     b.classList.toggle('ativo', b.dataset.aba === aba);
   });
   if (aba === 'auditoria') carregarAuditoria();
+  if (aba === 'bugbot')    carregarBugBot();
+}
+
+// ─── Bug Bot ────────────────────────────────────────────────────────────────
+// Três coisas que antes exigiam abrir o e-mail, o GitHub ou o Firestore na mão:
+//   1. os achados da última varredura, com "Autorizar correção" (abre o PR);
+//   2. pedir uma correção na hora, descrevendo o bug;
+//   3. o interruptor do disparo automático em cima de erro (vem desligado).
+// Em nenhum caminho o bot faz merge, sobe versão ou publica — ele só abre PR.
+
+const BUG_COR = { alta: '#DC1C2E', media: '#b45309', baixa: '#6b7280' };
+
+async function carregarBugBot() {
+  const cont = document.getElementById('bugbotPainel');
+  if (!cont) return;
+  cont.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const { data } = await botPainel();
+    const { autoHabilitado, ultimoLote, erros } = data;
+
+    const pendentes = (ultimoLote?.achados || []).filter(a => a.estado !== 'descartado');
+    const achadosHtml = !ultimoLote
+      ? '<p class="muted" style="font-size:12px;margin:0">Nenhuma varredura ainda. A primeira roda hoje à meia-noite.</p>'
+      : !pendentes.length
+        ? '<p class="muted" style="font-size:12px;margin:0">Nada pendente da última varredura. 🎉</p>'
+        : pendentes.map(a => {
+            const aprovado = a.estado === 'aprovado';
+            return `
+            <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--surface)">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:9px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:999px;color:#fff;background:${BUG_COR[a.gravidade] || BUG_COR.baixa}">${escapeHtml(a.gravidade || '?')}</span>
+                <strong style="font-size:13px">${escapeHtml(a.titulo || '')}</strong>
+              </div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px">${escapeHtml(a.resumo || '')}</div>
+              ${a.arquivo ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;font-family:monospace">${escapeHtml(a.arquivo)}</div>` : ''}
+              <div style="display:flex;gap:6px;margin-top:8px">
+                ${aprovado
+                  ? '<span style="font-size:11px;color:#16a34a;font-weight:600">✓ correção autorizada — o PR está a caminho</span>'
+                  : `<button class="topbar-btn primario bb-aprovar" data-idx="${a.idx}" style="font-size:11px">✓ Autorizar correção</button>
+                     <button class="topbar-btn bb-ignorar" data-idx="${a.idx}" style="font-size:11px">Ignorar</button>`}
+              </div>
+            </div>`;
+          }).join('');
+
+    const errosHtml = !erros.length
+      ? '<p class="muted" style="font-size:12px;margin:0">Nenhum erro registrado nos últimos 7 dias. 🎉</p>'
+      : erros.map(e => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;font-family:monospace">${escapeHtml(e.funcao)}</div>
+            <div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(e.mensagem)}</div>
+          </div>
+          <span style="font-size:10px;color:var(--text-muted);white-space:nowrap">${e.quando ? fmtDataHora(e.quando) : ''}</span>
+          <button class="topbar-btn bb-corrigir-erro" data-id="${escapeHtml(e.id)}" style="font-size:11px;flex-shrink:0">🔧 Corrigir</button>
+        </div>`).join('');
+
+    cont.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🔎 Última varredura</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:2px 0 10px">${ultimoLote?.criadoEm ? fmtDataHora(ultimoLote.criadoEm) : 'ainda não rodou'} · roda sozinha todo dia à meia-noite</div>
+        ${achadosHtml}
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🔧 Pedir uma correção agora</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:2px 0 8px">Descreva o problema como você o vê. O robô lê o código, corrige num branch separado e abre um Pull Request.</div>
+        <textarea id="bbDescricao" rows="3" placeholder="Ex.: na aba Agenda, o botão Hoje some depois de trocar de mês." style="width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary);resize:vertical"></textarea>
+        <button class="topbar-btn primario" id="bbPedir" style="margin-top:8px">Pedir correção</button>
+        <span id="bbMsg" class="muted" style="font-size:11px;margin-left:8px"></span>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:12px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">⚡ Corrigir sozinho quando um erro estourar</div>
+        <div style="font-size:20px;font-weight:700;margin-top:4px">${autoHabilitado ? '🟢 Ligado' : '⚪ Desligado'}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Com isso ligado, quando uma Cloud Function quebra o robô abre um PR sozinho, sem te perguntar. Mesmo assim ele <strong>não</strong> faz merge — e há limite de 1 PR por tipo de erro a cada 24h. A varredura da meia-noite <strong>não</strong> depende disto.</div>
+        <button class="topbar-btn ${autoHabilitado ? '' : 'primario'}" id="bbAuto" style="margin-top:10px">${autoHabilitado ? '⚪ Desligar' : '⚡ Ligar'}</button>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">🐞 Erros recentes das Cloud Functions</div>
+        <div style="font-size:12px;color:var(--text-muted);margin:2px 0 6px">Últimos 15. Some sozinho depois de 7 dias.</div>
+        ${errosHtml}
+      </div>`;
+
+    const token = ultimoLote?.token;
+    cont.querySelectorAll('.bb-aprovar').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Autorizar a correção deste bug? O robô vai abrir um Pull Request — nada é publicado sem você mergear.')) return;
+      b.disabled = true; b.textContent = 'abrindo PR...';
+      try { await botAprovarAchado({ token, idx: Number(b.dataset.idx) }); carregarBugBot(); }
+      catch (e) { alert('Erro: ' + e.message); b.disabled = false; b.textContent = '✓ Autorizar correção'; }
+    }));
+    cont.querySelectorAll('.bb-ignorar').forEach(b => b.addEventListener('click', async () => {
+      b.disabled = true;
+      try { await botIgnorarAchado({ token, idx: Number(b.dataset.idx) }); carregarBugBot(); }
+      catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
+    }));
+    cont.querySelectorAll('.bb-corrigir-erro').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Pedir pro robô corrigir este erro? Ele abre um Pull Request pra você revisar.')) return;
+      b.disabled = true; b.textContent = 'abrindo PR...';
+      try { await botCorrigirBug({ erroId: b.dataset.id }); b.textContent = '✓ PR a caminho'; }
+      catch (e) { alert('Erro: ' + e.message); b.disabled = false; b.textContent = '🔧 Corrigir'; }
+    }));
+
+    const btnPedir = document.getElementById('bbPedir');
+    btnPedir.addEventListener('click', async () => {
+      const descricao = document.getElementById('bbDescricao').value.trim();
+      const msg = document.getElementById('bbMsg');
+      if (!descricao) { msg.textContent = 'Escreva o que está errado.'; return; }
+      btnPedir.disabled = true; msg.textContent = 'acionando o robô...';
+      try {
+        await botCorrigirBug({ descricao });
+        msg.textContent = '✓ Pedido enviado. O PR aparece no GitHub em alguns minutos.';
+        document.getElementById('bbDescricao').value = '';
+      } catch (e) { msg.textContent = 'Erro: ' + e.message; }
+      finally { btnPedir.disabled = false; }
+    });
+
+    document.getElementById('bbAuto').addEventListener('click', async () => {
+      const ligar = !autoHabilitado;
+      if (!confirm(ligar
+        ? 'Ligar o automático? Quando uma Cloud Function quebrar, o robô vai abrir um Pull Request sozinho (sem merge, sem publicar).'
+        : 'Desligar o automático? O robô só vai corrigir quando VOCÊ pedir.')) return;
+      try { await botSetAuto({ habilitado: ligar }); carregarBugBot(); }
+      catch (e) { alert('Erro: ' + e.message); }
+    });
+  } catch (err) {
+    cont.innerHTML = `<p class="muted">Erro ao carregar: ${escapeHtml(err.message)}</p>`;
+  }
 }
 
 const AUDIT_LABEL = {

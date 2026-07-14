@@ -33,6 +33,7 @@
         <div class="admin-nav-grupo">Sistema</div>
         <button class="admin-nav-item" data-aba="cofre"><i class="ti ti-shield-lock"></i>Modo cofre</button>
         <button class="admin-nav-item" data-aba="auditoria"><i class="ti ti-file-search"></i>Auditoria</button>
+        <button class="admin-nav-item" data-aba="bugbot"><i class="ti ti-bug"></i>Bug Bot</button>
         <button class="admin-nav-item" data-aba="lancamento"><i class="ti ti-rocket"></i>Lançamento — Locações</button>
       </nav>
 
@@ -45,6 +46,16 @@
             </div>
           </div>
           <div id="lancamentoLocacoes" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="bugbot" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Bug Bot</h2>
+              <p class="admin-sub">Todo dia à <strong>meia-noite</strong> o robô varre o código atrás de bugs e te manda um e-mail. Ele <strong>nunca</strong> corrige, publica ou faz merge sozinho: quando você autoriza, ele abre um <strong>Pull Request</strong> pra você revisar no GitHub.</p>
+            </div>
+          </div>
+          <div id="bugbotPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
         </section>
 
         <section class="admin-section" data-aba="cofre" hidden>
