@@ -11,7 +11,10 @@ name: Caça-Bugs Diário
 
 on:
   schedule:
-    - cron: '0 3 * * *'   # 03:00 UTC = 00:00 em Brasília (sem horário de verão)
+    # 03:17 UTC = 00:17 em Brasília (sem horário de verão). O minuto "quebrado" é
+    # de propósito: horário cheio (03:00) é o slot mais disputado do Actions e o
+    # GitHub chega a atrasar o cron 1-2h; fora do pico o atraso cai bastante.
+    - cron: '17 3 * * *'
   workflow_dispatch: {}    # permite rodar manualmente pra testar
 
 permissions:
@@ -56,8 +59,11 @@ jobs:
             NÃO rode comandos de shell (npm/node/npx) — ficam bloqueados neste ambiente.
             Trabalhe só lendo arquivos (Read/Grep/Glob) e escrevendo o resultado.
 
-            RESULTADO OBRIGATÓRIO — grave o arquivo `ACHADOS.json` na raiz, um array JSON
-            (máximo 5 itens, os mais graves primeiro; array vazio `[]` se não achou nada):
+            RESULTADO OBRIGATÓRIO — a sua ÚLTIMA AÇÃO nesta sessão DEVE ser usar a ferramenta
+            Write para gravar o arquivo `ACHADOS.json` na raiz do repositório. Essa é a única
+            saída que conta: responder em texto NÃO vale, e terminar sem gravar o arquivo faz a
+            run inteira falhar. Se não encontrou nenhum bug, grave um array vazio: `[]`.
+            Formato — um array JSON (máximo 5 itens, os mais graves primeiro):
             [
               {
                 "titulo": "frase curta do problema",
@@ -74,9 +80,11 @@ jobs:
         run: |
           set -e
           if [ ! -f ACHADOS.json ]; then
-            echo "Claude não gerou ACHADOS.json — nada a entregar."
-            echo "> ⚠️ Sem ACHADOS.json nesta run." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+            # Sem arquivo = defeito na varredura (não é "zero bugs"). Falha a run de
+            # propósito pra ficar visível — silêncio deve significar só "nada achado".
+            echo "::error::Claude terminou sem gravar ACHADOS.json — varredura inválida."
+            echo "> ❌ Sem ACHADOS.json nesta run — varredura inválida (não é 'zero bugs')." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
           # Valida o JSON e conta os achados
           COUNT=$(node -p "const a=JSON.parse(require('fs').readFileSync('ACHADOS.json','utf8')); Array.isArray(a)?a.length:-1")
