@@ -821,6 +821,14 @@ async function abrirApp(siteKey) {
   // linkNavegador, o aviso oferece a alternativa pelo navegador.
   const statusAtual = statusApps[siteKey];
   if (statusAtual && !(await avisoStatusApp(app, statusAtual))) return;
+  // O aviso é assíncrono (diferente do confirm() antigo, que congelava tudo):
+  // enquanto ele estava aberto, o refresh de 3 min pode ter piorado o status.
+  // Re-checa antes de abrir — "Abrir mesmo assim" não vale pra app bloqueado.
+  const statusAgora = statusApps[siteKey];
+  if (statusAgora === 'Indisponível' || statusAgora === 'Em manutenção') {
+    if (statusAgora !== statusAtual) await avisoStatusApp(app, statusAgora);
+    return;
+  }
 
   // Registra o acesso (não bloqueia a abertura)
   registrarAcesso({ siteKey, titulo: app.titulo }).catch(() => {});

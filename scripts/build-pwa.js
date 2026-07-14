@@ -116,7 +116,9 @@ for (const arq of SO_WEB) {
 // Service worker: o nome do cache carrega versão + carimbo do build. O carimbo é o
 // que garante que um deploy de correção (mesma versão do package.json) chegue no
 // celular — sem ele o cache antigo continuaria valendo.
-const BUILD = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12); // AAAAMMDDHHMM
+// AAAAMMDDHHMMSS — com segundos: dois deploys no mesmo minuto ganharem o mesmo
+// nome de cache faria o segundo não chegar em ninguém.
+const BUILD = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
 const sw = fs.readFileSync(path.join(RAIZ, 'pwa', 'sw.js'), 'utf8')
   .replace('__VERSAO__', VERSAO)
   .replace('__BUILD__', BUILD);

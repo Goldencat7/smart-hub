@@ -26,7 +26,11 @@
   'use strict';
 
   // Injetado pelo scripts/build-pwa.js (fica igual à versão do package.json).
-  const VERSAO = (window.__HUB_VERSAO__ || '0.0.0') + ' (web)';
+  // SEM sufixo "(web)": o hub-app.js compara essa string com versões gravadas no
+  // Firestore (ex.: locacoesPublicadaEm) — um sufixo quebraria a igualdade e, se
+  // um admin publicasse pelo celular, gravaria uma versão que o desktop nunca
+  // casa. O selo "web" vai na topbar, só visual (marcarComoWeb abaixo).
+  const VERSAO = window.__HUB_VERSAO__ || '0.0.0';
 
   // As fichas/calculadoras moram na RAIZ do Hosting (public/), enquanto o Hub em si
   // mora em /app/. Por isso o caminho absoluto — nada de path relativo aqui.
@@ -125,7 +129,19 @@
   document.addEventListener('DOMContentLoaded', () => {
     esconderSoDesktop();
     montarMenuMobile();
+    marcarComoWeb();
   });
+
+  // Selo "web" ao lado da versão na topbar — só visual (a versão em si fica
+  // limpa, ver o comentário do VERSAO no topo).
+  function marcarComoWeb() {
+    const versaoEl = document.getElementById('appVersion');
+    if (!versaoEl) return;
+    const selo = document.createElement('span');
+    selo.className = 'brand-version';
+    selo.textContent = '· web';
+    versaoEl.after(selo);
+  }
 
   function esconderSoDesktop() {
     // "Iniciar com o Windows" e "Conectar Google" não têm equivalente no celular.
@@ -147,7 +163,16 @@
   function montarMenuMobile() {
     const layout = document.querySelector('.hub-layout');
     const marca = document.querySelector('.topbar .brand');
-    if (!layout || !marca || document.getElementById('btnMenuMobile')) return;
+    if (document.getElementById('btnMenuMobile')) return;
+    if (!layout || !marca) {
+      // login.html/admin.html não têm .hub-layout — silêncio é o esperado. Mas no
+      // index a falta significa que alguém renomeou a estrutura no HTML
+      // compartilhado e o celular ficou SEM MENU — grita no console.
+      if (/index\.html$|\/app\/?$/.test(location.pathname)) {
+        console.error('[pwa] estrutura esperada não encontrada (.hub-layout/.brand) — o menu ☰ não foi criado. O index.html mudou?');
+      }
+      return;
+    }
 
     const btn = document.createElement('button');
     btn.id = 'btnMenuMobile';

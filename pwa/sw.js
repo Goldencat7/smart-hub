@@ -23,6 +23,7 @@ const CASCO = [
   './',
   './index.html',
   './login.html',
+  './admin.html',   // sem ele, abrir o Admin offline caía no fallback e servia o index no lugar
   './styles.css',
   './mobile.css',
   './platform-web.js',
@@ -49,10 +50,12 @@ self.addEventListener('activate', (evt) => {
   );
 });
 
-// Domínios do SDK do Firebase (CDN). Guardamos em cache porque sem eles a tela
-// nem carrega — mas as CHAMADAS de dados (googleapis.com) ficam de fora.
-function ehSdkFirebase(url) {
-  return url.hostname === 'www.gstatic.com' && url.pathname.includes('/firebasejs/');
+// CDNs imutáveis que a tela precisa pra carregar: o SDK do Firebase (a versão
+// está no caminho — o conteúdo nunca muda) e a fonte de ícones do Admin.
+// As CHAMADAS de dados (googleapis.com, cloudfunctions.net) ficam de fora.
+function ehCdnImutavel(url) {
+  return (url.hostname === 'www.gstatic.com' && url.pathname.includes('/firebasejs/'))
+    || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('/@tabler/'));
 }
 
 self.addEventListener('fetch', (evt) => {
@@ -64,7 +67,23 @@ self.addEventListener('fetch', (evt) => {
 
   // Dados e autenticação SEMPRE pela rede — sem cache, sem interceptar.
   // (firestore.googleapis.com, *.cloudfunctions.net, identitytoolkit, storage…)
-  if (!mesmaOrigem && !ehSdkFirebase(url)) return;
+  if (!mesmaOrigem && !ehCdnImutavel(url)) return;
+
+  // CDN imutável (SDK/fonte com a versão no caminho): cache primeiro, sem
+  // revalidar — re-baixar centenas de KB a cada abertura no 4G seria jogar
+  // fora exatamente o que o service worker existe pra economizar.
+  if (!mesmaOrigem) {
+    evt.respondWith(
+      caches.match(req).then(emCache => emCache || fetch(req).then(resp => {
+        if (resp && resp.status === 200) {
+          const copia = resp.clone();
+          caches.open(CACHE).then(c => c.put(req, copia)).catch(() => {});
+        }
+        return resp;
+      }))
+    );
+    return;
+  }
 
   // Navegação (abrir/atualizar a página): rede primeiro, cache como plano B.
   // Assim uma versão nova no Hosting aparece na hora que a pessoa abre o app.
@@ -72,8 +91,12 @@ self.addEventListener('fetch', (evt) => {
     evt.respondWith(
       fetch(req)
         .then(resp => {
-          const copia = resp.clone();
-          caches.open(CACHE).then(c => c.put(req, copia)).catch(() => {});
+          // Só guarda resposta boa: cachear um 404/500/redirect de um deploy no
+          // meio do caminho deixaria a página quebrada como fallback offline.
+          if (resp && resp.ok) {
+            const copia = resp.clone();
+            caches.open(CACHE).then(c => c.put(req, copia)).catch(() => {});
+          }
           return resp;
         })
         .catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
