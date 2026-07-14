@@ -53,7 +53,6 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
-import { ligarAppCheck } from './app-check.js';
   import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
 
   const firebaseConfig = {
@@ -65,7 +64,6 @@ import { ligarAppCheck } from './app-check.js';
     appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
   };
   const app = initializeApp(firebaseConfig);
-  ligarAppCheck(app);   // crachá do App Check — logo após o initializeApp
   const fns = getFunctions(app, "southamerica-east1");
   const portalProprietario = httpsCallable(fns, "portalProprietario");
 

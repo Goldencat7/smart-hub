@@ -4,7 +4,6 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
-import { ligarAppCheck } from './app-check.js';
 
 const app = initializeApp({
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
@@ -14,7 +13,6 @@ const app = initializeApp({
   messagingSenderId: "474454438949",
   appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
 });
-ligarAppCheck(app);   // logo após o initializeApp e ANTES de qualquer chamada
 const db = getFirestore(app);
 const storage = getStorage(app);
 
