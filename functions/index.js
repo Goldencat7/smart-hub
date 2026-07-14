@@ -3071,6 +3071,12 @@ exports.marcarNotificacaoLida = onCall(async (req) => {
   const { id } = req.data || {};
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
   const ref = db.collection('notifications').doc(id);
+  const snapAntes = await ref.get();
+  if (!snapAntes.exists) throw new HttpsError('not-found', 'Aviso não encontrado.');
+  const antes = snapAntes.data();
+  const ehAlvo = antes.todos === true || (Array.isArray(antes.destinatarios) && antes.destinatarios.includes(auth.uid));
+  if (!ehAlvo) throw new HttpsError('permission-denied', 'Este aviso não é destinado a você.');
+
   await ref.update({ lidoPor: admin.firestore.FieldValue.arrayUnion(auth.uid) });
 
   try {
