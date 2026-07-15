@@ -186,9 +186,18 @@ produção apontar pro lugar errado:
 - **Ligado em**: `hub-app.js`, `auth-login.js`, `admin-app.js` (raiz) e `ficha-comum.js`, `ficha-pf.html`,
   `ficha-locador.html`, `portal-proprietario.html`, `portal-inquilino.html`, `bugbot.html` (public). O
   `build-pwa.js` copia o `firebase-env.js` pro `public/app/`. As chaves dos dois projetos são PÚBLICAS.
-- **Staging (projeto `remax-smart-hub-staging`, plano Blaze)**: app web criado, alias `staging` no
-  `.firebaserc`. ⚠️ **Ainda falta deployar backend lá** (functions/regras/hosting) pra a URL de staging
-  funcionar — functions exige recriar os secrets (KMS, SUPPORT_EMAIL_PASS, tokens do bot) no projeto novo.
+- **Staging (projeto `remax-smart-hub-staging`, plano Blaze) — NO AR** em
+  `https://remax-smart-hub-staging.web.app/app/`. App + todas as functions + regras deployados; Auth
+  ligada (Email/senha). Deploy num comando: **`npm run deploy:staging`** (build + hosting + functions +
+  regras, tudo `--project staging`). Secrets do staging são **dummy** (`staging-dummy-nao-usar`) — as
+  functions de e-mail falham lá de propósito; trocar por real se precisar. Contas de teste (senha
+  `teste1234`, sem 2FA): `admin@teste.local` (admin) e `colega@teste.local` (admin + gestor de Locação,
+  aba Locação ligada via `user_access.loc_gestao`). Semeadas por **`node scripts/seed-staging.js`**
+  (Admin SDK, projectId fixo em staging; requer **ADC** — `gcloud auth application-default login` 1x).
+  Bugs da esteira achados na caça-bugs de 2026-07-15 estão em `BUGS-ESTEIRA-IMOVEIS.md` pra tratar na
+  reestruturação. ⚠️ **Primeiro deploy de trigger em projeto novo falha** (service agent do Eventarc
+  propaga com atraso) — repetir o deploy dos triggers resolve; o `deploy:staging` aborta o hosting se as
+  functions falharem, então rode o hosting de novo depois.
 
 ## Convenções
 
