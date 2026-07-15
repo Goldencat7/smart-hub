@@ -18,8 +18,16 @@ const path = require('path');
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
 
-if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-  console.error('✋ Env de emulador ausente — abortando pra não escrever em produção.');
+// Trava anti-produção REAL: o Admin SDK só é redirecionado pro emulador se esses
+// hosts apontarem pra LOCALHOST. Se alguém setar um host que não seja local (ou
+// os defaults acima forem removidos), aborta — sem host de emulador local o
+// Admin SDK falaria com a PRODUÇÃO. Checar "env presente" não bastava (o default
+// sempre a preenche); o que importa é ela apontar pra localhost.
+const ehHostLocal = (h) => /^(127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0):\d+$/.test(h || '');
+if (!ehHostLocal(process.env.FIRESTORE_EMULATOR_HOST) || !ehHostLocal(process.env.FIREBASE_AUTH_EMULATOR_HOST)) {
+  console.error('✋ Host de emulador não é localhost — abortando pra não escrever em produção.');
+  console.error('   FIRESTORE_EMULATOR_HOST     =', process.env.FIRESTORE_EMULATOR_HOST);
+  console.error('   FIREBASE_AUTH_EMULATOR_HOST =', process.env.FIREBASE_AUTH_EMULATOR_HOST);
   process.exit(1);
 }
 

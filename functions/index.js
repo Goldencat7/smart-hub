@@ -630,10 +630,14 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
     // Pessoas (locadores) — ids determinísticos p/ idempotência
     const locadorIds = [];
     const p1 = loc_montarPessoa(dados, LOC_KEYS_1);
+    const id1 = `${fichaId}_loc1`;
     if (p1.nome) {
-      const id1 = `${fichaId}_loc1`;
       await db.collection('pessoas').doc(id1).set({ ...p1, corretorUid: after.corretorUid, fichaId, atualizadoEm: ts() }, { merge: true });
       locadorIds.push(id1);
+    } else {
+      // Simétrico ao loc2: se o 1º locador foi removido numa reedição, apaga o
+      // doc órfão (senão CPF/RG do loc1 ficariam soltos em `pessoas` — LGPD).
+      await db.collection('pessoas').doc(id1).delete().catch(() => {});
     }
     const id2 = `${fichaId}_loc2`;
     if (dados.loc2_nome) {
@@ -3159,8 +3163,10 @@ exports.setUserAdmin = onCall(async (req) => {
   await exigirAdmin(req);
   const { uid, isAdmin } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
-  // Impede de tirar a claim do próprio admin inicial
-  if (ehBootstrapAdmin(uid) && isAdmin === false) {
+  // Impede de tirar a claim do próprio admin inicial. `!isAdmin` (não `=== false`)
+  // pra pegar também undefined/null — a escrita usa `!!isAdmin`, então qualquer
+  // valor falsy rebaixaria; a guarda tem que cobrir os mesmos casos.
+  if (ehBootstrapAdmin(uid) && !isAdmin) {
     throw new HttpsError('failed-precondition', 'O admin inicial não pode ser rebaixado.');
   }
   // MESCLA as claims (não substitui) — senão promover/rebaixar admin apagaria
