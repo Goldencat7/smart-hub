@@ -1350,6 +1350,14 @@ function chaveDia(d){
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
 }
 
+// Data do dia selecionado (a partir da chave YYYY-MM-DD); cai pro hoje se vazia.
+// A visão Semana ancora nela — antes usava o DIA de hoje sempre, então a semana
+// mostrada não acompanhava a navegação.
+function dataSelecionada(){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(diaSelecionado || '');
+  return m ? new Date(Number(m[1]), Number(m[2])-1, Number(m[3])) : new Date();
+}
+
 function atualizarRelogio(){
   const agora = new Date();
   relogioHora.textContent = agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
@@ -1570,7 +1578,7 @@ async function renderCalendarioCompleto(){
       });
     });
   } else if (calVisao === 'semana') {
-    calGrade.innerHTML = montarSemana(new Date(calAno, calMes, new Date().getDate()));
+    calGrade.innerHTML = montarSemana(dataSelecionada());
     calGrade.querySelectorAll('.cal-semana-ev').forEach(el => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1789,26 +1797,36 @@ function verificarAlertas(){
 document.getElementById('btnNovoEvento').addEventListener('click', ()=> abrirModalEvento(null));
 document.getElementById('btnNovoEvento2').addEventListener('click', ()=> abrirModalEvento(diaSelecionado));
 document.getElementById('cancelarEvento').addEventListener('click', ()=> modalEvento.close());
-document.getElementById('calPrev').addEventListener('click', async (e) => { 
+// Na visão Semana anda 7 dias; nas outras (Mês/Lista) anda 1 mês.
+function navegarCalendario(passo){
+  if (calVisao === 'semana') {
+    const d = dataSelecionada(); d.setDate(d.getDate() + passo * 7);
+    diaSelecionado = chaveDia(d); calAno = d.getFullYear(); calMes = d.getMonth();
+  } else {
+    calMes += passo;
+    if (calMes < 0) { calMes = 11; calAno--; }
+    else if (calMes > 11) { calMes = 0; calAno++; }
+  }
+}
+
+document.getElementById('calPrev').addEventListener('click', async (e) => {
   const b = e.currentTarget;
   b.disabled = true; // Trava o botão
-  calMes--; 
-  if(calMes < 0) { calMes = 11; calAno--; } 
-  try { 
-    await renderCalendarioCompleto(); 
-  } finally { 
+  navegarCalendario(-1);
+  try {
+    await renderCalendarioCompleto();
+  } finally {
     b.disabled = false; // Destrava quando o Firebase responder
   }
 });
 
-document.getElementById('calProx').addEventListener('click', async (e) => { 
+document.getElementById('calProx').addEventListener('click', async (e) => {
   const b = e.currentTarget;
   b.disabled = true; // Trava o botão
-  calMes++; 
-  if(calMes > 11) { calMes = 0; calAno++; } 
-  try { 
-    await renderCalendarioCompleto(); 
-  } finally { 
+  navegarCalendario(1);
+  try {
+    await renderCalendarioCompleto();
+  } finally {
     b.disabled = false; // Destrava quando o Firebase responder
   }
 });

@@ -3163,7 +3163,12 @@ exports.setUserAdmin = onCall(async (req) => {
   if (ehBootstrapAdmin(uid) && isAdmin === false) {
     throw new HttpsError('failed-precondition', 'O admin inicial não pode ser rebaixado.');
   }
-  await admin.auth().setCustomUserClaims(uid, { admin: !!isAdmin });
+  // MESCLA as claims (não substitui) — senão promover/rebaixar admin apagaria
+  // silenciosamente locRole, loc_financeiro e qualquer outra claim da pessoa,
+  // que só voltaria rodando locDefinirPerfil de novo. Mesmo padrão do
+  // locDefinirPerfil/setUserAccess ({ ...claims, ... }).
+  const user = await admin.auth().getUser(uid);
+  await admin.auth().setCustomUserClaims(uid, { ...(user.customClaims || {}), admin: !!isAdmin });
   return { ok: true };
 });
 
