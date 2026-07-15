@@ -138,6 +138,38 @@ firebase deploy --only functions --project remax-smart-hub
 
 (ou `--only functions:nomeDaFuncao` pra uma só). As functions NÃO vão no .exe.
 
+## Ambiente de teste — Firebase Emulator Suite (local, grátis, isolado)
+
+Sandbox do Firebase rodando na sua máquina — Auth, Firestore, Functions e Storage
+**de mentira**, sem tocar em produção. É onde dá pra **quebrar tudo à vontade**: testar
+regras do Firestore, Cloud Functions e migração de dados (LGPD/expurgo) sem risco. O dado
+vive só em memória e some ao desligar (a não ser que exporte). Escolhido no lugar de um 2º
+projeto Firebase (mais pesado: centralizar config dos 10 arquivos + recriar KMS/App Check +
+billing) — pra um dev só, o emulador entrega ~90% do "testar sem quebrar prod".
+
+```
+npm run emu        # sobe a suíte (UI em http://localhost:4000)
+npm run emu:seed   # semeia dados de MENTIRA (com o emulador rodando em outra janela)
+```
+
+- **Java 11+ é obrigatório** (os emuladores de Firestore/Storage são programas Java). Instalado
+  o **Temurin 21** (`winget install EclipseAdoptium.Temurin.21.JDK`). O app **não** usa Java —
+  é só dependência dessa ferramenta de dev. ⚠️ No Windows a Oracle fixa um "java8path" na frente
+  do PATH; por isso o `scripts/emu.js` **prependa `JAVA_HOME/bin`** no PATH do processo (usa o
+  Java do `JAVA_HOME`, que aponta pro 21) — assim funciona nos dois PCs sem cravar caminho no repo.
+- **`scripts/emu-seed.js`** usa o Admin SDK (o de `functions/node_modules`) apontado pros emuladores.
+  Trava anti-produção: se as env `FIRESTORE_EMULATOR_HOST`/`FIREBASE_AUTH_EMULATOR_HOST` não
+  estiverem setadas, aborta — impossível escrever em produção por engano. Cria `admin@teste.local`
+  e `corretor@teste.local` (senha `teste1234`) + 3 fichas. A **2FA não roda no emulador** (login simples).
+- Config em `firebase.json` → bloco `emulators` (portas: auth 9099, functions 5001, firestore 8080,
+  storage 9199, UI 4000). Logs/dumps do emulador estão no `.gitignore`.
+- **Verificado (2026-07-15)**: Firestore sobe com Java 21, Auth OK, Functions carrega o `index.js`
+  inteiro, seed grava usuários+fichas — tudo código 0 via `emulators:exec`.
+- **AINDA NÃO wireado**: clicar o Hub/telas de verdade contra o emulador exige plugar
+  `connectFirestoreEmulator`/`connectAuthEmulator`/etc. no init do Firebase dos renderers (10 arquivos),
+  atrás de um flag provado-OFF-em-produção. Por ora, testa-se pela **UI do emulador** (localhost:4000),
+  por scripts ou pelo playground de regras. Wirear a UI é o próximo passo opcional.
+
 ## Convenções
 
 - Sempre que terminar algo, lembrar o usuário dos 4 passos pra publicar.

@@ -62,6 +62,14 @@ firebase-debug.*.log
 firestore-debug.log
 firestore-debug.*.log
 .runtimeconfig.json
+# Emuladores (logs e dumps de dados de teste — nunca versionar)
+ui-debug.log
+pubsub-debug.log
+storage-debug.log
+auth-debug.log
+database-debug.log
+firebase-export-*/
+emulator-data/
 
 # Claude Code
 .claude/
