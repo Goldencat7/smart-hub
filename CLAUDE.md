@@ -92,6 +92,16 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
     (`_limitarCriacaoFicha`, janela fixa transacional em `_rate_fichas/{uid}`). A ficha é anônima; sem isso
     um script despejaria fichas falsas. Faz o papel que o App Check faria, mas 100% no servidor (App Check
     no cliente foi revertido — quebrava a ficha, ver Infra). Só na criação; edição não é vetor de despejo.
+  - **`barraCorretor` dentro da ficha = LEGADO, escondida de propósito (NÃO é bug ativo).** Cada ficha tem
+    uma barra "Modo Corretor" com "✓ Aprovar e enviar ao admin" e "⚠ Solicitar correção". Ela fica
+    `display:none` sempre que `origem=hub`, e o corretor **sempre** abre a ficha com `origem=hub`
+    (`hub-app.js` `abrirModalFicha`) — então **ninguém vê esses botões**. As ações reais do corretor
+    (aprovar / reenviar pro cliente) vivem no **Hub** (`enviarFichaTipoAdmin`/`reenviarFichaTipoCliente`,
+    via Cloud Function; o status `correcao_solicitada` aparece lá como "Devolvida"). ⚠️ O `solicitarCorrecao()`
+    da barra está **quebrado-se-reativado**: usa `updateDoc` direto (bloqueado por `write:if false` desde a
+    v1.0.100) e `prompt()` (não roda em janela do Electron). Um caça-bugs vai reapontar isso toda varredura —
+    é **falso positivo**: código morto e oculto, sem substituto perdido. Se um dia reativar a barra, refazer
+    o `solicitarCorrecao` via Cloud Function + trocar o `prompt()` por um `<dialog>`.
 - **Agenda** (`events` no Firestore): reuniões com participantes (ou "todos"); mini calendário + relógio; calendário completo; alerta 1h antes; **integra com Google Agenda/Tarefas**. Functions: `criarEvento`, `listarEventos`, `excluirEvento`, `listarPessoas`.
 - **Calculadoras** (`public/calculadoras.html`): aluguel proporcional + multa rescisória (conferidas com o Excel do financeiro).
 - **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.
