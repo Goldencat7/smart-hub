@@ -78,8 +78,20 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
     não a que você acabou de editar). Sem internet, a janela avisa em vez de ficar branca.
   - Consequência: **depois que a 1.0.100 alcançar todos**, nenhuma máquina consegue mais rodar ficha
     velha — o que destrava o `firebase deploy --only firestore:rules` (e o App Check).
-  - ⚠️ `public/ficha-engine.js` é **código morto** (não é importado por ninguém) e é o **último** lugar
-    que ainda grava ficha direto no Firestore (`addDoc`). Candidato a apagar — confirmar com o Nathan.
+  - ⚠️ `public/ficha-engine.js` **foi apagado** (era código morto; último lugar que gravava direto). Hoje
+    `grep addDoc` no projeto = zero.
+  - **Ficha "em branco" (resolvido)**: as fichas montam o form com módulos ES que importam o SDK do
+    Firebase de um CDN externo (gstatic). Em módulo ES, se UM import trava na rede, o script inteiro não
+    roda e o form nunca aparece — rede fria abria em branco, reabrir (cache) resolvia. Passou a ser
+    possível só desde a 1.0.100 (ficha vem da rede, não mais do disco). **Vigia**: `public/ficha-watchdog.js`
+    (script CLÁSSICO, mesma origem — confiável; o que falha é o CDN de terceiro). Cada engine faz
+    `window.__fichaPronta=true` logo após os imports; se em 7s a flag não virar true, o vigia recarrega
+    **uma vez** (guard em sessionStorage evita loop) e, se ainda assim nada, mostra aviso com botão em vez
+    de branco. Está nas 7 fichas.
+  - **Limite anti-despejo**: `salvarFichaPublica` limita **60 fichas NOVAS por corretor por hora**
+    (`_limitarCriacaoFicha`, janela fixa transacional em `_rate_fichas/{uid}`). A ficha é anônima; sem isso
+    um script despejaria fichas falsas. Faz o papel que o App Check faria, mas 100% no servidor (App Check
+    no cliente foi revertido — quebrava a ficha, ver Infra). Só na criação; edição não é vetor de despejo.
 - **Agenda** (`events` no Firestore): reuniões com participantes (ou "todos"); mini calendário + relógio; calendário completo; alerta 1h antes; **integra com Google Agenda/Tarefas**. Functions: `criarEvento`, `listarEventos`, `excluirEvento`, `listarPessoas`.
 - **Calculadoras** (`public/calculadoras.html`): aluguel proporcional + multa rescisória (conferidas com o Excel do financeiro).
 - **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.
