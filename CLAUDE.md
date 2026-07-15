@@ -163,12 +163,32 @@ npm run emu:seed   # semeia dados de MENTIRA (com o emulador rodando em outra ja
   e `corretor@teste.local` (senha `teste1234`) + 3 fichas. A **2FA não roda no emulador** (login simples).
 - Config em `firebase.json` → bloco `emulators` (portas: auth 9099, functions 5001, firestore 8080,
   storage 9199, UI 4000). Logs/dumps do emulador estão no `.gitignore`.
-- **Verificado (2026-07-15)**: Firestore sobe com Java 21, Auth OK, Functions carrega o `index.js`
-  inteiro, seed grava usuários+fichas — tudo código 0 via `emulators:exec`.
-- **AINDA NÃO wireado**: clicar o Hub/telas de verdade contra o emulador exige plugar
-  `connectFirestoreEmulator`/`connectAuthEmulator`/etc. no init do Firebase dos renderers (10 arquivos),
-  atrás de um flag provado-OFF-em-produção. Por ora, testa-se pela **UI do emulador** (localhost:4000),
-  por scripts ou pelo playground de regras. Wirear a UI é o próximo passo opcional.
+- **`npm run emu` sobe auth+firestore+functions por padrão** (o `emu.js` injeta `--only`). O **Storage
+  fica de fora**: no `firebase.json` o storage é um array (formato do DEPLOY) e o emulador exige um
+  `target` pra array (`Must supply 'target'`). Quem quiser storage no emulador roda com `--only` próprio.
+- **Verificado (2026-07-15)**: Firestore sobe com Java 21, Auth/Functions OK, seed grava — e o **Hub
+  real logou no emulador** (login → auth 9099, Firestore 8080, Functions 5001, tudo 200, **zero produção**).
+
+## Config por ambiente — interruptor prod/staging/emulador (`firebase-env.js`)
+
+As telas escolhem o projeto Firebase **pelo hostname**, sem flag manual — então é impossível um build de
+produção apontar pro lugar errado:
+- `file://` (o .exe) ou `remax-smart-hub.web.app` → **produção**.
+- `remax-smart-hub-staging.web.app` → **staging** (projeto `remax-smart-hub-staging`).
+- `localhost` / `127.0.0.1` → **emulador** (liga os `connect*` locais).
+
+- **Onde**: `firebase-env.js` (raiz) + **cópia idêntica** `public/firebase-env.js` (as fichas em public/
+  importam desta; as telas da raiz importam da outra — **manter as duas em sync**). Exporta `firebaseConfig`
+  (resolvido por hostname) e `conectarEmuladores({auth,db,fns,storage})`.
+- **Segurança**: `conectarEmuladores` é **no-op fora de localhost** e **não importa o SDK no topo** — em
+  prod/staging não baixa `connect*` nenhum (não reabre a "ficha em branco"). Só em localhost ele
+  dinamicamente importa e liga os emuladores. Provado: hostname de prod/`.exe` → sempre config de produção.
+- **Ligado em**: `hub-app.js`, `auth-login.js`, `admin-app.js` (raiz) e `ficha-comum.js`, `ficha-pf.html`,
+  `ficha-locador.html`, `portal-proprietario.html`, `portal-inquilino.html`, `bugbot.html` (public). O
+  `build-pwa.js` copia o `firebase-env.js` pro `public/app/`. As chaves dos dois projetos são PÚBLICAS.
+- **Staging (projeto `remax-smart-hub-staging`, plano Blaze)**: app web criado, alias `staging` no
+  `.firebaserc`. ⚠️ **Ainda falta deployar backend lá** (functions/regras/hosting) pra a URL de staging
+  funcionar — functions exige recriar os secrets (KMS, SUPPORT_EMAIL_PASS, tokens do bot) no projeto novo.
 
 ## Convenções
 

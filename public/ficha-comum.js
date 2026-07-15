@@ -4,6 +4,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebas
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
+import { firebaseConfig, conectarEmuladores } from './firebase-env.js'; // prod/staging/emulador por hostname
 
 // Sinal pro ficha-watchdog.js: se este módulo executou, os imports (inclusive o
 // SDK do Firebase, que vem de um CDN externo) resolveram — ou seja, o formulário
@@ -11,22 +12,18 @@ import './doc-preview.js'; // PDF anexado vira imagem de página no preview (win
 // false; o vigia detecta isso e recarrega. Marca as 5 fichas que usam este engine.
 window.__fichaPronta = true;
 
-const app = initializeApp({
-  apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
-  authDomain: "remax-smart-hub.firebaseapp.com",
-  projectId: "remax-smart-hub",
-  storageBucket: "remax-smart-hub.firebasestorage.app",
-  messagingSenderId: "474454438949",
-  appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
-});
+const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
+conectarEmuladores({ db, storage }); // no-op fora de localhost
 
 // A escrita da ficha passa sempre por Cloud Function (o Firestore nega write do
 // cliente). Import dinâmico pra não carregar o SDK de functions em quem só lê.
 async function chamarFn(nome, payload){
   const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js');
-  return httpsCallable(getFunctions(app, 'southamerica-east1'), nome)(payload);
+  const fns = getFunctions(app, 'southamerica-east1');
+  await conectarEmuladores({ fns }); // em localhost aponta functions pro emulador
+  return httpsCallable(fns, nome)(payload);
 }
 
 export const UF = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];

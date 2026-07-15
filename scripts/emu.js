@@ -30,8 +30,14 @@ if (jh && fs.existsSync(path.join(jh, 'bin'))) {
 }
 
 // Repassa qualquer flag extra depois do "emu" (ex.: --only firestore).
+// Sem --only, sobe auth+firestore+functions. O Storage fica de fora por padrão:
+// no firebase.json o storage está em formato de array (que o DEPLOY usa) e o
+// emulador exige um 'target' pra array — subir tudo dá "Must supply 'target'".
+// Quem quiser storage no emulador roda: npm run emu -- --only storage (com config própria).
 const extra = process.argv.slice(2);
-const args = ['emulators:start', '--project', 'remax-smart-hub', ...extra];
+const temOnly = extra.some((a) => a === '--only' || a.startsWith('--only='));
+const padraoOnly = temOnly ? [] : ['--only', 'auth,firestore,functions'];
+const args = ['emulators:start', '--project', 'remax-smart-hub', ...padraoOnly, ...extra];
 
 const p = spawn('firebase', args, { stdio: 'inherit', shell: true, env });
 p.on('exit', (code) => process.exit(code == null ? 0 : code));

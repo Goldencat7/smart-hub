@@ -5,20 +5,15 @@ import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/
 import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
 import { getFirestore, collection, onSnapshot, doc as fsDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
-  authDomain: "remax-smart-hub.firebaseapp.com",
-  projectId: "remax-smart-hub",
-  storageBucket: "remax-smart-hub.firebasestorage.app",
-  messagingSenderId: "474454438949",
-  appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
-};
+// Config por ambiente (prod/staging/emulador, por hostname) — ver firebase-env.js
+import { firebaseConfig, conectarEmuladores } from "./firebase-env.js";
 
 const app     = initializeApp(firebaseConfig);
 const auth    = getAuth(app);
 const fns     = getFunctions(app, 'southamerica-east1');
 const storage = getStorage(app);
 const dbFs    = getFirestore(app);
+conectarEmuladores({ auth, fns, db: dbFs, storage });
 
 const listCredentials   = httpsCallable(fns, 'listCredentials');
 const getCredentialAdmin = httpsCallable(fns, 'getCredentialAdmin');

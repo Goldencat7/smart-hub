@@ -8,18 +8,13 @@ import {
   getFunctions, httpsCallable
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
-  authDomain: "remax-smart-hub.firebaseapp.com",
-  projectId: "remax-smart-hub",
-  storageBucket: "remax-smart-hub.firebasestorage.app",
-  messagingSenderId: "474454438949",
-  appId: "1:474454438949:web:ba1e10e6b343af0408fbcc"
-};
+// Config por ambiente (prod/staging/emulador, por hostname) — ver firebase-env.js
+import { firebaseConfig, conectarEmuladores } from "./firebase-env.js";
 
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const fns  = getFunctions(app, 'southamerica-east1');
+conectarEmuladores({ auth, fns });
 const criarContaComCodigo = httpsCallable(fns, 'criarContaComCodigo');
 
 // Refs

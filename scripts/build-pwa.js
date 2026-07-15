@@ -33,6 +33,7 @@ const COMPARTILHADOS = [
   'auth-login.js',
   'admin-app.js',
   'firebase-config.js',
+  'firebase-env.js',   // seletor prod/staging/emulador (hub/auth/admin importam dele)
   'styles.css',
   'logo.png'
 ];
