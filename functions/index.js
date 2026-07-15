@@ -617,6 +617,33 @@ async function proximoNumeroProtocolo() {
   });
 }
 
+// Atribui protocolo a UM imóvel que ainda não tem, sem corrida: lê o imóvel e o
+// contador na MESMA transação e só consome um número se o imóvel ainda estiver
+// sem. Duas listagens concorrentes (o backfill do locListarImoveis) serializam
+// no contador — a 2ª vê o número já gravado e não consome outro (antes gerava
+// buracos na sequência). Idempotente.
+async function _atribuirProtocoloSeFalta(imovelRef) {
+  const counterRef = db.collection('counters').doc('imoveis');
+  return await db.runTransaction(async (tx) => {
+    const imovel = await tx.get(imovelRef);
+    if (!imovel.exists) return null;
+    const jaTem = imovel.data().numeroProtocolo;
+    if (jaTem != null) return jaTem;
+    const cs = await tx.get(counterRef);
+    const novo = (cs.exists ? (cs.data().proximo || 0) : 0) + 1;
+    tx.set(counterRef, { proximo: novo, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(imovelRef, { numeroProtocolo: novo }, { merge: true });
+    return novo;
+  });
+}
+
+// UIDs dos admins. Admin é custom claim `admin` (NÃO há campo isAdmin em
+// user_profiles), então enumera pelos claims. ~dezenas de usuários = 1 página.
+async function _uidsDosAdmins() {
+  const r = await admin.auth().listUsers(1000);
+  return r.users.filter(u => u.customClaims && u.customClaims.admin).map(u => u.uid);
+}
+
 // Trigger de ingestão: ficha do locador -> imóvel + pessoas (na transição p/ enviado_admin).
 exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, async (event) => {
   const after  = event.data.after?.data();
@@ -685,8 +712,7 @@ exports.locListarImoveis = onCall(async (req) => {
       return ta - tb;
     });
   for (const d of semNumero) {
-    const n = await proximoNumeroProtocolo();
-    await d.ref.set({ numeroProtocolo: n }, { merge: true });
+    await _atribuirProtocoloSeFalta(d.ref); // transacional: sem corrida/buraco na sequência
   }
   const finalSnap = semNumero.length ? await q.get() : snap;
   const imoveis = finalSnap.docs.map(d => ({
@@ -842,6 +868,12 @@ exports.locMoverImovelStatus = onCall(async (req) => {
   if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
   const atual = snap.data().status || 'recebido';
   if (atual === novoStatus) return { ok: true, status: novoStatus };
+  // Simétrico ao guard de destino: SAIR de um estado que é do gestor
+  // (aprovado/em_contrato/ativo) também é exclusivo do gestor — senão o
+  // administrativo desfazia a decisão do gestor (ex.: aprovado → em_análise).
+  if (IMOVEL_STATUS_SO_GESTOR.includes(atual) && !ehGestor) {
+    throw new HttpsError('permission-denied', 'Só o gestor pode mudar um imóvel já aprovado, em contrato ou ativo.');
+  }
 
   // Máquina de estados (a esteira só faz triagem + entrada em contrato):
   // - 'ativo' NÃO é manual — só via locAtivarContrato (que valida vigência/valor e gera cobranças).
@@ -3624,20 +3656,23 @@ exports.enviarFichaParaAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (
   // Avisa o administrativo por email
   await avisarFichaAdminPorEmail(doc.data(), 'Ficha do Locador');
 
-  // Notifica admins no Hub (reutiliza a coleção de notificações)
-  const adminsSnap = await db.collection('user_profiles').where('isAdmin', '==', true).get();
-  const batch = db.batch();
-  adminsSnap.docs.forEach(a => {
-    const notifRef = db.collection('notifications').doc();
-    batch.set(notifRef, {
-      para: a.id,
-      titulo: 'Ficha do Locador',
-      mensagem: `Nova ficha enviada por ${doc.data().corretorNome || 'um corretor'} para análise.`,
-      lido: false,
-      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+  // Notifica admins no Hub. Admin é custom claim (não há campo isAdmin em
+  // user_profiles — a query antiga voltava sempre vazia e ninguém era avisado).
+  const adminUids = await _uidsDosAdmins();
+  if (adminUids.length) {
+    const batch = db.batch();
+    adminUids.forEach(uid => {
+      const notifRef = db.collection('notifications').doc();
+      batch.set(notifRef, {
+        para: uid,
+        titulo: 'Ficha do Locador',
+        mensagem: `Nova ficha enviada por ${doc.data().corretorNome || 'um corretor'} para análise.`,
+        lido: false,
+        criadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
     });
-  });
-  await batch.commit();
+    await batch.commit();
+  }
 
   return { ok: true };
 });
