@@ -67,3 +67,24 @@ export async function conectarEmuladores({ auth, db, fns, storage } = {}) {
     console.error('[firebase-env] falha ao conectar emuladores:', e);
   }
 }
+
+/* Selo visível de ambiente — só FORA de produção (staging/emulador). Deixa claro
+ * que a pessoa NÃO está na produção (evita confusão do colega testando). Em
+ * produção (`.exe`/web.app) AMBIENTE é 'producao' e nada é injetado. */
+if (AMBIENTE !== 'producao' && typeof document !== 'undefined') {
+  const marcarAmbiente = () => {
+    if (document.getElementById('__ambienteBadge') || !document.body) return;
+    const b = document.createElement('div');
+    b.id = '__ambienteBadge';
+    b.textContent = AMBIENTE === 'staging' ? 'STAGING · ambiente de teste' : 'EMULADOR · local';
+    b.setAttribute('style', [
+      'position:fixed', 'top:0', 'left:50%', 'transform:translateX(-50%)', 'z-index:2147483647',
+      'background:#DC1C2E', 'color:#fff', 'font:600 12px/1 system-ui,-apple-system,Arial,sans-serif',
+      'padding:5px 14px', 'border-radius:0 0 8px 8px', 'letter-spacing:.4px',
+      'box-shadow:0 2px 6px rgba(0,0,0,.3)', 'pointer-events:none', 'user-select:none',
+    ].join(';'));
+    document.body.appendChild(b);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', marcarAmbiente);
+  else marcarAmbiente();
+}
