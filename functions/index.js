@@ -3444,6 +3444,31 @@ function validarPendentes(pendentes) {
 
 // Cria ou atualiza a ficha preenchida pelo cliente. SEM login por design —
 // o link é a credencial, igual aos portais. Quem chama nunca escolhe o status.
+// Limitador de criação de ficha: janela fixa de 1h por corretor, via transação
+// num doc dedicado (`_rate_fichas/{uid}`). Fixed-window é simples e uma escrita só;
+// no pior caso deixa passar ~2x o teto na virada da janela, o que é irrelevante
+// pra barrar despejo (o alvo é milhares, não 61). Não usa o timestamp do doc pra
+// nada sensível — só compara Date.now() com o início da janela guardado.
+const LIMITE_FICHAS_HORA = 60;
+async function _limitarCriacaoFicha(corretorUid) {
+  const ref = db.collection('_rate_fichas').doc(corretorUid);
+  const JANELA_MS = 3600 * 1000;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const agora = Date.now();
+    let d = snap.exists ? snap.data() : null;
+    if (!d || (agora - (d.inicio || 0)) >= JANELA_MS) {
+      d = { inicio: agora, contagem: 0 };            // janela nova
+    }
+    if (d.contagem >= LIMITE_FICHAS_HORA) {
+      throw new HttpsError('resource-exhausted',
+        'Muitas fichas enviadas em pouco tempo. Aguarde alguns minutos e tente de novo.');
+    }
+    d.contagem += 1;
+    tx.set(ref, d);
+  });
+}
+
 exports.salvarFichaPublica = onCall(async (req) => {
   const {
     colecao, fichaId, tipo, corretorUid, corretorNome, imovelId,
@@ -3492,6 +3517,13 @@ exports.salvarFichaPublica = onCall(async (req) => {
   if (typeof corretorUid !== 'string' || !corretorUid) {
     throw new HttpsError('invalid-argument', 'corretorUid obrigatório.');
   }
+  // Limite anti-abuso: no máximo LIMITE_FICHAS_HORA fichas NOVAS por corretor por
+  // hora. A ficha é anônima (sem login), então sem isto um script poderia despejar
+  // milhares de fichas falsas na base. Uso real é ~30/mês na equipe toda — o teto
+  // aqui é folgado de propósito, só barra despejo automático. Vale só na criação:
+  // edição de ficha existente já exige status editável, não é vetor de despejo.
+  await _limitarCriacaoFicha(corretorUid);
+
   // O link carrega o uid do corretor na query. Confirmamos que existe mesmo,
   // pra não acumular ficha órfã apontando pra uid inventado.
   try {

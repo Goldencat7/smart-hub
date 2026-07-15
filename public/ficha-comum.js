@@ -5,6 +5,12 @@ import { getFirestore, doc, getDoc, updateDoc, serverTimestamp } from 'https://w
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
 import './doc-preview.js'; // PDF anexado vira imagem de página no preview (window.__pdfInline)
 
+// Sinal pro ficha-watchdog.js: se este módulo executou, os imports (inclusive o
+// SDK do Firebase, que vem de um CDN externo) resolveram — ou seja, o formulário
+// VAI montar. Se um import travar na rede, este código nunca roda e a flag fica
+// false; o vigia detecta isso e recarrega. Marca as 5 fichas que usam este engine.
+window.__fichaPronta = true;
+
 const app = initializeApp({
   apiKey: "AIzaSyDbMmPdIzIaLA-pKGYv0R9UQ_z3Q-EC2U8",
   authDomain: "remax-smart-hub.firebaseapp.com",
