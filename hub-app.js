@@ -101,6 +101,11 @@ const contarChamadosAbertos = httpsCallable(fns, 'contarChamadosAbertos');
 const listarChamados      = httpsCallable(fns, 'listarChamados');
 const responderChamado    = httpsCallable(fns, 'responderChamado');
 const excluirChamado      = httpsCallable(fns, 'excluirChamado');
+// Carteira de Imóveis
+const carteiraSalvarImovel = httpsCallable(fns, 'carteiraSalvarImovel');
+const carteiraArquivar     = httpsCallable(fns, 'carteiraArquivar');
+const carteiraSituacaoFn   = httpsCallable(fns, 'carteiraSituacao');
+const carteiraInteressado  = httpsCallable(fns, 'carteiraInteressado');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -592,7 +597,7 @@ function renderCentro() {
     document.getElementById('locVoltar').addEventListener('click', () => { locSub = null; renderCentro(); });
 
     if (locSub === 'painel')  { secaoPainel.hidden = false;  carregarPainel(); }
-    if (locSub === 'imoveis') { secaoImoveis.hidden = false; imoveisFiltroStatus = null; carregarImoveis(); }
+    if (locSub === 'imoveis') { secaoImoveis.hidden = false; cartFiltros = { fin: null, sit: null, corretor: null, busca: '' }; carregarImoveis(); }
     return;
   }
 
@@ -2868,7 +2873,82 @@ const IMOVEL_NOMES_DOC = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'C
 const IMOVEL_NOMES_PEND = { rgcpf:'RG e CPF', energia:'Conta de energia', agua:'Conta de água', gas:'Conta de gás', iptu_doc:'Documento do IPTU', condominio_doc:'Doc. do condomínio', profissao:'Profissão', im_admcond:'Adm. condominial', im_admcontato:'Contato adm', im_condominio:'Condomínio', im_iptu:'IPTU', im_valorcond:'Valor condomínio', im_enel:'ENEL', im_sabesp:'Sabesp', im_comgas:'Comgás', im_contribuinte:'Contribuinte IPTU' };
 let imoveisRole = 'corretor'; // papel do usuário atual na aba Imóveis (setado em carregarImoveis)
 let _imoveisCache = null;        // { imoveis, veTudo, role } — evita refetch ao filtrar
-let imoveisFiltroStatus = null;  // filtro por status via quadrados (null = todos)
+// ─── Carteira de Imóveis (Tela 01 do SMART HUB) ─────────────────────────────
+// Visão comercial da coleção `imoveis`: finalidade + situação + interessados +
+// arquivamento. A esteira de locação (status) vira detalhe do imóvel.
+let cartFiltros = { fin: null, sit: null, corretor: null, busca: '' };
+
+// As 6 fichas da Carteira (Copiar Link). Comprador = ficha-proposta; Fiador = locação c/ fiador.
+const CARTEIRA_FICHAS = [
+  { label: 'Locador',       arquivo: 'ficha-locador.html' },
+  { label: 'Vendedor',      arquivo: 'ficha-vendedor.html' },
+  { label: 'Locatário PF',  arquivo: 'ficha-pf.html' },
+  { label: 'Locatário PJ',  arquivo: 'ficha-pj.html' },
+  { label: 'Comprador',     arquivo: 'ficha-proposta.html' },
+  { label: 'Fiador',        arquivo: 'ficha-locacao-fiador.html' },
+];
+const CART_FINALIDADES = [
+  { key: 'locacao',       label: 'Locação',         cor: '#0ea5e9' },
+  { key: 'venda',         label: 'Venda',           cor: '#16a34a' },
+  { key: 'venda_locacao', label: 'Venda + Locação', cor: '#6366f1' },
+];
+const CART_SITUACOES = [
+  { key: 'disponivel',     label: 'Disponível',     cor: '#16a34a' },
+  { key: 'em_negociacao',  label: 'Em Negociação',  cor: '#b45309' },
+  { key: 'arquivado',      label: 'Arquivado',      cor: '#6b7280' },
+];
+const cartFinLabel = k => (CART_FINALIDADES.find(f => f.key === k) || {}).label || k;
+const cartFinCor   = k => (CART_FINALIDADES.find(f => f.key === k) || {}).cor || '#6b7280';
+const cartSitLabel = k => (CART_SITUACOES.find(s => s.key === k) || {}).label || k;
+const cartSitCor   = k => (CART_SITUACOES.find(s => s.key === k) || {}).cor || '#6b7280';
+// Imóvel legado (pré-Carteira) não tem finalidade/situacao: veio da ficha do locador ⇒ locação;
+// situação derivada da esteira (em contrato/ativo = em negociação).
+const cartFinalidadeDe = im => im.finalidade || 'locacao';
+const cartSituacaoDe = im => {
+  if (im.arquivado) return 'arquivado';
+  if (im.situacao) return im.situacao;
+  return (im.status === 'em_contrato' || im.status === 'ativo') ? 'em_negociacao' : 'disponivel';
+};
+const fmtCodigoSH = im => im.numeroProtocolo != null ? '#SH-' + String(im.numeroProtocolo).padStart(4, '0') : '—';
+// "há 2 horas" / "ontem" / "há 3 dias" / data
+function tempoRelativo(iso) {
+  if (!iso) return '—';
+  const ms = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(ms / 60000), h = Math.floor(min / 60), d = Math.floor(h / 24);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  if (h < 24) return `há ${h} hora${h > 1 ? 's' : ''}`;
+  if (d === 1) return 'ontem';
+  if (d < 7) return `há ${d} dias`;
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+// Toastzinho (sem alert): "Link copiado com sucesso", etc.
+function cartToast(msg) {
+  let t = document.getElementById('cartToast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'cartToast';
+    t.setAttribute('style', 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:9999;background:#111827;color:#fff;font-size:13px;font-weight:600;padding:10px 18px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.25);opacity:0;transition:opacity .15s;pointer-events:none');
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2200);
+}
+async function cartCopiarLink(arquivo) {
+  const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
+  const link = `${BASE_HOSTING}/${arquivo}?corretor=${currentUid}&nome=${encodeURIComponent(nomeCorretor)}`;
+  try { await navigator.clipboard.writeText(link); cartToast('Link copiado com sucesso'); }
+  catch (_e) {
+    // Fallback (clipboard bloqueado): textarea temporário
+    const ta = document.createElement('textarea');
+    ta.value = link; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); cartToast('Link copiado com sucesso'); }
+    catch (_e2) { cartToast('Não consegui copiar — copie manualmente: ' + link); }
+    ta.remove();
+  }
+}
 const GAR_MOD_LABEL = { seguro_fianca:'Seguro fiança', fiador:'Fiador', caucao:'Caução', titulo_capitalizacao:'Título de capitalização' };
 const GAR_STATUS_LABEL = { pendente:'Pendente', aprovada:'Aprovada', reprovada:'Reprovada' };
 const ANALISE_LABEL = { em_analise:'Em análise', pendencia:'Pendência', aprovado:'Aprovado', reprovado:'Reprovado' };
@@ -3377,147 +3457,385 @@ async function toggleDetalheImovel(btn) {
   }
 }
 
-// Card de um imóvel. Se `role` for gestor/administrativo, inclui o controle de mover status.
-function cardImovelHtml(im, role) {
-  const e = im.endereco || {};
-  const end = [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', ');
-  const data = im.atualizadoEm ? new Date(im.atualizadoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' }) : '';
-  const admin = role === 'gestor' || role === 'administrativo';
-  const meta = [im.tipo, im.valorAnuncio ? 'Anúncio ' + im.valorAnuncio : '', admin && im.corretorNome ? 'Corretor: ' + im.corretorNome : '', data]
-    .filter(Boolean).map(escapeHtml).join(' · ');
-
-  let controle = '';
-  // 'ativo' não é movível pela esteira (só via "Ativar contrato"); imóvel já ativo não tem seletor.
-  if (admin && im.status !== 'ativo') {
-    const opts = IMOVEL_STATUS.filter(s => s.key !== 'ativo').map(s => {
-      const dis = (role !== 'gestor' && IMOVEL_STATUS_SO_GESTOR.includes(s.key)) ? ' disabled' : '';
-      return `<option value="${s.key}"${s.key === im.status ? ' selected' : ''}${dis}>${s.label}</option>`;
-    }).join('');
-    controle = `<div style="margin-top:8px;display:flex;align-items:center;gap:8px">
-      <span style="font-size:11px;color:var(--text-muted)">Mover para:</span>
-      <select class="imovel-status-sel" data-id="${escapeHtml(im.id)}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">${opts}</select></div>`;
-  }
-
-  // Bloco financeiro + checklist + badges (só aparece se tem algum dado preenchido)
-  const prog = progressoChecklist(im);
-  const stCom = statusComissao(im);
-  const temFin = im.valorFechamento != null || im.valorComissao != null;
-  const finRow = temFin ? `<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:12px">
-    ${im.valorFechamento != null ? `<span><span style="color:var(--text-muted)">Fechamento:</span> <strong>${fmtBRL(im.valorFechamento)}</strong></span>` : ''}
-    ${im.valorComissao != null ? `<span><span style="color:var(--text-muted)">Comissão:</span> <strong>${fmtBRL(im.valorComissao)}</strong></span>` : ''}
-  </div>` : '';
-  const progRow = `<div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-    <div style="flex:1;height:6px;background:var(--hover);border-radius:3px;overflow:hidden"><div style="width:${prog.pct}%;height:100%;background:${prog.pct === 100 ? '#16a34a' : '#0ea5e9'};transition:width .2s"></div></div>
-    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${prog.feitos}/${prog.total} etapas</span>
-  </div>`;
-  const badge = (txt, cor) => `<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px">${escapeHtml(txt)}</span>`;
-  const badges = [];
-  badges.push(badge(stCom.txt, stCom.cor));
-  if (im.contratoAssinado === 'sim') badges.push(badge('Contrato assinado', '#16a34a'));
-  else if (im.contratoAssinado === 'nao') badges.push(badge('Contrato pendente', '#b45309'));
-  if (im.possuiAdministracao === 'sim') badges.push(badge('Adm. REMAX', '#16a34a'));
-  else if (im.possuiAdministracao === 'nao') badges.push(badge('Sem administração', '#6b7280'));
-  if (im.possuiParceria === 'sim') badges.push(badge('Parceria', '#6366f1'));
-  const badgesRow = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badges.join('')}</div>`;
-
-  const numProt = im.numeroProtocolo != null ? `<span style="font-size:10px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:2px 8px;border-radius:6px;letter-spacing:.04em">${fmtProtocolo(im)}</span>` : '';
-  return `<div class="ficha-card">
-    <div class="ficha-card-head">
-      <div><strong style="font-size:13px">${escapeHtml(end || im.tipo || 'Imóvel')}</strong>
-        <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${escapeHtml(im.locadorNome || '')}</span></div>
-      <div style="display:flex;align-items:center;gap:6px">${numProt}
-        <span style="font-size:11px;font-weight:600;color:${imovelCor(im.status)};background:${imovelCor(im.status)}18;padding:3px 8px;border-radius:6px">${imovelLabel(im.status)}</span></div>
-    </div>
-    <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${meta}</div>
-    ${finRow}${progRow}${badgesRow}
-    ${controle}
-    <div style="margin-top:8px"><button class="topbar-btn btn-det-imovel" data-id="${im.id}" style="font-size:11px;padding:4px 10px">Ver detalhes ▾</button></div>
-    <div class="imovel-det" id="det-${im.id}" hidden style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"></div>
-  </div>`;
-}
+// (cardImovelHtml removido — a Carteira usa tabela; ver renderCarteira abaixo)
 
 async function carregarImoveis() {
-  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando imóveis...</p>';
+  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando a carteira...</p>';
   try {
     const res = await locListarImoveis({});
     const imoveis = res.data?.imoveis || [];
     const veTudo  = !!res.data?.veTudo;
     const role    = res.data?.role || 'corretor';
     imoveisRole = role;
-
-    if (!imoveis.length) {
-      secaoImoveis.innerHTML = `<div style="font-size:13px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">
-        Nenhum imóvel na esteira ainda.<br>
-        <span style="font-size:12px">Um imóvel aparece aqui automaticamente quando o corretor aprova uma ficha do locador e <strong>envia ao administrativo</strong> (aba Cadastro).</span></div>`;
-      return;
-    }
-
     _imoveisCache = { imoveis, veTudo, role };
-    renderImoveis();
+    renderCarteira();
   } catch (e) {
-    secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar imóveis: ${escapeHtml(e.message)}</p>`;
+    secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar a carteira: ${escapeHtml(e.message)}</p>`;
   }
 }
 
-// Renderiza a esteira a partir do cache, respeitando o filtro por status (quadrados clicáveis).
-function renderImoveis() {
+// ─── Render da Carteira (fichas + indicadores + pesquisa + filtros + tabela) ──
+function renderCarteira() {
   if (!_imoveisCache) return;
-  const { imoveis, veTudo, role } = _imoveisCache;
-  const contagem = {};
-  imoveis.forEach(im => { contagem[im.status] = (contagem[im.status] || 0) + 1; });
-  const filtro = imoveisFiltroStatus;
-  const ativo = k => (k === '__todos' ? filtro === null : filtro === k);
+  const { imoveis, veTudo } = _imoveisCache;
 
-  // Quadrados de resumo (clicáveis pra filtrar; o ativo fica destacado)
-  const quad = (key, label, cor, num) => `<div class="imovel-filtro" data-status="${key}" title="Filtrar: ${label}" style="flex:1;min-width:88px;background:${ativo(key) ? cor + '1f' : 'var(--surface)'};border:1px solid ${ativo(key) ? cor : 'var(--border)'};border-radius:var(--radius-card);padding:10px 12px;cursor:pointer;transition:border-color .12s">
-      <div style="font-size:20px;font-weight:700;color:${cor}">${num}</div>
-      <div style="font-size:11px;color:var(--text-muted)">${label}</div></div>`;
-  const resumo = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-    ${quad('__todos', 'Todos', '#0ea5e9', imoveis.length)}
-    ${IMOVEL_STATUS.map(s => quad(s.key, s.label, s.cor, contagem[s.key] || 0)).join('')}</div>`;
+  // Indicadores (arquivados ficam fora dos demais números)
+  const naoArq  = imoveis.filter(im => !im.arquivado);
+  const arq     = imoveis.filter(im => im.arquivado);
+  const disp    = naoArq.filter(im => cartSituacaoDe(im) === 'disponivel');
+  const neg     = naoArq.filter(im => cartSituacaoDe(im) === 'em_negociacao');
+  const pend    = naoArq.filter(im => (im.pendentes || []).length > 0);
+  const hojeKey = chaveDia(new Date());
+  const captHoje = naoArq.filter(im => im.criadoEm && chaveDia(new Date(im.criadoEm)) === hojeKey);
 
-  const lista = arr => `<div style="display:flex;flex-direction:column;gap:10px">${arr.map(im => cardImovelHtml(im, role)).join('')}</div>`;
-  let corpo;
-  if (filtro) {
-    // Filtrado: lista simples só do status escolhido
-    const visiveis = imoveis.filter(im => im.status === filtro);
-    const lbl = (IMOVEL_STATUS.find(s => s.key === filtro) || {}).label || filtro;
-    corpo = visiveis.length
-      ? `<div style="margin-top:14px">${lista(visiveis)}</div>`
-      : `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Nenhum imóvel com status "${escapeHtml(lbl)}".</p>`;
-  } else if (veTudo) {
-    // Sem filtro (gestor/admin): agrupado por etapa
-    const grupos = IMOVEL_STATUS.map(s => {
-      const l = imoveis.filter(im => im.status === s.key);
-      if (!l.length) return '';
-      return `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:${s.cor};text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">${s.label} · ${l.length}</div>${lista(l)}</div>`;
+  // Aplica pesquisa + filtros (client-side, em cima do cache)
+  const busca = (cartFiltros.busca || '').toLowerCase();
+  const buscaDe = im => {
+    const e = im.endereco || {};
+    return [fmtCodigoSH(im), e.logradouro, e.numero, e.bairro, e.cidade,
+      im.proprietarioNome || im.locadorNome, im.corretorNome].filter(Boolean).join(' ').toLowerCase();
+  };
+  let lista = imoveis.filter(im => {
+    const sit = cartSituacaoDe(im);
+    // Sem filtro de situação, arquivado não aparece (spec: arquivar = tirar da operação)
+    if (cartFiltros.sit ? sit !== cartFiltros.sit : sit === 'arquivado') return false;
+    if (cartFiltros.fin && cartFinalidadeDe(im) !== cartFiltros.fin) return false;
+    if (cartFiltros.corretor && im.corretorUid !== cartFiltros.corretor) return false;
+    if (busca && !buscaDe(im).includes(busca)) return false;
+    return true;
+  });
+
+  // ── Blocos ──
+  const fichasHtml = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:14px 16px;margin-bottom:12px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:13px">Fichas de Cadastro</strong>
+      <span style="font-size:11px;color:var(--text-muted)">Copie o link e envie ao cliente.</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      ${CARTEIRA_FICHAS.map(f => `<button class="cart-copiar" data-arquivo="${f.arquivo}" style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;min-width:110px">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--text-muted);text-transform:uppercase">${f.label}</span>
+        <span style="font-size:11px;font-weight:600;color:#0ea5e9">Copiar Link</span></button>`).join('')}
+    </div></div>`;
+
+  const card = (num, label, sub, cor) => `<div style="flex:1;min-width:104px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:10px 12px">
+    <div style="font-size:20px;font-weight:700;color:${cor}">${num}</div>
+    <div style="font-size:11px;color:var(--text-primary);font-weight:600">${label}</div>
+    <div style="font-size:10px;color:var(--text-muted)">${sub}</div></div>`;
+  const pct = naoArq.length ? Math.round((disp.length / naoArq.length) * 100) : 0;
+  const indicadores = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${card(naoArq.length, 'Imóveis', 'na carteira', '#0ea5e9')}
+    ${card(disp.length, 'Disponíveis', pct + '% da carteira', '#16a34a')}
+    ${card(neg.length, 'Em Negociação', 'negócios andando', '#b45309')}
+    ${card(pend.length, 'Pendências', 'imóveis c/ pendência', '#DC1C2E')}
+    ${card(captHoje.length, 'Captados Hoje', hojeKey.split('-').reverse().slice(0, 2).join('/'), '#6366f1')}
+    ${card(arq.length, 'Arquivados', 'fora da operação', '#6b7280')}
+  </div>`;
+
+  // Filtros: pills de finalidade + situação (+ corretor se broker) + limpar
+  const pill = (grupo, key, label, ativoAgora, cor) => `<button class="cart-pill" data-grupo="${grupo}" data-key="${key}" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:14px;cursor:pointer;border:1px solid ${ativoAgora ? cor : 'var(--border)'};background:${ativoAgora ? cor + '1f' : 'var(--surface)'};color:${ativoAgora ? cor : 'var(--text-muted)'}">${label}</button>`;
+  const corretores = veTudo ? [...new Map(imoveis.filter(i => i.corretorUid).map(i => [i.corretorUid, i.corretorNome || i.corretorUid])).entries()] : [];
+  const temFiltro = cartFiltros.fin || cartFiltros.sit || cartFiltros.corretor || cartFiltros.busca;
+  const filtrosHtml = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:12px 16px;margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+    <input id="cartBusca" type="search" placeholder="Pesquisar por código, endereço, proprietário, corretor, bairro..." value="${escapeHtml(cartFiltros.busca)}"
+      style="flex:1;min-width:220px;font-size:12px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:var(--hover);color:var(--text-primary)">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Finalidade</span>
+      ${CART_FINALIDADES.map(f => pill('fin', f.key, f.label, cartFiltros.fin === f.key, f.cor)).join('')}</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Situação</span>
+      ${CART_SITUACOES.map(s => pill('sit', s.key, s.label, cartFiltros.sit === s.key, s.cor)).join('')}</div>
+    ${corretores.length ? `<select id="cartFCorretor" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary)">
+      <option value="">Corretor: todos</option>
+      ${corretores.map(([uid, nome]) => `<option value="${escapeHtml(uid)}"${cartFiltros.corretor === uid ? ' selected' : ''}>${escapeHtml(nome)}</option>`).join('')}</select>` : ''}
+    ${temFiltro ? `<button id="cartLimpar" style="font-size:11px;font-weight:600;color:#DC1C2E;background:none;border:none;cursor:pointer">Limpar filtros</button>` : ''}
+  </div>`;
+
+  // Tabela
+  const badge = (label, cor) => `<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px;white-space:nowrap">${label}</span>`;
+  const th = t => `<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${t}</th>`;
+  const td = (c, extra) => `<td style="font-size:12px;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top;${extra || ''}">${c}</td>`;
+  const linhas = lista.map(im => {
+    const e = im.endereco || {};
+    const l1 = [e.logradouro, e.numero].filter(Boolean).join(', ') + (e.complemento ? ' · ' + e.complemento : '');
+    const l2 = [e.bairro, e.cidade].filter(Boolean).join(' · ');
+    const fin = cartFinalidadeDe(im), sit = cartSituacaoDe(im);
+    const nPend = (im.pendentes || []).length;
+    const nInt = (im.interessados || []).length;
+    return `<tr class="cart-row">
+      ${td(`<strong style="white-space:nowrap">${fmtCodigoSH(im)}</strong>`)}
+      ${td(`<div style="font-weight:600">${escapeHtml(l1 || im.tipo || 'Imóvel')}</div><div style="font-size:11px;color:var(--text-muted)">${escapeHtml(l2)}</div>`)}
+      ${td(escapeHtml(im.proprietarioNome || im.locadorNome || '—'))}
+      ${td(escapeHtml(im.corretorNome || '—'))}
+      ${td(badge(cartFinLabel(fin), cartFinCor(fin)))}
+      ${td(badge(cartSitLabel(sit), cartSitCor(sit)))}
+      ${td(`<span style="font-weight:700">${nInt || '—'}</span>`, 'text-align:center')}
+      ${td(nPend ? badge(nPend + ' Pendência' + (nPend > 1 ? 's' : ''), '#DC1C2E') : '—', 'text-align:center')}
+      ${td(`<span style="color:var(--text-muted);white-space:nowrap">${tempoRelativo(im.atualizadoEm)}</span>`)}
+      ${td(`<button class="topbar-btn cart-abrir" data-id="${escapeHtml(im.id)}" style="font-size:11px;padding:4px 12px">Abrir</button>`)}
+    </tr>
+    <tr id="cart-det-${escapeHtml(im.id)}" hidden><td colspan="10" style="background:var(--hover);border-bottom:1px solid var(--border);padding:12px 14px">
+      ${cartAcoesHtml(im)}
+      <div class="imovel-det" id="det-${escapeHtml(im.id)}" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"></div>
+    </td></tr>`;
+  }).join('');
+
+  const tabela = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+      <div><strong style="font-size:13px">Imóveis</strong>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${lista.length} de ${naoArq.length} imóve${naoArq.length === 1 ? 'l' : 'is'}</span></div>
+      <button id="cartNovo" class="topbar-btn" style="font-size:12px;font-weight:600;padding:6px 14px;background:#002749;color:#fff;border-color:#002749">+ Novo Imóvel</button></div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:920px">
+      <thead><tr>${['Código', 'Endereço', 'Proprietário', 'Corretor', 'Finalidade', 'Situação', 'Interessados', 'Pendências', 'Última atualização', 'Ações'].map(th).join('')}</tr></thead>
+      <tbody>${linhas || `<tr><td colspan="10" style="font-size:12px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">
+        ${imoveis.length ? 'Nenhum imóvel com esses filtros.' : 'Nenhum imóvel na carteira ainda.<br><span style="font-size:11px">O fluxo principal é enviar a ficha (Locador ou Vendedor) pro cliente — o imóvel entra sozinho quando a ficha é enviada ao administrativo. Pra casos excepcionais, use o botão <strong>+ Novo Imóvel</strong>.</span>'}
+      </td></tr>`}</tbody>
+    </table></div></div>`;
+
+  secaoImoveis.innerHTML = fichasHtml + indicadores + filtrosHtml + tabela;
+  wireCarteira();
+}
+
+// Barra de ações do detalhe: situação, arquivar, editar, interessados e esteira (locação).
+function cartAcoesHtml(im) {
+  const { role } = _imoveisCache || {};
+  const broker = role === 'gestor' || role === 'administrativo';
+  const sit = cartSituacaoDe(im);
+  const fin = cartFinalidadeDe(im);
+  const id = escapeHtml(im.id);
+
+  const sitSel = im.arquivado ? '' : `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)">Situação:
+    <select class="cart-sit" data-id="${id}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+      <option value="disponivel"${sit === 'disponivel' ? ' selected' : ''}>Disponível</option>
+      <option value="em_negociacao"${sit === 'em_negociacao' ? ' selected' : ''}>Em Negociação</option>
+    </select></label>`;
+
+  // Esteira de locação continua como detalhe (broker move; 'ativo' só via contrato)
+  let esteira = '';
+  if (fin !== 'venda' && broker && im.status && im.status !== 'ativo') {
+    const opts = IMOVEL_STATUS.filter(s => s.key !== 'ativo').map(s => {
+      const dis = (role !== 'gestor' && IMOVEL_STATUS_SO_GESTOR.includes(s.key)) ? ' disabled' : '';
+      return `<option value="${s.key}"${s.key === im.status ? ' selected' : ''}${dis}>${s.label}</option>`;
     }).join('');
-    const fora = imoveis.filter(im => !IMOVEL_STATUS.some(s => s.key === im.status));
-    const foraHtml = fora.length ? `<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#6b7280;margin-bottom:8px">OUTROS · ${fora.length}</div>${lista(fora)}</div>` : '';
-    corpo = grupos + foraHtml;
-  } else {
-    // Corretor sem filtro: lista simples dos seus
-    corpo = `<div style="margin-top:14px">${lista(imoveis)}</div>`;
+    esteira = `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)">Esteira:
+      <select class="imovel-status-sel" data-id="${id}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">${opts}</select></label>`;
+  } else if (fin !== 'venda' && im.status) {
+    esteira = `<span style="font-size:11px;color:var(--text-muted)">Esteira: ${badgeMini(imovelLabel(im.status), imovelCor(im.status))}</span>`;
   }
 
-  secaoImoveis.innerHTML = resumo + corpo;
+  const interessados = (im.interessados || []).map((p, i) =>
+    `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:3px 10px">
+      ${escapeHtml(p.nome)}${p.contato ? ` <span style="color:var(--text-muted)">${escapeHtml(p.contato)}</span>` : ''}
+      <button class="cart-int-rem" data-id="${id}" data-index="${i}" title="Remover" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:12px;line-height:1;padding:0">✕</button></span>`).join('');
 
-  // Clique nos quadrados: alterna o filtro (clicar no ativo ou em "Todos" limpa)
-  secaoImoveis.querySelectorAll('.imovel-filtro').forEach(el => el.addEventListener('click', () => {
-    const s = el.dataset.status;
-    imoveisFiltroStatus = (s === '__todos') ? null : (imoveisFiltroStatus === s ? null : s);
-    renderImoveis();
+  return `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      ${sitSel}${esteira}
+      <button class="cart-editar" data-id="${id}" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);cursor:pointer">✎ Editar</button>
+      <button class="cart-arquivar" data-id="${id}" data-arquivar="${im.arquivado ? '0' : '1'}" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid ${im.arquivado ? '#16a34a' : 'var(--border)'};border-radius:6px;background:var(--surface);color:${im.arquivado ? '#16a34a' : '#6b7280'};cursor:pointer">${im.arquivado ? '↩ Restaurar' : '🗂 Arquivar'}</button>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Interessados (${(im.interessados || []).length})</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${interessados || '<span style="font-size:11px;color:var(--text-muted)">Nenhum ainda.</span>'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        <input class="cart-int-nome" data-id="${id}" placeholder="Nome do interessado" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);min-width:160px">
+        <input class="cart-int-contato" data-id="${id}" placeholder="Contato (opc.)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);min-width:130px">
+        <select class="cart-int-tipo" data-id="${id}" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
+          <option value="locatario">Locatário</option><option value="comprador">Comprador</option></select>
+        <button class="cart-int-add" data-id="${id}" style="font-size:11px;font-weight:600;padding:5px 12px;border:none;border-radius:6px;background:#002749;color:#fff;cursor:pointer">+ Adicionar</button>
+      </div></div>`;
+}
+function badgeMini(label, cor) {
+  return `<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px">${escapeHtml(label)}</span>`;
+}
+
+// Abre/fecha a linha de detalhe; na 1ª abertura carrega a ficha completa (locObterImovel).
+async function cartToggleDetalhe(id, btn) {
+  const tr = document.getElementById('cart-det-' + id);
+  if (!tr) return;
+  const abrindo = tr.hidden;
+  tr.hidden = !abrindo;
+  if (btn) btn.textContent = abrindo ? 'Fechar' : 'Abrir';
+  if (!abrindo) return;
+  const cont = document.getElementById('det-' + id);
+  if (!cont || cont.dataset.carregado) return;
+  cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Carregando ficha completa...</p>';
+  try {
+    const res = await locObterImovel({ imovelId: id });
+    const d = res.data || {};
+    cont.innerHTML = renderDetalheImovel(d);
+    wireDetalheImovel(cont, id, d);
+    cont.dataset.carregado = '1';
+  } catch (e) {
+    cont.innerHTML = `<p style="font-size:12px;color:var(--text-muted)">Erro ao carregar: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// Liga os eventos da Carteira depois de cada render.
+function wireCarteira() {
+  const $$ = sel => secaoImoveis.querySelectorAll(sel);
+  $$('.cart-copiar').forEach(b => b.addEventListener('click', () => cartCopiarLink(b.dataset.arquivo)));
+  $$('.cart-abrir').forEach(b => b.addEventListener('click', () => cartToggleDetalhe(b.dataset.id, b)));
+  $$('.cart-pill').forEach(b => b.addEventListener('click', () => {
+    const g = b.dataset.grupo, k = b.dataset.key;
+    cartFiltros[g] = (cartFiltros[g] === k) ? null : k;   // clicar de novo desliga
+    renderCarteira();
   }));
-  // Controle de status (gestor/administrativo)
-  secaoImoveis.querySelectorAll('.imovel-status-sel').forEach(sel => {
-    sel.addEventListener('change', async () => {
-      sel.disabled = true;
-      try { await locMoverImovelStatus({ imovelId: sel.dataset.id, novoStatus: sel.value }); carregarImoveis(); }
-      catch (e) { alert('Erro ao mover: ' + e.message); carregarImoveis(); }
+  const fc = document.getElementById('cartFCorretor');
+  if (fc) fc.addEventListener('change', () => { cartFiltros.corretor = fc.value || null; renderCarteira(); });
+  const lim = document.getElementById('cartLimpar');
+  if (lim) lim.addEventListener('click', () => { cartFiltros = { fin: null, sit: null, corretor: null, busca: '' }; renderCarteira(); });
+  const busca = document.getElementById('cartBusca');
+  if (busca) {
+    // Incremental com debounce curto; re-render preservando o foco no campo
+    busca.addEventListener('input', () => {
+      clearTimeout(busca._t);
+      busca._t = setTimeout(() => {
+        cartFiltros.busca = busca.value;
+        renderCarteira();
+        const b2 = document.getElementById('cartBusca');
+        if (b2) { b2.focus(); b2.setSelectionRange(b2.value.length, b2.value.length); }
+      }, 220);
     });
+  }
+  const novo = document.getElementById('cartNovo');
+  if (novo) novo.addEventListener('click', () => cartAbrirModal(null));
+
+  // Ações do detalhe
+  $$('.cart-sit').forEach(sel => sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    try { await carteiraSituacaoFn({ imovelId: sel.dataset.id, situacao: sel.value }); cartToast('Situação atualizada'); carregarImoveis(); }
+    catch (e) { alert('Erro: ' + e.message); carregarImoveis(); }
+  }));
+  $$('.imovel-status-sel').forEach(sel => sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    try { await locMoverImovelStatus({ imovelId: sel.dataset.id, novoStatus: sel.value }); cartToast('Esteira atualizada'); carregarImoveis(); }
+    catch (e) { alert('Erro ao mover: ' + e.message); carregarImoveis(); }
+  }));
+  $$('.cart-arquivar').forEach(b => b.addEventListener('click', async () => {
+    const arquivar = b.dataset.arquivar === '1';
+    if (arquivar && !confirm('Arquivar este imóvel? Ele sai da operação, mas nada é excluído — dá pra restaurar depois.')) return;
+    b.disabled = true;
+    try { await carteiraArquivar({ imovelId: b.dataset.id, arquivar }); cartToast(arquivar ? 'Imóvel arquivado' : 'Imóvel restaurado'); carregarImoveis(); }
+    catch (e) { alert('Erro: ' + e.message); carregarImoveis(); }
+  }));
+  $$('.cart-editar').forEach(b => b.addEventListener('click', () => {
+    const im = (_imoveisCache?.imoveis || []).find(x => x.id === b.dataset.id);
+    if (im) cartAbrirModal(im);
+  }));
+  $$('.cart-int-add').forEach(b => b.addEventListener('click', async () => {
+    const id = b.dataset.id;
+    const nome = secaoImoveis.querySelector(`.cart-int-nome[data-id="${id}"]`)?.value.trim();
+    const contato = secaoImoveis.querySelector(`.cart-int-contato[data-id="${id}"]`)?.value.trim();
+    const tipo = secaoImoveis.querySelector(`.cart-int-tipo[data-id="${id}"]`)?.value;
+    if (!nome) { alert('Informe o nome do interessado.'); return; }
+    b.disabled = true;
+    try { await carteiraInteressado({ imovelId: id, acao: 'add', nome, contato, tipo }); cartToast('Interessado adicionado'); await recarregarLinhaCarteira(id); }
+    catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
+  }));
+  $$('.cart-int-rem').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await carteiraInteressado({ imovelId: b.dataset.id, acao: 'remover', index: Number(b.dataset.index) }); cartToast('Interessado removido'); await recarregarLinhaCarteira(b.dataset.id); }
+    catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
+  }));
+}
+
+// Recarrega a lista mantendo a linha de detalhe aberta (pra não "fechar na cara" ao mexer em interessados).
+async function recarregarLinhaCarteira(id) {
+  await carregarImoveis();
+  const btn = secaoImoveis.querySelector(`.cart-abrir[data-id="${id}"]`);
+  if (btn) cartToggleDetalhe(id, btn);
+}
+
+// ─── Modal Novo Imóvel / Editar (dialog único, criado sob demanda) ────────────
+function cartAbrirModal(im) {
+  let dlg = document.getElementById('dlgCartImovel');
+  if (!dlg) {
+    dlg = document.createElement('dialog');
+    dlg.id = 'dlgCartImovel';
+    dlg.setAttribute('style', 'border:1px solid var(--border);border-radius:12px;padding:0;background:var(--surface);color:var(--text-primary);max-width:560px;width:92vw');
+    document.body.appendChild(dlg);
+  }
+  const e = im?.endereco || {};
+  const campo = (id, label, valor, ph, req) => `<label style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:600;color:var(--text-muted)">${label}${req ? ' *' : ''}
+    <input id="${id}" value="${escapeHtml(valor || '')}" placeholder="${ph || ''}" style="font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--hover);color:var(--text-primary)"></label>`;
+
+  // Escolha inicial (só na criação): Enviar Ficha (fluxo principal) × Cadastro Manual
+  const escolha = im ? '' : `<div id="cartEscolha" style="display:flex;gap:10px;padding:18px 20px">
+      <button id="cartOpFicha" style="flex:1;padding:16px 12px;border:1px solid var(--border);border-radius:10px;background:var(--hover);cursor:pointer;text-align:left">
+        <div style="font-size:14px;font-weight:700">📄 Enviar Ficha</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Fluxo principal: copie o link, o cliente preenche e o imóvel entra sozinho.</div></button>
+      <button id="cartOpManual" style="flex:1;padding:16px 12px;border:1px solid var(--border);border-radius:10px;background:var(--hover);cursor:pointer;text-align:left">
+        <div style="font-size:14px;font-weight:700">✍ Cadastro Manual</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Casos excepcionais, sem ficha do cliente.</div></button>
+    </div>
+    <div id="cartFichasLinks" hidden style="padding:0 20px 18px">
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Copie o link da ficha e mande pro cliente:</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${CARTEIRA_FICHAS.map(f => `<button class="cart-copiar-dlg" data-arquivo="${f.arquivo}" style="font-size:11px;font-weight:600;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--hover);cursor:pointer">${f.label} · Copiar</button>`).join('')}</div>
+    </div>`;
+
+  dlg.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)">
+      <strong style="font-size:15px">${im ? 'Editar imóvel' : 'Novo Imóvel'}</strong>
+      <button id="cartDlgFechar" style="border:none;background:none;font-size:18px;cursor:pointer;color:var(--text-muted)">✕</button></div>
+    ${escolha}
+    <form id="cartForm" ${im ? '' : 'hidden'} style="padding:16px 20px;display:flex;flex-direction:column;gap:10px" onsubmit="return false">
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-weight:600;color:var(--text-muted)">Finalidade *
+        <select id="cfFin" style="font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--hover);color:var(--text-primary)">
+          ${CART_FINALIDADES.map(f => `<option value="${f.key}"${im && cartFinalidadeDe(im) === f.key ? ' selected' : ''}>${f.label}</option>`).join('')}</select></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${campo('cfProp', 'Proprietário', im?.proprietarioNome || im?.locadorNome, 'Nome completo', true)}
+        ${campo('cfContato', 'Contato do proprietário', im?.proprietarioContato, 'Telefone/e-mail')}</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px">
+        ${campo('cfLog', 'Endereço', e.logradouro, 'Rua, Avenida...', true)}
+        ${campo('cfNum', 'Número', e.numero)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        ${campo('cfCompl', 'Complemento', e.complemento, 'Ap 12')}
+        ${campo('cfBairro', 'Bairro', e.bairro)}
+        ${campo('cfCep', 'CEP', e.cep, '00000-000')}</div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px">
+        ${campo('cfCidade', 'Cidade', e.cidade, '', true)}
+        ${campo('cfUf', 'UF', e.estado, 'SP')}
+        ${campo('cfTipo', 'Tipo', im?.tipo, 'Apartamento')}</div>
+      ${campo('cfValor', 'Valor de anúncio', im?.valorAnuncio, 'R$')}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px">
+        <button id="cartDlgCancelar" type="button" style="font-size:12px;font-weight:600;padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-muted);cursor:pointer">Cancelar</button>
+        <button id="cartDlgSalvar" type="button" style="font-size:12px;font-weight:600;padding:8px 18px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">${im ? 'Salvar alterações' : 'Criar imóvel'}</button></div>
+    </form>`;
+
+  const fechar = () => dlg.close();
+  dlg.querySelector('#cartDlgFechar').addEventListener('click', fechar);
+  dlg.querySelector('#cartDlgCancelar')?.addEventListener('click', fechar);
+  dlg.querySelector('#cartOpManual')?.addEventListener('click', () => {
+    dlg.querySelector('#cartEscolha').hidden = true;
+    dlg.querySelector('#cartForm').hidden = false;
   });
-  // Ver detalhes do imóvel (busca sob demanda)
-  secaoImoveis.querySelectorAll('.btn-det-imovel').forEach(btn => btn.addEventListener('click', () => toggleDetalheImovel(btn)));
+  dlg.querySelector('#cartOpFicha')?.addEventListener('click', () => {
+    dlg.querySelector('#cartFichasLinks').hidden = false;
+  });
+  dlg.querySelectorAll('.cart-copiar-dlg').forEach(b => b.addEventListener('click', () => cartCopiarLink(b.dataset.arquivo)));
+  dlg.querySelector('#cartDlgSalvar').addEventListener('click', async () => {
+    const v = id => dlg.querySelector('#' + id)?.value.trim() || '';
+    const payload = {
+      ...(im ? { imovelId: im.id } : {}),
+      finalidade: dlg.querySelector('#cfFin').value,
+      proprietarioNome: v('cfProp'), proprietarioContato: v('cfContato'),
+      tipo: v('cfTipo'), valorAnuncio: v('cfValor'),
+      endereco: { logradouro: v('cfLog'), numero: v('cfNum'), complemento: v('cfCompl'), bairro: v('cfBairro'), cidade: v('cfCidade'), estado: v('cfUf').toUpperCase(), cep: v('cfCep') }
+    };
+    if (!payload.proprietarioNome || !payload.endereco.logradouro || !payload.endereco.cidade) {
+      alert('Preencha os campos obrigatórios: proprietário, endereço e cidade.'); return;
+    }
+    const btn = dlg.querySelector('#cartDlgSalvar');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+      await carteiraSalvarImovel(payload);
+      dlg.close();
+      cartToast(im ? 'Imóvel atualizado' : 'Imóvel criado');
+      carregarImoveis();
+    } catch (e2) {
+      alert('Erro ao salvar: ' + e2.message);
+      btn.disabled = false; btn.textContent = im ? 'Salvar alterações' : 'Criar imóvel';
+    }
+  });
+  dlg.showModal();
 }
 
 // Tipos de alerta da Gestão de Locações: [ícone, rótulo, cor, fundo, borda]

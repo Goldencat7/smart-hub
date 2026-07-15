@@ -681,17 +681,54 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       ...loc_montarImovel(dados),
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
       fichaId, fichaTipo: 'locador', locadorIds, locadorNome: p1.nome || '',
+      proprietarioNome: p1.nome || '',   // campo genérico da Carteira (venda usa o mesmo)
       documentos: after.documentos || {}, pendentes: after.pendentes || [],
       atualizadoEm: ts()
     };
     if (existente.exists) {
-      await imovelRef.set(base, { merge: true });          // preserva status + criadoEm + numeroProtocolo
+      await imovelRef.set(base, { merge: true });          // preserva status + criadoEm + numeroProtocolo + situacao
     } else {
+      // Carteira: todo imóvel nasce Disponível; ficha do locador ⇒ finalidade locação.
       const numeroProtocolo = await proximoNumeroProtocolo();
-      await imovelRef.set({ ...base, status: 'recebido', numeroProtocolo, criadoEm: ts() });
+      await imovelRef.set({ ...base, status: 'recebido', finalidade: 'locacao', situacao: 'disponivel', arquivado: false, numeroProtocolo, criadoEm: ts() });
     }
   } catch (e) {
     await logErro('onFichaLocadorEnviadaAdmin', e, { fichaId });
+  }
+});
+
+// Trigger de ingestão da VENDA: ficha do vendedor -> imóvel (na transição p/ enviado_admin).
+// Espelha o onFichaLocadorEnviadaAdmin: a ficha do vendedor usa as MESMAS chaves im_* de
+// endereço, então o loc_montarImovel serve pros dois (os campos de repasse/adm que a ficha
+// de venda não tem viram '' e não atrapalham). Venda não entra na esteira de locação
+// (sem `status`); vive só na Carteira (finalidade/situacao).
+exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fichaId}' }, async (event) => {
+  const after  = event.data.after?.data();
+  const before = event.data.before?.data();
+  if (!after || after.tipo !== 'vendedor' || after.status !== 'enviado_admin') return;
+  if (before && before.status === 'enviado_admin') return;   // já processado nesta transição
+  const fichaId = event.params.fichaId;
+  const dados = after.dados || {};
+  const ts = () => admin.firestore.FieldValue.serverTimestamp();
+  try {
+    const imovelRef = db.collection('imoveis').doc(fichaId);
+    const existente = await imovelRef.get();
+    const base = {
+      ...loc_montarImovel(dados),
+      corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
+      fichaId, fichaTipo: 'vendedor',
+      proprietarioNome: dados.nome || '',   // vendedor principal (prefixo vazio na ficha)
+      documentos: after.documentos || {}, pendentes: after.pendentes || [],
+      atualizadoEm: ts()
+    };
+    if (existente.exists) {
+      await imovelRef.set(base, { merge: true });   // preserva criadoEm + numeroProtocolo + situacao/finalidade
+    } else {
+      const numeroProtocolo = await proximoNumeroProtocolo();
+      await imovelRef.set({ ...base, finalidade: 'venda', situacao: 'disponivel', arquivado: false, numeroProtocolo, criadoEm: ts() });
+    }
+  } catch (e) {
+    await logErro('onFichaVendedorEnviadaAdmin', e, { fichaId });
   }
 });
 
@@ -903,6 +940,139 @@ exports.locMoverImovelStatus = onCall(async (req) => {
     })
   });
   return { ok: true, status: novoStatus };
+});
+
+// ─── Carteira de Imóveis (Tela 01 do SMART HUB) ──────────────────────────────
+// A Carteira é a visão comercial por cima da coleção `imoveis`: finalidade
+// (locacao|venda|venda_locacao), situacao (disponivel|em_negociacao), arquivado
+// (nunca excluir fisicamente — regra da spec) e interessados. A esteira de
+// locação (campo `status`) continua existindo por baixo, como detalhe.
+const CARTEIRA_FINALIDADES = ['locacao', 'venda', 'venda_locacao'];
+const CARTEIRA_SITUACOES = ['disponivel', 'em_negociacao'];
+const _txt = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+
+// Posse na Carteira: broker (gestor/administrativo) mexe em tudo; corretor só nos seus.
+async function _carteiraImovelComPosse(imovelId, auth) {
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const ref = db.collection('imoveis').doc(imovelId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const ehBroker = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!ehBroker && snap.data().corretorUid !== auth.uid) {
+    throw new HttpsError('permission-denied', 'Sem permissão neste imóvel.');
+  }
+  return { ref, snap, ehBroker };
+}
+
+// Cria (cadastro manual — caso excepcional da spec) ou edita um imóvel da Carteira.
+exports.carteiraSalvarImovel = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+
+  // Regras da spec: todo imóvel tem proprietário, corretor responsável e finalidade.
+  const proprietarioNome = _txt(d.proprietarioNome, 120);
+  const finalidade = CARTEIRA_FINALIDADES.includes(d.finalidade) ? d.finalidade : null;
+  const e = d.endereco || {};
+  const endereco = {
+    cep: _txt(e.cep, 12), logradouro: _txt(e.logradouro, 160), numero: _txt(e.numero, 20),
+    complemento: _txt(e.complemento, 80), bairro: _txt(e.bairro, 80),
+    cidade: _txt(e.cidade, 80), estado: _txt(e.estado, 2)
+  };
+  const campos = {
+    proprietarioNome,
+    proprietarioContato: _txt(d.proprietarioContato, 120),
+    tipo: _txt(d.tipo, 60),
+    valorAnuncio: _txt(d.valorAnuncio, 40),
+    endereco,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  };
+
+  if (d.imovelId) {
+    // Edição: posse + não deixa "des-obrigar" campo obrigatório
+    const { ref } = await _carteiraImovelComPosse(d.imovelId, auth);
+    if (!proprietarioNome) delete campos.proprietarioNome;
+    if (finalidade) campos.finalidade = finalidade;
+    await ref.set(campos, { merge: true });
+    return { ok: true, imovelId: d.imovelId };
+  }
+
+  // Criação manual
+  if (!proprietarioNome) throw new HttpsError('invalid-argument', 'Proprietário é obrigatório.');
+  if (!finalidade) throw new HttpsError('invalid-argument', 'Finalidade é obrigatória.');
+  if (!endereco.logradouro || !endereco.cidade) throw new HttpsError('invalid-argument', 'Endereço (logradouro e cidade) é obrigatório.');
+
+  let porNome = '';
+  try { porNome = (await admin.auth().getUser(auth.uid)).displayName || ''; } catch (_) {}
+  const ref = db.collection('imoveis').doc();
+  const numeroProtocolo = await proximoNumeroProtocolo();
+  await ref.set({
+    ...campos,
+    finalidade,
+    situacao: 'disponivel',            // todo imóvel nasce Disponível (spec)
+    arquivado: false,
+    origem: 'manual',
+    corretorUid: auth.uid, corretorNome: porNome,
+    // Com locação na finalidade, entra na esteira em 'recebido'; venda pura não tem esteira.
+    ...(finalidade !== 'venda' ? { status: 'recebido' } : {}),
+    interessados: [],
+    pendentes: [],
+    numeroProtocolo,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+  return { ok: true, imovelId: ref.id, numeroProtocolo };
+});
+
+// Arquiva / restaura (a spec proíbe excluir fisicamente — arquivamento é o "delete").
+exports.carteiraArquivar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId, arquivar } = req.data || {};
+  const { ref } = await _carteiraImovelComPosse(imovelId, auth);
+  await ref.set({
+    arquivado: !!arquivar,
+    ...(arquivar ? { arquivadoEm: admin.firestore.FieldValue.serverTimestamp() } : { arquivadoEm: null }),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true, arquivado: !!arquivar };
+});
+
+// Muda a situação comercial (Disponível / Em negociação).
+exports.carteiraSituacao = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId, situacao } = req.data || {};
+  if (!CARTEIRA_SITUACOES.includes(situacao)) throw new HttpsError('invalid-argument', 'Situação inválida.');
+  const { ref } = await _carteiraImovelComPosse(imovelId, auth);
+  await ref.set({ situacao, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true, situacao };
+});
+
+// Interessados: vários por imóvel (spec). MVP: array no doc (cap 50), add/remover por índice.
+exports.carteiraInteressado = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId, acao } = req.data || {};
+  const { ref, snap } = await _carteiraImovelComPosse(imovelId, auth);
+  const lista = Array.isArray(snap.data().interessados) ? [...snap.data().interessados] : [];
+
+  if (acao === 'add') {
+    const nome = _txt(req.data.nome, 120);
+    if (!nome) throw new HttpsError('invalid-argument', 'Nome do interessado é obrigatório.');
+    if (lista.length >= 50) throw new HttpsError('resource-exhausted', 'Limite de interessados atingido.');
+    lista.push({
+      nome,
+      contato: _txt(req.data.contato, 120),
+      tipo: _txt(req.data.tipo, 20) || 'locatario',
+      em: admin.firestore.Timestamp.now()
+    });
+  } else if (acao === 'remover') {
+    const i = Number(req.data.index);
+    if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+    lista.splice(i, 1);
+  } else {
+    throw new HttpsError('invalid-argument', 'Ação inválida.');
+  }
+
+  await ref.set({ interessados: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true, interessados: lista.length };
 });
 
 // ─── Gestão de Locações · Campos financeiros + checklist (esteira de locação) ─
