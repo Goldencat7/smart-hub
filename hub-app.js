@@ -4392,7 +4392,13 @@ function carregarIA() {
 }
 
 // ─── Documentos ──────────────────────────────────────────────────────────────
-const BASE_HOSTING = 'https://remax-smart-hub.web.app';
+// Base das fichas POR AMBIENTE: no staging os links de ficha têm que apontar pro
+// Hosting do staging — a página da ficha resolve o backend pelo hostname DELA,
+// então um link de produção gravaria dado de teste na PRODUÇÃO. `.exe` (file://)
+// e web.app de produção continuam caindo em produção.
+const BASE_HOSTING = (typeof location !== 'undefined' && location.hostname.includes('remax-smart-hub-staging'))
+  ? 'https://remax-smart-hub-staging.web.app'
+  : 'https://remax-smart-hub.web.app';
 
 // Catálogo de fichas — para adicionar nova: inclua um objeto aqui e hospede o HTML
 const FICHAS_CONFIG = [

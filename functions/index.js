@@ -14,6 +14,17 @@ setGlobalOptions({ region: 'southamerica-east1', maxInstances: 10 });
 
 const db = admin.firestore();
 
+// ─── Projeto por ambiente ────────────────────────────────────────────────────
+// As functions rodam em produção E no staging (remax-smart-hub-staging) com o
+// MESMO código. Tudo que aponta pro próprio projeto (Hosting das fichas/portais,
+// bucket do Storage) é derivado daqui — cravar a URL de produção fazia o staging
+// gerar links de ficha de PRODUÇÃO (dado de teste iria pro banco real) e falhar
+// nos anexos (bucket de outro projeto). O KMS continua cravado em produção de
+// propósito: o cofre de credenciais é um recurso só de produção.
+const PROJECT_ID = process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'remax-smart-hub';
+const HOSTING_BASE = `https://${PROJECT_ID}.web.app`;
+const PROJECT_BUCKET = `${PROJECT_ID}.firebasestorage.app`;
+
 // ─── Cofre: criptografia de senhas em repouso (KMS) ─────────────────────────
 // Todas as senhas das plataformas (REMAX Mais, ClickSign etc) ficam
 // criptografadas no Firestore com uma chave simétrica no Google Cloud KMS.
@@ -1785,7 +1796,7 @@ exports.locGatewayWebhook = onRequest(async (req, res) => {
 });
 
 // ─── Portal externo do proprietário (consulta por token, sem login) ─────────────
-const PORTAL_BASE = 'https://remax-smart-hub.web.app';
+const PORTAL_BASE = HOSTING_BASE;   // portais servidos do Hosting do próprio projeto (prod/staging)
 
 // Papel da pessoa → papel do portal + página. Locador vê repasses; locatário vê pagamentos.
 const PORTAL_PAPEL = { locador: 'proprietario', locatario: 'inquilino' };
@@ -2408,7 +2419,7 @@ async function gerarPdfFicha(ficha, tipoLabel) {
 // Só permite baixar do próprio bucket de Storage do projeto. Os documentos das fichas
 // são gravados por clientes anônimos, que poderiam apontar 'documentos' para endpoints
 // internos/metadata (SSRF) — aqui garantimos que a URL é do Firebase Storage do projeto.
-const STORAGE_BUCKET = 'remax-smart-hub.firebasestorage.app';
+const STORAGE_BUCKET = PROJECT_BUCKET;   // bucket do próprio projeto (prod/staging)
 function urlStoragePermitida(u) {
   try {
     const parsed = new URL(u);
@@ -3550,7 +3561,7 @@ const FICHA_TIPOS = ['pf', 'pj', 'vendedor', 'proposta', 'fianca', 'locacao_fiad
 // As pastas diferem por página: as fichas por tipo usam `fichas/<tipo>/...` e a do
 // locador usa `fichas-locador/...` (com hífen). O path vem urlencoded (`%2F`).
 const FICHA_DOC_BASE =
-  'https://firebasestorage.googleapis.com/v0/b/remax-smart-hub.firebasestorage.app/o/';
+  `https://firebasestorage.googleapis.com/v0/b/${PROJECT_BUCKET}/o/`;
 const FICHA_DOC_PASTAS = ['fichas%2F', 'fichas-locador%2F'];
 const ehUrlDeAnexoDaFicha = (url) =>
   typeof url === 'string' &&
@@ -3598,7 +3609,7 @@ function validarDocumentosFicha(documentos) {
   return documentos;
 }
 
-const FICHA_BUCKET = 'remax-smart-hub.firebasestorage.app';
+const FICHA_BUCKET = PROJECT_BUCKET;   // bucket do próprio projeto (prod/staging)
 
 // O cliente sobe o arquivo sem token e manda só o CAMINHO; o token de download
 // é gerado AQUI com o Admin SDK. Em 2026-07-03 o Firebase passou a rejeitar
@@ -3941,7 +3952,7 @@ exports.reenviarFichaParaCliente = onCall(async (req) => {
   });
 
   const dados = fichaSnap.data();
-  const link = `https://remax-smart-hub.web.app/ficha-locador.html?modo=edicao&idFicha=${fichaId}&corretor=${dados.corretorUid}&nome=${encodeURIComponent(dados.corretorNome || '')}`;
+  const link = `${HOSTING_BASE}/ficha-locador.html?modo=edicao&idFicha=${fichaId}&corretor=${dados.corretorUid}&nome=${encodeURIComponent(dados.corretorNome || '')}`;
   return { ok: true, link };
 });
 
@@ -4029,7 +4040,7 @@ exports.reenviarFichaTipoCliente = onCall(async (req) => {
   const d = snap.data();
   await ref.update({ status: 'aguardando_edicao_cliente', observacaoCorretor: observacao || '', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() });
   const arquivo = `ficha-${d.tipo === 'locacao_fiador' ? 'locacao-fiador' : d.tipo}.html`;
-  const link = `https://remax-smart-hub.web.app/${arquivo}?modo=edicao&idFicha=${fichaId}&corretor=${d.corretorUid}&nome=${encodeURIComponent(d.corretorNome||'')}`;
+  const link = `${HOSTING_BASE}/${arquivo}?modo=edicao&idFicha=${fichaId}&corretor=${d.corretorUid}&nome=${encodeURIComponent(d.corretorNome||'')}`;
   return { ok: true, link };
 });
 
