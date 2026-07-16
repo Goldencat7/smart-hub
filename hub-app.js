@@ -1246,7 +1246,12 @@ onAuthStateChanged(auth, async (user) => {
     } catch (e) { console.warn('Bootstrap admin:', e); }
   }
 
-  // Busca os apps restritos liberados pra este usuário e re-renderiza
+  // Busca os apps restritos liberados pra este usuário e re-renderiza.
+  // Tudo dispara em PARALELO: eram 4 esperas em sequência (2 delas Cloud
+  // Functions, que com cold start levam segundos cada) e as abas por
+  // permissão (Locação/ClickSign/Suporte) demoravam a aparecer na sidebar.
+  const _perfilP = locMeuPerfil().catch(() => null);
+  const _extrasP = Promise.all([carregarStatusApps(), carregarBanner()]).catch(() => {});
   try {
     const perm = await getMinhasPermissoes();
     appsPermitidos = perm.data.apps || [];
@@ -1266,12 +1271,10 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   btnAdmin.hidden = !(isAdmin || temPermTI);
-  try {
-    const mp = await locMeuPerfil();
-    locRoleAtual = mp.data?.role || 'corretor';
-  } catch (e) { locRoleAtual = 'corretor'; }
-  await Promise.all([carregarStatusApps(), carregarBanner()]); // carrega dados antes de renderizar
-  renderSidebar(); // re-render: agora que isAdmin/permissões chegaram, itens restritos (ClickSign) aparecem
+  const mp = await _perfilP;
+  locRoleAtual = mp?.data?.role || 'corretor';
+  renderSidebar(); // re-render JÁ: com isAdmin/permissões, itens restritos (Locação/ClickSign) aparecem
+  await _extrasP; // status dos apps + banner (afetam só o centro, não a sidebar)
   renderCentro();
   carregarPerfil(); // popula o avatar no topo
 
