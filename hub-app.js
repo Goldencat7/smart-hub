@@ -55,6 +55,7 @@ const locAtualizarRepasse = httpsCallable(fns, 'locAtualizarRepasse');
 const locListarAlertas = httpsCallable(fns, 'locListarAlertas');
 const locTratarAlerta = httpsCallable(fns, 'locTratarAlerta');
 const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
+const locSolicitarVistoriaCheckVisto = httpsCallable(fns, 'locSolicitarVistoriaCheckVisto');
 const locMeuPerfil = httpsCallable(fns, 'locMeuPerfil');
 const locDashboard = httpsCallable(fns, 'locDashboard');
 const locRelatorios = httpsCallable(fns, 'locRelatorios');
@@ -3135,7 +3136,14 @@ function renderDetalheImovel(d, paraTela03) {
     <select class="vi-status" style="${_selStyle}"><option value="agendada">Agendada</option><option value="realizada">Realizada</option><option value="laudo_emitido">Laudo emitido</option></select>
     <input class="vi-laudo" placeholder="Link do laudo (opcional)" style="${_selStyle}">
     <button class="topbar-btn primario btn-add-vistoria" style="font-size:11px;padding:4px 10px">Registrar vistoria</button></div>`;
-  const vistoriaHtml = sec('Vistorias', vistList + vistForm);
+  // Integração CheckVisto: solicita lá (vira agendamento + push) e volta sozinha pra cá.
+  const vistCv = `<div class="form-vist-cv" data-imovel="${im.id}" style="margin-top:10px;border-top:1px dashed var(--border);padding-top:8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+    <span style="font-size:11px;font-weight:700">Solicitar no CheckVisto:</span>
+    <select class="cv-tipo" style="${_selStyle}"><option value="entrada">Entrada</option><option value="saida">Saída</option></select>
+    <input class="cv-email" placeholder="e-mail do vistoriador (conta CheckVisto)" style="${_selStyle};min-width:210px">
+    <button class="topbar-btn btn-vist-cv" style="font-size:11px;padding:4px 10px">📲 Solicitar</button>
+    <span style="font-size:10px;color:var(--text-muted)">O status e o laudo voltam sozinhos quando a vistoria andar lá.</span></div>`;
+  const vistoriaHtml = sec('Vistorias', vistList + vistForm + vistCv);
 
   const FICHAS_IMOVEL = [
     { key: 'pf', label: 'Pessoa Física', arquivo: 'ficha-pf.html' },
@@ -3379,6 +3387,21 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
         });
         await recarregarDetalhe(cont, imovelId);
       } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
+    });
+  }
+  // Vistoria: solicitar no CheckVisto
+  const formCv = cont.querySelector('.form-vist-cv');
+  if (formCv) {
+    const btnCv = formCv.querySelector('.btn-vist-cv');
+    btnCv.addEventListener('click', async () => {
+      const email = formCv.querySelector('.cv-email').value.trim();
+      if (!email) { alert('Informe o e-mail da conta CheckVisto do vistoriador.'); return; }
+      btnCv.disabled = true; btnCv.textContent = 'Solicitando...';
+      try {
+        const r = await locSolicitarVistoriaCheckVisto({ imovelId, tipo: formCv.querySelector('.cv-tipo').value, vistoriadorEmail: email });
+        cartToast(r.data?.jaExistia ? 'Já havia uma solicitação aberta no CheckVisto' : 'Vistoria solicitada — o vistoriador recebe a notificação no CheckVisto');
+        await recarregarDetalhe(cont, imovelId);
+      } catch (e) { alert('Erro: ' + e.message); btnCv.disabled = false; btnCv.textContent = '📲 Solicitar'; }
     });
   }
   // Contrato: gerar / salvar / ativar

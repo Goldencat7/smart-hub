@@ -1,8 +1,25 @@
-# Integração Hub ⇄ CheckVisto — contrato v1
+# Integração Hub ⇄ CheckVisto — contrato v1.1
 
-**Status:** contrato definido em 2026-07-16; nenhum dos dois lados implementou ainda.
-Este arquivo é a **fonte da verdade** — os dois projetos (Hub e CheckVisto) implementam
-exatamente o que está aqui. Mudou algo? Atualiza AQUI primeiro, nos dois chats.
+**Status:** v1.1 de 2026-07-16 — ajustada à realidade do CheckVisto depois de ler o código
+(projeto `checkvisto-app`, functions v1/Node 20, multi-usuário por `userId`). Implementação
+feita NO CHAT DO HUB com autorização do Nathan (os dois lados); o chat do CheckVisto vai
+AUDITAR depois. Este arquivo é a fonte da verdade.
+
+**Decisões da v1.1 (por que difere da v1):**
+- A solicitação vira um doc na coleção **`agenda`** do CheckVisto (não uma "vistoria") —
+  é assim que o app agenda vistorias, e o trigger `notifyNovaAgenda` que JÁ existe manda
+  push pro vistoriador sem a gente escrever nada.
+- O CheckVisto é multi-usuário: a solicitação leva **`vistoriadorEmail`** (a conta
+  CheckVisto que recebe o serviço) e tudo é criado com o `userId` dela.
+- O laudo do CheckVisto é PDF **gerado sob demanda** (sem URL permanente) — o `laudoUrl`
+  que volta pro Hub é o link do app (`https://checkvisto-app.web.app/`); o checklist
+  automático do Hub avança por STATUS, não por URL, então nada se perde.
+- Vínculo Hub→vistoria: a solicitação faz upsert de um **imóvel no CheckVisto** carimbado
+  com `hubImovelId`+`hubAmbiente`; o trigger de volta resolve `vistoria.imovelId → imóvel
+  → hubImovelId`.
+- Código do CheckVisto: arquivo **NOVO** `functions/hub-integracao.js` + **1 linha
+  apêndice** no fim do `functions/index.js` (`Object.assign(exports, require('./hub-integracao'))`).
+  Nenhuma linha existente alterada.
 
 ## Objetivo
 

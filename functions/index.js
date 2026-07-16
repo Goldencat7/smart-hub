@@ -94,6 +94,7 @@ const BOT_GH_TOKEN = defineSecret('BOT_GH_TOKEN');
 // Segredo compartilhado com o workflow do caça-bugs (header x-bot-secret) — só ele
 // pode entregar achados pro botReceberAchados. Gerado por nós; não é credencial de conta.
 const BOT_HOOK_SECRET = defineSecret('BOT_HOOK_SECRET');
+const HUB_CHECKVISTO_SECRET = defineSecret('HUB_CHECKVISTO_SECRET'); // integração CheckVisto (INTEGRACAO-CHECKVISTO.md)
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
@@ -2509,6 +2510,94 @@ exports.locSalvarVistoria = onCall(async (req) => {
   await ref.set(base, { merge: true });
   await recomputarChecklistAuto(imovelId); // vistoria de entrada com laudo → item automático
   return { ok: true, id: ref.id };
+});
+
+// ─── Integração CheckVisto (contrato INTEGRACAO-CHECKVISTO.md v1.1) ──────────
+const CHECKVISTO_SOLICITAR_URL = 'https://us-central1-checkvisto-app.cloudfunctions.net/hubSolicitarVistoria';
+
+// Solicita a vistoria lá no CheckVisto (vira agendamento + push pro vistoriador)
+// e registra aqui como vistoria "agendada" de origem checkvisto.
+exports.locSolicitarVistoriaCheckVisto = onCall({ secrets: [HUB_CHECKVISTO_SECRET] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId, tipo, vistoriadorEmail, horario } = req.data || {};
+  if (!['entrada', 'saida'].includes(tipo)) throw new HttpsError('invalid-argument', 'Tipo inválido.');
+  const email = _txt(vistoriadorEmail, 200);
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpsError('invalid-argument', 'Informe o e-mail da conta CheckVisto do vistoriador.');
+  const { snap } = await _carteiraImovelComPosse(imovelId, auth);
+  const im = snap.data();
+  const e = im.endereco || {};
+  const ambiente = process.env.GCLOUD_PROJECT === 'remax-smart-hub-staging' ? 'staging' : 'prod';
+
+  const r = await fetch(CHECKVISTO_SOLICITAR_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-integracao-secret': HUB_CHECKVISTO_SECRET.value() },
+    body: JSON.stringify({
+      hubImovelId: imovelId, ambiente, tipo,
+      endereco: [e.logradouro, e.numero, e.bairro, e.cidade].filter(Boolean).join(', '),
+      codigoHub: im.numeroProtocolo != null ? '#SH-' + String(im.numeroProtocolo).padStart(4, '0') : '',
+      proprietarioNome: im.proprietarioNome || '',
+      corretorNome: im.corretorNome || '',
+      vistoriadorEmail: email,
+      horario: _txt(horario, 16),
+    }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new HttpsError('unavailable', 'CheckVisto recusou: ' + (j.erro || ('HTTP ' + r.status)));
+
+  // Registro local: aparece na Gestão da Locação já como Agendada.
+  if (!j.jaExistia) {
+    await db.collection('vistorias').add({
+      imovelId, contratoId: imovelId, corretorUid: im.corretorUid,
+      tipo, status: 'agendada', laudoUrl: '', obs: `Solicitada no CheckVisto (${email})`,
+      origem: 'checkvisto', idExterno: j.agendaId || '',
+      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+    await _imovelTimeline(db.collection('imoveis').doc(imovelId), `Vistoria de ${tipo} solicitada no CheckVisto`, await _nomeDoUid(auth.uid));
+  }
+  return { ok: true, jaExistia: !!j.jaExistia };
+});
+
+// Webhook: o CheckVisto avisa quando a vistoria muda de status lá.
+// Upsert idempotente por idExterno; senão "promove" a solicitação agendada.
+exports.vistoriaWebhook = onRequest({ secrets: [HUB_CHECKVISTO_SECRET] }, async (req, res) => {
+  try {
+    if (req.method !== 'POST') return res.status(405).json({ ok: false });
+    if ((req.get('x-integracao-secret') || '') !== HUB_CHECKVISTO_SECRET.value()) return res.status(401).json({ ok: false });
+    const b = req.body || {};
+    const hubImovelId = typeof b.hubImovelId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(b.hubImovelId) ? b.hubImovelId : '';
+    const idExterno = _txt(b.vistoriaId, 60);
+    const tipo = ['entrada', 'saida'].includes(b.tipo) ? b.tipo : '';
+    const status = VISTORIA_STATUS.includes(b.status) ? b.status : '';
+    if (!hubImovelId || !idExterno || !tipo || !status) return res.status(400).json({ ok: false, erro: 'payload inválido' });
+
+    const imSnap = await db.collection('imoveis').doc(hubImovelId).get();
+    if (!imSnap.exists) return res.status(404).json({ ok: false, erro: 'imóvel não existe' });
+
+    // 1º por idExterno; 2º a solicitação "agendada" desse imóvel+tipo; senão cria.
+    let ref = null;
+    const porExt = await db.collection('vistorias').where('idExterno', '==', idExterno).limit(1).get();
+    if (!porExt.empty) ref = porExt.docs[0].ref;
+    if (!ref) {
+      const ag = await db.collection('vistorias').where('imovelId', '==', hubImovelId)
+        .where('origem', '==', 'checkvisto').where('tipo', '==', tipo).where('status', '==', 'agendada').limit(1).get();
+      if (!ag.empty) ref = ag.docs[0].ref;
+    }
+    if (!ref) ref = db.collection('vistorias').doc();
+    await ref.set({
+      imovelId: hubImovelId, contratoId: hubImovelId, corretorUid: imSnap.data().corretorUid || '',
+      tipo, status, laudoUrl: _txt(b.laudoUrl, 500), obs: _txt(b.obs, 300),
+      origem: 'checkvisto', idExterno,
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    await recomputarChecklistAuto(hubImovelId);
+    await _imovelTimeline(db.collection('imoveis').doc(hubImovelId),
+      `Vistoria de ${tipo} no CheckVisto: ${status === 'laudo_emitido' ? 'laudo emitido' : status}`, 'CheckVisto');
+    return res.json({ ok: true });
+  } catch (e) {
+    await logErro('vistoriaWebhook', e, {});
+    return res.status(500).json({ ok: false });
+  }
 });
 
 // Rotina diária: cobranças previstas cujo vencimento passou viram "atrasado".
