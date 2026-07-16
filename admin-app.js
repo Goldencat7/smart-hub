@@ -359,7 +359,26 @@ function escHtmlAdmin(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-function renderSmartHub() {
+// Lê a tela INTEIRA de volta pro estado (edições não salvas de TODOS os painéis)
+// e devolve o texto dos campos "Adicionar..." pra sobreviverem ao re-render.
+// Chamar SEMPRE antes de mutar shConfig: sem isso, mexer num card apagava em
+// silêncio o rename/checkbox/texto digitado nos outros cards.
+function shSyncTudo() {
+  const painel = document.getElementById('smarthubPainel');
+  painel.querySelectorAll('.sh-label').forEach(inp => {
+    const d = shConfig[inp.dataset.doc], i = Number(inp.dataset.i);
+    if (d && d[i]) d[i].label = inp.value;
+  });
+  painel.querySelectorAll('.sh-obr').forEach(chk => {
+    const d = shConfig[chk.dataset.doc], i = Number(chk.dataset.i);
+    if (d && d[i]) d[i].obrigatoria = chk.checked;
+  });
+  const novos = {};
+  painel.querySelectorAll('.sh-novo').forEach(inp => { if (inp.value) novos[inp.dataset.doc] = inp.value; });
+  return novos;
+}
+
+function renderSmartHub(novos) {
   const painel = document.getElementById('smarthubPainel');
   const card = (titulo, sub, corpo, doc) => `<div style="background:var(--surface,#fff);border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:16px 18px;margin-bottom:14px">
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
@@ -409,50 +428,57 @@ function renderSmartHub() {
     card('Checklist — Venda', 'etapas do negócio de venda', checklistHtml('checklist_venda'), 'checklist_venda') +
     card('Finalidades', 'fixas no sistema', finalidades, null);
 
+  // Devolve o texto do "Adicionar..." que ainda não virou item (sobrevive ao re-render)
+  Object.entries(novos || {}).forEach(([doc, v]) => {
+    const inp = painel.querySelector(`.sh-novo[data-doc="${doc}"]`);
+    if (inp) inp.value = v;
+  });
   wireSmartHub();
 }
 
 function wireSmartHub() {
   const painel = document.getElementById('smarthubPainel');
-  const sync = (doc) => {   // lê os inputs de volta pro estado (labels/obrigatória editados)
-    if (!doc.startsWith('checklist_')) return;
-    painel.querySelectorAll(`.sh-label[data-doc="${doc}"]`).forEach(inp => { shConfig[doc][Number(inp.dataset.i)].label = inp.value; });
-    painel.querySelectorAll(`.sh-obr[data-doc="${doc}"]`).forEach(chk => { shConfig[doc][Number(chk.dataset.i)].obrigatoria = chk.checked; });
-  };
   painel.querySelectorAll('.sh-add').forEach(b => b.addEventListener('click', () => {
     const doc = b.dataset.doc;
     const inp = painel.querySelector(`.sh-novo[data-doc="${doc}"]`);
     const v = inp?.value.trim();
     if (!v) return;
-    sync(doc);
+    const novos = shSyncTudo();
+    delete novos[doc];   // esse texto virou item — não volta pro campo
+    if (!doc.startsWith('checklist_')) {
+      // Duplicado (ignorando caixa/acento): avisa aqui em vez de deixar o servidor
+      // deduplicar em silêncio no Salvar (o chip sumia sem explicação).
+      const norm = s => String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+      if (shConfig[doc].some(x => norm(x) === norm(v))) { alert('Esse item já está na lista.'); return; }
+    }
     shConfig[doc].push(doc.startsWith('checklist_') ? { label: v, obrigatoria: false } : v);
-    renderSmartHub();
+    renderSmartHub(novos);
   }));
   painel.querySelectorAll('.sh-novo').forEach(inp => inp.addEventListener('keydown', ev => {
     if (ev.key === 'Enter') { ev.preventDefault(); painel.querySelector(`.sh-add[data-doc="${inp.dataset.doc}"]`)?.click(); }
   }));
   painel.querySelectorAll('.sh-rem').forEach(b => b.addEventListener('click', () => {
     const doc = b.dataset.doc;
-    sync(doc);
+    const novos = shSyncTudo();
     shConfig[doc].splice(Number(b.dataset.i), 1);
-    renderSmartHub();
+    renderSmartHub(novos);
   }));
   painel.querySelectorAll('.sh-mov').forEach(b => b.addEventListener('click', () => {
     const doc = b.dataset.doc, i = Number(b.dataset.i), j = i + Number(b.dataset.dir);
-    sync(doc);
+    const novos = shSyncTudo();
     if (j < 0 || j >= shConfig[doc].length) return;
     [shConfig[doc][i], shConfig[doc][j]] = [shConfig[doc][j], shConfig[doc][i]];
-    renderSmartHub();
+    renderSmartHub(novos);
   }));
   painel.querySelectorAll('.sh-salvar').forEach(b => b.addEventListener('click', async () => {
     const doc = b.dataset.doc;
-    sync(doc);
+    const novos = shSyncTudo();
     b.disabled = true; b.textContent = 'Salvando...';
     try {
       const r = await configSalvar({ doc, itens: shConfig[doc] });
       shConfig[doc] = r.data?.itens || shConfig[doc];
       shConfig._existia[doc] = true;
-      renderSmartHub();
+      renderSmartHub(novos);
     } catch (e) {
       alert('Erro ao salvar: ' + e.message);
       b.disabled = false; b.textContent = 'Salvar';

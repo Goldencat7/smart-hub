@@ -1087,6 +1087,13 @@ exports.carteiraArquivar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const { imovelId, arquivar } = req.data || {};
   const { ref } = await _carteiraImovelComPosse(imovelId, auth);
+  if (arquivar) {
+    // Imóvel com negócio ativo não pode sumir da Carteira — o NG ficaria órfão
+    // na Tela 04A apontando pra um imóvel invisível.
+    const negs = await db.collection('negocios').where('imovelId', '==', imovelId).get();
+    const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+    if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}) — conclua ou cancele o negócio antes de arquivar.`);
+  }
   await ref.set({
     arquivado: !!arquivar,
     ...(arquivar ? { arquivadoEm: admin.firestore.FieldValue.serverTimestamp() } : { arquivadoEm: null }),
@@ -1108,52 +1115,71 @@ exports.carteiraSituacao = onCall(async (req) => {
 });
 
 // Interessados: vários por imóvel (spec). MVP: array no doc (cap 50), add/remover por índice.
+// Transacional: o trigger onFichaInteressadoRecebida escreve o MESMO array — sem
+// transação, um clique simultâneo à chegada de uma ficha perderia um dos dois.
 exports.carteiraInteressado = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const { imovelId, acao } = req.data || {};
-  const { ref, snap } = await _carteiraImovelComPosse(imovelId, auth);
-  const lista = Array.isArray(snap.data().interessados) ? [...snap.data().interessados] : [];
+  const { ref } = await _carteiraImovelComPosse(imovelId, auth);
+  const ehGestor = ehGestorAuth(auth);
   let evento = '';
+  let total = 0;
 
-  if (acao === 'add') {
-    const nome = _txt(req.data.nome, 120);
-    if (!nome) throw new HttpsError('invalid-argument', 'Nome do interessado é obrigatório.');
-    if (lista.length >= 50) throw new HttpsError('resource-exhausted', 'Limite de interessados atingido.');
-    // Status inicial: 'em_analise' (add manual) ou 'ficha_enviada' (fluxo Enviar Ficha da Tela 03).
-    const status = INTERESSADO_STATUS.includes(req.data.status) ? req.data.status : 'em_analise';
-    if (INTERESSADO_SO_BROKER.includes(status)) throw new HttpsError('invalid-argument', 'Status inicial inválido.');
-    lista.push({
-      nome,
-      contato: _txt(req.data.contato, 120),
-      tipo: _txt(req.data.tipo, 20) || 'locatario',
-      status,
-      em: admin.firestore.Timestamp.now()
-    });
-    evento = `Interessado ${nome} adicionado (${INTERESSADO_LABEL[status]})`;
-  } else if (acao === 'remover') {
-    const i = Number(req.data.index);
-    if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
-    evento = `Interessado ${lista[i].nome} removido`;
-    lista.splice(i, 1);
-  } else if (acao === 'status') {
-    // Tela 03: muda o status do interessado. Aprovar/Reprovar = só broker (Manual de Regras).
-    const i = Number(req.data.index);
-    if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
-    const status = req.data.status;
-    if (!INTERESSADO_STATUS.includes(status) || status === 'negocio_gerado') throw new HttpsError('invalid-argument', 'Status inválido.');
-    if (INTERESSADO_SO_BROKER.includes(status) && !ehGestorAuth(auth)) {
-      throw new HttpsError('permission-denied', 'Aprovar ou reprovar interessado é decisão do broker.');
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+    const lista = Array.isArray(snap.data().interessados) ? [...snap.data().interessados] : [];
+    evento = '';
+
+    if (acao === 'add') {
+      const nome = _txt(req.data.nome, 120);
+      if (!nome) throw new HttpsError('invalid-argument', 'Nome do interessado é obrigatório.');
+      if (lista.length >= 50) throw new HttpsError('resource-exhausted', 'Limite de interessados atingido.');
+      // Status inicial: 'em_analise' (add manual) ou 'ficha_enviada' (fluxo Enviar Ficha da Tela 03).
+      const status = INTERESSADO_STATUS.includes(req.data.status) ? req.data.status : 'em_analise';
+      if (INTERESSADO_SO_BROKER.includes(status) || status === 'negocio_gerado') throw new HttpsError('invalid-argument', 'Status inicial inválido.');
+      lista.push({
+        nome,
+        contato: _txt(req.data.contato, 120),
+        tipo: _txt(req.data.tipo, 20) || 'locatario',
+        status,
+        em: admin.firestore.Timestamp.now()
+      });
+      evento = `Interessado ${nome} adicionado (${INTERESSADO_LABEL[status]})`;
+    } else if (acao === 'remover') {
+      const i = Number(req.data.index);
+      if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+      if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Este interessado tem um negócio gerado — cancele o negócio antes de removê-lo.');
+      if (INTERESSADO_SO_BROKER.includes(lista[i].status) && !ehGestor) throw new HttpsError('permission-denied', 'Remover um interessado já avaliado é decisão do broker.');
+      evento = `Interessado ${lista[i].nome} removido`;
+      lista.splice(i, 1);
+    } else if (acao === 'status') {
+      // Tela 03: muda o status do interessado. Aprovar/Reprovar = só broker (Manual de Regras).
+      const i = Number(req.data.index);
+      if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+      const status = req.data.status;
+      if (!INTERESSADO_STATUS.includes(status) || status === 'negocio_gerado') throw new HttpsError('invalid-argument', 'Status inválido.');
+      if (INTERESSADO_SO_BROKER.includes(status) && !ehGestor) {
+        throw new HttpsError('permission-denied', 'Aprovar ou reprovar interessado é decisão do broker.');
+      }
+      // Guarda simétrica: SAIR de aprovado/reprovado também é só broker — senão o
+      // corretor desfaz a decisão mandando o interessado de volta pra análise.
+      if (INTERESSADO_SO_BROKER.includes(lista[i].status) && !ehGestor) {
+        throw new HttpsError('permission-denied', 'Este interessado já foi avaliado — mudar isso é decisão do broker.');
+      }
+      if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Este interessado já gerou um negócio.');
+      lista[i] = { ...lista[i], status, statusEm: admin.firestore.Timestamp.now() };
+      evento = `Interessado ${lista[i].nome}: ${INTERESSADO_LABEL[status]}`;
+    } else {
+      throw new HttpsError('invalid-argument', 'Ação inválida.');
     }
-    if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Este interessado já gerou um negócio.');
-    lista[i] = { ...lista[i], status, statusEm: admin.firestore.Timestamp.now() };
-    evento = `Interessado ${lista[i].nome}: ${INTERESSADO_LABEL[status]}`;
-  } else {
-    throw new HttpsError('invalid-argument', 'Ação inválida.');
-  }
 
-  await ref.set({ interessados: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    tx.set(ref, { interessados: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    total = lista.length;
+  });
+
   if (evento) await _imovelTimeline(ref, evento, await _nomeDoUid(auth.uid));
-  return { ok: true, interessados: lista.length };
+  return { ok: true, interessados: total };
 });
 
 // ─── Negócios (Telas 03/04 do SMART HUB) ─────────────────────────────────────
@@ -1285,11 +1311,6 @@ exports.negocioGerar = onCall(async (req) => {
   const interessado = lista[i];
   if (interessado.status !== 'aprovado') throw new HttpsError('failed-precondition', 'Somente um interessado APROVADO pode gerar negócio.');
 
-  // Regra da spec: apenas um negócio ativo por imóvel.
-  const existentes = await db.collection('negocios').where('imovelId', '==', imovelId).get();
-  const ativo = existentes.docs.find(d => NEGOCIO_ATIVO(d.data().status));
-  if (ativo) throw new HttpsError('failed-precondition', `Este imóvel já tem um negócio ativo (${ativo.data().codigo}).`);
-
   const finalidade = im.finalidade || 'locacao';
   const tipo = finalidade === 'venda' ? 'venda'
     : finalidade === 'venda_locacao' ? (interessado.tipo === 'comprador' ? 'venda' : 'locacao')
@@ -1299,30 +1320,47 @@ exports.negocioGerar = onCall(async (req) => {
   const numero = await proximoNumeroNegocio();
   const codigo = 'NG-' + String(numero).padStart(6, '0');
   const porNome = await _nomeDoUid(auth.uid);
-  const e = im.endereco || {};
   const nRef = db.collection('negocios').doc();
-  await nRef.set({
-    codigo, numero,
-    imovelId, imovelProtocolo: im.numeroProtocolo != null ? im.numeroProtocolo : null,
-    imovelResumo: [e.logradouro, e.numero].filter(Boolean).join(', ') || im.tipo || 'Imóvel',
-    cidade: e.cidade || '',
-    tipo,
-    clienteNome: interessado.nome, clienteContato: interessado.contato || '',
-    interessadoIndex: i,
-    corretorUid: im.corretorUid || '', corretorNome: im.corretorNome || '',
-    brokerUid: auth.uid, brokerNome: porNome,
-    status: 'negocio_criado',
-    proximaAcao: checklist[0].label,
-    checklist,
-    comentarios: [],
-    timeline: [{ texto: `Negócio criado a partir do interessado ${interessado.nome}`, porNome, em: admin.firestore.Timestamp.now() }],
-    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
-    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
-  });
 
-  // Reflexos no imóvel: interessado vira "Negócio gerado" e o imóvel entra Em Negociação.
-  lista[i] = { ...interessado, status: 'negocio_gerado', negocioId: nRef.id, statusEm: admin.firestore.Timestamp.now() };
-  await ref.set({ interessados: lista, situacao: 'em_negociacao', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  // Transacional: a checagem "só 1 negócio ativo por imóvel" + criação + reflexos
+  // no imóvel viram um átomo — dois cliques rápidos em "Gerar Negócio" não criam
+  // dois negócios (o segundo cai na checagem e leva o erro amigável).
+  await db.runTransaction(async (tx) => {
+    const existentes = await tx.get(db.collection('negocios').where('imovelId', '==', imovelId));
+    const ativo = existentes.docs.find(x => NEGOCIO_ATIVO(x.data().status));
+    if (ativo) throw new HttpsError('failed-precondition', `Este imóvel já tem um negócio ativo (${ativo.data().codigo}).`);
+    const s2 = await tx.get(ref);
+    const im2 = s2.data() || {};
+    const lista2 = Array.isArray(im2.interessados) ? [...im2.interessados] : [];
+    const it = lista2[i];
+    // Revalida dentro da transação: a lista pode ter mudado entre o clique e agora.
+    if (!it || it.nome !== interessado.nome) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
+    if (it.status !== 'aprovado') throw new HttpsError('failed-precondition', 'Somente um interessado APROVADO pode gerar negócio.');
+
+    const e = im2.endereco || {};
+    tx.set(nRef, {
+      codigo, numero,
+      imovelId, imovelProtocolo: im2.numeroProtocolo != null ? im2.numeroProtocolo : null,
+      imovelResumo: [e.logradouro, e.numero].filter(Boolean).join(', ') || im2.tipo || 'Imóvel',
+      cidade: e.cidade || '',
+      tipo,
+      clienteNome: it.nome, clienteContato: it.contato || '',
+      interessadoIndex: i,
+      corretorUid: im2.corretorUid || '', corretorNome: im2.corretorNome || '',
+      brokerUid: auth.uid, brokerNome: porNome,
+      status: 'negocio_criado',
+      proximaAcao: checklist[0].label,
+      checklist,
+      comentarios: [],
+      timeline: [{ texto: `Negócio criado a partir do interessado ${it.nome}`, porNome, em: admin.firestore.Timestamp.now() }],
+      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Reflexos no imóvel: interessado vira "Negócio gerado" e o imóvel entra Em Negociação.
+    lista2[i] = { ...it, status: 'negocio_gerado', negocioId: nRef.id, statusEm: admin.firestore.Timestamp.now() };
+    tx.set(ref, { interessados: lista2, situacao: 'em_negociacao', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
   await _imovelTimeline(ref, `Negócio ${codigo} gerado para ${interessado.nome}`, porNome);
   await registrarAudit(auth, 'negocio_gerar', { tipo: 'negocio', id: nRef.id }, { codigo, imovelId });
   return { ok: true, negocioId: nRef.id, codigo };
@@ -1331,17 +1369,22 @@ exports.negocioGerar = onCall(async (req) => {
 // Lista os negócios (Tela 04A): broker/administrativo vê tudo; corretor só os seus.
 exports.negocioListar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const ehGestor = ehGestorAuth(auth);
+  const veTudo = ehGestor || (auth.token && auth.token.locRole === 'administrativo');
   const q = veTudo ? db.collection('negocios') : db.collection('negocios').where('corretorUid', '==', auth.uid);
   const snap = await q.get();
   const negocios = snap.docs.map(d => {
     const n = d.data();
+    // Comentários são EXCLUSIVOS do broker + corretor responsável (spec 04B) — o
+    // administrativo vê o negócio na lista, mas os comentários nem trafegam.
+    const podeComentar = ehGestor || n.corretorUid === auth.uid;
     return {
       ...n, id: d.id,
       criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
       atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
       timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
-      comentarios: (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })),
+      checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
+      comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })) : null,
     };
   }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
   return { negocios, veTudo };
@@ -1459,7 +1502,12 @@ exports.negocioAtualizar = onCall(async (req) => {
     const imSnap = await imRef.get();
     if (imSnap.exists) {
       const lista = Array.isArray(imSnap.data().interessados) ? [...imSnap.data().interessados] : [];
-      const i = Number(n.interessadoIndex);
+      // Acha pelo negocioId carimbado no interessado — o índice guardado na geração
+      // fica podre se alguém adicionou/removeu interessado depois (e aí o cancelar
+      // devolvia a pessoa errada, ou ninguém, deixando o cliente preso em
+      // "Negócio gerado" pra sempre). Índice vira só fallback de legado.
+      let i = lista.findIndex(p => p && p.negocioId === ref.id);
+      if (i < 0) i = Number(n.interessadoIndex);
       if (Number.isInteger(i) && lista[i] && lista[i].status === 'negocio_gerado') {
         lista[i] = { ...lista[i], status: 'aprovado', negocioId: null, statusEm: agora };
       }
@@ -1565,15 +1613,16 @@ exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fich
       const s = await tx.get(ref);
       if (!s.exists) return;
       const lista = Array.isArray(s.data().interessados) ? [...s.data().interessados] : [];
-      // Reenvio (mesma ficha) atualiza; senão casa por nome com qualquer interessado
-      // ainda "vivo" (cada envio da ficha gera um fichaId NOVO no cliente — casar só
-      // com "ficha_enviada" duplicava a pessoa a partir do 2º envio); senão entra
-      // como interessado novo. Quem já virou negócio não é tocado.
-      const casaNome = (p) => p.nome && (
-        nome.toLowerCase().startsWith(p.nome.toLowerCase().slice(0, 30)) ||
-        p.nome.toLowerCase().startsWith(nome.toLowerCase().slice(0, 30)));
+      // Reenvio (mesma ficha) atualiza; senão casa por NOME — igualdade exata
+      // normalizada (sem caixa/acento) com qualquer interessado vivo (cada envio da
+      // ficha gera um fichaId NOVO no cliente; sem isso, reenvio duplicava a pessoa),
+      // ou por prefixo SÓ com quem está "Ficha enviada" (nome digitado pelo corretor
+      // pode diferir do que o cliente escreve; prefixo em status avançado mesclaria
+      // pessoas parecidas — Maria Silva × Maria Silvano). Negócio gerado não é tocado.
+      const _normNome = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
       let i = lista.findIndex(p => p.fichaId === fichaId);
-      if (i < 0) i = lista.findIndex(p => p.status !== 'negocio_gerado' && casaNome(p));
+      if (i < 0) i = lista.findIndex(p => p.status !== 'negocio_gerado' && _normNome(p.nome) === _normNome(nome));
+      if (i < 0) i = lista.findIndex(p => p.status === 'ficha_enviada' && p.nome && _normNome(nome).startsWith(_normNome(p.nome).slice(0, 30)));
       const entrada = { nome, contato, tipo: tipoInt, status: 'ficha_recebida', fichaId, statusEm: admin.firestore.Timestamp.now() };
       if (i >= 0) {
         // Não rebaixa decisão do broker: aprovado continua aprovado (só atualiza a ficha).
@@ -4288,7 +4337,9 @@ exports.salvarFichaPublica = onCall(async (req) => {
   if (colecao === 'fichas') {
     novo.tipo = tipo;
   }
-  if (typeof imovelId === 'string' && imovelId) novo.imovelId = imovelId;
+  // Formato de id do Firestore, nada além: endpoint anônimo — sem o cap, dava pra
+  // inflar o doc com uma string gigante; com "/" no meio, o trigger só gerava ruído.
+  if (typeof imovelId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(imovelId)) novo.imovelId = imovelId;
 
   await novoRef.set(novo);
   return { ok: true, fichaId: novoRef.id };

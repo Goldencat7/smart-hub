@@ -3736,7 +3736,7 @@ function renderTela03(d) {
       <span style="font-size:12px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:6px">${fmtCodigoSH(im)}</span>
       <span style="flex:1"></span>
       <button id="t3Editar" class="topbar-btn" style="font-size:12px;padding:6px 14px">✎ Editar Imóvel</button>
-      ${broker ? '<button id="t3GerarNeg" class="topbar-btn" style="font-size:12px;font-weight:700;padding:6px 14px;background:#002749;color:#fff;border-color:#002749">⚡ Gerar Negócio</button>' : ''}
+      ${ehGestorTela ? '<button id="t3GerarNeg" class="topbar-btn" style="font-size:12px;font-weight:700;padding:6px 14px;background:#002749;color:#fff;border-color:#002749">⚡ Gerar Negócio</button>' : ''}
       <button id="t3Arquivar" class="topbar-btn" style="font-size:12px;padding:6px 12px;color:${im.arquivado ? '#16a34a' : '#6b7280'}">${im.arquivado ? '↩ Restaurar' : '🗂 Arquivar'}</button>
     </div>
     <div style="${paneStyle};margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px 18px;align-items:start">
@@ -3779,7 +3779,10 @@ function tela03IntHtml(im, broker, ehGestorTela) {
 
   const linhas = (im.interessados || []).map((p, i) => {
     const st = intStatusDe(p);
-    const selStatus = st === 'negocio_gerado'
+    // Já avaliado (aprovado/reprovado): só o broker mexe — pros demais, nem select
+    // (o servidor recusaria; mostrar controle que sempre falha só frustra).
+    const travadoPraMim = ['aprovado', 'reprovado'].includes(st) && !ehGestorTela;
+    const selStatus = (st === 'negocio_gerado' || travadoPraMim)
       ? ''
       : `<select class="t3-int-status" data-index="${i}" style="${_selStyle}">
           ${INT_STATUS.filter(s => s.key !== 'negocio_gerado').map(s => {
@@ -3792,8 +3795,8 @@ function tela03IntHtml(im, broker, ehGestorTela) {
         <div style="font-size:11px;color:var(--text-muted)">${escapeHtml([p.tipo === 'comprador' ? 'Comprador' : 'Locatário', p.contato].filter(Boolean).join(' · '))}</div></div>
       ${badgeMini(intStatusLabel(st), intStatusCor(st))}
       ${selStatus}
-      ${broker && st === 'aprovado' ? `<button class="t3-gerar-neg" data-index="${i}" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">⚡ Gerar Negócio</button>` : ''}
-      ${st !== 'negocio_gerado' ? `<button class="t3-int-rem" data-index="${i}" title="Remover" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:14px;line-height:1">✕</button>` : ''}
+      ${ehGestorTela && st === 'aprovado' ? `<button class="t3-gerar-neg" data-index="${i}" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">⚡ Gerar Negócio</button>` : ''}
+      ${st !== 'negocio_gerado' && !travadoPraMim ? `<button class="t3-int-rem" data-index="${i}" title="Remover" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:14px;line-height:1">✕</button>` : ''}
     </div>`;
   }).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhum interessado ainda. Envie uma ficha acima ou adicione manualmente abaixo.</p>';
 
@@ -3856,6 +3859,9 @@ function wireTela03(d) {
 
   // Interessados
   document.querySelectorAll('.t3-enviar-ficha').forEach(b => b.addEventListener('click', async () => {
+    if (b.disabled) return;
+    b.disabled = true;               // duplo clique no "Copiar Link" registrava o interessado 2x
+    setTimeout(() => { b.disabled = false; }, 1500);
     const nome = $('t3FichaNome')?.value.trim() || '';
     const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
     const link = `${BASE_HOSTING}/${b.dataset.arquivo}?corretor=${currentUid}&nome=${encodeURIComponent(nomeCorretor)}&imovelId=${id}`;
@@ -4153,10 +4159,16 @@ function wireTela04B(d) {
   const id = n.id;
   const $ = s => document.getElementById(s);
   const aplicar = async (payload, msgOk) => {
+    // O re-render redesenha a tela toda — preserva o comentário em digitação e a
+    // aba ativa (marcar um ✓ do checklist apagava o texto e voltava pra Comentários).
+    const comTexto = payload.acao !== 'comentario' ? ($('n4bComTexto')?.value || '') : '';
+    const abaAtiva = document.querySelector('.n4b-pane:not([hidden])')?.dataset.pane || 'comentarios';
     try {
       const r = await negocioAtualizarFn({ negocioId: id, ...payload });
       if (msgOk) cartToast(msgOk);
       renderTela04B(r.data || {});
+      if (comTexto && $('n4bComTexto')) $('n4bComTexto').value = comTexto;
+      if (abaAtiva !== 'comentarios') document.querySelector(`.n4b-aba[data-aba="${abaAtiva}"]`)?.click();
     } catch (e) { alert('Erro: ' + e.message); abrirTela04B(id); }
   };
 
@@ -4453,7 +4465,9 @@ function relImprimirPdf() {
     <div class="chips">${NEG_STATUS.map(s => `<span class="chip">${s.label}: <strong>${porStatus[s.key] || 0}</strong></span>`).join('')}</div>
     <table><tr>${cab.map(c => `<th>${escH(c)}</th>`).join('')}</tr>
     ${linhas.map(l => `<tr>${l.map(v => `<td>${escH(v)}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
+  document.getElementById('relPdfFrame')?.remove();   // clique repetido não enfileira prints
   const frame = document.createElement('iframe');
+  frame.id = 'relPdfFrame';
   frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
   document.body.appendChild(frame);
   frame.srcdoc = html;
@@ -4495,13 +4509,17 @@ function wireCarteira() {
 
 }
 
-// Datalists de Tipo/Cidade (configuradas no Admin → SMART HUB). Cache por sessão.
+// Datalists de Tipo/Cidade (configuradas no Admin → SMART HUB). Cache com TTL de
+// 5 min: por sessão inteira, o admin salvava uma cidade nova e o corretor só via
+// depois de reiniciar o app ("a config não pegou").
 let _shListas = null;
+let _shListasAt = 0;
 async function _shListasAplicar(dlg) {
   try {
-    if (!_shListas) {
+    if (!_shListas || Date.now() - _shListasAt > 300000) {
       const r = await configObterFn({});
       _shListas = { tipos: r.data?.tipos_imovel || [], cidades: r.data?.cidades || [] };
+      _shListasAt = Date.now();
     }
     const liga = (inputId, listId, itens) => {
       if (!itens.length) return;
@@ -4606,8 +4624,12 @@ function cartAbrirModal(im) {
       await carteiraSalvarImovel(payload);
       dlg.close();
       cartToast(im ? 'Imóvel atualizado' : 'Imóvel criado');
-      // Editando de dentro da Tela 03, volta pra ela; senão, recarrega a lista.
-      if (im && tela03Atual === im.id) abrirTela03(im.id); else carregarImoveis();
+      // Editando de dentro da Tela 03, volta pra ela; criando pelo Dashboard,
+      // recarrega o Dashboard (antes renderizava a Carteira numa seção oculta e
+      // os cards do Painel ficavam com os números velhos); senão, a lista.
+      if (im && tela03Atual === im.id) abrirTela03(im.id);
+      else if (locSub === 'painel') carregarPainel();
+      else carregarImoveis();
     } catch (e2) {
       alert('Erro ao salvar: ' + e2.message);
       btn.disabled = false; btn.textContent = im ? 'Salvar alterações' : 'Criar imóvel';
