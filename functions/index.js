@@ -1421,6 +1421,69 @@ exports.negocioAtualizar = onCall(async (req) => {
   return { negocio: _negocioSerializar(ref.id, novo.data(), ehGestor || ehResponsavel), ehGestor, ehResponsavel, podeComentar: ehGestor || ehResponsavel };
 });
 
+// Tela 01 — Dashboard: tudo numa chamada só (broker vê geral; corretor só o dele).
+// Responde "o que precisa da minha atenção?": negócios parados, atividades, resumo.
+exports.dashboardDados = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const [imSnap, negSnap] = await Promise.all([
+    (veTudo ? db.collection('imoveis') : db.collection('imoveis').where('corretorUid', '==', auth.uid)).get(),
+    (veTudo ? db.collection('negocios') : db.collection('negocios').where('corretorUid', '==', auth.uid)).get(),
+  ]);
+
+  const imoveis = imSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(im => !im.arquivado);
+  const negocios = negSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const ativos = negocios.filter(n => !['concluido', 'cancelado'].includes(n.status));
+
+  // Contagem por status (Resumo da Operação)
+  const porStatus = {};
+  for (const n of negocios) porStatus[n.status] = (porStatus[n.status] || 0) + 1;
+
+  // "O que precisa da sua atenção": negócios em aberto, do mais parado pro mais recente.
+  const RESP = {
+    negocio_criado: n => n.corretorNome || 'Corretor',
+    em_andamento: n => n.corretorNome || 'Corretor',
+    aguardando_broker: () => 'Broker',
+    aguardando_corretor: n => n.corretorNome || 'Corretor',
+    aguardando_administrativo: () => 'Administrativo',
+    entregue_gestao: () => 'Gestão',
+  };
+  const agora = Date.now();
+  const atencao = ativos
+    .filter(n => n.status !== 'entregue_gestao')
+    .map(n => ({
+      id: n.id, codigo: n.codigo, cliente: n.clienteNome, status: n.status,
+      proximaAcao: n.proximaAcao || '', tipo: n.tipo,
+      responsavel: (RESP[n.status] || (() => ''))(n),
+      diasParado: Math.max(0, Math.floor((agora - (n.atualizadoEm?.toMillis?.() || agora)) / 86400000)),
+      progresso: (n.checklist || []).length ? Math.round(((n.checklist || []).filter(x => x.feito).length / n.checklist.length) * 100) : 0,
+    }))
+    .sort((a, b) => b.diasParado - a.diasParado)
+    .slice(0, 8);
+
+  // Últimas atividades: timelines dos negócios + dos imóveis, mais novo primeiro.
+  const atividades = [];
+  for (const n of negocios) for (const h of (n.timeline || [])) {
+    atividades.push({ em: h.em?.toDate?.()?.toISOString() || null, texto: h.texto, porNome: h.porNome, ref: n.codigo });
+  }
+  for (const im of imoveis) for (const h of (im.timeline || [])) {
+    atividades.push({ em: h.em?.toDate?.()?.toISOString() || null, texto: h.texto, porNome: h.porNome, ref: im.numeroProtocolo != null ? '#SH-' + String(im.numeroProtocolo).padStart(4, '0') : '' });
+  }
+  atividades.sort((a, b) => (b.em || '').localeCompare(a.em || ''));
+
+  return {
+    veTudo,
+    imoveisTotal: imoveis.length,
+    pendencias: imoveis.filter(im => (im.pendentes || []).length > 0).length,
+    negociosAtivos: ativos.length,
+    entregues: negocios.filter(n => n.status === 'entregue_gestao').length,
+    concluidos: negocios.filter(n => n.status === 'concluido').length,
+    porStatus,
+    atencao,
+    atividades: atividades.slice(0, 12),
+  };
+});
+
 // Ficha de interessado (PF/PJ/Comprador) vinculada a um imóvel → interessado
 // automático na Tela 03 ("Sistema cria automaticamente o interessado" — spec).
 exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fichaId}' }, async (event) => {

@@ -110,6 +110,7 @@ const negocioGerarFn       = httpsCallable(fns, 'negocioGerar');
 const negocioListarFn      = httpsCallable(fns, 'negocioListar');
 const negocioObterFn       = httpsCallable(fns, 'negocioObter');
 const negocioAtualizarFn   = httpsCallable(fns, 'negocioAtualizar');
+const dashboardDadosFn     = httpsCallable(fns, 'dashboardDados');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -603,7 +604,12 @@ function renderCentro() {
 
     if (locSub === 'painel')  { secaoPainel.hidden = false;  carregarPainel(); }
     if (locSub === 'imoveis') { secaoImoveis.hidden = false; cartFiltros = { fin: null, sit: null, corretor: null, busca: '' }; carregarImoveis(); }
-    if (locSub === 'negocios') { secaoImoveis.hidden = false; negFiltros = { tipo: null, status: null, corretor: null, busca: '' }; carregarNegocios(); }
+    if (locSub === 'negocios') {
+      secaoImoveis.hidden = false;
+      // Atalho vindo do Dashboard ("Gerenciar" na tabela de atenção): abre o 04B direto.
+      if (negAbrirDireto) { const alvo = negAbrirDireto; negAbrirDireto = null; abrirTela04B(alvo); }
+      else { negFiltros = { tipo: null, status: null, corretor: null, busca: '' }; carregarNegocios(); }
+    }
     return;
   }
 
@@ -3911,6 +3917,7 @@ const negProgresso = n => {
 };
 let negFiltros = { tipo: null, status: null, corretor: null, busca: '' };
 let _negociosCache = null;
+let negAbrirDireto = null;   // negocioId pra abrir o 04B direto ao entrar no sub-app
 
 async function carregarNegocios() {
   secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando os negócios...</p>';
@@ -4337,47 +4344,121 @@ const REL_DEFS = {
 let _relatorioDados = null;
 
 // ─── Painel / Dashboard (Gestão de Locações) ─────────────────────────────────
+// Painel = Tela 01 (Dashboard da spec): saudação, cards, ações rápidas, "o que
+// precisa da sua atenção", últimas atividades e resumo da operação. Broker vê
+// geral; corretor só o dele. O bloco financeiro antigo (gestor) fica no rodapé.
 async function carregarPainel() {
   secaoPainel.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando painel...</p>';
   try {
-    const [res, aRes] = await Promise.all([locDashboard({}), locListarAlertas({}).catch(() => ({ data: { alertas: [] } }))]);
-    const d = res.data || {};
+    const [dRes, finRes, aRes] = await Promise.all([
+      dashboardDadosFn({}),
+      locDashboard({}).catch(() => ({ data: null })),
+      locListarAlertas({}).catch(() => ({ data: { alertas: [] } })),
+    ]);
+    const d = dRes.data || {};
+    const fin = finRes.data;
     const alertas = aRes.data?.alertas || [];
-    const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const card = (num, label, cor) => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:14px 16px;min-width:120px;flex:1">
-      <div style="font-size:23px;font-weight:700;color:${cor || 'var(--text-primary)'}">${num}</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${label}</div></div>`;
-    const st = d.imoveisPorStatus || {};
-    const etapas = [['recebido', 'Recebido', '#b45309'], ['em_analise', 'Em análise', '#6366f1'], ['aprovado', 'Aprovado', '#16a34a'], ['em_contrato', 'Em contrato', '#0ea5e9'], ['ativo', 'Ativo', '#002749']];
-    const titulo = t => `<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin:16px 0 10px">${t}</div>`;
 
-    // Bloco de alertas (genérico — reflete novos tipos automaticamente; ignora os tratados)
+    // Saudação por hora + data por extenso
+    const h = new Date().getHours();
+    const saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+    const nome = (document.getElementById('usuarioInfo')?.textContent?.trim() || '').split(' ')[0] || '';
+    const dataExtenso = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    const cardStyle = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)';
+    const card = (num, label, cor) => `<div style="${cardStyle};padding:14px 16px;min-width:130px;flex:1">
+      <div style="font-size:24px;font-weight:700;color:${cor || 'var(--text-primary)'}">${num}</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px">${label}</div></div>`;
+    const titulo = t => `<div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 8px">${t}</div>`;
+
+    // Ações rápidas
+    const acao = (ic, txt, id) => `<button class="painel-acao" data-acao="${id}" style="flex:1;min-width:150px;display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;cursor:pointer;${cardStyle}">
+      <span style="font-size:19px">${ic}</span><span style="font-size:13px;font-weight:600;color:var(--text-primary)">${txt}</span></button>`;
+    const acoes = `<div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${acao('📄', 'Novo Imóvel · Enviar Ficha', 'novo')}
+      ${acao('🏠', 'Carteira de Imóveis', 'imoveis')}
+      ${acao('💼', 'Negócios', 'negocios')}</div>`;
+
+    // O que precisa da sua atenção (negócios parados)
+    const th = t => `<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${t}</th>`;
+    const td = (c, extra) => `<td style="font-size:12px;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;${extra || ''}">${c}</td>`;
+    const diasBadge = dias => dias >= 3
+      ? `<span style="font-size:10px;font-weight:700;color:#DC1C2E;background:#DC1C2E14;border:1px solid #DC1C2E40;padding:2px 8px;border-radius:10px;white-space:nowrap">${dias} dia${dias > 1 ? 's' : ''} parado</span>`
+      : `<span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${dias === 0 ? 'Hoje' : dias + ' dia' + (dias > 1 ? 's' : '')}</span>`;
+    const atencaoLinhas = (d.atencao || []).map(n => `<tr>
+      ${td(`<strong style="white-space:nowrap">${escapeHtml(n.codigo || '')}</strong>`)}
+      ${td(escapeHtml(n.cliente || ''))}
+      ${td(`<span style="font-size:11px">${escapeHtml(n.proximaAcao || '—')}</span>`)}
+      ${td(escapeHtml(n.responsavel || '—'))}
+      ${td(diasBadge(n.diasParado), 'text-align:center')}
+      ${td(badgeMini(negStatusLabel(n.status), negStatusCor(n.status)))}
+      ${td(`<button class="painel-gerenciar topbar-btn" data-id="${escapeHtml(n.id)}" style="font-size:11px;padding:4px 12px">Gerenciar</button>`)}
+    </tr>`).join('');
+    const atencaoBloco = `<div style="${cardStyle};overflow:hidden">
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:720px">
+        <thead><tr>${['Código', 'Cliente', 'Próxima Ação', 'Responsável', 'Parado há', 'Status', ''].map(th).join('')}</tr></thead>
+        <tbody>${atencaoLinhas || '<tr><td colspan="7" style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px">Nenhum negócio precisando de atenção. 🎉</td></tr>'}</tbody>
+      </table></div></div>`;
+
+    // Últimas atividades
+    const fmtHora = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    const atividades = (d.atividades || []).map(a => `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--text-muted);white-space:nowrap;min-width:88px">${fmtHora(a.em)}</span>
+      <span style="flex:1">${escapeHtml(a.texto || '')}${a.ref ? ` <span style="color:var(--text-muted)">· ${escapeHtml(a.ref)}</span>` : ''}</span></div>`).join('')
+      || '<p style="font-size:12px;color:var(--text-muted)">Nada ainda.</p>';
+
+    // Resumo da operação (negócios por status)
+    const resumoOp = NEG_STATUS.map(s => {
+      const n = (d.porStatus || {})[s.key] || 0;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px">${s.label}</span><strong style="font-size:13px;color:${n ? s.cor : 'var(--text-muted)'}">${n}</strong></div>`;
+    }).join('');
+
+    // Blocos herdados (gestor): alertas da locação + visão financeira
     const contagem = {};
     alertas.filter(a => !a.tratado).forEach(a => { contagem[a.tipo] = (contagem[a.tipo] || 0) + 1; });
     const alertaPills = Object.entries(contagem).filter(([, n]) => n).map(([tipo, n]) => {
       const [ic, lbl, cor, bg, bd] = ALERTA_INFO[tipo] || ['•', tipo, 'var(--text-muted)', 'var(--surface)', 'var(--border)'];
       return `<div style="background:${bg};border:1px solid ${bd};color:${cor};border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600">${ic} ${n} ${lbl}</div>`;
     }).join('');
-    const alertaBloco = alertaPills ? titulo('Alertas') + `<div style="display:flex;gap:8px;flex-wrap:wrap">${alertaPills}</div>` : '';
+    const alertaBloco = alertaPills ? titulo('Alertas da Locação') + `<div style="display:flex;gap:8px;flex-wrap:wrap">${alertaPills}</div>` : '';
+    let finBloco = '';
+    if (fin && d.veTudo) {
+      const fmt = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      finBloco = titulo('Financeiro da Locação (gestão)') +
+        `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(fin.contratosAtivos || 0, 'Contratos ativos', '#16a34a')}${card(fmt(fin.inadimplencia?.valor), 'Inadimplência', '#DC1C2E')}${card(fmt(fin.repassePendente?.valor), 'A repassar', '#b45309')}${card(fmt(fin.repassadoMes), 'Repassado no mês', '#0ea5e9')}</div>`;
+    }
 
-    // Atalhos rápidos (entrada principal do corretor: gerar link de ficha)
-    const atalho = (ic, txt, sub) => `<button class="atalho-painel" data-locsub="${sub}" style="flex:1;min-width:150px;display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;cursor:pointer;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)">
-      <span style="font-size:20px">${ic}</span><span style="font-size:13px;font-weight:600;color:var(--text-primary)">${txt}</span></button>`;
-    const atalhos = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-      ${atalho('🏠', d.veTudo ? 'Esteira de imóveis' : 'Meus imóveis', 'imoveis')}</div>`;
+    secaoPainel.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-size:19px;font-weight:700">${saud}${nome ? ', ' + escapeHtml(nome) : ''}!</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Bem-vindo ao SMART HUB. Hoje é ${dataExtenso}.${d.veTudo ? '' : ' Você está vendo apenas os seus números.'}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${card(d.imoveisTotal || 0, 'Imóveis', '#0ea5e9')}
+        ${card(d.negociosAtivos || 0, 'Negócios Ativos', '#6366f1')}
+        ${card(d.pendencias || 0, 'Pendências', '#DC1C2E')}
+        ${card(d.entregues || 0, 'Entregues p/ Gestão', '#16a34a')}
+      </div>
+      ${titulo('Ações rápidas')}${acoes}
+      ${titulo('O que precisa da sua atenção')}${atencaoBloco}
+      <div style="display:grid;grid-template-columns:1fr 260px;gap:12px;align-items:start;margin-top:4px">
+        <div>${titulo('Últimas atividades')}<div style="${cardStyle};padding:12px 16px">${atividades}</div></div>
+        <div>${titulo('Resumo da operação')}<div style="${cardStyle};padding:12px 16px">${resumoOp}</div></div>
+      </div>
+      ${alertaBloco}
+      ${finBloco}`;
 
-    secaoPainel.innerHTML =
-      atalhos +
-      titulo(`Visão geral${d.veTudo ? '' : ' (seus imóveis)'}`) +
-      `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(d.totalImoveis || 0, 'Imóveis')}${card(d.aguardandoAnalise || 0, 'Aguardando análise', '#6366f1')}${card(d.contratosAtivos || 0, 'Contratos ativos', '#16a34a')}${card(d.inadimplencia?.qtd || 0, 'Cobranças em atraso', '#DC1C2E')}${card(d.repassePendente?.qtd || 0, 'Repasses pendentes', '#b45309')}</div>` +
-      titulo('Valores') +
-      `<div style="display:flex;gap:8px;flex-wrap:wrap">${card(fmt(d.inadimplencia?.valor), 'Inadimplência', '#DC1C2E')}${card(fmt(d.repassePendente?.valor), 'A repassar', '#b45309')}${card(fmt(d.repassadoMes), 'Repassado no mês', '#16a34a')}</div>` +
-      alertaBloco +
-      titulo('Imóveis por etapa') +
-      `<div style="display:flex;gap:8px;flex-wrap:wrap">${etapas.map(([k, l, c]) => card(st[k] || 0, l, c)).join('')}</div>`;
-
-    // Atalhos → sub-app
-    secaoPainel.querySelectorAll('.atalho-painel').forEach(el => el.addEventListener('click', () => { locSub = el.dataset.locsub; renderCentro(); }));
+    // Wiring
+    secaoPainel.querySelectorAll('.painel-acao').forEach(b => b.addEventListener('click', () => {
+      const a = b.dataset.acao;
+      if (a === 'novo') { cartAbrirModal(null); return; }
+      locSub = a; renderCentro();
+    }));
+    secaoPainel.querySelectorAll('.painel-gerenciar').forEach(b => b.addEventListener('click', () => {
+      negAbrirDireto = b.dataset.id;
+      locSub = 'negocios'; renderCentro();
+    }));
   } catch (e) {
     secaoPainel.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar painel: ${escapeHtml(e.message)}</p>`;
   }
