@@ -200,8 +200,10 @@ produção apontar pro lugar errado:
   `teste1234`, sem 2FA): `admin@teste.local` (admin) e `colega@teste.local` (admin + gestor de Locação,
   aba Locação ligada via `user_access.loc_gestao`). Semeadas por **`node scripts/seed-staging.js`**
   (Admin SDK, projectId fixo em staging; requer **ADC** — `gcloud auth application-default login` 1x).
-  Bugs da esteira achados na caça-bugs de 2026-07-15 estão em `BUGS-ESTEIRA-IMOVEIS.md` pra tratar na
-  reestruturação. ⚠️ **Primeiro deploy de trigger em projeto novo falha** (service agent do Eventarc
+  Os 3 bugs da esteira achados na caça-bugs de 2026-07-15 (`BUGS-ESTEIRA-IMOVEIS.md`) foram
+  **resolvidos na reestruturação** e o arquivo foi removido em 2026-07-16 (guarda simétrica no
+  `locMoverImovelStatus`, `_uidsDosAdmins` por claims, `_atribuirProtocoloSeFalta` transacional).
+  ⚠️ **Primeiro deploy de trigger em projeto novo falha** (service agent do Eventarc
   propaga com atraso) — repetir o deploy dos triggers resolve; o `deploy:staging` aborta o hosting se as
   functions falharem, então rode o hosting de novo depois.
 
