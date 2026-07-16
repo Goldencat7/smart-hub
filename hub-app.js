@@ -106,6 +106,7 @@ const carteiraSalvarImovel = httpsCallable(fns, 'carteiraSalvarImovel');
 const carteiraArquivar     = httpsCallable(fns, 'carteiraArquivar');
 const carteiraSituacaoFn   = httpsCallable(fns, 'carteiraSituacao');
 const carteiraInteressado  = httpsCallable(fns, 'carteiraInteressado');
+const negocioGerarFn       = httpsCallable(fns, 'negocioGerar');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -2897,6 +2898,19 @@ const CART_SITUACOES = [
   { key: 'em_negociacao',  label: 'Em Negociação',  cor: '#b45309' },
   { key: 'arquivado',      label: 'Arquivado',      cor: '#6b7280' },
 ];
+// Status do interessado (Tela 03). Aprovar/Reprovar = decisão do broker.
+const INT_STATUS = [
+  { key: 'ficha_enviada',  label: 'Ficha Enviada',  cor: '#6b7280' },
+  { key: 'ficha_recebida', label: 'Ficha Recebida', cor: '#0ea5e9' },
+  { key: 'em_analise',     label: 'Em Análise',     cor: '#6366f1' },
+  { key: 'aprovado',       label: 'Aprovado',       cor: '#16a34a' },
+  { key: 'reprovado',      label: 'Reprovado',      cor: '#DC1C2E' },
+  { key: 'desistiu',       label: 'Desistiu',       cor: '#b45309' },
+  { key: 'negocio_gerado', label: 'Negócio Gerado', cor: '#7C3AED' },
+];
+const intStatusDe    = p => p.status || 'em_analise';
+const intStatusLabel = k => (INT_STATUS.find(s => s.key === k) || {}).label || k;
+const intStatusCor   = k => (INT_STATUS.find(s => s.key === k) || {}).cor || '#6b7280';
 const cartFinLabel = k => (CART_FINALIDADES.find(f => f.key === k) || {}).label || k;
 const cartFinCor   = k => (CART_FINALIDADES.find(f => f.key === k) || {}).cor || '#6b7280';
 const cartSitLabel = k => (CART_SITUACOES.find(s => s.key === k) || {}).label || k;
@@ -2956,7 +2970,8 @@ const ANALISE_COR   = { em_analise:'#6366f1', pendencia:'#b45309', aprovado:'#16
 const _selStyle = 'font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)';
 
 // Renderiza o detalhe completo de um imóvel (retorno de locObterImovel).
-function renderDetalheImovel(d) {
+// `paraTela03` devolve os blocos separados (um por aba) em vez do grid único.
+function renderDetalheImovel(d, paraTela03) {
   const lin = (r, v) => v ? `<div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px;flex-shrink:0">${r}</span><span style="word-break:break-word">${escapeHtml(v)}</span></div>` : '';
   const sec = (t, corpo) => corpo ? `<div style="margin-top:14px"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">${t}</div>${corpo}</div>` : '';
   const im = d.imovel || {};
@@ -3149,6 +3164,17 @@ function renderDetalheImovel(d) {
     <span class="lf-msg" style="font-size:11px;margin-left:8px"></span>
   </div>`;
   const esteiraHtml = sec('Esteira de Locação', locFormHtml);
+
+  // Tela 03: os mesmos blocos, distribuídos pelas abas (Informações / Proprietário /
+  // Gestão da Locação). O histórico da esteira entra na aba Histórico da Tela 03.
+  if (paraTela03) {
+    return {
+      informacoes: (imovelHtml + repasseHtml + admHtml + docsHtml + pendHtml) || '<p style="font-size:12px;color:var(--text-muted)">Sem dados cadastrais ainda. Use ✎ Editar Imóvel.</p>',
+      proprietario: locHtml,
+      gestao: gestaoHtml + vistoriaHtml + fichasImovelHtml + esteiraHtml,
+      historicoEsteira: histHtml
+    };
+  }
 
   // Layout em 2 colunas: dados cadastrais + histórico à esquerda (com as fichas e
   // o checklist logo abaixo do histórico) · gestão/vistoria à direita.
@@ -3431,6 +3457,9 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
 }
 
 async function recarregarDetalhe(cont, imovelId) {
+  // Dentro da Tela 03, "recarregar o detalhe" = re-renderizar a tela inteira
+  // (senão as abas seriam substituídas pelo grid antigo).
+  if (cont && cont.closest && cont.closest('[data-tela03]')) { await abrirTela03(imovelId); return; }
   cont.innerHTML = '<p style="color:var(--text-muted)">Atualizando...</p>';
   const res = await locObterImovel({ imovelId });
   const d = res.data || {};
@@ -3460,6 +3489,7 @@ async function toggleDetalheImovel(btn) {
 // (cardImovelHtml removido — a Carteira usa tabela; ver renderCarteira abaixo)
 
 async function carregarImoveis() {
+  tela03Atual = null;   // carregar a lista sempre sai da Tela 03
   secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando a carteira...</p>';
   try {
     const res = await locListarImoveis({});
@@ -3571,11 +3601,7 @@ function renderCarteira() {
       ${td(nPend ? badge(nPend + ' Pendência' + (nPend > 1 ? 's' : ''), '#DC1C2E') : '—', 'text-align:center')}
       ${td(`<span style="color:var(--text-muted);white-space:nowrap">${tempoRelativo(im.atualizadoEm)}</span>`)}
       ${td(`<button class="topbar-btn cart-abrir" data-id="${escapeHtml(im.id)}" style="font-size:11px;padding:4px 12px">Abrir</button>`)}
-    </tr>
-    <tr id="cart-det-${escapeHtml(im.id)}" hidden><td colspan="10" style="background:var(--hover);border-bottom:1px solid var(--border);padding:12px 14px">
-      ${cartAcoesHtml(im)}
-      <div class="imovel-det" id="det-${escapeHtml(im.id)}" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"></div>
-    </td></tr>`;
+    </tr>`;
   }).join('');
 
   const tabela = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);overflow:hidden">
@@ -3594,85 +3620,274 @@ function renderCarteira() {
   wireCarteira();
 }
 
-// Barra de ações do detalhe: situação, arquivar, editar, interessados e esteira (locação).
-function cartAcoesHtml(im) {
-  const { role } = _imoveisCache || {};
-  const broker = role === 'gestor' || role === 'administrativo';
-  const sit = cartSituacaoDe(im);
-  const fin = cartFinalidadeDe(im);
-  const id = escapeHtml(im.id);
-
-  const sitSel = im.arquivado ? '' : `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)">Situação:
-    <select class="cart-sit" data-id="${id}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
-      <option value="disponivel"${sit === 'disponivel' ? ' selected' : ''}>Disponível</option>
-      <option value="em_negociacao"${sit === 'em_negociacao' ? ' selected' : ''}>Em Negociação</option>
-    </select></label>`;
-
-  // Esteira de locação continua como detalhe (broker move; 'ativo' só via contrato)
-  let esteira = '';
-  if (fin !== 'venda' && broker && im.status && im.status !== 'ativo') {
-    const opts = IMOVEL_STATUS.filter(s => s.key !== 'ativo').map(s => {
-      const dis = (role !== 'gestor' && IMOVEL_STATUS_SO_GESTOR.includes(s.key)) ? ' disabled' : '';
-      return `<option value="${s.key}"${s.key === im.status ? ' selected' : ''}${dis}>${s.label}</option>`;
-    }).join('');
-    esteira = `<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted)">Esteira:
-      <select class="imovel-status-sel" data-id="${id}" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">${opts}</select></label>`;
-  } else if (fin !== 'venda' && im.status) {
-    esteira = `<span style="font-size:11px;color:var(--text-muted)">Esteira: ${badgeMini(imovelLabel(im.status), imovelCor(im.status))}</span>`;
-  }
-
-  const interessados = (im.interessados || []).map((p, i) =>
-    `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:3px 10px">
-      ${escapeHtml(p.nome)}${p.contato ? ` <span style="color:var(--text-muted)">${escapeHtml(p.contato)}</span>` : ''}
-      <button class="cart-int-rem" data-id="${id}" data-index="${i}" title="Remover" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:12px;line-height:1;padding:0">✕</button></span>`).join('');
-
-  return `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
-      ${sitSel}${esteira}
-      <button class="cart-editar" data-id="${id}" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);cursor:pointer">✎ Editar</button>
-      <button class="cart-arquivar" data-id="${id}" data-arquivar="${im.arquivado ? '0' : '1'}" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid ${im.arquivado ? '#16a34a' : 'var(--border)'};border-radius:6px;background:var(--surface);color:${im.arquivado ? '#16a34a' : '#6b7280'};cursor:pointer">${im.arquivado ? '↩ Restaurar' : '🗂 Arquivar'}</button>
-    </div>
-    <div style="margin-top:10px">
-      <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Interessados (${(im.interessados || []).length})</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${interessados || '<span style="font-size:11px;color:var(--text-muted)">Nenhum ainda.</span>'}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        <input class="cart-int-nome" data-id="${id}" placeholder="Nome do interessado" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);min-width:160px">
-        <input class="cart-int-contato" data-id="${id}" placeholder="Contato (opc.)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);min-width:130px">
-        <select class="cart-int-tipo" data-id="${id}" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary)">
-          <option value="locatario">Locatário</option><option value="comprador">Comprador</option></select>
-        <button class="cart-int-add" data-id="${id}" style="font-size:11px;font-weight:600;padding:5px 12px;border:none;border-radius:6px;background:#002749;color:#fff;cursor:pointer">+ Adicionar</button>
-      </div></div>`;
-}
 function badgeMini(label, cor) {
   return `<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px">${escapeHtml(label)}</span>`;
 }
 
-// Abre/fecha a linha de detalhe; na 1ª abertura carrega a ficha completa (locObterImovel).
-async function cartToggleDetalhe(id, btn) {
-  const tr = document.getElementById('cart-det-' + id);
-  if (!tr) return;
-  const abrindo = tr.hidden;
-  tr.hidden = !abrindo;
-  if (btn) btn.textContent = abrindo ? 'Fechar' : 'Abrir';
-  if (!abrindo) return;
-  const cont = document.getElementById('det-' + id);
-  if (!cont || cont.dataset.carregado) return;
-  cont.innerHTML = '<p style="font-size:12px;color:var(--text-muted)">Carregando ficha completa...</p>';
+// ─── Tela 03 — Detalhes do Imóvel ─────────────────────────────────────────────
+// Centro operacional do imóvel (spec Tela 03): abas Informações / Proprietário /
+// Interessados / Histórico (+ Gestão da Locação, herdada). Daqui nasce o Negócio.
+let tela03Atual = null;         // imovelId aberto (null = lista da Carteira)
+let tela03Aba = 'informacoes';
+
+async function abrirTela03(id, aba) {
+  tela03Atual = id;
+  tela03Aba = aba || tela03Aba || 'informacoes';
+  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando detalhes do imóvel...</p>';
   try {
     const res = await locObterImovel({ imovelId: id });
-    const d = res.data || {};
-    cont.innerHTML = renderDetalheImovel(d);
-    wireDetalheImovel(cont, id, d);
-    cont.dataset.carregado = '1';
+    renderTela03(res.data || {});
   } catch (e) {
-    cont.innerHTML = `<p style="font-size:12px;color:var(--text-muted)">Erro ao carregar: ${escapeHtml(e.message)}</p>`;
+    secaoImoveis.innerHTML = `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar: ${escapeHtml(e.message)}<br>
+      <button id="t3VoltarErr" class="topbar-btn" style="margin-top:10px;font-size:12px">← Voltar à Carteira</button></div>`;
+    document.getElementById('t3VoltarErr')?.addEventListener('click', () => { tela03Atual = null; carregarImoveis(); });
   }
+}
+
+function renderTela03(d) {
+  const im = d.imovel || {};
+  const broker = imoveisRole === 'gestor' || imoveisRole === 'administrativo';
+  const ehGestorTela = imoveisRole === 'gestor';
+  const fin = cartFinalidadeDe(im), sit = cartSituacaoDe(im);
+  const e = im.endereco || {};
+  const endStr = [e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.estado].filter(Boolean).join(', ');
+
+  // Resumo (spec: código, tipo, finalidade, situação, endereço, corretor)
+  const resumoItem = (r, v) => `<div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${r}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${v || '—'}</div></div>`;
+  const sitSel = im.arquivado
+    ? badgeMini('Arquivado', '#6b7280')
+    : `<select id="t3Sit" style="${_selStyle}">
+        <option value="disponivel"${sit === 'disponivel' ? ' selected' : ''}>Disponível</option>
+        <option value="em_negociacao"${sit === 'em_negociacao' ? ' selected' : ''}>Em Negociação</option></select>`;
+  let esteiraSel = '';
+  if (fin !== 'venda' && im.status) {
+    if (broker && im.status !== 'ativo') {
+      const opts = IMOVEL_STATUS.filter(s => s.key !== 'ativo').map(s => {
+        const dis = (!ehGestorTela && IMOVEL_STATUS_SO_GESTOR.includes(s.key)) ? ' disabled' : '';
+        return `<option value="${s.key}"${s.key === im.status ? ' selected' : ''}${dis}>${s.label}</option>`;
+      }).join('');
+      esteiraSel = `<select id="t3Esteira" style="${_selStyle}">${opts}</select>`;
+    } else {
+      esteiraSel = badgeMini(imovelLabel(im.status), imovelCor(im.status));
+    }
+  }
+
+  const abas = [
+    ['informacoes', 'Informações'],
+    ['proprietario', 'Proprietário'],
+    ['interessados', `Interessados (${(im.interessados || []).length})`],
+    ['historico', 'Histórico'],
+  ];
+  if (fin !== 'venda') abas.push(['gestao', 'Gestão da Locação']);
+  if (!abas.some(([k]) => k === tela03Aba)) tela03Aba = 'informacoes';
+
+  const blocos = renderDetalheImovel(d, true);
+
+  // Aba Proprietário sem ficha (cadastro manual / venda sem locadores): resumo do cadastro.
+  const propFallback = `<div>
+    <div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px">Nome</span><span>${escapeHtml(im.proprietarioNome || im.locadorNome || '—')}</span></div>
+    <div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px">Contato</span><span>${escapeHtml(im.proprietarioContato || '—')}</span></div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:10px">${im.origem === 'manual' ? 'Imóvel de cadastro manual — altere os dados em ✎ Editar Imóvel.' : 'Os dados completos do proprietário vêm da ficha de origem.'}</p></div>`;
+
+  // Aba Histórico: timeline automática + movimentos da esteira (mais novo primeiro).
+  const eventos = [
+    ...(im.timeline || []).map(h => ({ em: h.em, texto: h.texto, por: h.porNome })),
+    ...(im.historico || []).map(h => ({ em: h.em, texto: `Esteira: ${imovelLabel(h.de)} → ${imovelLabel(h.para)}`, por: h.porNome })),
+    ...(im.criadoEm ? [{ em: im.criadoEm, texto: 'Imóvel criado', por: im.corretorNome || '' }] : []),
+  ].filter(ev => ev.texto).sort((a, b) => (b.em || '').localeCompare(a.em || ''));
+  const histTela = eventos.length ? eventos.map(ev => {
+    const dt = ev.em ? new Date(ev.em).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+    return `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--text-muted);white-space:nowrap;min-width:112px">${dt}</span>
+      <span style="flex:1">${escapeHtml(ev.texto)}</span>
+      <span style="color:var(--text-muted);white-space:nowrap">${escapeHtml(ev.por || '')}</span></div>`;
+  }).join('') : '<p style="font-size:12px;color:var(--text-muted)">Nada registrado ainda.</p>';
+
+  const paneStyle = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px 18px';
+  const conteudos = {
+    informacoes: blocos.informacoes,
+    proprietario: blocos.proprietario || propFallback,
+    interessados: tela03IntHtml(im, broker, ehGestorTela),
+    historico: histTela,
+    gestao: blocos.gestao || '<p style="font-size:12px;color:var(--text-muted)">Sem dados de gestão.</p>',
+  };
+
+  secaoImoveis.innerHTML = `<div id="tela03" data-tela03="1" data-id="${escapeHtml(im.id || '')}">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <button id="t3Voltar" class="topbar-btn" style="font-size:12px;padding:6px 12px">← Carteira</button>
+      <strong style="font-size:15px">Detalhes do Imóvel</strong>
+      <span style="font-size:12px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:6px">${fmtCodigoSH(im)}</span>
+      <span style="flex:1"></span>
+      <button id="t3Editar" class="topbar-btn" style="font-size:12px;padding:6px 14px">✎ Editar Imóvel</button>
+      ${broker ? '<button id="t3GerarNeg" class="topbar-btn" style="font-size:12px;font-weight:700;padding:6px 14px;background:#002749;color:#fff;border-color:#002749">⚡ Gerar Negócio</button>' : ''}
+      <button id="t3Arquivar" class="topbar-btn" style="font-size:12px;padding:6px 12px;color:${im.arquivado ? '#16a34a' : '#6b7280'}">${im.arquivado ? '↩ Restaurar' : '🗂 Arquivar'}</button>
+    </div>
+    <div style="${paneStyle};margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px 18px;align-items:start">
+      ${resumoItem('Código', fmtCodigoSH(im))}
+      ${resumoItem('Tipo', escapeHtml(im.tipo || '—'))}
+      ${resumoItem('Finalidade', badgeMini(cartFinLabel(fin), cartFinCor(fin)))}
+      ${resumoItem('Situação', sitSel)}
+      ${fin !== 'venda' && im.status ? resumoItem('Esteira', esteiraSel) : ''}
+      ${resumoItem('Corretor responsável', escapeHtml(im.corretorNome || '—'))}
+      <div style="grid-column:1/-1">${resumoItem('Endereço', escapeHtml(endStr || '—'))}</div>
+    </div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:0">
+      ${abas.map(([k, l]) => `<button class="t3-aba" data-aba="${k}" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid ${k === tela03Aba ? '#002749' : 'var(--border)'};border-bottom:none;border-radius:8px 8px 0 0;background:${k === tela03Aba ? '#002749' : 'var(--surface)'};color:${k === tela03Aba ? '#fff' : 'var(--text-muted)'};cursor:pointer">${l}</button>`).join('')}
+    </div>
+    ${abas.map(([k]) => `<div class="t3-pane" data-pane="${k}" style="${paneStyle};border-top-left-radius:0"${k === tela03Aba ? '' : ' hidden'}>${conteudos[k]}</div>`).join('')}
+  </div>`;
+
+  wireTela03(d);
+  const t3 = document.getElementById('tela03');
+  if (t3) wireDetalheImovel(t3, im.id, d);   // liga os blocos herdados (gestão/vistorias/fichas/portal)
+}
+
+// Aba Interessados da Tela 03: enviar ficha vinculada + status + gerar negócio.
+function tela03IntHtml(im, broker, ehGestorTela) {
+  const fin = cartFinalidadeDe(im);
+  const fichasOpcoes = [
+    ...(fin !== 'venda' ? [
+      { label: 'Locatário PF', arquivo: 'ficha-pf.html' },
+      { label: 'Locatário PJ', arquivo: 'ficha-pj.html' },
+    ] : []),
+    ...(fin !== 'locacao' ? [{ label: 'Comprador', arquivo: 'ficha-proposta.html' }] : []),
+  ];
+  const enviar = `<div style="border:1px dashed var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:2px">Enviar Ficha ao Interessado</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">O link sai vinculado a este imóvel — quando o cliente responder, o interessado entra aqui sozinho como “Ficha Recebida”.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input id="t3FichaNome" placeholder="Nome (opcional — registra já como Ficha Enviada)" style="${_selStyle};min-width:250px">
+      ${fichasOpcoes.map(f => `<button class="t3-enviar-ficha" data-arquivo="${f.arquivo}" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--hover);cursor:pointer;color:var(--text-primary)">📄 ${f.label} · Copiar Link</button>`).join('')}
+    </div></div>`;
+
+  const linhas = (im.interessados || []).map((p, i) => {
+    const st = intStatusDe(p);
+    const selStatus = st === 'negocio_gerado'
+      ? ''
+      : `<select class="t3-int-status" data-index="${i}" style="${_selStyle}">
+          ${INT_STATUS.filter(s => s.key !== 'negocio_gerado').map(s => {
+            const dis = ['aprovado', 'reprovado'].includes(s.key) && !ehGestorTela ? ' disabled' : '';
+            return `<option value="${s.key}"${s.key === st ? ' selected' : ''}${dis}>${s.label}</option>`;
+          }).join('')}</select>`;
+    return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;padding:9px 12px;margin-bottom:6px">
+      <div style="flex:1;min-width:160px">
+        <strong style="font-size:13px">${escapeHtml(p.nome || '')}</strong>
+        <div style="font-size:11px;color:var(--text-muted)">${escapeHtml([p.tipo === 'comprador' ? 'Comprador' : 'Locatário', p.contato].filter(Boolean).join(' · '))}</div></div>
+      ${badgeMini(intStatusLabel(st), intStatusCor(st))}
+      ${selStatus}
+      ${broker && st === 'aprovado' ? `<button class="t3-gerar-neg" data-index="${i}" style="font-size:11px;font-weight:700;padding:6px 12px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">⚡ Gerar Negócio</button>` : ''}
+      ${st !== 'negocio_gerado' ? `<button class="t3-int-rem" data-index="${i}" title="Remover" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:14px;line-height:1">✕</button>` : ''}
+    </div>`;
+  }).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhum interessado ainda. Envie uma ficha acima ou adicione manualmente abaixo.</p>';
+
+  const addManual = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+    <input id="t3IntNome" placeholder="Nome do interessado" style="${_selStyle};min-width:170px">
+    <input id="t3IntContato" placeholder="Contato (opc.)" style="${_selStyle};min-width:130px">
+    <select id="t3IntTipo" style="${_selStyle}"><option value="locatario">Locatário</option><option value="comprador">Comprador</option></select>
+    <button id="t3IntAdd" style="font-size:11px;font-weight:600;padding:6px 12px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">+ Adicionar</button></div>`;
+
+  const dica = ehGestorTela
+    ? '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Somente interessado <strong>Aprovado</strong> gera negócio — e cada imóvel tem no máximo 1 negócio ativo.</p>'
+    : '<p style="font-size:11px;color:var(--text-muted);margin-top:10px">Aprovar/Reprovar interessado e Gerar Negócio são decisões do broker.</p>';
+  return enviar + linhas + addManual + dica;
+}
+
+function t3TrocarAba(aba) {
+  tela03Aba = aba;
+  document.querySelectorAll('.t3-aba').forEach(b => {
+    const ativo = b.dataset.aba === aba;
+    b.style.background = ativo ? '#002749' : 'var(--surface)';
+    b.style.color = ativo ? '#fff' : 'var(--text-muted)';
+    b.style.borderColor = ativo ? '#002749' : 'var(--border)';
+  });
+  document.querySelectorAll('.t3-pane').forEach(p => { p.hidden = p.dataset.pane !== aba; });
+}
+
+function wireTela03(d) {
+  const im = d.imovel || {};
+  const id = im.id;
+  const $ = s => document.getElementById(s);
+
+  $('t3Voltar')?.addEventListener('click', () => { tela03Atual = null; carregarImoveis(); });
+  $('t3Editar')?.addEventListener('click', () => cartAbrirModal(im));
+  document.querySelectorAll('.t3-aba').forEach(b => b.addEventListener('click', () => t3TrocarAba(b.dataset.aba)));
+
+  $('t3Arquivar')?.addEventListener('click', async (ev) => {
+    const arquivar = !im.arquivado;
+    if (arquivar && !confirm('Arquivar este imóvel? Ele sai da operação, mas nada é excluído — dá pra restaurar depois.')) return;
+    ev.target.disabled = true;
+    try { await carteiraArquivar({ imovelId: id, arquivar }); cartToast(arquivar ? 'Imóvel arquivado' : 'Imóvel restaurado'); abrirTela03(id); }
+    catch (e) { alert('Erro: ' + e.message); ev.target.disabled = false; }
+  });
+  $('t3Sit')?.addEventListener('change', async (ev) => {
+    ev.target.disabled = true;
+    try { await carteiraSituacaoFn({ imovelId: id, situacao: ev.target.value }); cartToast('Situação atualizada'); abrirTela03(id); }
+    catch (e) { alert('Erro: ' + e.message); abrirTela03(id); }
+  });
+  $('t3Esteira')?.addEventListener('change', async (ev) => {
+    ev.target.disabled = true;
+    try { await locMoverImovelStatus({ imovelId: id, novoStatus: ev.target.value }); cartToast('Esteira atualizada'); abrirTela03(id); }
+    catch (e) { alert('Erro ao mover: ' + e.message); abrirTela03(id); }
+  });
+
+  // Gerar Negócio (cabeçalho): aponta pro interessado aprovado — o botão ⚡ mora na linha dele.
+  $('t3GerarNeg')?.addEventListener('click', () => {
+    const aprovados = (im.interessados || []).filter(p => intStatusDe(p) === 'aprovado');
+    if (!aprovados.length) alert('Nenhum interessado Aprovado ainda.\n\nO negócio nasce de um interessado aprovado: na aba Interessados, aprove um (decisão do broker) e clique no ⚡ Gerar Negócio da linha dele.');
+    t3TrocarAba('interessados');
+  });
+
+  // Interessados
+  document.querySelectorAll('.t3-enviar-ficha').forEach(b => b.addEventListener('click', async () => {
+    const nome = $('t3FichaNome')?.value.trim() || '';
+    const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
+    const link = `${BASE_HOSTING}/${b.dataset.arquivo}?corretor=${currentUid}&nome=${encodeURIComponent(nomeCorretor)}&imovelId=${id}`;
+    try { await navigator.clipboard.writeText(link); cartToast('Link copiado — vinculado a este imóvel'); }
+    catch (_e) {
+      const ta = document.createElement('textarea');
+      ta.value = link; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); cartToast('Link copiado — vinculado a este imóvel'); }
+      catch (_e2) { cartToast('Não consegui copiar — copie manualmente: ' + link); }
+      ta.remove();
+    }
+    if (nome) {
+      const tipo = b.dataset.arquivo === 'ficha-proposta.html' ? 'comprador' : 'locatario';
+      try { await carteiraInteressado({ imovelId: id, acao: 'add', nome, tipo, status: 'ficha_enviada' }); abrirTela03(id, 'interessados'); }
+      catch (e) { alert('Link copiado, mas não registrei o interessado: ' + e.message); }
+    }
+  }));
+  $('t3IntAdd')?.addEventListener('click', async (ev) => {
+    const nome = $('t3IntNome')?.value.trim();
+    if (!nome) { alert('Informe o nome do interessado.'); return; }
+    ev.target.disabled = true;
+    try { await carteiraInteressado({ imovelId: id, acao: 'add', nome, contato: $('t3IntContato')?.value.trim() || '', tipo: $('t3IntTipo')?.value }); cartToast('Interessado adicionado'); abrirTela03(id, 'interessados'); }
+    catch (e) { alert('Erro: ' + e.message); ev.target.disabled = false; }
+  });
+  document.querySelectorAll('.t3-int-rem').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await carteiraInteressado({ imovelId: id, acao: 'remover', index: Number(b.dataset.index) }); cartToast('Interessado removido'); abrirTela03(id, 'interessados'); }
+    catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
+  }));
+  document.querySelectorAll('.t3-int-status').forEach(sel => sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    try { await carteiraInteressado({ imovelId: id, acao: 'status', index: Number(sel.dataset.index), status: sel.value }); cartToast('Status atualizado'); abrirTela03(id, 'interessados'); }
+    catch (e) { alert('Erro: ' + e.message); abrirTela03(id, 'interessados'); }
+  }));
+  document.querySelectorAll('.t3-gerar-neg').forEach(b => b.addEventListener('click', async () => {
+    const i = Number(b.dataset.index);
+    const p = (im.interessados || [])[i] || {};
+    if (!confirm(`Gerar negócio para ${p.nome}?\n\nO interessado vira "Negócio Gerado" e o imóvel entra Em Negociação.`)) return;
+    b.disabled = true;
+    try { const r = await negocioGerarFn({ imovelId: id, interessadoIndex: i }); cartToast(`Negócio ${r.data?.codigo || ''} criado`); abrirTela03(id, 'interessados'); }
+    catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
+  }));
 }
 
 // Liga os eventos da Carteira depois de cada render.
 function wireCarteira() {
   const $$ = sel => secaoImoveis.querySelectorAll(sel);
   $$('.cart-copiar').forEach(b => b.addEventListener('click', () => cartCopiarLink(b.dataset.arquivo)));
-  $$('.cart-abrir').forEach(b => b.addEventListener('click', () => cartToggleDetalhe(b.dataset.id, b)));
+  $$('.cart-abrir').forEach(b => b.addEventListener('click', () => abrirTela03(b.dataset.id, 'informacoes')));
   $$('.cart-pill').forEach(b => b.addEventListener('click', () => {
     const g = b.dataset.grupo, k = b.dataset.key;
     cartFiltros[g] = (cartFiltros[g] === k) ? null : k;   // clicar de novo desliga
@@ -3698,50 +3913,6 @@ function wireCarteira() {
   const novo = document.getElementById('cartNovo');
   if (novo) novo.addEventListener('click', () => cartAbrirModal(null));
 
-  // Ações do detalhe
-  $$('.cart-sit').forEach(sel => sel.addEventListener('change', async () => {
-    sel.disabled = true;
-    try { await carteiraSituacaoFn({ imovelId: sel.dataset.id, situacao: sel.value }); cartToast('Situação atualizada'); carregarImoveis(); }
-    catch (e) { alert('Erro: ' + e.message); carregarImoveis(); }
-  }));
-  $$('.imovel-status-sel').forEach(sel => sel.addEventListener('change', async () => {
-    sel.disabled = true;
-    try { await locMoverImovelStatus({ imovelId: sel.dataset.id, novoStatus: sel.value }); cartToast('Esteira atualizada'); carregarImoveis(); }
-    catch (e) { alert('Erro ao mover: ' + e.message); carregarImoveis(); }
-  }));
-  $$('.cart-arquivar').forEach(b => b.addEventListener('click', async () => {
-    const arquivar = b.dataset.arquivar === '1';
-    if (arquivar && !confirm('Arquivar este imóvel? Ele sai da operação, mas nada é excluído — dá pra restaurar depois.')) return;
-    b.disabled = true;
-    try { await carteiraArquivar({ imovelId: b.dataset.id, arquivar }); cartToast(arquivar ? 'Imóvel arquivado' : 'Imóvel restaurado'); carregarImoveis(); }
-    catch (e) { alert('Erro: ' + e.message); carregarImoveis(); }
-  }));
-  $$('.cart-editar').forEach(b => b.addEventListener('click', () => {
-    const im = (_imoveisCache?.imoveis || []).find(x => x.id === b.dataset.id);
-    if (im) cartAbrirModal(im);
-  }));
-  $$('.cart-int-add').forEach(b => b.addEventListener('click', async () => {
-    const id = b.dataset.id;
-    const nome = secaoImoveis.querySelector(`.cart-int-nome[data-id="${id}"]`)?.value.trim();
-    const contato = secaoImoveis.querySelector(`.cart-int-contato[data-id="${id}"]`)?.value.trim();
-    const tipo = secaoImoveis.querySelector(`.cart-int-tipo[data-id="${id}"]`)?.value;
-    if (!nome) { alert('Informe o nome do interessado.'); return; }
-    b.disabled = true;
-    try { await carteiraInteressado({ imovelId: id, acao: 'add', nome, contato, tipo }); cartToast('Interessado adicionado'); await recarregarLinhaCarteira(id); }
-    catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
-  }));
-  $$('.cart-int-rem').forEach(b => b.addEventListener('click', async () => {
-    b.disabled = true;
-    try { await carteiraInteressado({ imovelId: b.dataset.id, acao: 'remover', index: Number(b.dataset.index) }); cartToast('Interessado removido'); await recarregarLinhaCarteira(b.dataset.id); }
-    catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
-  }));
-}
-
-// Recarrega a lista mantendo a linha de detalhe aberta (pra não "fechar na cara" ao mexer em interessados).
-async function recarregarLinhaCarteira(id) {
-  await carregarImoveis();
-  const btn = secaoImoveis.querySelector(`.cart-abrir[data-id="${id}"]`);
-  if (btn) cartToggleDetalhe(id, btn);
 }
 
 // ─── Modal Novo Imóvel / Editar (dialog único, criado sob demanda) ────────────
@@ -3829,7 +4000,8 @@ function cartAbrirModal(im) {
       await carteiraSalvarImovel(payload);
       dlg.close();
       cartToast(im ? 'Imóvel atualizado' : 'Imóvel criado');
-      carregarImoveis();
+      // Editando de dentro da Tela 03, volta pra ela; senão, recarrega a lista.
+      if (im && tela03Atual === im.id) abrirTela03(im.id); else carregarImoveis();
     } catch (e2) {
       alert('Erro ao salvar: ' + e2.message);
       btn.disabled = false; btn.textContent = im ? 'Salvar alterações' : 'Criar imóvel';

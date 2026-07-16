@@ -19,7 +19,8 @@
     "serve:pwa": "node scripts/serve-pwa.js",
     "deploy:pwa": "node scripts/build-pwa.js && firebase deploy --only hosting --project remax-smart-hub",
     "emu": "node scripts/emu.js",
-    "emu:seed": "node scripts/emu-seed.js"
+    "emu:seed": "node scripts/emu-seed.js",
+    "deploy:staging": "node scripts/build-pwa.js && firebase deploy --only hosting,functions,firestore:rules,storage --project staging"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

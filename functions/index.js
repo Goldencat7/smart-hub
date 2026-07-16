@@ -701,7 +701,11 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
     } else {
       // Carteira: todo imóvel nasce Disponível; ficha do locador ⇒ finalidade locação.
       const numeroProtocolo = await proximoNumeroProtocolo();
-      await imovelRef.set({ ...base, status: 'recebido', finalidade: 'locacao', situacao: 'disponivel', arquivado: false, numeroProtocolo, criadoEm: ts() });
+      await imovelRef.set({
+        ...base, status: 'recebido', finalidade: 'locacao', situacao: 'disponivel', arquivado: false, numeroProtocolo,
+        timeline: [{ texto: 'Imóvel criado a partir da ficha do locador', porNome: 'Sistema', em: admin.firestore.Timestamp.now() }],
+        criadoEm: ts()
+      });
     }
   } catch (e) {
     await logErro('onFichaLocadorEnviadaAdmin', e, { fichaId });
@@ -736,7 +740,11 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
       await imovelRef.set(base, { merge: true });   // preserva criadoEm + numeroProtocolo + situacao/finalidade
     } else {
       const numeroProtocolo = await proximoNumeroProtocolo();
-      await imovelRef.set({ ...base, finalidade: 'venda', situacao: 'disponivel', arquivado: false, numeroProtocolo, criadoEm: ts() });
+      await imovelRef.set({
+        ...base, finalidade: 'venda', situacao: 'disponivel', arquivado: false, numeroProtocolo,
+        timeline: [{ texto: 'Imóvel criado a partir da ficha do vendedor', porNome: 'Sistema', em: admin.firestore.Timestamp.now() }],
+        criadoEm: ts()
+      });
     }
   } catch (e) {
     await logErro('onFichaVendedorEnviadaAdmin', e, { fichaId });
@@ -840,13 +848,22 @@ exports.locObterImovel = onCall(async (req) => {
   const historico = (imovel.historico || []).map(h => ({
     ...h, em: h.em?.toDate?.()?.toISOString() || null
   }));
+  // Timeline da Tela 03 (histórico automático) + interessados com datas legíveis
+  const timeline = (imovel.timeline || []).map(h => ({
+    ...h, em: h.em?.toDate?.()?.toISOString() || null
+  }));
+  const interessados = (imovel.interessados || []).map(p => ({
+    ...p,
+    em: p.em?.toDate?.()?.toISOString() || null,
+    statusEm: p.statusEm?.toDate?.()?.toISOString() || null
+  }));
 
   return {
     imovel: {
       id: snap.id, ...imovel,
       criadoEm: imovel.criadoEm?.toDate?.()?.toISOString() || null,
       atualizadoEm: imovel.atualizadoEm?.toDate?.()?.toISOString() || null,
-      historico
+      historico, timeline, interessados
     },
     locadores, locatarios, garantia, contrato, podeContratar, vistorias
   };
@@ -962,6 +979,35 @@ const CARTEIRA_FINALIDADES = ['locacao', 'venda', 'venda_locacao'];
 const CARTEIRA_SITUACOES = ['disponivel', 'em_negociacao'];
 const _txt = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
+// Status do interessado (Tela 03). Aprovar/reprovar é decisão exclusiva do broker
+// (Manual de Regras: "Apenas decisões do Broker poderão alterar status manualmente").
+const INTERESSADO_STATUS = ['ficha_enviada', 'ficha_recebida', 'em_analise', 'aprovado', 'reprovado', 'desistiu', 'negocio_gerado'];
+const INTERESSADO_SO_BROKER = ['aprovado', 'reprovado'];
+const INTERESSADO_LABEL = {
+  ficha_enviada: 'Ficha enviada', ficha_recebida: 'Ficha recebida', em_analise: 'Em análise',
+  aprovado: 'Aprovado', reprovado: 'Reprovado', desistiu: 'Desistiu', negocio_gerado: 'Negócio gerado'
+};
+
+// Nome de exibição de um uid (pra timeline/auditoria). Nunca lança.
+async function _nomeDoUid(uid) {
+  try { const u = await admin.auth().getUser(uid); return u.displayName || u.email || uid; }
+  catch (_) { return uid || 'Sistema'; }
+}
+
+// Timeline do imóvel (aba Histórico da Tela 03) — registro automático, nunca editável.
+// Transacional pra não perder entrada em escrita concorrente; cap de 300.
+async function _imovelTimeline(ref, texto, porNome) {
+  try {
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists) return;
+      const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
+      tl.push({ texto: String(texto).slice(0, 300), porNome: porNome || 'Sistema', em: admin.firestore.Timestamp.now() });
+      tx.set(ref, { timeline: tl.slice(-300) }, { merge: true });
+    });
+  } catch (e) { await logErro('_imovelTimeline', e, { imovelId: ref.id }); }
+}
+
 // Posse na Carteira: broker (gestor/administrativo) mexe em tudo; corretor só nos seus.
 async function _carteiraImovelComPosse(imovelId, auth) {
   if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
@@ -1004,6 +1050,7 @@ exports.carteiraSalvarImovel = onCall(async (req) => {
     if (!proprietarioNome) delete campos.proprietarioNome;
     if (finalidade) campos.finalidade = finalidade;
     await ref.set(campos, { merge: true });
+    await _imovelTimeline(ref, 'Dados do imóvel alterados', await _nomeDoUid(auth.uid));
     return { ok: true, imovelId: d.imovelId };
   }
 
@@ -1028,6 +1075,7 @@ exports.carteiraSalvarImovel = onCall(async (req) => {
     interessados: [],
     pendentes: [],
     numeroProtocolo,
+    timeline: [{ texto: 'Imóvel cadastrado manualmente', porNome: porNome || 'Sistema', em: admin.firestore.Timestamp.now() }],
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
@@ -1044,6 +1092,7 @@ exports.carteiraArquivar = onCall(async (req) => {
     ...(arquivar ? { arquivadoEm: admin.firestore.FieldValue.serverTimestamp() } : { arquivadoEm: null }),
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
+  await _imovelTimeline(ref, arquivar ? 'Imóvel arquivado' : 'Imóvel restaurado do arquivo', await _nomeDoUid(auth.uid));
   return { ok: true, arquivado: !!arquivar };
 });
 
@@ -1054,6 +1103,7 @@ exports.carteiraSituacao = onCall(async (req) => {
   if (!CARTEIRA_SITUACOES.includes(situacao)) throw new HttpsError('invalid-argument', 'Situação inválida.');
   const { ref } = await _carteiraImovelComPosse(imovelId, auth);
   await ref.set({ situacao, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _imovelTimeline(ref, `Situação alterada para ${situacao === 'disponivel' ? 'Disponível' : 'Em Negociação'}`, await _nomeDoUid(auth.uid));
   return { ok: true, situacao };
 });
 
@@ -1063,27 +1113,221 @@ exports.carteiraInteressado = onCall(async (req) => {
   const { imovelId, acao } = req.data || {};
   const { ref, snap } = await _carteiraImovelComPosse(imovelId, auth);
   const lista = Array.isArray(snap.data().interessados) ? [...snap.data().interessados] : [];
+  let evento = '';
 
   if (acao === 'add') {
     const nome = _txt(req.data.nome, 120);
     if (!nome) throw new HttpsError('invalid-argument', 'Nome do interessado é obrigatório.');
     if (lista.length >= 50) throw new HttpsError('resource-exhausted', 'Limite de interessados atingido.');
+    // Status inicial: 'em_analise' (add manual) ou 'ficha_enviada' (fluxo Enviar Ficha da Tela 03).
+    const status = INTERESSADO_STATUS.includes(req.data.status) ? req.data.status : 'em_analise';
+    if (INTERESSADO_SO_BROKER.includes(status)) throw new HttpsError('invalid-argument', 'Status inicial inválido.');
     lista.push({
       nome,
       contato: _txt(req.data.contato, 120),
       tipo: _txt(req.data.tipo, 20) || 'locatario',
+      status,
       em: admin.firestore.Timestamp.now()
     });
+    evento = `Interessado ${nome} adicionado (${INTERESSADO_LABEL[status]})`;
   } else if (acao === 'remover') {
     const i = Number(req.data.index);
     if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+    evento = `Interessado ${lista[i].nome} removido`;
     lista.splice(i, 1);
+  } else if (acao === 'status') {
+    // Tela 03: muda o status do interessado. Aprovar/Reprovar = só broker (Manual de Regras).
+    const i = Number(req.data.index);
+    if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+    const status = req.data.status;
+    if (!INTERESSADO_STATUS.includes(status) || status === 'negocio_gerado') throw new HttpsError('invalid-argument', 'Status inválido.');
+    if (INTERESSADO_SO_BROKER.includes(status) && !ehGestorAuth(auth)) {
+      throw new HttpsError('permission-denied', 'Aprovar ou reprovar interessado é decisão do broker.');
+    }
+    if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Este interessado já gerou um negócio.');
+    lista[i] = { ...lista[i], status, statusEm: admin.firestore.Timestamp.now() };
+    evento = `Interessado ${lista[i].nome}: ${INTERESSADO_LABEL[status]}`;
   } else {
     throw new HttpsError('invalid-argument', 'Ação inválida.');
   }
 
   await ref.set({ interessados: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  if (evento) await _imovelTimeline(ref, evento, await _nomeDoUid(auth.uid));
   return { ok: true, interessados: lista.length };
+});
+
+// ─── Negócios (Telas 03/04 do SMART HUB) ─────────────────────────────────────
+// Todo negócio NASCE de um imóvel (Tela 03, botão Gerar Negócio) a partir de um
+// interessado APROVADO. Só 1 negócio ativo por imóvel. O checklist muda conforme
+// o tipo (Venda/Locação) — modelos da spec 04B; as etapas `obrigatoria` travam o
+// "Entregar para Gestão" (Tela 04B, fase seguinte).
+const NEGOCIO_STATUS = ['negocio_criado', 'em_andamento', 'aguardando_broker', 'aguardando_corretor', 'aguardando_administrativo', 'entregue_gestao', 'concluido', 'cancelado'];
+const NEGOCIO_ATIVO = s => !['concluido', 'cancelado'].includes(s);
+const _chkItem = ([key, label, obrigatoria]) => ({ key, label, obrigatoria, feito: false, feitoPor: '', feitoEm: null });
+const CHECKLIST_NEGOCIO = {
+  locacao: [
+    ['doc_pasta', 'Documentação salva na pasta', true],
+    ['ficha', 'Ficha cadastral preenchida', true],
+    ['proposta', 'Proposta ajustada', true],
+    ['contrato_emitido', 'Contrato emitido', true],
+    ['contrato_aprovado', 'Contrato aprovado', true],
+    ['contrato_assinado', 'Contrato assinado', true],
+    ['seguro', 'Seguro aprovado', true],
+    ['chaves', 'Entrega das chaves', false],
+    ['enel', 'Transferência ENEL', false],
+    ['iptu', 'Transferência IPTU', false],
+    ['condominio', 'Transferência titularidade condomínio', false],
+    ['avaliacao', 'Avaliação Google', false],
+    ['finalizado', 'Processo finalizado', false],
+  ],
+  venda: [
+    ['doc_pasta', 'Documentação salva na pasta', true],
+    ['ficha', 'Ficha cadastral preenchida', true],
+    ['proposta', 'Proposta ajustada', true],
+    ['compromisso_emitido', 'Compromisso emitido', true],
+    ['certidoes', 'Certidões', true],
+    ['matricula_atualizada', 'Matrícula atualizada', true],
+    ['compromisso_aprovado', 'Compromisso aprovado', true],
+    ['compromisso_assinado', 'Compromisso assinado', true],
+    ['comissao1', '1ª parcela comissão', false],
+    ['comissao2', '2ª parcela comissão', false],
+    ['averbacao', 'Averbação', false],
+    ['matricula_emitida', 'Matrícula emitida', false],
+    ['chaves', 'Entrega das chaves', false],
+    ['enel', 'Transferência ENEL', false],
+    ['iptu', 'Transferência IPTU', false],
+    ['condominio', 'Transferência condomínio', false],
+    ['avaliacao', 'Avaliação Google', false],
+    ['finalizado', 'Processo finalizado', false],
+  ],
+};
+
+// Código sequencial NG-000001 (mesmo desenho transacional do protocolo dos imóveis).
+async function proximoNumeroNegocio() {
+  const ref = db.collection('counters').doc('negocios');
+  return await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const novo = (snap.exists ? (snap.data().proximo || 0) : 0) + 1;
+    tx.set(ref, { proximo: novo, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    return novo;
+  });
+}
+
+// (BROKER) Gera um negócio a partir de um interessado aprovado do imóvel.
+exports.negocioGerar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth)) throw new HttpsError('permission-denied', 'Gerar negócio é decisão do broker.');
+  const { imovelId, interessadoIndex } = req.data || {};
+  const { ref, snap } = await _carteiraImovelComPosse(imovelId, auth);
+  const im = snap.data();
+
+  const lista = Array.isArray(im.interessados) ? [...im.interessados] : [];
+  const i = Number(interessadoIndex);
+  if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+  const interessado = lista[i];
+  if (interessado.status !== 'aprovado') throw new HttpsError('failed-precondition', 'Somente um interessado APROVADO pode gerar negócio.');
+
+  // Regra da spec: apenas um negócio ativo por imóvel.
+  const existentes = await db.collection('negocios').where('imovelId', '==', imovelId).get();
+  const ativo = existentes.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+  if (ativo) throw new HttpsError('failed-precondition', `Este imóvel já tem um negócio ativo (${ativo.data().codigo}).`);
+
+  const finalidade = im.finalidade || 'locacao';
+  const tipo = finalidade === 'venda' ? 'venda'
+    : finalidade === 'venda_locacao' ? (interessado.tipo === 'comprador' ? 'venda' : 'locacao')
+    : 'locacao';
+  const checklist = CHECKLIST_NEGOCIO[tipo].map(_chkItem);
+
+  const numero = await proximoNumeroNegocio();
+  const codigo = 'NG-' + String(numero).padStart(6, '0');
+  const porNome = await _nomeDoUid(auth.uid);
+  const e = im.endereco || {};
+  const nRef = db.collection('negocios').doc();
+  await nRef.set({
+    codigo, numero,
+    imovelId, imovelProtocolo: im.numeroProtocolo != null ? im.numeroProtocolo : null,
+    imovelResumo: [e.logradouro, e.numero].filter(Boolean).join(', ') || im.tipo || 'Imóvel',
+    cidade: e.cidade || '',
+    tipo,
+    clienteNome: interessado.nome, clienteContato: interessado.contato || '',
+    interessadoIndex: i,
+    corretorUid: im.corretorUid || '', corretorNome: im.corretorNome || '',
+    brokerUid: auth.uid, brokerNome: porNome,
+    status: 'negocio_criado',
+    proximaAcao: checklist[0].label,
+    checklist,
+    comentarios: [],
+    timeline: [{ texto: `Negócio criado a partir do interessado ${interessado.nome}`, porNome, em: admin.firestore.Timestamp.now() }],
+    criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  // Reflexos no imóvel: interessado vira "Negócio gerado" e o imóvel entra Em Negociação.
+  lista[i] = { ...interessado, status: 'negocio_gerado', negocioId: nRef.id, statusEm: admin.firestore.Timestamp.now() };
+  await ref.set({ interessados: lista, situacao: 'em_negociacao', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _imovelTimeline(ref, `Negócio ${codigo} gerado para ${interessado.nome}`, porNome);
+  await registrarAudit(auth, 'negocio_gerar', { tipo: 'negocio', id: nRef.id }, { codigo, imovelId });
+  return { ok: true, negocioId: nRef.id, codigo };
+});
+
+// Lista os negócios (Tela 04A): broker/administrativo vê tudo; corretor só os seus.
+exports.negocioListar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const q = veTudo ? db.collection('negocios') : db.collection('negocios').where('corretorUid', '==', auth.uid);
+  const snap = await q.get();
+  const negocios = snap.docs.map(d => {
+    const n = d.data();
+    return {
+      ...n, id: d.id,
+      criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
+      atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
+      timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
+      comentarios: (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })),
+    };
+  }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+  return { negocios, veTudo };
+});
+
+// Ficha de interessado (PF/PJ/Comprador) vinculada a um imóvel → interessado
+// automático na Tela 03 ("Sistema cria automaticamente o interessado" — spec).
+exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fichaId}' }, async (event) => {
+  const fichaId = event.params.fichaId;
+  try {
+    const after = event.data?.after?.data();
+    if (!after || !after.imovelId) return;
+    if (!['pf', 'pj', 'proposta'].includes(after.tipo)) return;
+    const before = event.data?.before?.data();
+    // Dispara na criação e no reenvio (status volta pra aguardando_corretor); ignora o resto.
+    if (after.status !== 'aguardando_corretor') return;
+    if (before && before.status === 'aguardando_corretor') return;
+
+    const ref = db.collection('imoveis').doc(after.imovelId);
+    const dados = after.dados || {};
+    const nome = _txt(dados.nome || dados.razaoSocial || dados.nomeCompleto, 120) || 'Interessado';
+    const contato = _txt(dados.whatsapp || dados.telefone || dados.email, 120);
+    const tipoInt = after.tipo === 'proposta' ? 'comprador' : 'locatario';
+
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists) return;
+      const lista = Array.isArray(s.data().interessados) ? [...s.data().interessados] : [];
+      // Reenvio (mesma ficha) atualiza; senão tenta casar com um "Ficha enviada" de mesmo nome;
+      // senão entra como interessado novo.
+      let i = lista.findIndex(p => p.fichaId === fichaId);
+      if (i < 0) i = lista.findIndex(p => p.status === 'ficha_enviada' && p.nome &&
+        nome.toLowerCase().startsWith(p.nome.toLowerCase().slice(0, 30)));
+      const entrada = { nome, contato, tipo: tipoInt, status: 'ficha_recebida', fichaId, statusEm: admin.firestore.Timestamp.now() };
+      if (i >= 0) lista[i] = { ...lista[i], ...entrada };
+      else {
+        if (lista.length >= 50) return;
+        lista.push({ ...entrada, em: admin.firestore.Timestamp.now() });
+      }
+      const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
+      tl.push({ texto: `Ficha recebida de ${nome}`, porNome: 'Sistema', em: admin.firestore.Timestamp.now() });
+      tx.set(ref, { interessados: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+  } catch (e) { await logErro('onFichaInteressadoRecebida', e, { fichaId }); }
 });
 
 // ─── Gestão de Locações · Campos financeiros + checklist (esteira de locação) ─

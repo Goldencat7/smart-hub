@@ -69,6 +69,7 @@ service cloud.firestore {
     // ESCRITA é sempre negada aqui — toda mutação passa por Cloud Function
     // (Admin SDK ignora estas regras), pra garantir integridade do financeiro.
     match /imoveis/{id}   { allow read: if locPodeLer(resource.data); allow write: if false; }
+    match /negocios/{id}  { allow read: if locPodeLer(resource.data); allow write: if false; }
     match /pessoas/{id}   { allow read: if locPodeLer(resource.data); allow write: if false; }
     match /contratos/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
     match /garantias/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
