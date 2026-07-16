@@ -34,6 +34,7 @@
         <button class="admin-nav-item" data-aba="cofre"><i class="ti ti-shield-lock"></i>Modo cofre</button>
         <button class="admin-nav-item" data-aba="auditoria"><i class="ti ti-file-search"></i>Auditoria</button>
         <button class="admin-nav-item" data-aba="bugbot"><i class="ti ti-bug"></i>Bug Bot</button>
+        <button class="admin-nav-item" data-aba="smarthub"><i class="ti ti-building-estate"></i>SMART HUB — configs</button>
         <!-- LGPD: DESATIVADO a pedido do Nathan (2026-07-14). A tela e as Cloud Functions
              existem (admin-app.js: carregarLgpd; functions/index.js: bloco LGPD), mas as
              functions NÃO estão deployadas e este botão está fora do ar de propósito.
@@ -63,6 +64,16 @@
             </div>
           </div>
           <div id="bugbotPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="smarthub" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>SMART HUB — configurações</h2>
+              <p class="admin-sub">Listas usadas pela Carteira e pelos Negócios: <strong>tipos de imóvel</strong>, <strong>cidades</strong> e os <strong>checklists</strong> de Locação e Venda (as etapas <em>obrigatórias</em> travam o "Entregar para Gestão"). Negócios já criados não mudam — o checklist novo vale a partir do próximo.</p>
+            </div>
+          </div>
+          <div id="smarthubPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
         </section>
 
         <section class="admin-section" data-aba="lgpd" hidden>

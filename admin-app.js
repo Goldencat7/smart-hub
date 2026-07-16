@@ -23,6 +23,8 @@ const listUsers         = httpsCallable(fns, 'listUsers');
 const setUserAdmin      = httpsCallable(fns, 'setUserAdmin');
 const createUser        = httpsCallable(fns, 'createUser');
 const deleteUserAccount = httpsCallable(fns, 'deleteUserAccount');
+const configObter       = httpsCallable(fns, 'configObter');
+const configSalvar      = httpsCallable(fns, 'configSalvar');
 const criarCodigoConvite    = httpsCallable(fns, 'criarCodigoConvite');
 const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
@@ -308,7 +310,154 @@ function ativarAba(aba) {
   });
   if (aba === 'auditoria') carregarAuditoria();
   if (aba === 'bugbot')    carregarBugBot();
+  if (aba === 'smarthub')  carregarSmartHub();
   if (aba === 'lgpd')      carregarLgpd();
+}
+
+// ─── SMART HUB — configurações (T-06 Administração) ──────────────────────────
+// Tipos de imóvel e cidades = listas simples. Checklists = etapas ordenadas com
+// flag "obrigatória" (trava o Entregar p/ Gestão no 04B). Salvar é por painel.
+// Padrões do código valem enquanto a config não existir (fallback do servidor).
+const SH_CHECKLIST_PADRAO = {
+  checklist_locacao: [
+    ['Documentação salva na pasta', true], ['Ficha cadastral preenchida', true], ['Proposta ajustada', true],
+    ['Contrato emitido', true], ['Contrato aprovado', true], ['Contrato assinado', true], ['Seguro aprovado', true],
+    ['Entrega das chaves', false], ['Transferência ENEL', false], ['Transferência IPTU', false],
+    ['Transferência titularidade condomínio', false], ['Avaliação Google', false], ['Processo finalizado', false],
+  ],
+  checklist_venda: [
+    ['Documentação salva na pasta', true], ['Ficha cadastral preenchida', true], ['Proposta ajustada', true],
+    ['Compromisso emitido', true], ['Certidões', true], ['Matrícula atualizada', true],
+    ['Compromisso aprovado', true], ['Compromisso assinado', true],
+    ['1ª parcela comissão', false], ['2ª parcela comissão', false], ['Averbação', false], ['Matrícula emitida', false],
+    ['Entrega das chaves', false], ['Transferência ENEL', false], ['Transferência IPTU', false],
+    ['Transferência condomínio', false], ['Avaliação Google', false], ['Processo finalizado', false],
+  ],
+};
+let shConfig = null;   // estado editável em memória (por doc)
+
+async function carregarSmartHub() {
+  const painel = document.getElementById('smarthubPainel');
+  painel.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const res = await configObter({});
+    const d = res.data || {};
+    shConfig = {
+      tipos_imovel: d.tipos_imovel || ['Apartamento', 'Casa', 'Casa em condomínio', 'Sobrado', 'Kitnet/Studio', 'Sala comercial', 'Loja', 'Galpão', 'Terreno'],
+      cidades: d.cidades || ['Curitiba'],
+      checklist_locacao: d.checklist_locacao || SH_CHECKLIST_PADRAO.checklist_locacao.map(([label, obrigatoria]) => ({ label, obrigatoria })),
+      checklist_venda: d.checklist_venda || SH_CHECKLIST_PADRAO.checklist_venda.map(([label, obrigatoria]) => ({ label, obrigatoria })),
+      _existia: { tipos_imovel: !!d.tipos_imovel, cidades: !!d.cidades, checklist_locacao: !!d.checklist_locacao, checklist_venda: !!d.checklist_venda },
+    };
+    renderSmartHub();
+  } catch (e) {
+    painel.innerHTML = `<p class="muted">Erro ao carregar: ${escHtmlAdmin(e.message)}</p>`;
+  }
+}
+
+function escHtmlAdmin(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderSmartHub() {
+  const painel = document.getElementById('smarthubPainel');
+  const card = (titulo, sub, corpo, doc) => `<div style="background:var(--surface,#fff);border:1px solid var(--border,#e5e7eb);border-radius:12px;padding:16px 18px;margin-bottom:14px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+      <strong style="font-size:14px">${titulo}</strong>
+      <span class="muted" style="font-size:11px">${sub}</span>
+      ${doc && !shConfig._existia[doc] ? '<span style="font-size:10px;font-weight:700;color:#b45309;background:#b4530918;border:1px solid #b4530940;padding:2px 8px;border-radius:10px">padrão do sistema — ainda não salvo</span>' : ''}
+      <span style="flex:1"></span>
+      ${doc ? `<button class="sh-salvar" data-doc="${doc}" style="font-size:12px;font-weight:600;padding:6px 16px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">Salvar</button>` : ''}
+    </div>${corpo}</div>`;
+
+  // Listas simples (tipos / cidades): chips com ✕ + campo de adicionar
+  const listaHtml = (doc) => {
+    const chips = shConfig[doc].map((v, i) => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--hover,#f5f6f8);border:1px solid var(--border,#e5e7eb);border-radius:14px;padding:4px 12px;margin:2px">
+      ${escHtmlAdmin(v)}<button class="sh-rem" data-doc="${doc}" data-i="${i}" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:12px;line-height:1;padding:0">✕</button></span>`).join('');
+    return `<div style="margin:6px 0">${chips || '<span class="muted" style="font-size:12px">Lista vazia.</span>'}</div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input class="sh-novo" data-doc="${doc}" placeholder="Adicionar..." style="font-size:12px;padding:6px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;min-width:200px">
+        <button class="sh-add" data-doc="${doc}" style="font-size:12px;font-weight:600;padding:6px 12px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--surface,#fff);cursor:pointer">+ Adicionar</button></div>`;
+  };
+
+  // Checklists: linhas ordenáveis (↑↓) com nome + obrigatória + ✕
+  const checklistHtml = (doc) => {
+    const linhas = shConfig[doc].map((x, i) => `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+      <span class="muted" style="font-size:11px;min-width:22px;text-align:right">${i + 1}.</span>
+      <button class="sh-mov" data-doc="${doc}" data-i="${i}" data-dir="-1" ${i === 0 ? 'disabled' : ''} style="border:none;background:none;cursor:pointer;font-size:12px;padding:0 2px">↑</button>
+      <button class="sh-mov" data-doc="${doc}" data-i="${i}" data-dir="1" ${i === shConfig[doc].length - 1 ? 'disabled' : ''} style="border:none;background:none;cursor:pointer;font-size:12px;padding:0 2px">↓</button>
+      <input class="sh-label" data-doc="${doc}" data-i="${i}" value="${escHtmlAdmin(x.label)}" style="flex:1;font-size:12px;padding:5px 10px;border:1px solid var(--border,#e5e7eb);border-radius:6px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;cursor:pointer">
+        <input type="checkbox" class="sh-obr" data-doc="${doc}" data-i="${i}"${x.obrigatoria ? ' checked' : ''}> obrigatória</label>
+      <button class="sh-rem" data-doc="${doc}" data-i="${i}" style="border:none;background:none;color:#DC1C2E;cursor:pointer;font-size:13px">✕</button>
+    </div>`).join('');
+    return `<div>${linhas}</div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input class="sh-novo" data-doc="${doc}" placeholder="Nova etapa..." style="font-size:12px;padding:6px 10px;border:1px solid var(--border,#e5e7eb);border-radius:8px;min-width:240px">
+        <button class="sh-add" data-doc="${doc}" style="font-size:12px;font-weight:600;padding:6px 12px;border:1px solid var(--border,#e5e7eb);border-radius:8px;background:var(--surface,#fff);cursor:pointer">+ Adicionar etapa</button></div>
+      <p class="muted" style="font-size:11px;margin-top:8px">Etapas <strong>obrigatórias</strong> travam o "Entregar para Gestão" e o "Concluir" do negócio. A mudança vale só pros próximos negócios.</p>`;
+  };
+
+  const finalidades = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">
+    ${['Locação', 'Venda', 'Venda + Locação'].map(f => `<span style="font-size:12px;background:var(--hover,#f5f6f8);border:1px solid var(--border,#e5e7eb);border-radius:14px;padding:4px 12px">${f}</span>`).join('')}
+  </div><p class="muted" style="font-size:11px;margin-top:8px">As finalidades fazem parte do modelo de dados (esteira, fichas, negócios) — não são editáveis.</p>`;
+
+  painel.innerHTML =
+    card('Tipos de Imóvel', 'sugestões no cadastro do imóvel', listaHtml('tipos_imovel'), 'tipos_imovel') +
+    card('Cidades', 'sugestões no cadastro do imóvel', listaHtml('cidades'), 'cidades') +
+    card('Checklist — Locação', 'etapas do negócio de locação (Tela Gerenciar Negócio)', checklistHtml('checklist_locacao'), 'checklist_locacao') +
+    card('Checklist — Venda', 'etapas do negócio de venda', checklistHtml('checklist_venda'), 'checklist_venda') +
+    card('Finalidades', 'fixas no sistema', finalidades, null);
+
+  wireSmartHub();
+}
+
+function wireSmartHub() {
+  const painel = document.getElementById('smarthubPainel');
+  const sync = (doc) => {   // lê os inputs de volta pro estado (labels/obrigatória editados)
+    if (!doc.startsWith('checklist_')) return;
+    painel.querySelectorAll(`.sh-label[data-doc="${doc}"]`).forEach(inp => { shConfig[doc][Number(inp.dataset.i)].label = inp.value; });
+    painel.querySelectorAll(`.sh-obr[data-doc="${doc}"]`).forEach(chk => { shConfig[doc][Number(chk.dataset.i)].obrigatoria = chk.checked; });
+  };
+  painel.querySelectorAll('.sh-add').forEach(b => b.addEventListener('click', () => {
+    const doc = b.dataset.doc;
+    const inp = painel.querySelector(`.sh-novo[data-doc="${doc}"]`);
+    const v = inp?.value.trim();
+    if (!v) return;
+    sync(doc);
+    shConfig[doc].push(doc.startsWith('checklist_') ? { label: v, obrigatoria: false } : v);
+    renderSmartHub();
+  }));
+  painel.querySelectorAll('.sh-novo').forEach(inp => inp.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') { ev.preventDefault(); painel.querySelector(`.sh-add[data-doc="${inp.dataset.doc}"]`)?.click(); }
+  }));
+  painel.querySelectorAll('.sh-rem').forEach(b => b.addEventListener('click', () => {
+    const doc = b.dataset.doc;
+    sync(doc);
+    shConfig[doc].splice(Number(b.dataset.i), 1);
+    renderSmartHub();
+  }));
+  painel.querySelectorAll('.sh-mov').forEach(b => b.addEventListener('click', () => {
+    const doc = b.dataset.doc, i = Number(b.dataset.i), j = i + Number(b.dataset.dir);
+    sync(doc);
+    if (j < 0 || j >= shConfig[doc].length) return;
+    [shConfig[doc][i], shConfig[doc][j]] = [shConfig[doc][j], shConfig[doc][i]];
+    renderSmartHub();
+  }));
+  painel.querySelectorAll('.sh-salvar').forEach(b => b.addEventListener('click', async () => {
+    const doc = b.dataset.doc;
+    sync(doc);
+    b.disabled = true; b.textContent = 'Salvando...';
+    try {
+      const r = await configSalvar({ doc, itens: shConfig[doc] });
+      shConfig[doc] = r.data?.itens || shConfig[doc];
+      shConfig._existia[doc] = true;
+      renderSmartHub();
+    } catch (e) {
+      alert('Erro ao salvar: ' + e.message);
+      b.disabled = false; b.textContent = 'Salvar';
+    }
+  }));
 }
 
 // ─── LGPD ───────────────────────────────────────────────────────────────────

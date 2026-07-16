@@ -111,6 +111,7 @@ const negocioListarFn      = httpsCallable(fns, 'negocioListar');
 const negocioObterFn       = httpsCallable(fns, 'negocioObter');
 const negocioAtualizarFn   = httpsCallable(fns, 'negocioAtualizar');
 const dashboardDadosFn     = httpsCallable(fns, 'dashboardDados');
+const configObterFn        = httpsCallable(fns, 'configObter');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -4491,6 +4492,28 @@ function wireCarteira() {
 
 }
 
+// Datalists de Tipo/Cidade (configuradas no Admin → SMART HUB). Cache por sessão.
+let _shListas = null;
+async function _shListasAplicar(dlg) {
+  try {
+    if (!_shListas) {
+      const r = await configObterFn({});
+      _shListas = { tipos: r.data?.tipos_imovel || [], cidades: r.data?.cidades || [] };
+    }
+    const liga = (inputId, listId, itens) => {
+      if (!itens.length) return;
+      const inp = dlg.querySelector('#' + inputId);
+      if (!inp) return;
+      let dl = document.getElementById(listId);
+      if (!dl) { dl = document.createElement('datalist'); dl.id = listId; document.body.appendChild(dl); }
+      dl.innerHTML = itens.map(v => `<option value="${escapeHtml(v)}">`).join('');
+      inp.setAttribute('list', listId);
+    };
+    liga('cfTipo', 'shListaTipos', _shListas.tipos);
+    liga('cfCidade', 'shListaCidades', _shListas.cidades);
+  } catch (_e) { /* sem config → texto livre, sem erro na tela */ }
+}
+
 // ─── Modal Novo Imóvel / Editar (dialog único, criado sob demanda) ────────────
 function cartAbrirModal(im) {
   let dlg = document.getElementById('dlgCartImovel');
@@ -4546,6 +4569,10 @@ function cartAbrirModal(im) {
         <button id="cartDlgCancelar" type="button" style="font-size:12px;font-weight:600;padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-muted);cursor:pointer">Cancelar</button>
         <button id="cartDlgSalvar" type="button" style="font-size:12px;font-weight:600;padding:8px 18px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">${im ? 'Salvar alterações' : 'Criar imóvel'}</button></div>
     </form>`;
+
+  // Sugestões de Tipo/Cidade vindas do Admin (SMART HUB — configs). Lazy + cache;
+  // se a config não existir ou falhar, o campo segue como texto livre.
+  _shListasAplicar(dlg);
 
   const fechar = () => dlg.close();
   dlg.querySelector('#cartDlgFechar').addEventListener('click', fechar);

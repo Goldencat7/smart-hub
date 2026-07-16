@@ -70,6 +70,9 @@ service cloud.firestore {
     // (Admin SDK ignora estas regras), pra garantir integridade do financeiro.
     match /imoveis/{id}   { allow read: if locPodeLer(resource.data); allow write: if false; }
     match /negocios/{id}  { allow read: if locPodeLer(resource.data); allow write: if false; }
+    // Configs do SMART HUB (tipos de imóvel, cidades, checklists): sem PII;
+    // qualquer logado lê, escrita só via Cloud Function (configSalvar, admin).
+    match /smarthub_config/{id} { allow read: if request.auth != null; allow write: if false; }
     match /pessoas/{id}   { allow read: if locPodeLer(resource.data); allow write: if false; }
     match /contratos/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }
     match /garantias/{id} { allow read: if locPodeLer(resource.data); allow write: if false; }

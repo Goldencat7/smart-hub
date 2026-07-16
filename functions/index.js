@@ -1202,6 +1202,64 @@ const CHECKLIST_NEGOCIO = {
   ],
 };
 
+// ─── Configurações do SMART HUB (T-06 Administração) ─────────────────────────
+// Coleção `smarthub_config`: tipos_imovel/cidades (listas de texto) e
+// checklist_locacao/checklist_venda (itens {key,label,obrigatoria}). O admin
+// edita no painel; o negocioGerar usa o checklist configurado (fallback =
+// padrão do código). Finalidades NÃO são configuráveis (fazem parte do modelo).
+const CONFIG_DOCS = ['tipos_imovel', 'cidades', 'checklist_locacao', 'checklist_venda'];
+
+exports.configObter = onCall(async (req) => {
+  exigirAutenticado(req);
+  const out = {};
+  const snaps = await db.getAll(...CONFIG_DOCS.map(d => db.collection('smarthub_config').doc(d)));
+  snaps.forEach((s, i) => { out[CONFIG_DOCS[i]] = s.exists ? (s.data().itens || []) : null; });
+  return out;
+});
+
+exports.configSalvar = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const { doc, itens } = req.data || {};
+  if (!CONFIG_DOCS.includes(doc)) throw new HttpsError('invalid-argument', 'Config inválida.');
+  if (!Array.isArray(itens) || itens.length > 100) throw new HttpsError('invalid-argument', 'Lista inválida (máx. 100 itens).');
+
+  let limpos;
+  if (doc.startsWith('checklist_')) {
+    if (!itens.length) throw new HttpsError('invalid-argument', 'O checklist não pode ficar vazio.');
+    const vistos = new Set();
+    limpos = itens.map((x, i) => {
+      const label = _txt(x && x.label, 120);
+      if (!label) throw new HttpsError('invalid-argument', `Etapa ${i + 1} sem nome.`);
+      let key = _txt(x && x.key, 40) || label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'etapa_' + (i + 1);
+      while (vistos.has(key)) key += '_2';   // chave única (o toggle do 04B acha por key)
+      vistos.add(key);
+      return { key, label, obrigatoria: !!(x && x.obrigatoria) };
+    });
+  } else {
+    limpos = [...new Set(itens.map(x => _txt(x, 60)).filter(Boolean))];
+  }
+
+  await db.collection('smarthub_config').doc(doc).set({
+    itens: limpos,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    porUid: auth.uid
+  });
+  await registrarAudit(auth, 'config_salvar', { tipo: 'smarthub_config', id: doc }, { qtd: limpos.length });
+  return { ok: true, itens: limpos };
+});
+
+// Checklist do negócio: usa o configurado no Admin; sem config, o padrão do código.
+async function _checklistModelo(tipo) {
+  try {
+    const s = await db.collection('smarthub_config').doc('checklist_' + tipo).get();
+    const itens = s.exists ? s.data().itens : null;
+    if (Array.isArray(itens) && itens.length) {
+      return itens.map(x => ({ key: x.key, label: x.label, obrigatoria: !!x.obrigatoria, feito: false, feitoPor: '', feitoEm: null }));
+    }
+  } catch (_) { /* config quebrada → padrão */ }
+  return CHECKLIST_NEGOCIO[tipo].map(_chkItem);
+}
+
 // Código sequencial NG-000001 (mesmo desenho transacional do protocolo dos imóveis).
 async function proximoNumeroNegocio() {
   const ref = db.collection('counters').doc('negocios');
@@ -1236,7 +1294,7 @@ exports.negocioGerar = onCall(async (req) => {
   const tipo = finalidade === 'venda' ? 'venda'
     : finalidade === 'venda_locacao' ? (interessado.tipo === 'comprador' ? 'venda' : 'locacao')
     : 'locacao';
-  const checklist = CHECKLIST_NEGOCIO[tipo].map(_chkItem);
+  const checklist = await _checklistModelo(tipo);   // configurável no Admin (T-06)
 
   const numero = await proximoNumeroNegocio();
   const codigo = 'NG-' + String(numero).padStart(6, '0');
