@@ -261,7 +261,7 @@ porque o Nathan vai voltar nessa parte ("vão ter mais atualizações dessa part
 - `admin.html`/`admin-app.js`: o painel de **Lançamento** ("Publicar para todos") e o checkbox **"Acesso de teste"** (`loc_beta`) — visíveis, porém inertes (a visibilidade da aba Locação hoje é só `loc_gestao`).
 - Cloud Functions `locFinanceiro` / `locListarAlertas` / `locRelatorios`: continuam no backend, sem tela.
 
-### App de celular (PWA) — Fase 1 PRONTA (2026-07-14), falta publicar
+### App de celular (PWA) — ✅ NO AR (publicado em 2026-07-14)
 O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável). Não existe
 "código do celular": as telas são **as mesmas** do `.exe` (`index.html`, `hub-app.js`, `styles.css`,
 `admin.html`, `login.html`). Quem muda é a **ponte**, não a tela.
@@ -290,7 +290,8 @@ O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável
   Nunca editar lá dentro: editar a fonte na raiz (ou em `pwa/`) e rodar o build.
 - **Verificado** (localhost, viewport 375×812): login redireciona certo pelo shim, `autologin:false`,
   SW ativo no escopo `/app/`, manifest com 3 ícones, gaveta abre/fecha, sem scroll horizontal.
-  **Falta**: `npm run deploy:pwa` + testar no celular de verdade (login, 2FA, fichas).
+  **Publicado** — no ar em `remax-smart-hub.web.app/app/` (acompanha as versões do `.exe` via
+  `deploy:pwa`). Teste em celular físico (login, 2FA, fichas) segue recomendado a cada release grande.
 - **Fase 2 (opcional)**: o Electron virar casca que faz `loadURL(hosting)` — aí
   `firebase deploy --only hosting` atualiza **desktop + celular juntos** e o `.exe` só é republicado
   quando mexer no autologin. Hoje ainda são dois deploys (o `.exe` carrega os arquivos do disco).
@@ -351,9 +352,11 @@ embute o nome do banco — comparar texto cru dá falso positivo em tudo.
 
 ### Ideias antigas (seguem em aberto)
 
-- **Ambiente de staging** (projeto Firebase separado): testar mudanças sem risco de afetar produção. Criar um segundo projeto Firebase (ex.: `remax-smart-hub-staging`) e trocar config por variável de ambiente. Destrava também o teste de restore do backup.
+- **Ambiente de staging**: ✅ FEITO — projeto `remax-smart-hub-staging` no ar (ver seção
+  "Config por ambiente" acima; `npm run deploy:staging`). Também existe o Emulator Suite local.
 
-- **LGPD — retenção e exclusão de dados**: fichas guardam CPF, RG, renda. Implementar política de expurgo automático (ex.: 2 anos) e fluxo de exclusão a pedido do titular.
+- **LGPD — retenção e exclusão de dados**: código PRONTO e revisado, porém **desativado por
+  decisão do Nathan** — ver a seção "LGPD" acima (o que trava é a cópia de PII em `pessoas`/`imoveis`).
 
 - **CI/CD**: ✅ parcial — `.github/workflows/ci.yml` roda **ESLint** (`npm run lint`), `node --check` (CJS + módulos ES do renderer via cópia `.mjs`) e valida os JSONs a cada push/PR. Falta: testes automatizados e bloquear deploy quebrado (o deploy/publish segue manual).
   - Config em `eslint.config.mjs` (flat config). Três ambientes: Node puro (`main.js`, `functions/index.js`), preloads (Node + DOM) e renderers (módulos ES + globals de browser + `hubApi`).
