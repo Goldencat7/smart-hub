@@ -1565,14 +1565,21 @@ exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fich
       const s = await tx.get(ref);
       if (!s.exists) return;
       const lista = Array.isArray(s.data().interessados) ? [...s.data().interessados] : [];
-      // Reenvio (mesma ficha) atualiza; senão tenta casar com um "Ficha enviada" de mesmo nome;
-      // senão entra como interessado novo.
+      // Reenvio (mesma ficha) atualiza; senão casa por nome com qualquer interessado
+      // ainda "vivo" (cada envio da ficha gera um fichaId NOVO no cliente — casar só
+      // com "ficha_enviada" duplicava a pessoa a partir do 2º envio); senão entra
+      // como interessado novo. Quem já virou negócio não é tocado.
+      const casaNome = (p) => p.nome && (
+        nome.toLowerCase().startsWith(p.nome.toLowerCase().slice(0, 30)) ||
+        p.nome.toLowerCase().startsWith(nome.toLowerCase().slice(0, 30)));
       let i = lista.findIndex(p => p.fichaId === fichaId);
-      if (i < 0) i = lista.findIndex(p => p.status === 'ficha_enviada' && p.nome &&
-        nome.toLowerCase().startsWith(p.nome.toLowerCase().slice(0, 30)));
+      if (i < 0) i = lista.findIndex(p => p.status !== 'negocio_gerado' && casaNome(p));
       const entrada = { nome, contato, tipo: tipoInt, status: 'ficha_recebida', fichaId, statusEm: admin.firestore.Timestamp.now() };
-      if (i >= 0) lista[i] = { ...lista[i], ...entrada };
-      else {
+      if (i >= 0) {
+        // Não rebaixa decisão do broker: aprovado continua aprovado (só atualiza a ficha).
+        const st = lista[i].status === 'aprovado' ? 'aprovado' : 'ficha_recebida';
+        lista[i] = { ...lista[i], ...entrada, status: st };
+      } else {
         if (lista.length >= 50) return;
         lista.push({ ...entrada, em: admin.firestore.Timestamp.now() });
       }
