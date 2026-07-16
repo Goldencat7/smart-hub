@@ -220,7 +220,13 @@ produção apontar pro lugar errado:
 - **Fase 2 — integração bancária (cobrança automática)**: precisa abrir conta no provedor + gerar a chave. Recomendação: Asaas. Plano completo em **[`FASE-2-INTEGRACAO-BANCARIA.md`](FASE-2-INTEGRACAO-BANCARIA.md)**. O terreno já está pronto (webhook-stub + `origemStatus`/`idExterno`).
 - **Portal do inquilino — boleto/PIX**: a página já avisa "pagamento online em breve"; exibir o boleto real depende da Fase 2.
 - **Assinatura eletrônica de contrato** + modelos de contrato: precisa contratar provedor (ClickSign/D4Sign/ZapSign).
-- **Integração real do app de vistoria**: hoje é registro manual de link; precisa da API do app usado.
+- **Integração real do app de vistoria (CheckVisto)**: ✅ FEITA no staging (2026-07-16) — contrato em
+  `INTEGRACAO-CHECKVISTO.md` (v1.1). Botão "Solicitar no CheckVisto" na Gestão da Locação → agendamento
+  + push na conta do vistoriador; status/laudo voltam sozinhos via `vistoriaWebhook` (upsert por
+  `idExterno`) e andam o checklist automático. Lado CheckVisto 100% aditivo (`functions/hub-integracao.js`
+  + apêndice no index.js), testado ponta a ponta. Falta: secret `HUB_CHECKVISTO_SECRET` já está nos 3
+  projetos; produção entra no publish grande (deploy de `vistoriaWebhook`/`locSolicitarVistoriaCheckVisto`
+  já sai no `--only functions`). Auditoria do commit `0fd186d` pelo chat do CheckVisto recomendada.
 - **Notificação WhatsApp via Meta Cloud API**: quando corretor recebe uma ficha, mandar mensagem automática no WhatsApp pessoal dele.
   - Precisa de: chip novo (qualquer operadora) para ser o número remetente da REMAX Smart.
   - Fluxo: Firestore `onCreate` em `fichas` → Cloud Function → Meta Cloud API → WhatsApp do corretor.
