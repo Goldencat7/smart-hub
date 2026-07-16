@@ -107,6 +107,9 @@ const carteiraArquivar     = httpsCallable(fns, 'carteiraArquivar');
 const carteiraSituacaoFn   = httpsCallable(fns, 'carteiraSituacao');
 const carteiraInteressado  = httpsCallable(fns, 'carteiraInteressado');
 const negocioGerarFn       = httpsCallable(fns, 'negocioGerar');
+const negocioListarFn      = httpsCallable(fns, 'negocioListar');
+const negocioObterFn       = httpsCallable(fns, 'negocioObter');
+const negocioAtualizarFn   = httpsCallable(fns, 'negocioAtualizar');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
 
@@ -256,8 +259,9 @@ const TREINAMENTO_CATS = [
 // Versão enxuta (pedido do chefe): só Painel + Imóveis. Financeiro/Alertas/
 // Relatórios saíram; as fichas voltaram pro Cadastro.
 const LOC_APPS = [
-  { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira', icone: ICN.painel },
-  { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Esteira das captações',   icone: ICN.imoveis },
+  { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira',        icone: ICN.painel },
+  { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Carteira de imóveis',            icone: ICN.imoveis },
+  { id: 'negocios',   titulo: 'Negócios',   desc: 'Vendas e locações em andamento', icone: ICN.locadmin },
 ];
 
 const CATEGORIAS = [
@@ -599,6 +603,7 @@ function renderCentro() {
 
     if (locSub === 'painel')  { secaoPainel.hidden = false;  carregarPainel(); }
     if (locSub === 'imoveis') { secaoImoveis.hidden = false; cartFiltros = { fin: null, sit: null, corretor: null, busca: '' }; carregarImoveis(); }
+    if (locSub === 'negocios') { secaoImoveis.hidden = false; negFiltros = { tipo: null, status: null, corretor: null, busca: '' }; carregarNegocios(); }
     return;
   }
 
@@ -3881,6 +3886,308 @@ function wireTela03(d) {
     try { const r = await negocioGerarFn({ imovelId: id, interessadoIndex: i }); cartToast(`Negócio ${r.data?.codigo || ''} criado`); abrirTela03(id, 'interessados'); }
     catch (e) { alert('Erro: ' + e.message); b.disabled = false; }
   }));
+}
+
+// ─── Telas 04A/04B — Lista de Negócios + Gerenciar Negócio ───────────────────
+// 04A: todas as negociações (broker vê tudo; corretor só as dele). NÃO tem botão
+// "Novo Negócio" — todo negócio nasce na Tela 03. 04B: checklist operacional,
+// comentários internos (broker + corretor responsável), histórico e Entregar
+// para Gestão (broker, só com as etapas obrigatórias concluídas).
+const NEG_STATUS = [
+  { key: 'negocio_criado',            label: 'Negócio Criado',            cor: '#6b7280' },
+  { key: 'em_andamento',              label: 'Em Andamento',              cor: '#0ea5e9' },
+  { key: 'aguardando_broker',         label: 'Aguardando Broker',         cor: '#6366f1' },
+  { key: 'aguardando_corretor',       label: 'Aguardando Corretor',       cor: '#b45309' },
+  { key: 'aguardando_administrativo', label: 'Aguardando Administrativo', cor: '#8b5cf6' },
+  { key: 'entregue_gestao',           label: 'Entregue para Gestão',      cor: '#16a34a' },
+  { key: 'concluido',                 label: 'Concluído',                 cor: '#15803d' },
+  { key: 'cancelado',                 label: 'Cancelado',                 cor: '#DC1C2E' },
+];
+const negStatusLabel = k => (NEG_STATUS.find(s => s.key === k) || {}).label || k;
+const negStatusCor   = k => (NEG_STATUS.find(s => s.key === k) || {}).cor || '#6b7280';
+const negProgresso = n => {
+  const c = n.checklist || [];
+  return c.length ? Math.round((c.filter(x => x.feito).length / c.length) * 100) : 0;
+};
+let negFiltros = { tipo: null, status: null, corretor: null, busca: '' };
+let _negociosCache = null;
+
+async function carregarNegocios() {
+  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando os negócios...</p>';
+  try {
+    const res = await negocioListarFn({});
+    _negociosCache = { negocios: res.data?.negocios || [], veTudo: !!res.data?.veTudo };
+    renderTela04A();
+  } catch (e) {
+    secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar os negócios: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function renderTela04A() {
+  if (!_negociosCache) return;
+  const { negocios, veTudo } = _negociosCache;
+
+  const conta = f => negocios.filter(f).length;
+  const card = (num, label, cor) => `<div style="flex:1;min-width:104px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:10px 12px">
+    <div style="font-size:20px;font-weight:700;color:${cor}">${num}</div>
+    <div style="font-size:11px;color:var(--text-primary);font-weight:600">${label}</div></div>`;
+  const indicadores = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+    ${card(negocios.length, 'Total de Negócios', '#0ea5e9')}
+    ${card(conta(n => n.tipo === 'locacao'), 'Locações', '#6366f1')}
+    ${card(conta(n => n.tipo === 'venda'), 'Vendas', '#16a34a')}
+    ${card(conta(n => (n.status || '').startsWith('aguardando')), 'Pendentes', '#b45309')}
+    ${card(conta(n => n.status === 'entregue_gestao'), 'Entregues p/ Gestão', '#15803d')}
+    ${card(conta(n => n.status === 'concluido'), 'Concluídos', '#6b7280')}
+  </div>`;
+
+  // Filtros: pesquisa + tipo + status + corretor (broker)
+  const busca = (negFiltros.busca || '').toLowerCase();
+  const buscaDe = n => [n.codigo, n.clienteNome, n.imovelResumo, n.cidade, n.corretorNome, n.brokerNome].filter(Boolean).join(' ').toLowerCase();
+  const lista = negocios.filter(n => {
+    if (negFiltros.tipo && n.tipo !== negFiltros.tipo) return false;
+    if (negFiltros.status && n.status !== negFiltros.status) return false;
+    if (negFiltros.corretor && n.corretorUid !== negFiltros.corretor) return false;
+    if (busca && !buscaDe(n).includes(busca)) return false;
+    return true;
+  });
+  const pill = (grupo, key, label, ativo, cor) => `<button class="neg-pill" data-grupo="${grupo}" data-key="${key}" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:14px;cursor:pointer;border:1px solid ${ativo ? cor : 'var(--border)'};background:${ativo ? cor + '1f' : 'var(--surface)'};color:${ativo ? cor : 'var(--text-muted)'}">${label}</button>`;
+  const corretores = veTudo ? [...new Map(negocios.filter(n => n.corretorUid).map(n => [n.corretorUid, n.corretorNome || n.corretorUid])).entries()] : [];
+  const temFiltro = negFiltros.tipo || negFiltros.status || negFiltros.corretor || negFiltros.busca;
+  const filtros = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:12px 16px;margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+    <input id="negBusca" type="search" placeholder="Pesquisar por código, cliente, imóvel, corretor..." value="${escapeHtml(negFiltros.busca)}"
+      style="flex:1;min-width:220px;font-size:12px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:var(--hover);color:var(--text-primary)">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Tipo</span>
+      ${pill('tipo', 'locacao', 'Locação', negFiltros.tipo === 'locacao', '#6366f1')}
+      ${pill('tipo', 'venda', 'Venda', negFiltros.tipo === 'venda', '#16a34a')}</div>
+    <select id="negFStatus" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary)">
+      <option value="">Status: todos</option>
+      ${NEG_STATUS.map(s => `<option value="${s.key}"${negFiltros.status === s.key ? ' selected' : ''}>${s.label}</option>`).join('')}</select>
+    ${corretores.length ? `<select id="negFCorretor" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary)">
+      <option value="">Corretor: todos</option>
+      ${corretores.map(([uid, nome]) => `<option value="${escapeHtml(uid)}"${negFiltros.corretor === uid ? ' selected' : ''}>${escapeHtml(nome)}</option>`).join('')}</select>` : ''}
+    ${temFiltro ? '<button id="negLimpar" style="font-size:11px;font-weight:600;color:#DC1C2E;background:none;border:none;cursor:pointer">Limpar filtros</button>' : ''}
+  </div>`;
+
+  const th = t => `<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${t}</th>`;
+  const td = (c, extra) => `<td style="font-size:12px;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;${extra || ''}">${c}</td>`;
+  const barra = pct => `<div style="display:flex;align-items:center;gap:6px;min-width:110px">
+    <div style="flex:1;height:6px;border-radius:3px;background:var(--hover);overflow:hidden"><div style="width:${pct}%;height:100%;border-radius:3px;background:${pct >= 100 ? '#16a34a' : '#0ea5e9'}"></div></div>
+    <span style="font-size:10px;font-weight:700;color:var(--text-muted)">${pct}%</span></div>`;
+  const linhas = lista.map(n => `<tr>
+    ${td(`<strong style="white-space:nowrap">${escapeHtml(n.codigo || '—')}</strong>`)}
+    ${td(escapeHtml(n.clienteNome || '—'))}
+    ${td(`<div style="font-weight:600">${escapeHtml(n.imovelResumo || '—')}</div><div style="font-size:11px;color:var(--text-muted)">${n.imovelProtocolo != null ? '#SH-' + String(n.imovelProtocolo).padStart(4, '0') : ''}${n.cidade ? ' · ' + escapeHtml(n.cidade) : ''}</div>`)}
+    ${td(badgeMini(n.tipo === 'venda' ? 'Venda' : 'Locação', n.tipo === 'venda' ? '#16a34a' : '#6366f1'))}
+    ${td(badgeMini(negStatusLabel(n.status), negStatusCor(n.status)))}
+    ${td(`<span style="font-size:11px">${escapeHtml(n.proximaAcao || '—')}</span>`)}
+    ${td(escapeHtml(n.corretorNome || '—'))}
+    ${td(barra(negProgresso(n)))}
+    ${td(`<span style="color:var(--text-muted);white-space:nowrap">${tempoRelativo(n.atualizadoEm)}</span>`)}
+    ${td(`<button class="neg-gerenciar topbar-btn" data-id="${escapeHtml(n.id)}" style="font-size:11px;padding:4px 12px">Gerenciar</button>`)}
+  </tr>`).join('');
+
+  const tabela = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)">
+      <div><strong style="font-size:13px">Negócios</strong>
+        <span style="font-size:11px;color:var(--text-muted);margin-left:8px">${lista.length} de ${negocios.length}</span></div>
+      <span style="font-size:11px;color:var(--text-muted)">Negócios nascem na Carteira → Detalhes do Imóvel → ⚡ Gerar Negócio</span></div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:980px">
+      <thead><tr>${['Código', 'Cliente', 'Imóvel', 'Tipo', 'Status', 'Próxima Ação', 'Corretor', 'Progresso', 'Atualização', 'Ações'].map(th).join('')}</tr></thead>
+      <tbody>${linhas || `<tr><td colspan="10" style="font-size:12px;color:var(--text-muted);text-align:center;padding:32px 16px;line-height:1.6">
+        ${negocios.length ? 'Nenhum negócio com esses filtros.' : 'Nenhum negócio ainda.<br><span style="font-size:11px">Todo negócio nasce de um imóvel: abra o imóvel na Carteira, aprove um interessado e clique em <strong>⚡ Gerar Negócio</strong>.</span>'}
+      </td></tr>`}</tbody>
+    </table></div></div>`;
+
+  secaoImoveis.innerHTML = indicadores + filtros + tabela;
+
+  // Wiring 04A
+  secaoImoveis.querySelectorAll('.neg-pill').forEach(b => b.addEventListener('click', () => {
+    negFiltros[b.dataset.grupo] = (negFiltros[b.dataset.grupo] === b.dataset.key) ? null : b.dataset.key;
+    renderTela04A();
+  }));
+  document.getElementById('negFStatus')?.addEventListener('change', ev => { negFiltros.status = ev.target.value || null; renderTela04A(); });
+  document.getElementById('negFCorretor')?.addEventListener('change', ev => { negFiltros.corretor = ev.target.value || null; renderTela04A(); });
+  document.getElementById('negLimpar')?.addEventListener('click', () => { negFiltros = { tipo: null, status: null, corretor: null, busca: '' }; renderTela04A(); });
+  const busca2 = document.getElementById('negBusca');
+  if (busca2) busca2.addEventListener('input', () => {
+    clearTimeout(busca2._t);
+    busca2._t = setTimeout(() => {
+      negFiltros.busca = busca2.value;
+      renderTela04A();
+      const b2 = document.getElementById('negBusca');
+      if (b2) { b2.focus(); b2.setSelectionRange(b2.value.length, b2.value.length); }
+    }, 220);
+  });
+  secaoImoveis.querySelectorAll('.neg-gerenciar').forEach(b => b.addEventListener('click', () => abrirTela04B(b.dataset.id)));
+}
+
+// ── Tela 04B — Gerenciar Negócio ──
+async function abrirTela04B(id) {
+  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Carregando o negócio...</p>';
+  try {
+    const res = await negocioObterFn({ negocioId: id });
+    renderTela04B(res.data || {});
+  } catch (e) {
+    secaoImoveis.innerHTML = `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao carregar: ${escapeHtml(e.message)}<br>
+      <button id="negVoltarErr" class="topbar-btn" style="margin-top:10px;font-size:12px">← Voltar aos Negócios</button></div>`;
+    document.getElementById('negVoltarErr')?.addEventListener('click', carregarNegocios);
+  }
+}
+
+function renderTela04B(d) {
+  const n = d.negocio || {};
+  const ehGestorNeg = !!d.ehGestor;
+  const podeComentar = !!d.podeComentar;
+  const encerrado = ['concluido', 'cancelado'].includes(n.status);
+  const pct = negProgresso(n);
+  const fmtDt = iso => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+
+  const resumoItem = (r, v) => `<div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${r}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${v || '—'}</div></div>`;
+  const cardStyle = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px 18px';
+
+  // Checklist operacional (área principal). Etapas obrigatórias travam o Entregar.
+  const checklist = (n.checklist || []).map(x => `
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:5px;cursor:${encerrado ? 'default' : 'pointer'};background:${x.feito ? '#16a34a0d' : 'var(--surface)'}">
+      <input type="checkbox" class="n4b-chk" data-key="${escapeHtml(x.key)}"${x.feito ? ' checked' : ''}${encerrado ? ' disabled' : ''} style="width:15px;height:15px;margin-top:2px;flex-shrink:0;cursor:pointer">
+      <span style="flex:1">
+        <span style="font-size:12px;font-weight:600;color:${x.feito ? 'var(--text-muted)' : 'var(--text-primary)'};${x.feito ? 'text-decoration:line-through' : ''}">${escapeHtml(x.label)}</span>
+        ${x.obrigatoria ? '<span style="font-size:9px;font-weight:700;color:#b45309;background:#b4530918;border:1px solid #b4530940;padding:1px 6px;border-radius:8px;margin-left:6px;vertical-align:middle">obrigatória</span>' : ''}
+        ${x.feito ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">✓ ${escapeHtml(x.feitoPor || '')} · ${fmtDt(x.feitoEm)}</div>` : ''}
+      </span>
+    </label>`).join('');
+
+  // Painel lateral: status, próxima ação, progresso, Drive, ações do broker.
+  const statusSel = ehGestorNeg && !encerrado && n.status !== 'entregue_gestao'
+    ? `<select id="n4bStatus" style="${_selStyle};width:100%">
+        ${NEG_STATUS.filter(s => ['em_andamento', 'aguardando_broker', 'aguardando_corretor', 'aguardando_administrativo'].includes(s.key) || s.key === n.status).map(s =>
+          `<option value="${s.key}"${s.key === n.status ? ' selected' : ''}${['negocio_criado', 'entregue_gestao', 'concluido', 'cancelado'].includes(s.key) ? ' disabled' : ''}>${s.label}</option>`).join('')}</select>`
+    : badgeMini(negStatusLabel(n.status), negStatusCor(n.status));
+  const driveBox = `<div style="display:flex;gap:5px;margin-top:4px">
+      <input id="n4bDrive" placeholder="https://drive.google.com/..." value="${escapeHtml(n.driveUrl || '')}"${encerrado ? ' disabled' : ''} style="${_selStyle};flex:1;min-width:0">
+      ${encerrado ? '' : '<button id="n4bDriveSalvar" class="topbar-btn" style="font-size:11px;padding:4px 10px">Salvar</button>'}</div>
+    ${n.driveUrl ? `<a href="${escapeHtml(n.driveUrl)}" target="_blank" style="font-size:11px;color:#0ea5e9">Abrir pasta ↗</a>` : '<span style="font-size:10px;color:var(--text-muted)">Cole o link da pasta do negócio no Drive.</span>'}`;
+  const acoesBroker = !ehGestorNeg || encerrado ? '' : `
+    <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+      ${n.status !== 'entregue_gestao' ? '<button id="n4bEntregar" style="font-size:12px;font-weight:700;padding:9px 12px;border:none;border-radius:8px;background:#16a34a;color:#fff;cursor:pointer">📦 Entregar para Gestão</button>' : ''}
+      <button id="n4bConcluir" style="font-size:12px;font-weight:600;padding:8px 12px;border:1px solid #16a34a;border-radius:8px;background:var(--surface);color:#16a34a;cursor:pointer">✓ Concluir negócio</button>
+      <button id="n4bCancelar" style="font-size:12px;font-weight:600;padding:8px 12px;border:1px solid #DC1C2E;border-radius:8px;background:var(--surface);color:#DC1C2E;cursor:pointer">✕ Cancelar negócio</button>
+    </div>`;
+
+  // Abas: Comentários (exclusivos broker+corretor responsável) e Histórico
+  const comentarios = podeComentar ? `
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <input id="n4bComTexto" placeholder="Comentário interno (só broker + corretor responsável veem)" style="${_selStyle};flex:1">
+      <button id="n4bComEnviar" style="font-size:11px;font-weight:600;padding:6px 14px;border:none;border-radius:8px;background:#002749;color:#fff;cursor:pointer">Enviar</button></div>
+    ${(n.comentarios || []).slice().reverse().map(c => `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:6px">
+      <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(c.porNome || '')} · ${fmtDt(c.em)}</div>
+      <div style="font-size:12px;margin-top:2px;white-space:pre-wrap">${escapeHtml(c.texto || '')}</div></div>`).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nenhum comentário ainda.</p>'}`
+    : '<p style="font-size:12px;color:var(--text-muted)">Comentários internos são exclusivos do broker e do corretor responsável.</p>';
+  const historico = (n.timeline || []).slice().reverse().map(h => `
+    <div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="color:var(--text-muted);white-space:nowrap;min-width:112px">${fmtDt(h.em)}</span>
+      <span style="flex:1">${escapeHtml(h.texto || '')}</span>
+      <span style="color:var(--text-muted);white-space:nowrap">${escapeHtml(h.porNome || '')}</span></div>`).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nada registrado.</p>';
+
+  secaoImoveis.innerHTML = `<div id="tela04b" data-id="${escapeHtml(n.id || '')}">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <button id="n4bVoltar" class="topbar-btn" style="font-size:12px;padding:6px 12px">← Negócios</button>
+      <strong style="font-size:15px">Gerenciar Negócio</strong>
+      <span style="font-size:12px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:6px">${escapeHtml(n.codigo || '')}</span>
+      ${badgeMini(n.tipo === 'venda' ? 'Venda' : 'Locação', n.tipo === 'venda' ? '#16a34a' : '#6366f1')}
+      ${badgeMini(negStatusLabel(n.status), negStatusCor(n.status))}
+    </div>
+    <div style="${cardStyle};margin-bottom:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px 18px">
+      ${resumoItem('Código', escapeHtml(n.codigo || ''))}
+      ${resumoItem('Cliente', escapeHtml(n.clienteNome || ''))}
+      ${resumoItem('Imóvel', escapeHtml(n.imovelResumo || '') + (n.imovelProtocolo != null ? ` <span style="color:var(--text-muted)">#SH-${String(n.imovelProtocolo).padStart(4, '0')}</span>` : ''))}
+      ${resumoItem('Corretor responsável', escapeHtml(n.corretorNome || ''))}
+      ${resumoItem('Broker responsável', escapeHtml(n.brokerNome || ''))}
+      ${resumoItem('Criado em', fmtDt(n.criadoEm))}
+      ${resumoItem('Última atualização', fmtDt(n.atualizadoEm))}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 290px;gap:12px;align-items:start">
+      <div style="${cardStyle}">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:10px">Checklist Operacional · ${n.tipo === 'venda' ? 'Venda' : 'Locação'}</div>
+        ${checklist || '<p style="font-size:12px;color:var(--text-muted)">Sem checklist.</p>'}
+      </div>
+      <div style="${cardStyle}">
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Status</div><div style="margin-top:4px">${statusSel}</div></div>
+          <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Próxima ação</div><div style="font-size:12px;font-weight:600;margin-top:3px">${escapeHtml(n.proximaAcao || '—')}</div></div>
+          <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Progresso</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+              <div style="flex:1;height:8px;border-radius:4px;background:var(--hover);overflow:hidden"><div style="width:${pct}%;height:100%;border-radius:4px;background:${pct >= 100 ? '#16a34a' : '#0ea5e9'}"></div></div>
+              <strong style="font-size:12px">${pct}%</strong></div></div>
+          <div><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase">Google Drive</div>${driveBox}</div>
+          ${acoesBroker}
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:12px">
+      <button class="n4b-aba" data-aba="comentarios" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid #002749;border-bottom:none;border-radius:8px 8px 0 0;background:#002749;color:#fff;cursor:pointer">Comentários${podeComentar && (n.comentarios || []).length ? ` (${n.comentarios.length})` : ''}</button>
+      <button class="n4b-aba" data-aba="historico" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;background:var(--surface);color:var(--text-muted);cursor:pointer">Histórico</button>
+    </div>
+    <div class="n4b-pane" data-pane="comentarios" style="${cardStyle};border-top-left-radius:0">${comentarios}</div>
+    <div class="n4b-pane" data-pane="historico" style="${cardStyle};border-top-left-radius:0" hidden>${historico}</div>
+  </div>`;
+
+  wireTela04B(d);
+}
+
+function wireTela04B(d) {
+  const n = d.negocio || {};
+  const id = n.id;
+  const $ = s => document.getElementById(s);
+  const aplicar = async (payload, msgOk) => {
+    try {
+      const r = await negocioAtualizarFn({ negocioId: id, ...payload });
+      if (msgOk) cartToast(msgOk);
+      renderTela04B(r.data || {});
+    } catch (e) { alert('Erro: ' + e.message); abrirTela04B(id); }
+  };
+
+  $('n4bVoltar')?.addEventListener('click', carregarNegocios);
+  document.querySelectorAll('.n4b-aba').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.n4b-aba').forEach(x => {
+      const ativo = x === b;
+      x.style.background = ativo ? '#002749' : 'var(--surface)';
+      x.style.color = ativo ? '#fff' : 'var(--text-muted)';
+      x.style.borderColor = ativo ? '#002749' : 'var(--border)';
+    });
+    document.querySelectorAll('.n4b-pane').forEach(p => { p.hidden = p.dataset.pane !== b.dataset.aba; });
+  }));
+  document.querySelectorAll('.n4b-chk').forEach(c => c.addEventListener('change', () => {
+    c.disabled = true;
+    aplicar({ acao: 'checklist', key: c.dataset.key, feito: c.checked });
+  }));
+  $('n4bStatus')?.addEventListener('change', ev => { ev.target.disabled = true; aplicar({ acao: 'status', status: ev.target.value }, 'Status atualizado'); });
+  $('n4bDriveSalvar')?.addEventListener('click', () => aplicar({ acao: 'drive', url: $('n4bDrive')?.value.trim() || '' }, 'Drive atualizado'));
+  $('n4bComEnviar')?.addEventListener('click', () => {
+    const texto = $('n4bComTexto')?.value.trim();
+    if (!texto) return;
+    aplicar({ acao: 'comentario', texto }, 'Comentário enviado');
+  });
+  $('n4bComTexto')?.addEventListener('keydown', ev => { if (ev.key === 'Enter') $('n4bComEnviar')?.click(); });
+  $('n4bEntregar')?.addEventListener('click', () => {
+    if (!confirm('Entregar este negócio para a Gestão?\n\nSó é possível com todas as etapas obrigatórias concluídas.')) return;
+    aplicar({ acao: 'entregar' }, 'Negócio entregue para Gestão');
+  });
+  $('n4bConcluir')?.addEventListener('click', () => {
+    if (!confirm('Concluir este negócio? Ele não aceita mais alterações depois.')) return;
+    aplicar({ acao: 'concluir' }, 'Negócio concluído');
+  });
+  $('n4bCancelar')?.addEventListener('click', () => {
+    const motivo = prompt2Cancelar();
+    if (motivo === null) return;
+    aplicar({ acao: 'cancelar', motivo }, 'Negócio cancelado');
+  });
+}
+
+// prompt() não roda em janela do Electron — mini-dialog pro motivo do cancelamento.
+function prompt2Cancelar() {
+  const ok = confirm('Cancelar este negócio?\n\nO imóvel volta pra Disponível e o interessado volta pra Aprovado.');
+  return ok ? '' : null;
 }
 
 // Liga os eventos da Carteira depois de cada render.
