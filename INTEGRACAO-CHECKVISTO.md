@@ -107,6 +107,23 @@ são os únicos que o Hub conhece):
 bem-vindo mas NÃO obrigatório na v1 — falhou, loga e segue (o corretor ainda consegue
 registrar na mão como hoje; a integração é conforto, não trava).
 
+## Regra de ouro no CheckVisto: 100% ADITIVO (pra não ter como quebrar o app)
+
+O lado do CheckVisto NÃO PODE alterar nenhuma linha do código existente:
+
+- `hubSolicitarVistoria` = Cloud Function **nova** (nada do app atual chama ela).
+- O aviso pro Hub = **trigger do Firestore novo** (`onDocumentWritten` na coleção de
+  vistorias, filtrando `origem == 'hub'`) — NUNCA um hook enfiado no fluxo existente.
+  Trigger roda depois da escrita, em processo separado: se falhar, a vistoria já foi
+  salva e o app nem percebe (erro fica só no log do trigger).
+- Deploy sempre com `--only functions:hubSolicitarVistoria,functions:<nomeDoTrigger>` —
+  não republicar hosting nem as outras functions.
+- Se durante a implementação parecer necessário editar código existente do CheckVisto,
+  PARAR e avisar o Nathan — não improvisar.
+
+Com isso o pior cenário possível é "a integração não funciona ainda" — nunca
+"o app de vistoria quebrou".
+
 ## Regras de fronteira (importantes)
 
 - **Cada chat/sessão mexe SÓ no seu repo.** O chat do CheckVisto pode LER
