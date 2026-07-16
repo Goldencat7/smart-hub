@@ -263,6 +263,7 @@ const LOC_APPS = [
   { id: 'painel',     titulo: 'Painel',     desc: 'Visão geral da carteira',        icone: ICN.painel },
   { id: 'imoveis',    titulo: 'Imóveis',    desc: 'Carteira de imóveis',            icone: ICN.imoveis },
   { id: 'negocios',   titulo: 'Negócios',   desc: 'Vendas e locações em andamento', icone: ICN.locadmin },
+  { id: 'relatorios', titulo: 'Relatórios', desc: 'Indicadores e exportações',      icone: ICN.financeiro },
 ];
 
 const CATEGORIAS = [
@@ -610,6 +611,7 @@ function renderCentro() {
       if (negAbrirDireto) { const alvo = negAbrirDireto; negAbrirDireto = null; abrirTela04B(alvo); }
       else { negFiltros = { tipo: null, status: null, corretor: null, busca: '' }; carregarNegocios(); }
     }
+    if (locSub === 'relatorios') { secaoImoveis.hidden = false; relFiltros = { periodo: '30d', ini: '', fim: '', tipo: null, status: null, corretor: null }; carregarRelatorio(); }
     return;
   }
 
@@ -4195,6 +4197,266 @@ function wireTela04B(d) {
 function prompt2Cancelar() {
   const ok = confirm('Cancelar este negócio?\n\nO imóvel volta pra Disponível e o interessado volta pra Aprovado.');
   return ok ? '' : null;
+}
+
+// ─── Tela 05 — Relatórios ─────────────────────────────────────────────────────
+// Indicadores operacionais + pipeline + produção por corretor + atenção, com
+// exportação CSV / Excel / PDF. Tudo agregado no cliente em cima do que o
+// negocioListar e o locListarImoveis já devolvem (posse: broker tudo, corretor
+// só o dele) — sem backend novo.
+let relFiltros = { periodo: '30d', ini: '', fim: '', tipo: null, status: null, corretor: null };
+let _relCache = null;
+
+function relJanela() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const p = relFiltros.periodo;
+  if (p === 'hoje') return { ini: hoje, fim: null };
+  if (p === '7d')   return { ini: new Date(hoje.getTime() - 7 * 86400000), fim: null };
+  if (p === '30d')  return { ini: new Date(hoje.getTime() - 30 * 86400000), fim: null };
+  if (p === 'mes')  return { ini: new Date(hoje.getFullYear(), hoje.getMonth(), 1), fim: null };
+  if (p === 'custom') {
+    const ini = relFiltros.ini ? new Date(relFiltros.ini + 'T00:00:00') : null;
+    const fim = relFiltros.fim ? new Date(relFiltros.fim + 'T23:59:59') : null;
+    return { ini, fim };
+  }
+  return { ini: null, fim: null };   // 'tudo'
+}
+const relNoPeriodo = (iso, j) => {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (j.ini && t < j.ini.getTime()) return false;
+  if (j.fim && t > j.fim.getTime()) return false;
+  return true;
+};
+
+async function carregarRelatorio() {
+  secaoImoveis.innerHTML = '<p style="font-size:13px;color:var(--text-muted);text-align:center;padding:24px 0">Montando o relatório...</p>';
+  try {
+    const [nRes, iRes] = await Promise.all([negocioListarFn({}), locListarImoveis({})]);
+    _relCache = {
+      negocios: nRes.data?.negocios || [],
+      imoveis: (iRes.data?.imoveis || []).filter(im => !im.arquivado),
+      veTudo: !!nRes.data?.veTudo,
+    };
+    renderTela05();
+  } catch (e) {
+    secaoImoveis.innerHTML = `<p style="font-size:12px;color:var(--text-muted);text-align:center;padding:24px 0">Erro ao montar o relatório: ${escapeHtml(e.message)}</p>`;
+  }
+}
+
+// Negócios filtrados (período + tipo + status + corretor) — base de tudo na tela.
+function relNegociosFiltrados() {
+  const j = relJanela();
+  const semJanela = !j.ini && !j.fim;
+  return (_relCache?.negocios || []).filter(n => {
+    if (!semJanela && !relNoPeriodo(n.criadoEm, j)) return false;
+    if (relFiltros.tipo && n.tipo !== relFiltros.tipo) return false;
+    if (relFiltros.status && n.status !== relFiltros.status) return false;
+    if (relFiltros.corretor && n.corretorUid !== relFiltros.corretor) return false;
+    return true;
+  });
+}
+
+function renderTela05() {
+  if (!_relCache) return;
+  const { negocios, imoveis, veTudo } = _relCache;
+  const j = relJanela();
+  const semJanela = !j.ini && !j.fim;
+  const negs = relNegociosFiltrados();
+  const imoveisPeriodo = imoveis.filter(im => (semJanela || relNoPeriodo(im.criadoEm, j)) &&
+    (!relFiltros.corretor || im.corretorUid === relFiltros.corretor));
+  const ativos = negocios.filter(n => !['concluido', 'cancelado'].includes(n.status));
+
+  const cardStyle = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)';
+  const card = (num, label, cor) => `<div style="${cardStyle};padding:12px 14px;min-width:120px;flex:1">
+    <div style="font-size:22px;font-weight:700;color:${cor}">${num}</div>
+    <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin-top:2px">${label}</div></div>`;
+  const titulo = (t, sub) => `<div style="margin:18px 0 8px"><span style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${t}</span>${sub ? `<span style="font-size:11px;color:var(--text-muted);margin-left:8px">${sub}</span>` : ''}</div>`;
+
+  // Cabeçalho: período + exports
+  const pill = (key, label) => `<button class="rel-periodo" data-p="${key}" style="font-size:11px;font-weight:600;padding:5px 12px;border-radius:14px;cursor:pointer;border:1px solid ${relFiltros.periodo === key ? '#002749' : 'var(--border)'};background:${relFiltros.periodo === key ? '#00274912' : 'var(--surface)'};color:${relFiltros.periodo === key ? '#002749' : 'var(--text-muted)'}">${label}</button>`;
+  const exportBtn = (id, label) => `<button id="${id}" style="font-size:11px;font-weight:600;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);cursor:pointer">${label}</button>`;
+  const corretores = veTudo ? [...new Map(negocios.filter(n => n.corretorUid).map(n => [n.corretorUid, n.corretorNome || n.corretorUid])).entries()] : [];
+  const cab = `<div style="${cardStyle};padding:12px 16px;margin-bottom:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+    <div style="display:flex;gap:5px;flex-wrap:wrap">${pill('hoje', 'Hoje')}${pill('7d', '7 dias')}${pill('30d', '30 dias')}${pill('mes', 'Este mês')}${pill('tudo', 'Tudo')}${pill('custom', 'Personalizado')}</div>
+    ${relFiltros.periodo === 'custom' ? `<div style="display:flex;gap:5px;align-items:center">
+      <input id="relIni" type="date" value="${escapeHtml(relFiltros.ini)}" style="${_selStyle}">
+      <span style="font-size:11px;color:var(--text-muted)">até</span>
+      <input id="relFim" type="date" value="${escapeHtml(relFiltros.fim)}" style="${_selStyle}"></div>` : ''}
+    <select id="relTipo" style="${_selStyle}">
+      <option value="">Tipo: todos</option>
+      <option value="locacao"${relFiltros.tipo === 'locacao' ? ' selected' : ''}>Locação</option>
+      <option value="venda"${relFiltros.tipo === 'venda' ? ' selected' : ''}>Venda</option></select>
+    <select id="relStatus" style="${_selStyle}">
+      <option value="">Status: todos</option>
+      ${NEG_STATUS.map(s => `<option value="${s.key}"${relFiltros.status === s.key ? ' selected' : ''}>${s.label}</option>`).join('')}</select>
+    ${corretores.length ? `<select id="relCorretor" style="${_selStyle}">
+      <option value="">Corretor: todos</option>
+      ${corretores.map(([uid, nome]) => `<option value="${escapeHtml(uid)}"${relFiltros.corretor === uid ? ' selected' : ''}>${escapeHtml(nome)}</option>`).join('')}</select>` : ''}
+    <span style="flex:1"></span>
+    ${exportBtn('relCsv', '⬇ CSV')}${exportBtn('relXls', '⬇ Excel')}${exportBtn('relPdf', '🖨 PDF')}
+  </div>`;
+
+  // Cards
+  const cards = `<div style="display:flex;gap:8px;flex-wrap:wrap">
+    ${card(imoveisPeriodo.length, semJanela ? 'Imóveis na carteira' : 'Imóveis cadastrados', '#0ea5e9')}
+    ${card(ativos.filter(n => !relFiltros.corretor || n.corretorUid === relFiltros.corretor).length, 'Negócios ativos (hoje)', '#6366f1')}
+    ${card(negs.filter(n => n.tipo === 'locacao').length, 'Locações', '#6366f1')}
+    ${card(negs.filter(n => n.tipo === 'venda').length, 'Vendas', '#16a34a')}
+    ${card(negs.filter(n => n.status === 'entregue_gestao').length, 'Entregues p/ Gestão', '#15803d')}
+    ${card(negs.filter(n => n.status === 'concluido').length, 'Concluídos', '#6b7280')}
+  </div>`;
+
+  // Pipeline (chips) + barras por status
+  const porStatus = {};
+  negs.forEach(n => { porStatus[n.status] = (porStatus[n.status] || 0) + 1; });
+  const maxSt = Math.max(1, ...Object.values(porStatus));
+  const pipeline = `<div style="display:flex;gap:8px;flex-wrap:wrap">${NEG_STATUS.map(s => `
+    <div style="${cardStyle};padding:10px 14px;text-align:center;min-width:96px;flex:1">
+      <div style="font-size:19px;font-weight:700;color:${(porStatus[s.key] || 0) ? s.cor : 'var(--text-muted)'}">${porStatus[s.key] || 0}</div>
+      <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin-top:2px">${s.label}</div></div>`).join('')}</div>`;
+  const barras = `<div style="${cardStyle};padding:14px 16px">${NEG_STATUS.map(s => {
+    const n = porStatus[s.key] || 0;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:4px 0">
+      <span style="font-size:11px;min-width:180px;color:var(--text-primary)">${s.label}</span>
+      <div style="flex:1;height:8px;border-radius:4px;background:var(--hover);overflow:hidden"><div style="width:${Math.round((n / maxSt) * 100)}%;height:100%;border-radius:4px;background:${s.cor}"></div></div>
+      <strong style="font-size:12px;min-width:24px;text-align:right">${n}</strong></div>`;
+  }).join('')}</div>`;
+
+  // Produção por corretor (broker vê todos; corretor vê a própria linha)
+  const th = t => `<th style="text-align:left;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap">${t}</th>`;
+  const td = (c, extra) => `<td style="font-size:12px;padding:8px 10px;border-bottom:1px solid var(--border);${extra || ''}">${c}</td>`;
+  const porCorretor = new Map();
+  const linhaDe = (uid, nome) => { if (!porCorretor.has(uid)) porCorretor.set(uid, { nome, imoveis: 0, negocios: 0, locacoes: 0, vendas: 0, pendencias: 0 }); return porCorretor.get(uid); };
+  imoveisPeriodo.forEach(im => {
+    const l = linhaDe(im.corretorUid || '?', im.corretorNome || '—');
+    l.imoveis++;
+    if ((im.pendentes || []).length) l.pendencias++;
+  });
+  negs.forEach(n => {
+    const l = linhaDe(n.corretorUid || '?', n.corretorNome || '—');
+    l.negocios++;
+    if (n.tipo === 'venda') l.vendas++; else l.locacoes++;
+  });
+  const producao = `<div style="${cardStyle};overflow:hidden"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:560px">
+    <thead><tr>${['Corretor', 'Imóveis', 'Negócios', 'Locações', 'Vendas', 'Pendências'].map(th).join('')}</tr></thead>
+    <tbody>${[...porCorretor.values()].sort((a, b) => b.negocios - a.negocios || b.imoveis - a.imoveis).map(l => `<tr>
+      ${td(`<strong>${escapeHtml(l.nome)}</strong>`)}${td(l.imoveis, 'text-align:center')}${td(l.negocios, 'text-align:center')}${td(l.locacoes, 'text-align:center')}${td(l.vendas, 'text-align:center')}${td(l.pendencias ? `<span style="color:#DC1C2E;font-weight:700">${l.pendencias}</span>` : '0', 'text-align:center')}
+    </tr>`).join('') || '<tr><td colspan="6" style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px">Nada no período.</td></tr>'}</tbody>
+  </table></div></div>`;
+
+  // Negócios que precisam de atenção (abertos, mais parados primeiro)
+  const agora = Date.now();
+  const atencao = negs
+    .filter(n => !['concluido', 'cancelado', 'entregue_gestao'].includes(n.status))
+    .map(n => ({ ...n, diasParado: Math.max(0, Math.floor((agora - new Date(n.atualizadoEm || n.criadoEm || 0).getTime()) / 86400000)) }))
+    .sort((a, b) => b.diasParado - a.diasParado)
+    .slice(0, 10);
+  const atencaoTbl = `<div style="${cardStyle};overflow:hidden"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:720px">
+    <thead><tr>${['Código', 'Cliente', 'Próxima Ação', 'Parado há', 'Status', ''].map(th).join('')}</tr></thead>
+    <tbody>${atencao.map(n => `<tr>
+      ${td(`<strong style="white-space:nowrap">${escapeHtml(n.codigo || '')}</strong>`)}
+      ${td(escapeHtml(n.clienteNome || ''))}
+      ${td(`<span style="font-size:11px">${escapeHtml(n.proximaAcao || '—')}</span>`)}
+      ${td(n.diasParado >= 3 ? `<span style="color:#DC1C2E;font-weight:700">${n.diasParado} dias</span>` : (n.diasParado === 0 ? 'Hoje' : n.diasParado + ' dia' + (n.diasParado > 1 ? 's' : '')), 'text-align:center;white-space:nowrap')}
+      ${td(badgeMini(negStatusLabel(n.status), negStatusCor(n.status)))}
+      ${td(`<button class="rel-abrir topbar-btn" data-id="${escapeHtml(n.id)}" style="font-size:11px;padding:4px 12px">Abrir</button>`)}
+    </tr>`).join('') || '<tr><td colspan="6" style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px">Nenhum negócio em aberto no período. 🎉</td></tr>'}</tbody>
+  </table></div></div>`;
+
+  secaoImoveis.innerHTML = `<div id="tela05">
+    ${cab}${cards}
+    ${titulo('Pipeline de Negócios', 'status geral no período filtrado')}${pipeline}
+    ${titulo('Negócios por Status')}${barras}
+    ${titulo('Produção por Corretor')}${producao}
+    ${titulo('Negócios que Precisam de Atenção')}${atencaoTbl}
+  </div>`;
+
+  wireTela05();
+}
+
+function wireTela05() {
+  secaoImoveis.querySelectorAll('.rel-periodo').forEach(b => b.addEventListener('click', () => { relFiltros.periodo = b.dataset.p; renderTela05(); }));
+  document.getElementById('relIni')?.addEventListener('change', ev => { relFiltros.ini = ev.target.value; renderTela05(); });
+  document.getElementById('relFim')?.addEventListener('change', ev => { relFiltros.fim = ev.target.value; renderTela05(); });
+  document.getElementById('relTipo')?.addEventListener('change', ev => { relFiltros.tipo = ev.target.value || null; renderTela05(); });
+  document.getElementById('relStatus')?.addEventListener('change', ev => { relFiltros.status = ev.target.value || null; renderTela05(); });
+  document.getElementById('relCorretor')?.addEventListener('change', ev => { relFiltros.corretor = ev.target.value || null; renderTela05(); });
+  secaoImoveis.querySelectorAll('.rel-abrir').forEach(b => b.addEventListener('click', () => {
+    negAbrirDireto = b.dataset.id;
+    locSub = 'negocios'; renderCentro();
+  }));
+  document.getElementById('relCsv')?.addEventListener('click', () => relExportar('csv'));
+  document.getElementById('relXls')?.addEventListener('click', () => relExportar('xls'));
+  document.getElementById('relPdf')?.addEventListener('click', relImprimirPdf);
+}
+
+// Linhas de exportação = os negócios filtrados na tela.
+function relLinhasExport() {
+  const cab = ['Código', 'Cliente', 'Imóvel', 'Cidade', 'Tipo', 'Status', 'Próxima Ação', 'Corretor', 'Broker', 'Progresso %', 'Criado em', 'Atualizado em'];
+  const fmtD = iso => iso ? new Date(iso).toLocaleDateString('pt-BR') : '';
+  const linhas = relNegociosFiltrados().map(n => [
+    n.codigo || '', n.clienteNome || '', n.imovelResumo || '', n.cidade || '',
+    n.tipo === 'venda' ? 'Venda' : 'Locação', negStatusLabel(n.status), n.proximaAcao || '',
+    n.corretorNome || '', n.brokerNome || '', String(negProgresso(n)), fmtD(n.criadoEm), fmtD(n.atualizadoEm),
+  ]);
+  return { cab, linhas };
+}
+
+function relBaixar(nome, mime, conteudo) {
+  const blob = new Blob([conteudo], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function relExportar(formato) {
+  const { cab, linhas } = relLinhasExport();
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (formato === 'csv') {
+    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const csv = '﻿' + [cab, ...linhas].map(l => l.map(esc).join(';')).join('\r\n');
+    relBaixar(`relatorio-negocios-${stamp}.csv`, 'text/csv;charset=utf-8', csv);
+  } else {
+    // "Excel": tabela HTML com mime do Excel — abre direto no Excel/LibreOffice.
+    const escH = v => escapeHtml(String(v));
+    const html = `<html><head><meta charset="utf-8"></head><body><table border="1">
+      <tr>${cab.map(c => `<th>${escH(c)}</th>`).join('')}</tr>
+      ${linhas.map(l => `<tr>${l.map(v => `<td>${escH(v)}</td>`).join('')}</tr>`).join('')}
+    </table></body></html>`;
+    relBaixar(`relatorio-negocios-${stamp}.xls`, 'application/vnd.ms-excel', html);
+  }
+  cartToast('Relatório exportado');
+}
+
+// PDF = versão imprimível num iframe invisível + diálogo de impressão do sistema
+// (a pessoa escolhe "Salvar como PDF"). Funciona igual no .exe e no navegador.
+function relImprimirPdf() {
+  const { cab, linhas } = relLinhasExport();
+  const negs = relNegociosFiltrados();
+  const porStatus = {};
+  negs.forEach(n => { porStatus[n.status] = (porStatus[n.status] || 0) + 1; });
+  const escH = v => escapeHtml(String(v));
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório de Negócios</title>
+    <style>body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:24px}h1{font-size:18px;margin:0}
+    .sub{color:#666;font-size:11px;margin:4px 0 16px}table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border:1px solid #ccc;padding:4px 6px;text-align:left;font-size:10px}th{background:#f3f3f3}
+    .chips{margin:10px 0}.chip{display:inline-block;border:1px solid #ccc;border-radius:4px;padding:3px 8px;margin:2px;font-size:10px}</style></head><body>
+    <h1>REMAX Smart Hub — Relatório de Negócios</h1>
+    <div class="sub">Gerado em ${new Date().toLocaleString('pt-BR')} · ${negs.length} negócio(s) no filtro</div>
+    <div class="chips">${NEG_STATUS.map(s => `<span class="chip">${s.label}: <strong>${porStatus[s.key] || 0}</strong></span>`).join('')}</div>
+    <table><tr>${cab.map(c => `<th>${escH(c)}</th>`).join('')}</tr>
+    ${linhas.map(l => `<tr>${l.map(v => `<td>${escH(v)}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  document.body.appendChild(frame);
+  frame.srcdoc = html;
+  frame.onload = () => {
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    finally { setTimeout(() => frame.remove(), 60000); }
+  };
 }
 
 // Liga os eventos da Carteira depois de cada render.
