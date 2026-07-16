@@ -167,6 +167,23 @@ function validarCpfsETelefones(){
     if(celulares.has(d)) return marcar(k,'Duas pessoas estão com o mesmo número de celular. Cada pessoa precisa ter um número diferente.');
     celulares.set(d,k);
   }
+  // CPF e e-mail também não podem se repetir entre pessoas da mesma ficha.
+  const cpfs=new Map();
+  for(const k of Object.keys(valores)){
+    if(!/cpf/i.test(k)) continue;
+    if(naoExiste.has(k)||pendentes.has(k)) continue;
+    const d=(''+(valores[k]||'')).replace(/\D/g,''); if(d.length!==11) continue;
+    if(cpfs.has(d)) return marcar(k,'Duas pessoas estão com o mesmo CPF. Cada pessoa precisa ter o próprio CPF — confira os números digitados.');
+    cpfs.set(d,k);
+  }
+  const emails=new Map();
+  for(const k of Object.keys(valores)){
+    if(!/e-?_?mail/i.test(k)) continue;
+    if(naoExiste.has(k)||pendentes.has(k)) continue;
+    const v=(''+(valores[k]||'')).trim().toLowerCase(); if(!v||!v.includes('@')) continue;
+    if(emails.has(v)) return marcar(k,'Duas pessoas estão com o mesmo e-mail. Cada pessoa precisa ter um e-mail diferente.');
+    emails.set(v,k);
+  }
   return null;
 }
 

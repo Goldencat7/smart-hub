@@ -410,6 +410,23 @@ function validarCpfsETelefones(dados){
     if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
     fonesVistos.set(d,k);
   }
+  // CPF e e-mail também não podem se repetir entre pessoas da mesma ficha.
+  const cpfsVistos=new Map();
+  for(const k of Object.keys(dados)){
+    if(!/cpf/i.test(k)) continue;
+    if(dados[k]==='Não existe') continue;
+    const d=(''+dados[k]).replace(/\D/g,''); if(d.length!==11) continue;
+    if(cpfsVistos.has(d)) return marcar(k,'Duas pessoas estão com o mesmo CPF. Cada pessoa precisa ter o próprio CPF — confira os números digitados.');
+    cpfsVistos.set(d,k);
+  }
+  const emailsVistos=new Map();
+  for(const k of Object.keys(dados)){
+    if(!/e-?_?mail/i.test(k)) continue;
+    if(dados[k]==='Não existe') continue;
+    const v=(''+dados[k]).trim().toLowerCase(); if(!v||!v.includes('@')) continue;
+    if(emailsVistos.has(v)) return marcar(k,'Duas pessoas estão com o mesmo e-mail. Cada pessoa precisa ter um e-mail diferente.');
+    emailsVistos.set(v,k);
+  }
   return null;
 }
 
