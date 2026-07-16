@@ -1243,7 +1243,8 @@ async function carregarUsuarios() {
   elListaUser.innerHTML = '<p class="muted">carregando...</p>';
   try {
     const resp = await listUsers();
-    const usuarios = resp.data;
+    // Ordem alfabética por e-mail (antes vinha na ordem crua do Auth, difícil de achar alguém)
+    const usuarios = (resp.data || []).slice().sort((a, b) => (a.email || '').localeCompare(b.email || '', 'pt-BR'));
     // Salva o total para usar na barra de avisos e re-renderiza com o total correto
     totalUsuariosAdmin = usuarios.length;
     if (notificacoesCache.length) renderAvisosEnviados(notificacoesCache);
