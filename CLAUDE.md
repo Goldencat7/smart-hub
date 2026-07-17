@@ -196,9 +196,9 @@ produção apontar pro lugar errado:
   `https://remax-smart-hub-staging.web.app/app/`. App + todas as functions + regras deployados; Auth
   ligada (Email/senha). Deploy num comando: **`npm run deploy:staging`** (build + hosting + functions +
   regras, tudo `--project staging`). Secrets do staging são **dummy** (`staging-dummy-nao-usar`) — as
-  functions de e-mail falham lá de propósito; trocar por real se precisar. Contas de teste (senha
-  `teste1234`, sem 2FA): `admin@teste.local` (admin) e `colega@teste.local` (admin + gestor de Locação,
-  aba Locação ligada via `user_access.loc_gestao`). Semeadas por **`node scripts/seed-staging.js`**
+  functions de e-mail falham lá de propósito; trocar por real se precisar. Contas de teste (sem 2FA):
+  `admin@teste.local` (admin, senha `teste1234`) e `teste@staggin.com.br` (admin + gestor de Locação,
+  senha `12345678`, aba Locação ligada via `user_access.loc_gestao`). Semeadas por **`node scripts/seed-staging.js`**
   (Admin SDK, projectId fixo em staging; requer **ADC** — `gcloud auth application-default login` 1x).
   Os 3 bugs da esteira achados na caça-bugs de 2026-07-15 (`BUGS-ESTEIRA-IMOVEIS.md`) foram
   **resolvidos na reestruturação** e o arquivo foi removido em 2026-07-16 (guarda simétrica no

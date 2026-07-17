@@ -27,13 +27,17 @@ const db = admin.firestore();
 
 const SENHA = 'teste1234';
 const USERS = [
-  { uid: 'stg-admin',  email: 'admin@teste.local',  nome: 'Admin de Teste',   claims: { admin: true } },
-  { uid: 'stg-colega', email: 'colega@teste.local', nome: 'Colega (Gestor)',  claims: { admin: true, locRole: 'gestor' } },
+  { uid: 'stg-admin',  email: 'admin@teste.local',        nome: 'Admin de Teste', claims: { admin: true } },
+  { uid: 'stg-colega', email: 'teste@staggin.com.br',     nome: 'Teste (Gestor)', senha: '12345678', claims: { admin: true, locRole: 'gestor' } },
 ];
 
 async function criarUsuario(u) {
-  try { await auth.deleteUser(u.uid); } catch (_e) { /* ainda não existe */ }
-  await auth.createUser({ uid: u.uid, email: u.email, password: SENHA, displayName: u.nome, emailVerified: true });
+  const senha = u.senha || SENHA;
+  try { await auth.deleteUser(u.uid); } catch (_e) { /* ainda não existe pelo uid */ }
+  // Também apaga qualquer conta avulsa com o mesmo e-mail (ex.: criada na mão pelo console),
+  // senão o createUser abaixo falha com "email already exists".
+  try { const j = await auth.getUserByEmail(u.email); if (j.uid !== u.uid) await auth.deleteUser(j.uid); } catch (_e) { /* sem duplicata */ }
+  await auth.createUser({ uid: u.uid, email: u.email, password: senha, displayName: u.nome, emailVerified: true });
   if (u.claims) await auth.setCustomUserClaims(u.uid, u.claims);
   await db.collection('user_profiles').doc(u.uid).set({ nome: u.nome, email: u.email, isAdmin: !!(u.claims && u.claims.admin) });
   // user_access liga a aba Locação (loc_gestao) — não herda de admin.
@@ -44,7 +48,7 @@ async function criarUsuario(u) {
   console.log('🌱 Semeando STAGING (', PROJETO, ')...');
   for (const u of USERS) { await criarUsuario(u); console.log('  •', u.email, '—', JSON.stringify(u.claims)); }
   console.log('\n✅ Pronto. Login de teste (STAGING):');
-  for (const u of USERS) console.log('   ', u.email.padEnd(20), '/', SENHA);
+  for (const u of USERS) console.log('   ', u.email.padEnd(24), '/', u.senha || SENHA);
   console.log('   (sem 2FA no staging; a aba Locação já vem ligada)');
   process.exit(0);
 })().catch((e) => { console.error('Erro ao semear staging:', e.message || e); process.exit(1); });
