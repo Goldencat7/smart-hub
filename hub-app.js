@@ -3661,7 +3661,9 @@ function renderCarteira() {
 }
 
 function badgeMini(label, cor) {
-  return `<span style="font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px">${escapeHtml(label)}</span>`;
+  // inline-block + nowrap: rótulo de duas palavras ("Em Andamento") não quebra em
+  // duas linhas com a borda da pílula cortando o texto no meio.
+  return `<span style="display:inline-block;white-space:nowrap;font-size:10px;font-weight:600;color:${cor};background:${cor}18;border:1px solid ${cor}40;padding:2px 8px;border-radius:12px">${escapeHtml(label)}</span>`;
 }
 
 // ─── Tela 03 — Detalhes do Imóvel ─────────────────────────────────────────────
