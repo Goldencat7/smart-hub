@@ -2617,24 +2617,37 @@ exports.vistoriaWebhook = onRequest({ secrets: [HUB_CHECKVISTO_SECRET] }, async 
     if (!imSnap.exists) return res.status(404).json({ ok: false, erro: 'imóvel não existe' });
 
     // 1º por idExterno; 2º a solicitação "agendada" desse imóvel+tipo; senão cria.
-    let ref = null;
+    let ref = null, atual = null;
     const porExt = await db.collection('vistorias').where('idExterno', '==', idExterno).limit(1).get();
-    if (!porExt.empty) ref = porExt.docs[0].ref;
+    if (!porExt.empty) { ref = porExt.docs[0].ref; atual = porExt.docs[0].data(); }
     if (!ref) {
       const ag = await db.collection('vistorias').where('imovelId', '==', hubImovelId)
         .where('origem', '==', 'checkvisto').where('tipo', '==', tipo).where('status', '==', 'agendada').limit(1).get();
-      if (!ag.empty) ref = ag.docs[0].ref;
+      if (!ag.empty) { ref = ag.docs[0].ref; atual = ag.docs[0].data(); }
     }
     if (!ref) ref = db.collection('vistorias').doc();
+
+    // Guarda monotônica: webhook fora de ordem / reentregue não regride o status
+    // (a vistoria não "desanda" de laudo_emitido → realizada → agendada) nem apaga
+    // um laudo já recebido. Fluxo normal (só avança) fica idêntico ao de antes.
+    const rank = s => ({ agendada: 0, realizada: 1, laudo_emitido: 2 })[s] ?? -1;
+    const atualStatus = atual ? atual.status : null;
+    const regride = !!atual && rank(status) < rank(atualStatus);
+    const statusFinal = regride ? atualStatus : status;
+    const laudoAtual = atual ? _txt(atual.laudoUrl, 500) : '';
+    const laudoFinal = regride ? laudoAtual : (_txt(b.laudoUrl, 500) || laudoAtual);
+
     await ref.set({
       imovelId: hubImovelId, contratoId: hubImovelId, corretorUid: imSnap.data().corretorUid || '',
-      tipo, status, laudoUrl: _txt(b.laudoUrl, 500), obs: _txt(b.obs, 300),
+      tipo, status: statusFinal, laudoUrl: laudoFinal, obs: _txt(b.obs, 300),
       origem: 'checkvisto', idExterno,
       atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     await recomputarChecklistAuto(hubImovelId);
-    await _imovelTimeline(db.collection('imoveis').doc(hubImovelId),
-      `Vistoria de ${tipo} no CheckVisto: ${status === 'laudo_emitido' ? 'laudo emitido' : status}`, 'CheckVisto');
+    if (statusFinal !== atualStatus) {
+      await _imovelTimeline(db.collection('imoveis').doc(hubImovelId),
+        `Vistoria de ${tipo} no CheckVisto: ${statusFinal === 'laudo_emitido' ? 'laudo emitido' : statusFinal}`, 'CheckVisto');
+    }
     return res.json({ ok: true });
   } catch (e) {
     await logErro('vistoriaWebhook', e, {});

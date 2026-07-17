@@ -352,7 +352,8 @@ ipcMain.on('abrir-template', async (_e, fileName) => {
 });
 
 // ─── Abrir ficha em janela dedicada ──────────────────────────────────────────
-ipcMain.on('abrir-ficha', (_e, { url, titulo }) => {
+ipcMain.on('abrir-ficha', (_e, payload) => {
+  const { url, titulo } = payload || {};   // guarda: mensagem sem payload não derruba o main
   const win = new BrowserWindow({
     width: 900, height: 860, autoHideMenuBar: true,
     title: titulo || 'Ficha',
@@ -385,7 +386,8 @@ ipcMain.on('abrir-ficha', (_e, { url, titulo }) => {
 // a que você acabou de editar — daria pra "corrigir" uma ficha e não ver diferença.
 const BASE_HOSTING = 'https://remax-smart-hub.web.app';
 
-ipcMain.on('abrir-ficha-local', (_e, { arquivo, params }) => {
+ipcMain.on('abrir-ficha-local', (_e, payload) => {
+  const { arquivo, params } = payload || {};   // guarda: mensagem sem payload não derruba o main
   const win = new BrowserWindow({
     width: 940, height: 860, autoHideMenuBar: true,
     webPreferences: { devTools: DEVTOOLS_HABILITADO }
@@ -636,7 +638,9 @@ function abrirCheckVisto(url) {
     if (/^https:\/\/(accounts\.google\.com|checkvisto-app\.(web\.app|firebaseapp\.com))/i.test(u)) {
       return { action: 'allow' };
     }
-    shell.openExternal(u).catch(() => {});
+    // Só entrega ao SO links http(s) (igual aos outros openExternal do arquivo);
+    // file:// ou esquema custom vindo de um popup não vaza pro shell do Windows.
+    if (/^https?:\/\//i.test(u)) shell.openExternal(u).catch(() => {});
     return { action: 'deny' };
   });
 
