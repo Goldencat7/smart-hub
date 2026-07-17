@@ -349,6 +349,14 @@ form.addEventListener('change', e=>{
   // Estado civil -> mostra/esconde cônjuge (re-render do bloco de proponentes)
   if(el.dataset.key && /estadoCivil$/.test(el.dataset.key)){
     valores[el.dataset.key] = el.value;
+    // Deixou de ser casado/união estável? Apaga os dados do cônjuge (p{i}c_*) —
+    // senão a PII do ex-cônjuge segue no envio e um CPF/e-mail resídual pode
+    // bloquear o submit sem campo visível pra destacar (o bloco nem existe mais).
+    if(!COM_CONJUGE.includes(el.value)){
+      const m = el.dataset.key.match(/^p(\d+)_estadoCivil$/);
+      const idx = m ? m[1] : '1';
+      Object.keys(valores).forEach(k=>{ if(k.startsWith('p'+idx+'c_')) delete valores[k]; });
+    }
     renderProponentes(); return;
   }
 });

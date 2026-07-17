@@ -1110,6 +1110,13 @@ exports.carteiraSituacao = onCall(async (req) => {
   const { imovelId, situacao } = req.data || {};
   if (!CARTEIRA_SITUACOES.includes(situacao)) throw new HttpsError('invalid-argument', 'Situação inválida.');
   const { ref } = await _carteiraImovelComPosse(imovelId, auth);
+  // Não deixa voltar pra "Disponível" com negócio ativo: a UI mostraria Disponível
+  // enquanto o NG segue vivo apontando pro imóvel (só concluir/cancelar libera).
+  if (situacao === 'disponivel') {
+    const negs = await db.collection('negocios').where('imovelId', '==', imovelId).get();
+    const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+    if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}) — conclua ou cancele o negócio antes de marcar como Disponível.`);
+  }
   await ref.set({ situacao, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   await _imovelTimeline(ref, `Situação alterada para ${situacao === 'disponivel' ? 'Disponível' : 'Em Negociação'}`, await _nomeDoUid(auth.uid));
   return { ok: true, situacao };
@@ -1626,8 +1633,12 @@ exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fich
       if (i < 0) i = lista.findIndex(p => p.status === 'ficha_enviada' && p.nome && _normNome(nome).startsWith(_normNome(p.nome).slice(0, 30)));
       const entrada = { nome, contato, tipo: tipoInt, status: 'ficha_recebida', fichaId, statusEm: admin.firestore.Timestamp.now() };
       if (i >= 0) {
-        // Não rebaixa decisão do broker: aprovado continua aprovado (só atualiza a ficha).
-        const st = lista[i].status === 'aprovado' ? 'aprovado' : 'ficha_recebida';
+        // Não rebaixa NENHUMA decisão já tomada: só volta pra "ficha_recebida" quem
+        // ainda estava em ficha_enviada/ficha_recebida. Aprovado/reprovado/desistiu/
+        // em_analise/negocio_gerado (decisões do broker ou etapas avançadas) ficam
+        // como estão — o reenvio só atualiza os dados da ficha (nome/contato/fichaId).
+        const atual = lista[i].status;
+        const st = (atual === 'ficha_enviada' || atual === 'ficha_recebida' || !atual) ? 'ficha_recebida' : atual;
         lista[i] = { ...lista[i], ...entrada, status: st };
       } else {
         if (lista.length >= 50) return;

@@ -405,7 +405,10 @@ function validarCpfsETelefones(dados){
   }
   const fonesVistos=new Map();
   for(const k of Object.keys(dados)){
-    if(!/celular|whatsapp|fixo/i.test(k)) continue;
+    // Só celular/WhatsApp (não telefone fixo): pessoas diferentes não compartilham
+    // celular, mas um casal que mora junto compartilha o fixo da casa — incluir
+    // "fixo" bloquearia envio legítimo (e as outras fichas também só olham celular/whatsapp).
+    if(!/celular|whatsapp/i.test(k)) continue;
     const d=(''+dados[k]).replace(/\D/g,''); if(d.length<8) continue;
     if(fonesVistos.has(d)) return 'Dois campos de telefone estão com o mesmo número. Confira se não duplicou por engano.';
     fonesVistos.set(d,k);

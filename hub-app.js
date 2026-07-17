@@ -4114,7 +4114,7 @@ function renderTela04B(d) {
   const driveBox = `<div style="display:flex;gap:5px;margin-top:4px">
       <input id="n4bDrive" placeholder="https://drive.google.com/..." value="${escapeHtml(n.driveUrl || '')}"${encerrado ? ' disabled' : ''} style="${_selStyle};flex:1;min-width:0">
       ${encerrado ? '' : '<button id="n4bDriveSalvar" class="topbar-btn" style="font-size:11px;padding:4px 10px">Salvar</button>'}</div>
-    ${n.driveUrl ? `<a href="${escapeHtml(n.driveUrl)}" target="_blank" style="font-size:11px;color:#0ea5e9">Abrir pasta ↗</a>` : '<span style="font-size:10px;color:var(--text-muted)">Cole o link da pasta do negócio no Drive.</span>'}`;
+    ${/^https?:\/\//i.test(n.driveUrl || '') ? `<a href="${escapeHtml(n.driveUrl)}" target="_blank" rel="noopener noreferrer" style="font-size:11px;color:#0ea5e9">Abrir pasta ↗</a>` : '<span style="font-size:10px;color:var(--text-muted)">Cole o link da pasta do negócio no Drive.</span>'}`;
   const acoesBroker = !ehGestorNeg || encerrado ? '' : `
     <div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
       ${n.status !== 'entregue_gestao' ? '<button id="n4bEntregar" style="font-size:12px;font-weight:700;padding:9px 12px;border:none;border-radius:8px;background:#16a34a;color:#fff;cursor:pointer">📦 Entregar para Gestão</button>' : ''}
@@ -4206,13 +4206,15 @@ function wireTela04B(d) {
     // O re-render redesenha a tela toda — preserva o comentário em digitação e a
     // aba ativa (marcar um ✓ do checklist apagava o texto e voltava pra Comentários).
     const comTexto = payload.acao !== 'comentario' ? ($('n4bComTexto')?.value || '') : '';
-    const abaAtiva = document.querySelector('.n4b-pane:not([hidden])')?.dataset.pane || 'comentarios';
+    const abaAtiva = document.querySelector('.n4b-pane:not([hidden])')?.dataset.pane || 'status';
     try {
       const r = await negocioAtualizarFn({ negocioId: id, ...payload });
       if (msgOk) cartToast(msgOk);
       renderTela04B(r.data || {});
       if (comTexto && $('n4bComTexto')) $('n4bComTexto').value = comTexto;
-      if (abaAtiva !== 'comentarios') document.querySelector(`.n4b-aba[data-aba="${abaAtiva}"]`)?.click();
+      // Restaura a aba ativa SEMPRE (a tela renderiza em "status"; sem restaurar
+      // "comentarios" o usuário era jogado de volta pra Status e o texto sumia numa aba escondida).
+      if (abaAtiva !== 'status') document.querySelector(`.n4b-aba[data-aba="${abaAtiva}"]`)?.click();
     } catch (e) { alert('Erro: ' + e.message); abrirTela04B(id); }
   };
 
