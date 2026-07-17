@@ -80,8 +80,15 @@ HTTPS `onRequest`, método POST, JSON. O Hub chama quando alguém clica "Solicit
   (é isso que liga a volta — Endpoint 2).
 - Como a vistoria aparece na UI do CheckVisto = decisão do CheckVisto (o contrato não manda).
 
-**Response 200:** `{ "ok": true, "vistoriaId": "<id no CheckVisto>", "jaExistia": false }`
+**Response 200:** `{ "ok": true, "imovelId": "<id do imóvel espelho>", "agendaId": "<id da AGENDA no CheckVisto>", "jaExistia": false }`
 **Erros:** 401 (secret), 400 (payload inválido — dizer qual campo).
+
+> ⚠️ **Atenção ao id:** aqui o CheckVisto devolve o id da **agenda** (`agendaId`), NÃO o da vistoria — a
+> vistoria ainda nem existe no momento do solicit (o vistoriador cria depois). Já o Endpoint 2 (webhook)
+> manda `vistoriaId` = id da **vistoria**. São docs diferentes de propósito. Por isso o Hub guarda o
+> `agendaId` como `idExterno` provisório e, no 1º webhook, "promove" a solicitação agendada
+> (por `hubImovelId`+`tipo`+`status:'agendada'`) e passa a rastrear pela `vistoriaId` dali em diante.
+> **Não trocar o `agendaId` por `vistoriaId` na resposta do solicit** — regrediria o campo pra vazio.
 
 ## Endpoint 2 — no HUB: `vistoriaWebhook`
 
