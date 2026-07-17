@@ -3724,10 +3724,15 @@ function renderTela03(d) {
   const blocos = renderDetalheImovel(d, true);
 
   // Aba Proprietário sem ficha (cadastro manual / venda sem locadores): resumo do cadastro.
+  // Spec 03: mostra os dados que o imóvel tem + botão "Abrir Cadastro Completo".
+  const pLin = (r, v) => `<div style="display:flex;gap:8px;padding:3px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px">${r}</span><span>${escapeHtml(v || '—')}</span></div>`;
   const propFallback = `<div>
-    <div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px">Nome</span><span>${escapeHtml(im.proprietarioNome || im.locadorNome || '—')}</span></div>
-    <div style="display:flex;gap:8px;padding:2px 0;font-size:12px"><span style="color:var(--text-muted);min-width:120px">Contato</span><span>${escapeHtml(im.proprietarioContato || '—')}</span></div>
-    <p style="font-size:11px;color:var(--text-muted);margin-top:10px">${im.origem === 'manual' ? 'Imóvel de cadastro manual — altere os dados em ✎ Editar Imóvel.' : 'Os dados completos do proprietário vêm da ficha de origem.'}</p></div>`;
+    ${pLin('Nome', im.proprietarioNome || im.locadorNome)}
+    ${pLin('Telefone / WhatsApp', im.proprietarioContato)}
+    ${pLin('Corretor responsável', im.corretorNome)}
+    ${pLin('Situação da ficha', im.origem === 'manual' ? 'Cadastro manual (sem ficha)' : 'Sem ficha vinculada')}
+    <div style="margin-top:10px"><button id="t3PropCadastro" class="topbar-btn" style="font-size:11px;padding:5px 14px">Abrir Cadastro Completo</button></div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:8px">${im.origem === 'manual' ? 'Imóvel de cadastro manual — os dados do proprietário ficam no cadastro do imóvel.' : 'Os dados completos do proprietário vêm da ficha de origem.'}</p></div>`;
 
   // Aba Histórico: timeline automática + movimentos da esteira (mais novo primeiro).
   const eventos = [
@@ -3853,6 +3858,7 @@ function wireTela03(d) {
 
   $('t3Voltar')?.addEventListener('click', () => { tela03Atual = null; carregarImoveis(); });
   $('t3Editar')?.addEventListener('click', () => cartAbrirModal(im));
+  $('t3PropCadastro')?.addEventListener('click', () => cartAbrirModal(im)); // "Abrir Cadastro Completo" (aba Proprietário, imóvel manual)
   document.querySelectorAll('.t3-aba').forEach(b => b.addEventListener('click', () => t3TrocarAba(b.dataset.aba)));
 
   $('t3Arquivar')?.addEventListener('click', async (ev) => {
@@ -4131,6 +4137,19 @@ function renderTela04B(d) {
       <span style="flex:1">${escapeHtml(h.texto || '')}</span>
       <span style="color:var(--text-muted);white-space:nowrap">${escapeHtml(h.porNome || '')}</span></div>`).join('') || '<p style="font-size:12px;color:var(--text-muted)">Nada registrado.</p>';
 
+  // Aba Status: resumo operacional (spec 04B pede a aba Status além de Comentários/Histórico)
+  const feitas = (n.checklist || []).filter(x => x.feito).length;
+  const totalEtapasChk = (n.checklist || []).length;
+  const stItem = (r, v) => `<div style="padding:8px 0;border-bottom:1px solid var(--border)"><div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${r}</div><div style="font-size:13px;font-weight:600;margin-top:3px">${v}</div></div>`;
+  const statusResumo = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 24px">
+    ${stItem('Status atual', badgeMini(negStatusLabel(n.status), negStatusCor(n.status)))}
+    ${stItem('Próxima ação', escapeHtml(n.proximaAcao || '—'))}
+    ${stItem('Progresso', `${pct}% · ${feitas}/${totalEtapasChk} etapas concluídas`)}
+    ${stItem('Corretor responsável', escapeHtml(n.corretorNome || '—'))}
+    ${stItem('Broker responsável', escapeHtml(n.brokerNome || '—'))}
+    ${stItem('Tipo', n.tipo === 'venda' ? 'Venda' : 'Locação')}
+  </div>`;
+
   secaoImoveis.innerHTML = `<div id="tela04b" data-id="${escapeHtml(n.id || '')}">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
       <button id="n4bVoltar" class="topbar-btn" style="font-size:12px;padding:6px 12px">← Negócios</button>
@@ -4167,10 +4186,12 @@ function renderTela04B(d) {
       </div>
     </div>
     <div style="display:flex;gap:4px;margin-top:12px">
-      <button class="n4b-aba" data-aba="comentarios" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid #002749;border-bottom:none;border-radius:8px 8px 0 0;background:#002749;color:#fff;cursor:pointer">Comentários${podeComentar && (n.comentarios || []).length ? ` (${n.comentarios.length})` : ''}</button>
+      <button class="n4b-aba" data-aba="status" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid #002749;border-bottom:none;border-radius:8px 8px 0 0;background:#002749;color:#fff;cursor:pointer">Status</button>
+      <button class="n4b-aba" data-aba="comentarios" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;background:var(--surface);color:var(--text-muted);cursor:pointer">Comentários${podeComentar && (n.comentarios || []).length ? ` (${n.comentarios.length})` : ''}</button>
       <button class="n4b-aba" data-aba="historico" style="font-size:12px;font-weight:600;padding:7px 16px;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;background:var(--surface);color:var(--text-muted);cursor:pointer">Histórico</button>
     </div>
-    <div class="n4b-pane" data-pane="comentarios" style="${cardStyle};border-top-left-radius:0">${comentarios}</div>
+    <div class="n4b-pane" data-pane="status" style="${cardStyle};border-top-left-radius:0">${statusResumo}</div>
+    <div class="n4b-pane" data-pane="comentarios" style="${cardStyle};border-top-left-radius:0" hidden>${comentarios}</div>
     <div class="n4b-pane" data-pane="historico" style="${cardStyle};border-top-left-radius:0" hidden>${historico}</div>
   </div>`;
 
