@@ -1440,96 +1440,122 @@ exports.negocioAtualizar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const d = req.data || {};
   const { ref, snap, ehGestor, ehAdm, ehResponsavel } = await _negocioComPosse(d.negocioId, auth);
-  const n = snap.data();
-  if (['concluido', 'cancelado'].includes(n.status) && d.acao !== 'comentario') {
+  const n0 = snap.data();
+  if (['concluido', 'cancelado'].includes(n0.status) && d.acao !== 'comentario') {
     throw new HttpsError('failed-precondition', 'Negócio encerrado não aceita mais alterações.');
   }
   const porNome = await _nomeDoUid(auth.uid);
-  const agora = admin.firestore.Timestamp.now();
-  const up = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
-  const tl = Array.isArray(n.timeline) ? [...n.timeline] : [];
-  const anota = (texto) => tl.push({ texto: String(texto).slice(0, 300), porNome, em: agora });
-  const checklist = (n.checklist || []).map(x => ({ ...x }));
-  const proximaAcaoDe = (lista) => { const p = lista.find(x => !x.feito); return p ? p.label : 'Processo encerrado'; };
+  const imovelId = n0.imovelId;
+  const codigo = n0.codigo;
+  // Efeitos no imóvel (doc SEPARADO) rodam DEPOIS da transação do negócio — sinalizados aqui.
+  let efeito = null; // 'entregue' | 'concluido' | 'cancelar'
 
-  if (d.acao === 'checklist') {
-    if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão no checklist.');
-    const item = checklist.find(x => x.key === d.key);
-    if (!item) throw new HttpsError('invalid-argument', 'Etapa não encontrada.');
-    item.feito = !!d.feito;
-    item.feitoPor = item.feito ? porNome : '';
-    item.feitoEm = item.feito ? agora : null;
-    up.checklist = checklist;
-    up.proximaAcao = proximaAcaoDe(checklist);
-    // Status automático: primeiro item concluído tira o negócio de "Negócio Criado".
-    if (item.feito && n.status === 'negocio_criado') { up.status = 'em_andamento'; anota('Status: Em Andamento (automático)'); }
-    anota(`${item.feito ? '✓' : '○'} ${item.label}`);
-  } else if (d.acao === 'comentario') {
-    if (!ehGestor && !ehResponsavel) throw new HttpsError('permission-denied', 'Comentários são exclusivos do broker e do corretor responsável.');
-    const texto = _txt(d.texto, 1000);
-    if (!texto) throw new HttpsError('invalid-argument', 'Comentário vazio.');
-    const com = Array.isArray(n.comentarios) ? [...n.comentarios] : [];
-    if (com.length >= 200) throw new HttpsError('resource-exhausted', 'Limite de comentários atingido.');
-    com.push({ texto, porUid: auth.uid, porNome, em: agora });
-    up.comentarios = com;
-  } else if (d.acao === 'drive') {
-    if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
-    const url = _txt(d.url, 500);
-    if (url && !/^https:\/\//i.test(url)) throw new HttpsError('invalid-argument', 'Link inválido (precisa começar com https://).');
-    up.driveUrl = url;
-    anota(url ? 'Pasta do Google Drive vinculada' : 'Pasta do Google Drive removida');
-  } else if (d.acao === 'status') {
-    if (!ehGestor) throw new HttpsError('permission-denied', 'Mudar status é decisão do broker.');
-    const permitidos = ['em_andamento', 'aguardando_broker', 'aguardando_corretor', 'aguardando_administrativo'];
-    if (!permitidos.includes(d.status)) throw new HttpsError('invalid-argument', 'Status inválido (use os botões pra entregar/cancelar/concluir).');
-    up.status = d.status;
-    anota(`Status: ${d.status.replace(/_/g, ' ')}`);
-  } else if (d.acao === 'entregar') {
-    if (!ehGestor) throw new HttpsError('permission-denied', 'Entregar para Gestão é decisão do broker.');
-    const faltam = checklist.filter(x => x.obrigatoria && !x.feito);
-    if (faltam.length) throw new HttpsError('failed-precondition', `Etapas obrigatórias pendentes: ${faltam.map(x => x.label).join(', ')}.`);
-    up.status = 'entregue_gestao';
-    anota('Negócio entregue para Gestão');
-    await _imovelTimeline(db.collection('imoveis').doc(n.imovelId), `Negócio ${n.codigo} entregue para Gestão`, porNome);
-  } else if (d.acao === 'concluir') {
-    if (!ehGestor) throw new HttpsError('permission-denied', 'Concluir é decisão do broker.');
-    const faltam = checklist.filter(x => x.obrigatoria && !x.feito);
-    if (faltam.length) throw new HttpsError('failed-precondition', `Etapas obrigatórias pendentes: ${faltam.map(x => x.label).join(', ')}.`);
-    up.status = 'concluido';
-    up.proximaAcao = 'Processo encerrado';
-    anota('Negócio concluído');
-    await _imovelTimeline(db.collection('imoveis').doc(n.imovelId), `Negócio ${n.codigo} concluído`, porNome);
-  } else if (d.acao === 'cancelar') {
-    if (!ehGestor) throw new HttpsError('permission-denied', 'Cancelar é decisão do broker.');
-    up.status = 'cancelado';
-    up.proximaAcao = 'Processo encerrado';
-    anota('Negócio cancelado' + (d.motivo ? ` — ${_txt(d.motivo, 200)}` : ''));
+  // Transação: relê o negócio FRESCO e muta os arrays atuais. Sem isso, dois
+  // cliques simultâneos (ex.: broker e corretor marcando ✓ diferentes, ou dois
+  // comentários) liam o mesmo snapshot e o último a gravar apagava a alteração do outro.
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) throw new HttpsError('not-found', 'Negócio não encontrado.');
+    const n = s.data();
+    if (['concluido', 'cancelado'].includes(n.status) && d.acao !== 'comentario') {
+      throw new HttpsError('failed-precondition', 'Negócio encerrado não aceita mais alterações.');
+    }
+    const agora = admin.firestore.Timestamp.now();
+    const up = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+    const tl = Array.isArray(n.timeline) ? [...n.timeline] : [];
+    const anota = (texto) => tl.push({ texto: String(texto).slice(0, 300), porNome, em: agora });
+    const checklist = (n.checklist || []).map(x => ({ ...x }));
+    const proximaAcaoDe = (lista) => { const p = lista.find(x => !x.feito); return p ? p.label : 'Processo encerrado'; };
+
+    if (d.acao === 'checklist') {
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão no checklist.');
+      const item = checklist.find(x => x.key === d.key);
+      if (!item) throw new HttpsError('invalid-argument', 'Etapa não encontrada.');
+      item.feito = !!d.feito;
+      item.feitoPor = item.feito ? porNome : '';
+      item.feitoEm = item.feito ? agora : null;
+      up.checklist = checklist;
+      up.proximaAcao = proximaAcaoDe(checklist);
+      // Status automático: primeiro item concluído tira o negócio de "Negócio Criado".
+      if (item.feito && n.status === 'negocio_criado') { up.status = 'em_andamento'; anota('Status: Em Andamento (automático)'); }
+      anota(`${item.feito ? '✓' : '○'} ${item.label}`);
+    } else if (d.acao === 'comentario') {
+      if (!ehGestor && !ehResponsavel) throw new HttpsError('permission-denied', 'Comentários são exclusivos do broker e do corretor responsável.');
+      const texto = _txt(d.texto, 1000);
+      if (!texto) throw new HttpsError('invalid-argument', 'Comentário vazio.');
+      const com = Array.isArray(n.comentarios) ? [...n.comentarios] : [];
+      if (com.length >= 200) throw new HttpsError('resource-exhausted', 'Limite de comentários atingido.');
+      com.push({ texto, porUid: auth.uid, porNome, em: agora });
+      up.comentarios = com;
+    } else if (d.acao === 'drive') {
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const url = _txt(d.url, 500);
+      if (url && !/^https:\/\//i.test(url)) throw new HttpsError('invalid-argument', 'Link inválido (precisa começar com https://).');
+      up.driveUrl = url;
+      anota(url ? 'Pasta do Google Drive vinculada' : 'Pasta do Google Drive removida');
+    } else if (d.acao === 'status') {
+      if (!ehGestor) throw new HttpsError('permission-denied', 'Mudar status é decisão do broker.');
+      const permitidos = ['em_andamento', 'aguardando_broker', 'aguardando_corretor', 'aguardando_administrativo'];
+      if (!permitidos.includes(d.status)) throw new HttpsError('invalid-argument', 'Status inválido (use os botões pra entregar/cancelar/concluir).');
+      up.status = d.status;
+      anota(`Status: ${d.status.replace(/_/g, ' ')}`);
+    } else if (d.acao === 'entregar') {
+      if (!ehGestor) throw new HttpsError('permission-denied', 'Entregar para Gestão é decisão do broker.');
+      const faltam = checklist.filter(x => x.obrigatoria && !x.feito);
+      if (faltam.length) throw new HttpsError('failed-precondition', `Etapas obrigatórias pendentes: ${faltam.map(x => x.label).join(', ')}.`);
+      up.status = 'entregue_gestao';
+      anota('Negócio entregue para Gestão');
+      efeito = 'entregue';
+    } else if (d.acao === 'concluir') {
+      if (!ehGestor) throw new HttpsError('permission-denied', 'Concluir é decisão do broker.');
+      const faltam = checklist.filter(x => x.obrigatoria && !x.feito);
+      if (faltam.length) throw new HttpsError('failed-precondition', `Etapas obrigatórias pendentes: ${faltam.map(x => x.label).join(', ')}.`);
+      up.status = 'concluido';
+      up.proximaAcao = 'Processo encerrado';
+      anota('Negócio concluído');
+      efeito = 'concluido';
+    } else if (d.acao === 'cancelar') {
+      if (!ehGestor) throw new HttpsError('permission-denied', 'Cancelar é decisão do broker.');
+      up.status = 'cancelado';
+      up.proximaAcao = 'Processo encerrado';
+      anota('Negócio cancelado' + (d.motivo ? ` — ${_txt(d.motivo, 200)}` : ''));
+      efeito = 'cancelar';
+    } else {
+      throw new HttpsError('invalid-argument', 'Ação inválida.');
+    }
+
+    up.timeline = tl.slice(-300);
+    tx.set(ref, up, { merge: true });
+  });
+
+  // ── Efeitos no imóvel (doc separado), após a transação do negócio ──
+  if (efeito === 'entregue') {
+    await _imovelTimeline(db.collection('imoveis').doc(imovelId), `Negócio ${codigo} entregue para Gestão`, porNome);
+  } else if (efeito === 'concluido') {
+    await _imovelTimeline(db.collection('imoveis').doc(imovelId), `Negócio ${codigo} concluído`, porNome);
+  } else if (efeito === 'cancelar') {
     // Espelho da regra "Reprovar encerra mantendo o imóvel disponível": cancelar
     // devolve o imóvel pra Disponível e o interessado volta pra Aprovado.
-    const imRef = db.collection('imoveis').doc(n.imovelId);
-    const imSnap = await imRef.get();
-    if (imSnap.exists) {
+    // Transacional pra não atropelar escrita concorrente no array de interessados.
+    const imRef = db.collection('imoveis').doc(imovelId);
+    await db.runTransaction(async (tx) => {
+      const imSnap = await tx.get(imRef);
+      if (!imSnap.exists) return;
       const lista = Array.isArray(imSnap.data().interessados) ? [...imSnap.data().interessados] : [];
       // Acha pelo negocioId carimbado no interessado — o índice guardado na geração
-      // fica podre se alguém adicionou/removeu interessado depois (e aí o cancelar
-      // devolvia a pessoa errada, ou ninguém, deixando o cliente preso em
-      // "Negócio gerado" pra sempre). Índice vira só fallback de legado.
+      // fica podre se alguém adicionou/removeu interessado depois. Índice = fallback de legado.
       let i = lista.findIndex(p => p && p.negocioId === ref.id);
-      if (i < 0) i = Number(n.interessadoIndex);
+      if (i < 0) i = Number(n0.interessadoIndex);
       if (Number.isInteger(i) && lista[i] && lista[i].status === 'negocio_gerado') {
-        lista[i] = { ...lista[i], status: 'aprovado', negocioId: null, statusEm: agora };
+        lista[i] = { ...lista[i], status: 'aprovado', negocioId: null, statusEm: admin.firestore.Timestamp.now() };
       }
-      await imRef.set({ interessados: lista, situacao: 'disponivel', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-      await _imovelTimeline(imRef, `Negócio ${n.codigo} cancelado — imóvel de volta pra Disponível`, porNome);
-    }
-  } else {
-    throw new HttpsError('invalid-argument', 'Ação inválida.');
+      tx.set(imRef, { interessados: lista, situacao: 'disponivel', atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+    await _imovelTimeline(imRef, `Negócio ${codigo} cancelado — imóvel de volta pra Disponível`, porNome);
   }
 
-  up.timeline = tl.slice(-300);
-  await ref.set(up, { merge: true });
   if (['entregar', 'cancelar', 'concluir'].includes(d.acao)) {
-    await registrarAudit(auth, 'negocio_' + d.acao, { tipo: 'negocio', id: ref.id }, { codigo: n.codigo });
+    await registrarAudit(auth, 'negocio_' + d.acao, { tipo: 'negocio', id: ref.id }, { codigo });
   }
   const novo = await ref.get();
   return { negocio: _negocioSerializar(ref.id, novo.data(), ehGestor || ehResponsavel), ehGestor, ehResponsavel, podeComentar: ehGestor || ehResponsavel };
@@ -1620,6 +1646,11 @@ exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fich
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref);
       if (!s.exists) return;
+      // Recusa ficha apontando pra imóvel de OUTRO corretor: o link legítimo carrega
+      // o dono do imóvel (ver hub-app), então corretorUid da ficha === dono do imóvel.
+      // Sem isto, quem tivesse um link válido poderia trocar o imovelId na mão e
+      // despejar "Ficha recebida" na carteira alheia. Imóvel legado sem dono passa.
+      if (s.data().corretorUid && after.corretorUid && s.data().corretorUid !== after.corretorUid) return;
       const lista = Array.isArray(s.data().interessados) ? [...s.data().interessados] : [];
       // Reenvio (mesma ficha) atualiza; senão casa por NOME — igualdade exata
       // normalizada (sem caixa/acento) com qualquer interessado vivo (cada envio da

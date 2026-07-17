@@ -3893,7 +3893,12 @@ function wireTela03(d) {
     setTimeout(() => { b.disabled = false; }, 1500);
     const nome = $('t3FichaNome')?.value.trim() || '';
     const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
-    const link = `${BASE_HOSTING}/${b.dataset.arquivo}?corretor=${currentUid}&nome=${encodeURIComponent(nomeCorretor)}&imovelId=${id}`;
+    // corretor = DONO do imóvel (não o usuário logado): assim o gestor pode enviar
+    // ficha pra imóvel de um corretor sem "roubar" a atribuição, a ficha cai na
+    // regra de ouro do dono, e o link sempre bate com o imóvel (o servidor recusa
+    // ficha apontando pra imóvel de outro corretor). Fallback = legado sem dono.
+    const corretorLink = im.corretorUid || currentUid;
+    const link = `${BASE_HOSTING}/${b.dataset.arquivo}?corretor=${corretorLink}&nome=${encodeURIComponent(nomeCorretor)}&imovelId=${id}`;
     try { await navigator.clipboard.writeText(link); cartToast('Link copiado — vinculado a este imóvel'); }
     catch (_e) {
       const ta = document.createElement('textarea');
