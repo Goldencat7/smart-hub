@@ -4967,45 +4967,133 @@ exports.backupFirestore = onSchedule({
   console.log('Backup Firestore concluído para', `gs://${projectId}-backups/${timestamp}`);
 });
 
-// ─── Relatório diário de erros ────────────────────────────────────────────────
-// Roda às 8h: se houve erros nas últimas 24h, manda email pro suporte.
-// Limpa erros com mais de 7 dias.
+// ─── Relatório diário de SAÚDE ────────────────────────────────────────────────
+// Roda às 8h e manda e-mail TODO DIA — inclusive quando está tudo ok.
+// Por que sempre: antes só mandava se houvesse erro, então dia bom = silêncio,
+// e silêncio era ambíguo ("tudo bem" ou "o monitoramento morreu?"). Mandando
+// sempre, a AUSÊNCIA do e-mail das 08h vira sinal de alarme por si só.
+// Além dos erros, sonda os serviços de verdade (Hosting/Firestore/Auth/Storage/
+// Backup) — principalmente o BACKUP, que se parar de rodar só se descobriria no
+// dia de precisar restaurar. Limpa erros com mais de 7 dias (como antes).
 exports.relatorioErrosDiario = onSchedule({
   schedule: '0 8 * * *',
   timeZone: TZ,
   secrets: [SUPPORT_EMAIL_PASS]
 }, async () => {
+  const esc = v => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const ehStaging = process.env.GCLOUD_PROJECT === 'remax-smart-hub-staging';
+  const hostingUrl = ehStaging ? 'https://remax-smart-hub-staging.web.app' : 'https://remax-smart-hub.web.app';
+
+  // Cada sonda é isolada: uma falha vira linha vermelha, nunca derruba o relatório.
+  const sondas = [];
+  const sonda = async (nome, fn) => {
+    try { sondas.push({ nome, ok: true, detalhe: await fn() }); }
+    catch (e) { sondas.push({ nome, ok: false, detalhe: (e && e.message ? e.message : String(e)).slice(0, 200) }); }
+  };
+
+  await sonda('Hosting', async () => {
+    const r = await fetch(hostingUrl);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return `HTTP ${r.status} · ${hostingUrl.replace('https://', '')}`;
+  });
+  await sonda('Firestore', async () => {
+    const ref = db.collection('_health').doc('probe');
+    await ref.set({ em: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    if (!(await ref.get()).exists) throw new Error('escreveu mas não leu de volta');
+    return 'read/write ok';
+  });
+  await sonda('Auth', async () => {
+    const l = await admin.auth().listUsers(1);
+    return l.users.length ? 'ok (com usuários)' : 'ok (sem usuários)';
+  });
+  await sonda('Storage', async () => {
+    const [existe] = await admin.storage().bucket().exists();
+    if (!existe) throw new Error('bucket padrão não encontrado');
+    return 'bucket acessível';
+  });
+  if (ehStaging) {
+    sondas.push({ nome: 'Backup', ok: true, detalhe: 'n/a no staging (bucket é de produção)' });
+  } else {
+    await sonda('Backup', async () => {
+      const hoje = new Date().toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD
+      const [arqs] = await admin.storage().bucket('remax-smart-hub-backups')
+        .getFiles({ prefix: hoje + '/', maxResults: 1 });
+      if (!arqs.length) throw new Error(`sem backup de hoje (${hoje}) no bucket`);
+      return `${hoje} ok`;
+    });
+  }
+
   const ontem = new Date();
   ontem.setDate(ontem.getDate() - 1);
+
+  // Pulso: quanto a operação andou nas últimas 24h (best-effort — nunca quebra).
+  const contar = async (col) => {
+    try { return (await db.collection(col).where('criadoEm', '>=', ontem).count().get()).data().count; }
+    catch (_) { return null; }
+  };
+  const pulso = {
+    Fichas: await contar('fichas'),
+    Imóveis: await contar('imoveis'),
+    Negócios: await contar('negocios')
+  };
 
   const snap = await db.collection('_erros')
     .where('timestamp', '>=', ontem)
     .orderBy('timestamp', 'desc')
     .get();
+  const linhas = snap.docs.map(d => {
+    const e = d.data();
+    const ctx = e.contexto && Object.keys(e.contexto).length ? ` (${JSON.stringify(e.contexto)})` : '';
+    return `• [${e.funcao}] ${e.mensagem}${ctx}`;
+  });
 
-  if (!snap.empty) {
-    const linhas = snap.docs.map(d => {
-      const e = d.data();
-      const ctx = e.contexto && Object.keys(e.contexto).length
-        ? ` (${JSON.stringify(e.contexto)})` : '';
-      return `• [${e.funcao}] ${e.mensagem}${ctx}`;
-    });
+  const tudoOk = sondas.every(s => s.ok);
+  const semErros = snap.empty;
+  const saudavel = tudoOk && semErros;
+  const agoraBR = new Date().toLocaleString('pt-BR', { timeZone: TZ });
+  const dataBR = new Date().toLocaleDateString('pt-BR', { timeZone: TZ });
 
+  const linhaTabela = (nome, ok, detalhe) =>
+    `<tr><td style="padding:7px 10px;border-bottom:1px solid #eee">${ok ? '✅' : '❌'} ${esc(nome)}</td>`
+    + `<td style="padding:7px 10px;border-bottom:1px solid #eee;color:${ok ? '#188038' : '#c5221f'}">${esc(detalhe)}</td></tr>`;
+
+  const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:640px;color:#202124">
+    <h2 style="color:#1a73e8;margin:0 0 4px">📊 Hub REMAX Smart — Relatório Diário</h2>
+    <p style="color:#666;font-size:13px;margin:0 0 18px">Gerado em ${esc(agoraBR)}${ehStaging ? ' · <b>STAGING</b>' : ''}</p>
+    <h3 style="margin:0 0 8px">${tudoOk ? '✅ Status — tudo funcionando' : '⚠️ Status — atenção'}</h3>
+    <table style="border-collapse:collapse;width:100%;font-size:14px">${sondas.map(s => linhaTabela(s.nome, s.ok, s.detalhe)).join('')}</table>
+    <h3 style="margin:22px 0 8px">🐛 Erros (últimas 24h)</h3>
+    ${semErros
+      ? '<p style="color:#188038;margin:0">🎉 Nenhum erro registrado nas últimas 24h.</p>'
+      : `<pre style="background:#f5f5f5;padding:12px;border-radius:6px;font-size:13px;white-space:pre-wrap">${esc(linhas.join('\n'))}</pre>`}
+    <h3 style="margin:22px 0 8px">📈 Movimento (últimas 24h)</h3>
+    <table style="border-collapse:collapse;width:100%;font-size:14px">
+      ${Object.entries(pulso).map(([k, v]) =>
+        `<tr><td style="padding:7px 10px;border-bottom:1px solid #eee">${esc(k)}</td>`
+        + `<td style="padding:7px 10px;border-bottom:1px solid #eee"><b>${v == null ? '—' : v}</b> novo(s)</td></tr>`).join('')}
+    </table>
+    <p style="font-size:12px;color:#999;margin-top:22px">Relatório automático · logs apagados após 7 dias ·
+    erros de servidor também no Google Cloud Error Reporting.</p></div>`;
+
+  const texto = `Hub REMAX Smart — Relatório Diário (${agoraBR})\n\n`
+    + sondas.map(s => `${s.ok ? '[OK]' : '[FALHA]'} ${s.nome}: ${s.detalhe}`).join('\n')
+    + `\n\nErros (24h): ${semErros ? 'nenhum' : snap.size}\n${linhas.join('\n')}`
+    + `\n\nMovimento (24h): ` + Object.entries(pulso).map(([k, v]) => `${k}=${v == null ? '—' : v}`).join(' · ');
+
+  try {
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
     });
-
     await transporter.sendMail({
       from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
       to: SUPORTE_EMAIL,
-      subject: `[Hub] ${snap.size} erro(s) nas últimas 24h`,
-      html: `<div style="font-family:system-ui,sans-serif">`
-          + `<h3 style="color:#c00">Erros detectados no Hub</h3>`
-          + `<pre style="background:#f5f5f5;padding:12px;border-radius:6px;font-size:13px">${linhas.join('\n')}</pre>`
-          + `<p style="font-size:12px;color:#999">E-mail automático — Hub REMAX Smart</p></div>`,
-      text: `Erros nas últimas 24h:\n\n${linhas.join('\n')}`
+      subject: `${saudavel ? '✅' : '⚠️'} Hub — ${snap.size} erro(s) · ${dataBR}`,
+      html, text: texto
     });
+  } catch (e) {
+    await logErro('relatorioErrosDiario', e, { etapa: 'envio' });
   }
 
   // Limpa erros com mais de 7 dias
@@ -5020,7 +5108,11 @@ exports.relatorioErrosDiario = onSchedule({
     await batch.commit();
   }
 
-  console.log(`Relatório: ${snap.empty ? '0' : snap.size} erro(s); ${antigos?.size || 0} antigo(s) removido(s).`);
+  // Nomeia as sondas que falharam: se um dia o e-mail também falhar, o log ainda conta o que quebrou.
+  const falhas = sondas.filter(s => !s.ok);
+  console.log(`Relatório: ${snap.size} erro(s); sondas ${sondas.length - falhas.length}/${sondas.length} ok`
+    + (falhas.length ? ` — FALHOU: ${falhas.map(f => `${f.nome} (${f.detalhe})`).join('; ')}` : '')
+    + `; ${antigos?.size || 0} antigo(s) removido(s).`);
 });
 
 // ─── Bug Fix Bot: dispara o Claude no GitHub Actions pra propor um fix ─────────
