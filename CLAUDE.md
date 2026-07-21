@@ -4,7 +4,7 @@ App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápi
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
 **Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
-**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.101** (auto-update via GitHub Releases).
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.103** (auto-update via GitHub Releases).
 
 ## Stack
 
@@ -67,7 +67,7 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - **Sidebar** (`CATEGORIAS` em `hub-app.js`): Captação, CRM, Vistoria, **Locação** (Gestão de Locações), Performance, Treinamento, **Marketing**, ClickSign, Agenda, **Cadastro** (fichas), Fotografia, Reunião, Sala de Reunião, IA, Calculadoras, Bloco de Notas, WhatsApp, Suporte/TI, Configurações. Categorias podem ser ocultadas por permissão (`soTI`, `beta`, etc.) ou serem "app direto".
 - **Gestão de Locações** (aba Locação): módulo completo — captação (ficha do locador vira imóvel na esteira) → análise do locatário + garantia → contrato → cobrança/repasse → vistorias → alertas → relatórios (com export CSV). **Versão enxuta (pedido do chefe, v1.0.90):** sub-apps = só **Painel** e **Imóveis**.
   - **Imóveis = Carteira de Imóveis** (reestruturação 2026-07-15, spec "Tela 01 – Carteira de Imóveis" MVP; **só no STAGING por enquanto**, produção continua na tela antiga até o `.exe`/PWA de produção serem publicados): visão comercial em tabela — 6 fichas com Copiar Link (Comprador=ficha-proposta, Fiador=ficha-locacao-fiador), 6 indicadores, pesquisa incremental, filtros (finalidade/situação/corretor), modal + Novo Imóvel (Enviar Ficha | Cadastro Manual), interessados, arquivamento (nunca exclui). Modelo: `imoveis` ganhou `finalidade` (locacao|venda|venda_locacao), `situacao` (disponivel|em_negociacao), `arquivado`, `interessados[]`, `proprietarioNome`; a **esteira (`status`) virou detalhe** do imóvel de locação (o "Mover para" do gestor vive dentro do Abrir). Legado sem finalidade = locação, situação derivada da esteira (em_contrato/ativo ⇒ em negociação) — sem migração. Functions: `carteiraSalvarImovel`/`carteiraArquivar`/`carteiraSituacao`/`carteiraInteressado` (+posse: corretor só os seus, broker tudo) e trigger `onFichaVendedorEnviadaAdmin` (ficha do vendedor ⇒ imóvel de venda; a ficha usa as mesmas chaves `im_*`). Venda pura não tem esteira (sem `status`). Financeiro/Alertas/Relatórios saíram da UI (as Cloud Functions `locFinanceiro`/`locListarAlertas`/`locRelatorios` continuam no backend, só não têm mais tela) e as **fichas voltaram pro Cadastro**. **Visibilidade**: a aba Locação inteira só aparece com a permissão `loc_gestao` (por pessoa no Admin, não herda de admin). **Checklist automático** (6 itens marcam sozinhos; esteira avança até "Aprovado" sozinha). **Portais externos** (Fase 1.5): proprietário vê repasses, inquilino vê pagamentos — por link/token, sem login (`public/portal-proprietario.html`, `portal-inquilino.html`). Detalhes completos na memória `project-gestao-locacoes`. Fase 2 (bancária) em `FASE-2-INTEGRACAO-BANCARIA.md`.
-  - **Tela 03 — Detalhes do Imóvel + Negócios (fundação)** (2026-07-16, **só no staging**; specs do Drive em `C:\Users\Natha\Downloads\SMART-HUB-DRIVE`, mockups em pastas T-01..T-06): "Abrir" na Carteira leva a tela cheia — resumo + abas **Informações / Proprietário / Interessados / Histórico / Gestão da Locação** (esta herda o detalhe antigo inteiro: análise, garantia, contrato, vistorias, esteira — nada se perdeu; `renderDetalheImovel(d, true)` devolve os blocos por aba). **Interessados têm status** (`ficha_enviada→ficha_recebida→em_analise→aprovado|reprovado|desistiu→negocio_gerado`); aprovar/reprovar = SÓ gestor (Manual de Regras: decisão do Broker). **Negócio**: `negocioGerar` (só gestor, só interessado aprovado, só 1 ativo por imóvel) cria doc em `negocios` com código `NG-000001` (counter transacional `counters/negocios`), checklist-modelo por tipo (13 etapas locação / 18 venda, spec 04B; `obrigatoria:true` nas 7-8 primeiras trava o futuro "Entregar para Gestão"), `proximaAcao`, timeline própria; interessado vira Negócio Gerado e imóvel entra Em Negociação. `negocioListar` já existe (base da Tela 04A). **Timeline do imóvel** (`imoveis.timeline[]`, cap 300, transacional) registra tudo automaticamente. **Ficha vinculada**: "Enviar Ficha ao Interessado" copia link com `&imovelId=` (a ficha já lia o param e o `salvarFichaPublica` já persistia); trigger `onFichaInteressadoRecebida` (pf/pj/proposta com imovelId) cria/atualiza o interessado como Ficha Recebida sozinho. Rules: `negocios` = read regra de ouro, write só via function. Testado ponta a ponta no staging (NG-000001 criado, trava de 2º negócio confirmada, ficha→interessado automático OK). **Doc mestre (`SMART-HUB-MASTER-DEVELOPMENT.md`): TODAS as telas construídas** (01 Dashboard, 02 Carteira, 03 Detalhes, 04A/04B Negócios, 05 Relatórios, 06 Fichas=Cadastro, T-06 Admin configs) — no staging, aguardando validação pra ir pra produção.
+  - **Tela 03 — Detalhes do Imóvel + Negócios (fundação)** (2026-07-16, **só no staging**; specs do Drive em `C:\Users\Natha\Downloads\SMART-HUB-DRIVE`, mockups em pastas T-01..T-06): "Abrir" na Carteira leva a tela cheia — resumo + abas **Informações / Proprietário / Interessados / Histórico / Gestão da Locação** (esta herda o detalhe antigo inteiro: análise, garantia, contrato, vistorias, esteira — nada se perdeu; `renderDetalheImovel(d, true)` devolve os blocos por aba). **Interessados têm status** (`ficha_enviada→ficha_recebida→em_analise→aprovado|reprovado|desistiu→negocio_gerado`); aprovar/reprovar = SÓ gestor (Manual de Regras: decisão do Broker). **Negócio**: `negocioGerar` (só gestor, só interessado aprovado, só 1 ativo por imóvel) cria doc em `negocios` com código `NG-000001` (counter transacional `counters/negocios`), checklist-modelo por tipo (13 etapas locação / 18 venda, spec 04B; `obrigatoria:true` nas 7-8 primeiras trava o futuro "Entregar para Gestão"), `proximaAcao`, timeline própria; interessado vira Negócio Gerado e imóvel entra Em Negociação. `negocioListar` já existe (base da Tela 04A). **Timeline do imóvel** (`imoveis.timeline[]`, cap 300, transacional) registra tudo automaticamente. **Ficha vinculada**: "Enviar Ficha ao Interessado" copia link com `&imovelId=` (a ficha já lia o param e o `salvarFichaPublica` já persistia); trigger `onFichaInteressadoRecebida` (pf/pj/proposta com imovelId) cria/atualiza o interessado como Ficha Recebida sozinho. Rules: `negocios` = read regra de ouro, write só via function. Testado ponta a ponta no staging (NG-000001 criado, trava de 2º negócio confirmada, ficha→interessado automático OK). **TODAS as telas construídas** (01 Dashboard, 02 Carteira, 03 Detalhes, 04A/04B Negócios, 05 Relatórios, 06 Fichas=Cadastro, T-06 Admin configs) — no staging, aguardando validação pra ir pra produção. As specs por tela vivem só no Drive baixado (`01-DESIGN-SYSTEM.md`, `03-ESPECIFICACAO-*`, `04A/04B-*`, `Manual-de-Regras-do-Negocio.docx`); **não existe um doc mestre no repo** — se precisar de visão geral, é esta seção do CLAUDE.md.
   - **Invariantes da caça-bugs 2026-07-17** (não reintroduzir — commits `f54825c`/`9e9f604`):
     - `onFichaInteressadoRecebida`: reenvio da MESMA ficha **não rebaixa decisão já tomada** — só volta pra
       "Ficha recebida" quem estava em `ficha_enviada`/`ficha_recebida`; `aprovado`/`reprovado`/`desistiu`/
@@ -95,7 +95,8 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
     Agora: `app.isPackaged` → Hosting; em dev → disco (senão o `npm start` mostraria a ficha **publicada**,
     não a que você acabou de editar). Sem internet, a janela avisa em vez de ficar branca.
   - Consequência: **depois que a 1.0.100 alcançar todos**, nenhuma máquina consegue mais rodar ficha
-    velha — o que destrava o `firebase deploy --only firestore:rules` (e o App Check).
+    velha — o que destravou o `firebase deploy --only firestore:rules`. (Destravava o App Check
+    também, mas ele foi **revertido** por quebrar as fichas — ver Infra.)
   - ⚠️ `public/ficha-engine.js` **foi apagado** (era código morto; último lugar que gravava direto). Hoje
     `grep addDoc` no projeto = zero.
   - **Ficha "em branco" (resolvido)**: as fichas montam o form com módulos ES que importam o SDK do
@@ -187,9 +188,10 @@ npm run emu:seed   # semeia dados de MENTIRA (com o emulador rodando em outra ja
   e `corretor@teste.local` (senha `teste1234`) + 3 fichas. A **2FA não roda no emulador** (login simples).
 - Config em `firebase.json` → bloco `emulators` (portas: auth 9099, functions 5001, firestore 8080,
   storage 9199, UI 4000). Logs/dumps do emulador estão no `.gitignore`.
-- **`npm run emu` sobe auth+firestore+functions por padrão** (o `emu.js` injeta `--only`). O **Storage
-  fica de fora**: no `firebase.json` o storage é um array (formato do DEPLOY) e o emulador exige um
-  `target` pra array (`Must supply 'target'`). Quem quiser storage no emulador roda com `--only` próprio.
+- **`npm run emu` sobe auth+firestore+functions+storage por padrão** (o `emu.js` injeta `--only`).
+  O Storage **ficava de fora** até 2026-07-21, quando o bloco `storage` do `firebase.json` era um
+  array e o emulador exigia um `target` (`Must supply 'target'`); virou objeto e passou a subir
+  (verificado: `Storage 127.0.0.1:9199`).
 - **Verificado (2026-07-15)**: Firestore sobe com Java 21, Auth/Functions OK, seed grava — e o **Hub
   real logou no emulador** (login → auth 9099, Firestore 8080, Functions 5001, tudo 200, **zero produção**).
 
@@ -220,7 +222,7 @@ produção apontar pro lugar errado:
   o erro fantasma ia sujar o relatório diário). Padrão correto: `process.env.GCLOUD_PROJECT` nas
   functions (com *early return* fora de produção) e `"storage": { "rules": "..." }` como **objeto**
   sem `bucket` no `firebase.json` — assim segue o `--project`. Bônus: virando objeto, o emulador de
-  Storage deixou de exigir `target` e pode subir no `npm run emu`.
+  Storage deixou de exigir `target` e agora sobe por padrão no `npm run emu`.
 - **Staging (projeto `remax-smart-hub-staging`, plano Blaze) — NO AR** em
   `https://remax-smart-hub-staging.web.app/app/`. App + todas as functions + regras deployados; Auth
   ligada (Email/senha). Deploy num comando: **`npm run deploy:staging`** (build + hosting + functions +
@@ -333,24 +335,28 @@ O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável
 - **Loja (opcional)**: Capacitor/TWA pra Play Store — mas review de loja quebra o "update simultâneo".
 
 ### Infra / segurança
-- **App Check** (2026-07-14): **LIGADO em modo OBSERVAÇÃO** — emite crachá e alimenta as métricas,
-  mas **NÃO recusa ninguém**. A imposição (`enforcementMode`) segue **OFF** de propósito.
-  - **Onde está**: `public/app-check.js` (módulo único) importado por `ficha-comum.js` (cobre PJ,
-    vendedor, fiança, locação c/ fiador, proposta), `ficha-locador.html`, `ficha-pf.html`,
-    `portal-proprietario.html`, `portal-inquilino.html`. Chave pública (site key, tipo SCORE —
-    invisível): `6Lfa9FMtAAAAAPcB1WwGieeCGF45Y5nUBCaoemDr`. Domínios: `remax-smart-hub.web.app`,
-    `.firebaseapp.com`, `localhost`. Score mínimo 0.5, TTL do crachá 1h.
-  - ⛔ **NUNCA importar no `hub-app.js` / `auth-login.js` / `admin-app.js`**: essas telas rodam em
-    `file://` dentro do `.exe`, e página `file://` não tem origem — o reCAPTCHA não teria o que
-    atestar. Pelo mesmo motivo **não dá pra impor** App Check no `criarContaComCodigo` (chamado do
-    `login.html`, que roda no `.exe`).
-  - **Só foi possível a partir da v1.0.100**, quando a ficha passou a vir do Hosting (`https://`)
-    também dentro do `.exe` — antes ela era `file://`.
-  - **Como LIGAR a recusa, quando as métricas confirmarem** (console → App Check → APIs → Cloud
-    Functions → Enforce). Alvos seguros: `salvarFichaPublica`, `portalProprietario`,
-    `portalInquilino` (só são chamados de páginas `https://`). **Antes de ligar**: confirmar no
-    console que ~100% das requisições verificadas têm crachá. Se houver tráfego legítimo sem crachá,
-    NÃO ligar — investigar.
+- **App Check** — ⛔ **FORA DO AR no cliente (revertido em `904d2e7`). NENHUMA página emite crachá.**
+  Foi ligado em modo observação em 2026-07-14 e **removido dias depois**: o `public/app-check.js`
+  lançava `reCAPTCHA placeholder element must be an element or id` no meio da inicialização das 5
+  fichas que passam pelo `ficha-comum.js` (PJ, fiança, vendedor, proposta, locação c/ fiador) —
+  fichas abrindo em branco. Como o `enforcementMode` estava `UNENFORCED` em tudo, ele não protegia
+  nada; tirar foi de graça. **O arquivo `public/app-check.js` não existe mais** e ninguém o importa.
+  - 🚨 **NÃO ligar a imposição (Enforce) no console.** Sem cliente emitindo crachá, impor em
+    `salvarFichaPublica` derrubaria o **Cadastro inteiro** em produção — toda ficha passaria a ser
+    recusada. As métricas do console mostram tráfego "sem crachá" porque é exatamente esse o estado,
+    não porque falta amostra.
+  - **Quem faz esse papel hoje**: o limite anti-despejo no servidor (`_limitarCriacaoFicha`,
+    60 fichas novas por corretor por hora) — ver a seção de Fichas. 100% server-side, não depende
+    de nada no cliente.
+  - **Se um dia retomar**: (1) corrigir a inicialização do reCAPTCHA (o erro é de elemento
+    placeholder ausente — provedor SCORE/invisível não deve precisar de container); (2) subir só em
+    UMA ficha e confirmar que ela abre em rede fria; (3) espalhar; (4) só então pensar em Enforce, e
+    ainda assim conferindo no console que ~100% das requisições verificadas têm crachá.
+    Chave pública (site key, SCORE/invisível): `6Lfa9FMtAAAAAPcB1WwGieeCGF45Y5nUBCaoemDr`.
+    Domínios: `remax-smart-hub.web.app`, `.firebaseapp.com`, `localhost`.
+  - ⛔ **Nunca no `hub-app.js` / `auth-login.js` / `admin-app.js`**: rodam em `file://` dentro do
+    `.exe`, e página `file://` não tem origem — o reCAPTCHA não teria o que atestar. Pelo mesmo
+    motivo **não dá pra impor** no `criarContaComCodigo` (chamado do `login.html`, que roda no `.exe`).
   - **Armadilha que custou debug**: o `PATCH .../recaptchaEnterpriseConfig` precisa de
     `updateMask=siteKey` — mandar `updateMask=siteSecret` (campo que não existe aqui) retorna 200
     e **não grava a chave**; o cliente então leva `400 App not registered`. Conferir sempre com um
