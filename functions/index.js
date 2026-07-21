@@ -4941,12 +4941,17 @@ exports.backupFirestore = onSchedule({
   schedule: '0 3 * * *',
   timeZone: TZ
 }, async () => {
+  const projectId = process.env.GCLOUD_PROJECT;
+  if (projectId !== 'remax-smart-hub') {
+    console.log(`Backup ignorado: projeto ${projectId} não é o de produção.`);
+    return;
+  }
+
   const { GoogleAuth } = require('google-auth-library');
   const auth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/cloud-platform'] });
   const client = await auth.getClient();
   const { token } = await client.getAccessToken();
 
-  const projectId = 'remax-smart-hub';
   const timestamp = new Date().toISOString().split('T')[0];
 
   const resp = await fetch(

@@ -210,6 +210,17 @@ produção apontar pro lugar errado:
 - **Ligado em**: `hub-app.js`, `auth-login.js`, `admin-app.js` (raiz) e `ficha-comum.js`, `ficha-pf.html`,
   `ficha-locador.html`, `portal-proprietario.html`, `portal-inquilino.html`, `bugbot.html` (public). O
   `build-pwa.js` copia o `firebase-env.js` pro `public/app/`. As chaves dos dois projetos são PÚBLICAS.
+- ⚠️ **Nada de id de projeto/bucket cravado em código que roda nos dois ambientes.** O deploy manda
+  **todas** as functions pro staging também, então quem crava `remax-smart-hub` bate em produção a
+  partir do staging. Duas ocorrências já corrigidas (2026-07-21): o `firebase.json` tinha o bloco
+  `storage` como **array com o bucket de produção fixo** (por isso `--project staging` aplicava as
+  regras no bucket errado, e o staging ficou desde sempre sem bucket default — anexo de ficha
+  quebrado); e o `backupFirestore` tinha `const projectId = 'remax-smart-hub'`, então a instância do
+  staging tentava exportar **produção** todo dia às 3h e tomava 403 (produção nunca foi tocada, mas
+  o erro fantasma ia sujar o relatório diário). Padrão correto: `process.env.GCLOUD_PROJECT` nas
+  functions (com *early return* fora de produção) e `"storage": { "rules": "..." }` como **objeto**
+  sem `bucket` no `firebase.json` — assim segue o `--project`. Bônus: virando objeto, o emulador de
+  Storage deixou de exigir `target` e pode subir no `npm run emu`.
 - **Staging (projeto `remax-smart-hub-staging`, plano Blaze) — NO AR** em
   `https://remax-smart-hub-staging.web.app/app/`. App + todas as functions + regras deployados; Auth
   ligada (Email/senha). Deploy num comando: **`npm run deploy:staging`** (build + hosting + functions +
