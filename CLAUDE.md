@@ -10,7 +10,7 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 
 - **Electron** (`main.js` = processo principal, `preload.js` = bridge IPC).
 - Renderer (telas): `login.html`+`auth-login.js`, `index.html`+`hub-app.js`, `admin.html`+`admin-app.js`. CSS único em `styles.css`.
-- **Firebase**: Auth (email/senha), Firestore, Cloud Functions v2 (Node 22) em `functions/index.js`, região **southamerica-east1**. Config pública em `firebase-config.js` (e repetida no topo de cada `*-app.js`).
+- **Firebase**: Auth (email/senha), Firestore, Cloud Functions v2 (Node 22) em `functions/index.js`, região **southamerica-east1**. Config pública em `firebase-env.js` (resolvida por hostname — ver "Config por ambiente"; a cópia `public/firebase-env.js` atende as fichas).
 - Projeto Firebase: `remax-smart-hub`. Repo GitHub **público**: `Goldencat7/remax-smart-hub`.
 
 ## Segurança (regras importantes — NÃO quebrar)

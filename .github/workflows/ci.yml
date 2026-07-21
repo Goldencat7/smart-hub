@@ -71,7 +71,7 @@ jobs:
       - name: Checar arquivos essenciais do renderer
         run: |
           set -e
-          for f in index.html login.html admin.html hub-app.js admin-app.js auth-login.js firebase-config.js styles.css; do
+          for f in index.html login.html admin.html hub-app.js admin-app.js auth-login.js firebase-env.js styles.css; do
             if [ ! -f "$f" ]; then
               echo "FALTA: $f"
               exit 1

@@ -70,7 +70,7 @@ export default [
   },
   {
     // Node puro
-    files: ['main.js', 'firebase-config.js', 'functions/index.js'],
+    files: ['main.js', 'functions/index.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'commonjs',

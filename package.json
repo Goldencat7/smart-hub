@@ -41,7 +41,6 @@
     "files": [
       "main.js",
       "preload.js",
-      "firebase-config.js",
       "*.html",
       "*.js",
       "styles.css",
