@@ -4988,6 +4988,7 @@ exports.relatorioErrosDiario = onSchedule({
   const esc = v => String(v == null ? '' : v)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const ehStaging = process.env.GCLOUD_PROJECT === 'remax-smart-hub-staging';
+  const ehProducao = process.env.GCLOUD_PROJECT === 'remax-smart-hub';
   const hostingUrl = ehStaging ? 'https://remax-smart-hub-staging.web.app' : 'https://remax-smart-hub.web.app';
 
   // Cada sonda é isolada: uma falha vira linha vermelha, nunca derruba o relatório.
@@ -5086,19 +5087,27 @@ exports.relatorioErrosDiario = onSchedule({
     + `\n\nErros (24h): ${semErros ? 'nenhum' : snap.size}\n${linhas.join('\n')}`
     + `\n\nMovimento (24h): ` + Object.entries(pulso).map(([k, v]) => `${k}=${v == null ? '—' : v}`).join(' · ');
 
-  try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
-    });
-    await transporter.sendMail({
-      from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
-      to: SUPORTE_EMAIL,
-      subject: `${saudavel ? '✅' : '⚠️'} Hub — ${snap.size} erro(s) · ${dataBR}`,
-      html, text: texto
-    });
-  } catch (e) {
-    await logErro('relatorioErrosDiario', e, { etapa: 'envio' });
+  // Fora de produção o secret de e-mail é dummy (staging-dummy-nao-usar): tentar
+  // enviar dá 535 BadCredentials, o logErro grava em _erros, e o relatório do dia
+  // seguinte conta esse erro e falha de novo — laço que só produz lixo. A limpeza
+  // dos erros antigos (abaixo) continua rodando nos dois, por isso não é um return.
+  if (ehProducao) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: SUPORTE_EMAIL, pass: SUPPORT_EMAIL_PASS.value() }
+      });
+      await transporter.sendMail({
+        from: `Hub REMAX Smart <${SUPORTE_EMAIL}>`,
+        to: SUPORTE_EMAIL,
+        subject: `${saudavel ? '✅' : '⚠️'} Hub — ${snap.size} erro(s) · ${dataBR}`,
+        html, text: texto
+      });
+    } catch (e) {
+      await logErro('relatorioErrosDiario', e, { etapa: 'envio' });
+    }
+  } else {
+    console.log('Relatório pronto — e-mail não enviado fora de produção.');
   }
 
   // Limpa erros com mais de 7 dias
