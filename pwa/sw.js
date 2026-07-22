@@ -47,6 +47,12 @@ self.addEventListener('activate', (evt) => {
         nomes.filter(n => n.startsWith('hub-pwa-') && n !== CACHE).map(n => caches.delete(n))
       ))
       .then(() => self.clients.claim())
+      // Avisa as abas abertas que a versão trocou. Sem isso, a carga que INSTALA
+      // o SW novo fica "Frankenstein": o HTML vem da rede (novo) mas o CSS/JS
+      // saem do cache antigo (stale-while-revalidate), e a tela aparece
+      // desalinhada até a pessoa recarregar de novo por conta própria.
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(abas => abas.forEach(a => a.postMessage({ tipo: 'hub-sw-atualizado', build: BUILD })))
   );
 });
 

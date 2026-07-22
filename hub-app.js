@@ -1966,12 +1966,61 @@ document.getElementById('secaoMarketing').addEventListener('click', (e) => {
   const navBtn = e.target.closest('.mkt-nav-btn');
   if (navBtn) {
     const carousel = navBtn.closest('.mkt-carousel-wrap').querySelector('.mkt-carousel');
-    const passo = 220 + 14; // largura do card + gap
+    // Mede o card em vez de cravar a largura: faixa em paisagem (capa de YouTube)
+    // usa card mais largo, e um passo fixo pularia errado.
+    const umCard = carousel.querySelector('.mkt-card');
+    const passo = (umCard ? umCard.getBoundingClientRect().width : 186) + 14;
     carousel.scrollBy({ left: navBtn.classList.contains('mkt-next') ? passo : -passo, behavior: 'smooth' });
+    return;
+  }
+  // Recolher: o CABEÇALHO INTEIRO alterna, não só a setinha. No accordion antigo
+  // clicava-se no título, e é lá que o mouse vai — seta de 22px é alvo pequeno
+  // demais e passa a impressão de que o botão não funciona.
+  const head = e.target.closest('.mkt-prat-head');
+  if (head && !e.target.closest('.mkt-vermais')) {
+    const prat = head.closest('.mkt-prateleira');
+    const toggle = head.querySelector('.mkt-toggle');
+    const recolhida = prat.classList.toggle('recolhida');
+    toggle.setAttribute('aria-expanded', String(!recolhida));
+    toggle.title = recolhida ? 'Abrir esta categoria' : 'Recolher esta categoria';
+    // Ao reabrir, as setas ‹ › precisam reavaliar se ainda fazem sentido:
+    // com a faixa escondida o scrollWidth era 0 e elas ficariam desabilitadas.
+    if (!recolhida) atualizarNavMarketing(prat.querySelector('.mkt-carousel'));
+    return;
+  }
+  // "Ver mais": alterna a faixa entre linha que rola e grade com tudo à vista.
+  const verMais = e.target.closest('.mkt-vermais');
+  if (verMais) {
+    const prat = verMais.closest('.mkt-prateleira');
+    const aberta = prat.classList.toggle('expandida');
+    verMais.textContent = aberta ? 'Ver menos' : 'Ver mais';
+    // Ao recolher, volta o scroll pro começo — senão a faixa reabre no meio.
+    if (!aberta) {
+      const c = prat.querySelector('.mkt-carousel');
+      c.scrollTo({ left: 0 });
+      atualizarNavMarketing(c);
+    }
     return;
   }
   const card = e.target.closest('.mkt-card');
   if (!card) return;
+  window.hubApi.abrirTemplate(card.dataset.template);
+});
+
+// Pesquisa de templates: filtra em memória a cada tecla (os dados já estão
+// no mktConfig — nenhuma chamada de rede).
+document.getElementById('mktBusca').addEventListener('input', (e) => {
+  mktBusca = e.target.value;
+  if (!mktModoGerenciar) renderMarketingVisualizar();
+});
+
+// Card é focável (role="button"): Enter/Espaço abrem, como o clique.
+document.getElementById('secaoMarketing').addEventListener('keydown', (e) => {
+  if (mktModoGerenciar) return;
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const card = e.target.closest('.mkt-card');
+  if (!card) return;
+  e.preventDefault();
   window.hubApi.abrirTemplate(card.dataset.template);
 });
 
@@ -1981,6 +2030,12 @@ const salvarMarketingConfig = httpsCallable(fns, 'salvarMarketingConfig');
 let mktConfig = { sanfonas: [] };
 let mktModoGerenciar = false;
 let temPermMarketing = false; // vem do getMinhasPermissoes
+let mktBusca = ''; // termo da pesquisa (só filtra o modo visualizar)
+
+// Busca ignora acento e caixa: "aniversario" acha "Aniversário".
+function mktNorm(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
 // Paleta de ícones pra escolher na sanfona (clicável — não precisa digitar emoji)
 const MKT_EMOJIS = ['🏆','🏠','🏡','🏘️','🏢','🔑','💰','💎','📣','📢','⭐','🌟','✨','🔥','🎯','🎉','🎁','🥳','📸','🖼️','🎨','👑','❤️','✅','📌','🚀','💼','🛋️','🌆','🏅','🤝','📈'];
@@ -1991,6 +2046,8 @@ async function carregarMarketing() {
   const info = document.getElementById('mktToolbarInfo');
   // Gerenciar Marketing é permissão à parte (marketing_gerenciar), NÃO herda de admin.
   toolbar.hidden = !temPermMarketing;
+  // A pesquisa só faz sentido no modo visualizar (no gerenciar a lista é outra).
+  document.getElementById('mktBuscaWrap').hidden = mktModoGerenciar;
   if (info) info.textContent = mktModoGerenciar ? 'Modo edição — arraste/edite/remova. Clique em Salvar quando terminar.' : '';
   const btnG = document.getElementById('btnMktGerenciar');
   if (btnG) btnG.textContent = mktModoGerenciar ? '← Voltar' : '⚙ Gerenciar';
@@ -2014,24 +2071,49 @@ function urlArquivo(caminho) {
 
 function renderMarketingVisualizar() {
   const cont = document.getElementById('mktContainer');
+  // Layout de "prateleiras" (referência: REMARKT) — cada categoria é uma faixa
+  // sempre visível, com os templates numa linha que rola na horizontal. Antes era
+  // sanfona fechada: quem não clicava não via nada. "Ver mais" abre a faixa em
+  // grade (todos de uma vez); o clique continua em qualquer ponto do card.
+  // A pesquisa filtra por descrição do template OU título da categoria (título
+  // que bate = categoria inteira); resultado abre em grade, sem carrossel.
+  const termo = mktNorm(mktBusca.trim());
   cont.innerHTML = mktConfig.sanfonas.map(s => {
-    const templates = (s.templates || []).slice().sort((a,b) => (a.ordem ?? 0) - (b.ordem ?? 0));
-    return `<details class="mkt-accordion" ${s.aberta ? 'open' : ''}>
-      <summary class="mkt-accordion-head">${escapeHtml(s.emoji || '')} ${escapeHtml(s.titulo || '')}</summary>
+    let templates = (s.templates || []).slice().sort((a,b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+    if (termo && !mktNorm(s.titulo).includes(termo)) {
+      templates = templates.filter(t => mktNorm(t.descricao).includes(termo));
+    }
+    if (termo && !templates.length) return '';
+    const cards = templates.map(t => `
+      <div class="mkt-card" data-template="${escapeHtml(t.arquivo)}" role="button" tabindex="0"
+           title="${escapeHtml(t.descricao)}">
+        <div class="mkt-thumb"><img src="${escapeHtml(urlArquivo(t.capa))}" alt="${escapeHtml(t.descricao)}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:11px\\'>sem capa</div>'"></div>
+      </div>`).join('');
+    // `aberta` vem da config (checkbox do ⚙ Gerenciar) e é só o estado INICIAL —
+    // o botão de recolher alterna daqui pra frente. Sem o campo, abre: faixa
+    // fechada por omissão foi o que escondia os templates no layout antigo.
+    // Durante a busca ninguém fica fechado, senão o resultado some.
+    const fechada = !termo && s.aberta === false;
+    // `formato: 'paisagem'` = arte deitada (ex.: capa de YouTube, 16:9). Sem o
+    // campo, segue retrato (1080×1440), que é o formato da maioria das artes.
+    const paisagem = s.formato === 'paisagem' ? ' paisagem' : '';
+    return `<section class="mkt-prateleira${termo ? ' expandida' : ''}${fechada ? ' recolhida' : ''}${paisagem}">
+      <div class="mkt-prat-head">
+        <button class="mkt-toggle" type="button" aria-expanded="${!fechada}"
+                title="${fechada ? 'Abrir' : 'Recolher'} esta categoria">▾</button>
+        <h3 class="mkt-prat-titulo">${escapeHtml(s.emoji || '')} ${escapeHtml(s.titulo || '')}
+          <span class="mkt-prat-num">· ${templates.length}</span></h3>
+        ${!termo && templates.length > 4 ? '<button class="mkt-vermais" type="button">Ver mais</button>' : ''}
+      </div>
       <div class="mkt-carousel-wrap">
         <button class="mkt-nav-btn mkt-prev" aria-label="Anterior">‹</button>
-        <div class="mkt-carousel">
-          ${templates.map(t => `
-            <div class="mkt-card" data-template="${escapeHtml(t.arquivo)}">
-              <div class="mkt-thumb"><img src="${escapeHtml(urlArquivo(t.capa))}" alt="${escapeHtml(t.descricao)}" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:11px\\'>sem capa</div>'"></div>
-              <div class="mkt-info"><span class="mkt-desc">${escapeHtml(t.descricao)}</span></div>
-              <button class="mkt-btn">Abrir editor ↗</button>
-            </div>`).join('')}
-        </div>
+        <div class="mkt-carousel">${cards}</div>
         <button class="mkt-nav-btn mkt-next" aria-label="Próximo">›</button>
       </div>
-    </details>`;
-  }).join('') || '<p class="muted" style="text-align:center;padding:32px 0">Nenhuma sanfona configurada.</p>';
+    </section>`;
+  }).join('') || `<p class="muted" style="text-align:center;padding:32px 0">${termo
+    ? `Nenhum template encontrado para "${escapeHtml(mktBusca.trim())}".`
+    : 'Nenhuma sanfona configurada.'}</p>`;
   requestAnimationFrame(() => iniciarCarrosseis());
 }
 

@@ -246,5 +246,29 @@
         console.warn('Service worker não registrou:', err);
       });
     });
+
+    // Versão nova assumiu: a carga atual está inconsistente (HTML da rede = novo,
+    // CSS/JS do cache = velhos, por causa do stale-while-revalidate). Recarrega
+    // pra alinhar tudo, senão a tela fica desalinhada até a pessoa apertar F5.
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data?.tipo !== 'hub-sw-atualizado') return;
+
+      // Só logo depois de abrir. Se a aba está aberta há tempo, a pessoa está
+      // trabalhando — recarregar por baixo dela perderia o que estivesse
+      // digitando (ex.: Bloco de Notas). Aí a próxima abertura já vem certa.
+      if (performance.now() > 15000) {
+        console.info('Hub: versão nova baixada; entra na próxima abertura.');
+        return;
+      }
+
+      // Trava anti-laço: um build só provoca um reload.
+      const build = String(e.data.build || '');
+      try {
+        if (sessionStorage.getItem('hubSwBuild') === build) return;
+        sessionStorage.setItem('hubSwBuild', build);
+      } catch (_) { /* sessionStorage bloqueado: segue e recarrega uma vez */ }
+
+      location.reload();
+    });
   }
 })();

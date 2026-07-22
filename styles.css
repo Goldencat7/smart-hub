@@ -1255,30 +1255,81 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 }
 
 /* ── Marketing (templates editáveis) ────────────────────────────── */
-.mkt-wrap { padding: 8px 0 24px; display: flex; flex-direction: column; gap: 10px; }
+.mkt-wrap { padding: 8px 0 24px; display: flex; flex-direction: column; gap: 18px; }
 
-.mkt-accordion { border: 1px solid var(--border); border-radius: var(--radius-card); overflow: hidden; }
-.mkt-accordion[open] { background: var(--surface); }
-
-.mkt-accordion-head {
+/* Prateleiras: uma faixa por categoria, sempre visível (antes era sanfona
+   fechada — quem não clicava não via template nenhum). Estrutura inspirada no
+   REMARKT; as cores continuam as do Hub. */
+.mkt-prateleira { display: flex; flex-direction: column; gap: 10px; }
+/* O respiro entre faixas vive AQUI, não num gap do container: as prateleiras são
+   irmãs dentro do #mktContainer, que é filho único do .mkt-wrap — gap no wrap não
+   as separa. Margem na própria prateleira funciona em qualquer container. */
+.mkt-prateleira + .mkt-prateleira { margin-top: 42px; }
+/* O cabeçalho inteiro alterna a faixa — por isso cursor de mão e sem seleção de
+   texto (arrastar pra selecionar o título viraria clique acidental). */
+.mkt-prat-head {
   display: flex; align-items: center; gap: 10px;
-  padding: 11px 14px; cursor: pointer;
-  font: 600 12px/1 inherit; color: var(--text-primary);
-  list-style: none; user-select: none;
-  background: var(--surface);
-  transition: background 150ms ease;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
 }
-.mkt-accordion-head:hover { background: var(--blue-light); }
-.mkt-accordion[open] > .mkt-accordion-head { border-bottom: 1px solid var(--border); background: var(--blue-light); }
-.mkt-accordion-head::-webkit-details-marker { display: none; }
-.mkt-accordion-head::after {
-  content: '›'; margin-left: auto; font-size: 16px;
-  color: var(--text-muted); transition: transform 200ms ease;
+/* Azul claro literal: o --blue (#0052CC) é escuro demais pra virar destaque
+   sobre o fundo escuro do Hub — sumiria em vez de realçar. */
+.mkt-prat-head:hover .mkt-prat-titulo { color: #6ea8fe; }
+.mkt-prat-head:hover .mkt-toggle { color: var(--text-primary); }
+/* O "Ver mais" tem ação própria: volta ao cursor normal e não dispara o toggle. */
+.mkt-prat-head .mkt-vermais { margin-left: auto; cursor: pointer; }
+
+/* Botão de recolher a faixa. Mantém o estilo de prateleira (não volta pro
+   <details>): o cabeçalho fica sempre visível, só os cards somem. */
+.mkt-toggle {
+  flex: none; width: 22px; height: 22px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 13px; line-height: 1;
+  border-radius: 4px;
+  transition: transform 180ms ease, color 150ms ease, background 150ms ease;
 }
-.mkt-accordion[open] > .mkt-accordion-head::after { transform: rotate(90deg); }
+.mkt-toggle:hover { color: var(--text-primary); background: var(--blue-light); }
+.mkt-prateleira.recolhida .mkt-toggle { transform: rotate(-90deg); }
+.mkt-prateleira.recolhida .mkt-carousel-wrap { display: none; }
+.mkt-prat-titulo {
+  margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.mkt-prat-num { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+
+/* Barra de pesquisa: lupa desenhada em SVG no fundo (emoji no placeholder fica
+   com cara de gambiarra e muda de desenho em cada sistema). */
+.mkt-busca {
+  display: block; width: 100%; max-width: 460px;
+  padding: 11px 16px 11px 42px;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa3b2' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") no-repeat 14px center / 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: 13.5px; line-height: 1.2;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+.mkt-busca::placeholder { color: var(--text-muted); }
+.mkt-busca:hover { border-color: #3a4356; }
+.mkt-busca:focus {
+  outline: none;
+  background-color: var(--surface);
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-light);
+}
+/* Tira o "x" nativo do type=search, que destoa do tema escuro. */
+.mkt-busca::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.mkt-vermais {
+  flex-shrink: 0; padding: 0; background: none; border: none;
+  color: var(--text-muted); font-size: 12px; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+  transition: color 150ms ease;
+}
+.mkt-vermais:hover { color: var(--text-primary); }
 
 .mkt-carousel-wrap {
-  display: flex; align-items: center; gap: 4px; padding: 12px 8px;
+  display: flex; align-items: center; gap: 6px;
   position: relative;
 }
 .mkt-carousel {
@@ -1286,8 +1337,23 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   scroll-behavior: smooth; scroll-snap-type: x mandatory;
 }
 .mkt-carousel .mkt-card {
-  width: 220px; flex-shrink: 0; scroll-snap-align: start;
+  width: 186px; flex-shrink: 0; scroll-snap-align: start;
 }
+/* Faixa em paisagem: artes 16:9 (capa de YouTube). Card mais largo e baixo, senão
+   a arte deitada apareceria cortada nas laterais dentro do card retrato. */
+.mkt-prateleira.paisagem .mkt-thumb { aspect-ratio: 16 / 9; }
+.mkt-prateleira.paisagem .mkt-carousel .mkt-card { width: 300px; }
+.mkt-prateleira.paisagem.expandida .mkt-carousel {
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+/* "Ver mais": a linha vira grade com tudo à vista; as setas perdem a função. */
+.mkt-prateleira.expandida .mkt-carousel {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(186px, 1fr));
+  overflow-x: visible; scroll-snap-type: none;
+}
+.mkt-prateleira.expandida .mkt-carousel .mkt-card { width: auto; }
+.mkt-prateleira.expandida .mkt-nav-btn { display: none; }
 .mkt-nav-btn {
   flex-shrink: 0; width: 30px; height: 30px; padding: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1313,29 +1379,16 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   transition: transform 150ms ease, border-color 150ms ease;
 }
 .mkt-card:hover { transform: translateY(-2px); border-color: rgba(0,82,204,0.4); }
+.mkt-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .mkt-thumb {
   aspect-ratio: 1080 / 1440;
   background: #001f3f;
   overflow: hidden;
 }
 .mkt-thumb svg { width: 100%; height: 100%; display: block; }
-.mkt-info {
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 12px 14px 8px;
-}
-.mkt-nome { font-size: 14px; font-weight: 700; color: var(--text-primary); }
-.mkt-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
-.mkt-btn {
-  margin: 0 14px 14px;
-  padding: 8px 0;
-  background: var(--blue);
-  color: #fff;
-  border: none; border-radius: var(--radius-btn);
-  font-size: 13px; font-weight: 600;
-  cursor: pointer;
-  transition: opacity 150ms ease;
-}
-.mkt-btn:hover { opacity: 0.85; }
+/* O card é só a capa: sem botão e sem legenda embaixo. A descrição continua
+   existindo no `title` (tooltip ao parar o mouse) e no `alt` da imagem, então
+   não se perdeu informação nem acessibilidade — saiu só o peso visual. */
 
 /* ── Footer ─────────────────────────────────────────────────────── */
 .footer {

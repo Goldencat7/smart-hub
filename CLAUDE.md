@@ -85,6 +85,19 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
   - **Tela 01 — Dashboard** (2026-07-16, **só no staging**): o sub-app **Painel** virou o Dashboard da spec — saudação por hora + data, 4 cards (Imóveis/Negócios Ativos/Pendências/Entregues), ações rápidas (Novo Imóvel·Enviar Ficha abre o modal, Carteira, Negócios), **"O que precisa da sua atenção"** (negócios abertos ordenados por dias parado; Gerenciar abre o 04B direto via `negAbrirDireto`), **últimas atividades** (timelines de negócios+imóveis fundidas) e **resumo da operação** por status. Broker vê geral; corretor só o dele (function `dashboardDados`, 1 chamada). Blocos herdados no rodapé: alertas da Locação + financeiro do gestor (`locDashboard`) — nada se perdeu.
   - **Telas 04A/04B — Negócios** (2026-07-16, **só no staging**): sub-app **Negócios** na aba Locação. 04A = indicadores + pesquisa + filtros + tabela (próxima ação, barra de progresso, Gerenciar); SEM "Novo Negócio" (nasce na Tela 03). 04B = resumo, **checklist operacional** (cada etapa grava feitoPor/feitoEm; 1º ✓ move pra Em Andamento automático; `proximaAcao` recalculada), painel lateral (status manual do broker, progresso, **Drive = campo de link** — integração real fica pra fase da service account), abas **Comentários** (exclusivos broker + corretor responsável — o servidor nem devolve pros demais) e **Histórico**. Ações do broker: **Entregar p/ Gestão** e **Concluir** exigem TODAS as obrigatórias; **Cancelar** devolve o imóvel pra Disponível e o interessado pra Aprovado. Encerrado (concluído/cancelado) = só leitura. Functions: `negocioObter`, `negocioAtualizar` (acao: checklist|comentario|drive|status|entregar|concluir|cancelar). Testado ponta a ponta no staging. ⚠️ O SW do PWA segura o casco velho — depois de deploy no staging, forçar atualização (unregister + reload) pra ver tela nova.
 - **Marketing** (dinâmico, editável no painel): sanfonas + templates em Firestore `marketing_config/layout` (semente `MARKETING_SEED` + versão/merge); ⚙ Gerenciar (permissão `marketing_gerenciar`) edita/reordena/faz upload de HTML e capa pro Storage. Templates abrem em janela dedicada (`abrir-template` no `main.js`).
+  - **Layout de "prateleiras"** (2026-07-21, pedido do chefe, referência REMARKT; **só no staging**):
+    a sanfona `<details>` virou faixa sempre visível — título à esquerda + contador + **"Ver mais"**
+    (vira grade; só aparece com >4 templates) e os cards numa linha que rola. O card é **só a capa**
+    (sem botão e sem legenda: a descrição vive no `title`/`alt`), 186px, e o **cabeçalho inteiro**
+    recolhe a faixa — ⚠️ não voltar a escutar só a setinha, alvo de 22px passa impressão de botão
+    quebrado. O campo `aberta` da config (checkbox do ⚙ Gerenciar) voltou a valer como estado
+    INICIAL; sem o campo, abre. **Pesquisa** (`mktBusca`) filtra em memória por descrição ou título
+    da categoria, sem acento/caixa; durante a busca ninguém fica recolhido.
+  - **`formato: 'paisagem'`** na sanfona = artes 16:9 (capa de YouTube): card 300px e thumb 16/9.
+    Sem o campo, retrato 1080×1440 (a maioria). O passo das setas ‹ › **mede** o card — não cravar
+    largura de novo, quebra no outro formato.
+  - ⚠️ O espaçamento entre faixas vive em `.mkt-prateleira + .mkt-prateleira`, **não** num `gap` do
+    `.mkt-wrap`: as prateleiras são irmãs dentro do `#mktContainer`, que é filho único do wrap.
 - **Cadastro / Fichas** (web, Firebase Hosting): locador, PF, PJ, locação c/ fiador, vendedor, proposta, fiança (`public/ficha-*.html`). Cliente preenche por link (`geraLink`); upload de documentos com **download token próprio** (ver `project-fichas-documentos`). Todas as fichas (locação e venda) vivem no Cadastro.
   - **A ficha vem SEMPRE do Hosting, inclusive dentro do .exe** (v1.0.100). Antes o `abrir-ficha-local`
     do `main.js` carregava do disco (`public/` empacotado no instalador) — a ficha virava uma **cópia
@@ -313,6 +326,13 @@ O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável
     quase nada vale: abrir o PWA no PC dá o Hub de 3 colunas de sempre.
   - **`pwa/manifest.webmanifest` + `pwa/sw.js` + `pwa/icons/`** — instalável e rápido no 4G. O SW
     cacheia **só o casco** (HTML/CSS/JS/ícones); Firestore/Functions/Auth passam **sempre** pela rede.
+  - ⚠️ **Depois de cada deploy o SW avisa as abas e a página se recarrega uma vez** (2026-07-21).
+    Sem isso a 1ª carga pós-deploy era um **Frankenstein**: o HTML vem da rede (novo) e o CSS/JS do
+    cache (velhos, por causa do *stale-while-revalidate*) — tela desalinhada até a pessoa apertar F5,
+    e isso atingia **todo corretor**, não só quem testa. O `sw.js` faz `postMessage` no `activate`
+    e o `platform-web.js` recarrega, com duas travas: só se a página tem **menos de 15s** de aberta
+    (senão puxaria o tapete de quem está digitando) e **um reload por build** (`sessionStorage`).
+    Não vale pro `.exe`, que lê do disco e não tem service worker.
 - **⚠ AUTOLOGIN NÃO EXISTE NO PWA — de propósito.** O contrato é a flag `hubApi.autologin`
   (`true` no `preload.js`, `false` no `platform-web.js`). Com ela `false`, o `abrirApp()` do
   `hub-app.js` **nunca** chama o `getCredentials` → **nenhuma senha de sistema trafega pro celular**.
