@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('hubApi', {
   abrirAdmin: () => ipcRenderer.send('abrir-admin'),
   voltarParaHub: () => ipcRenderer.send('voltar-para-hub'),
 
+  // "Meus Negócios" (visão nova do Broker) abre em JANELA PRÓPRIA no desktop —
+  // como abrir um app. No PWA/web isso não existe (é overlay dentro do Hub).
+  abrirMeusNegocios: () => ipcRenderer.send('abrir-meus-negocios'),
+  // Fecha a janela atual (usado pelo "Voltar ao Hub" da janela do Broker).
+  fecharJanela: () => ipcRenderer.send('fechar-janela'),
+
   // Conectar Google Agenda: abre o navegador e devolve o código de autorização
   conectarGoogle: () => ipcRenderer.invoke('conectar-google'),
 

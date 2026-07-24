@@ -44,6 +44,8 @@
       "*.html",
       "*.js",
       "styles.css",
+      "broker.css",
+      "vendor/**",
       "logo.png",
       "app-icons/**",
       "marketing/**",

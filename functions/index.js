@@ -780,6 +780,36 @@ exports.locListarImoveis = onCall(async (req) => {
   return { imoveis, veTudo, role };
 });
 
+// Lista a coleção `pessoas` (locadores/locatários com PII, populada pelos gatilhos
+// de ficha) pra alimentar a aba "Pessoas" da visão nova do Broker. Mesma regra de
+// ouro das outras: gestor/administrativo vê tudo; corretor só as suas
+// (corretorUid). Devolve só o necessário pro CRM — sem RG/cônjuge/nascimento.
+exports.pessoasListar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  let q = db.collection('pessoas');
+  if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
+  const snap = await q.get();
+  const pessoas = snap.docs.slice(0, 800).map(d => {
+    const p = d.data();
+    return {
+      id: d.id,
+      papel: p.papel || 'locador',
+      nome: p.nome || '',
+      cpf: p.cpf || '',
+      email: p.email || '',
+      whatsapp: p.whatsapp || '',
+      fixo: p.fixo || '',
+      endereco: p.endereco || null,
+      corretorUid: p.corretorUid || '',
+      imovelId: p.imovelId || '',
+      fichaId: p.fichaId || '',
+      atualizadoEm: p.atualizadoEm?.toDate?.()?.toISOString() || null,
+    };
+  });
+  return { pessoas, veTudo };
+});
+
 exports.locListarFichasImovel = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const { imovelId } = req.data || {};

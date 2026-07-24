@@ -250,6 +250,41 @@ ipcMain.on('voltar-para-hub', () => {
   if (janelaPrincipal) janelaPrincipal.loadFile('index.html');
 });
 
+// ─── "Meus Negócios" (visão nova do Broker) em janela própria ────────────────
+// Como abrir um app: janela dedicada carregando broker.html. Singleton — se já
+// estiver aberta, só foca (não abre várias). A sessão Firebase é a mesma do Hub
+// (janelas file:// dividem o IndexedDB), então o Broker já entra logado.
+let janelaMeusNegocios = null;
+ipcMain.on('abrir-meus-negocios', () => {
+  if (janelaMeusNegocios && !janelaMeusNegocios.isDestroyed()) {
+    if (janelaMeusNegocios.isMinimized()) janelaMeusNegocios.restore();
+    janelaMeusNegocios.focus();
+    return;
+  }
+  const w = new BrowserWindow({
+    width: 1280, height: 860,
+    show: false,
+    autoHideMenuBar: true,
+    title: 'Meus Negócios — REMAX Smart',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: DEVTOOLS_HABILITADO
+    }
+  });
+  janelaMeusNegocios = w;
+  w.once('ready-to-show', () => { w.maximize(); w.show(); });
+  w.on('closed', () => { janelaMeusNegocios = null; });
+  w.loadFile('broker.html');
+});
+
+// Fecha a janela que enviou (usado pelo "Voltar ao Hub" do Broker). Nunca fecha a principal.
+ipcMain.on('fechar-janela', (e) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (w && w !== janelaPrincipal && !w.isDestroyed()) w.close();
+});
+
 // ─── Abrir link no navegador padrão do Windows ───────────────────────────────
 // Saída de emergência do aviso de status: quando a janela nativa de um app não
 // está confiável (hoje o CheckVisto), o aviso oferece abrir o site no navegador.

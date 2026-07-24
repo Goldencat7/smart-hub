@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>REMAX Smart Hub</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="broker.css">
   </head>
   <body class="hub-body">
     <header class="topbar">
@@ -444,6 +445,12 @@
       </form>
     </dialog>
 
+    <!-- Broker (visão nova da Gestão de Locações) — overlay tela cheia, montado
+         pelo hub-app.js quando o gestor abre a aba Locação. Ver broker-app.js. -->
+    <div id="bkRoot" hidden></div>
+
     <script type="module" src="hub-app.js"></script>
+    <script src="vendor/lucide.min.js"></script>
+    <script type="module" src="broker-app.js"></script>
   </body>
 </html>

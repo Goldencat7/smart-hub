@@ -292,7 +292,7 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  { id: 'locacoes',    nome: 'Locação',   icone: ICN.locacao, locacoes: true, soLocGestao: true },
+  { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true, soLocGestao: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -591,12 +591,51 @@ function renderCentro() {
     return;
   }
 
-  // Aba Locação (Gestão de Locações) — Painel/Imóveis/Financeiro como sub-apps
+  // Aba "Meus Negócios" (Gestão de Locações) — visão NOVA do Broker (broker-app.js).
+  // DESKTOP (.exe): abre em JANELA PRÓPRIA (como um app) via IPC. WEB/PWA: monta
+  // o Broker em overlay tela cheia sobre o Hub. As telas antigas (renderCarteira,
+  // carregarPainel, renderTela03/04A/04B/05) ficam intactas como fallback caso o
+  // módulo do Broker não carregue.
   if (cat.locacoes) {
     estadoVazio.hidden = true;
     secaoDocs.hidden = true;
+    appsGrid.hidden = true;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
+
+    // Desktop: janela separada. Depois volta o Hub pra uma categoria normal
+    // (a janela nova cuida do Broker; o Hub não pode ficar numa tela vazia).
+    const ehDesktop = !!(window.hubApi && window.hubApi.autologin === true && typeof window.hubApi.abrirMeusNegocios === 'function');
+    if (ehDesktop) {
+      window.hubApi.abrirMeusNegocios();
+      const alt = CATEGORIAS.find(c =>
+        c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
+        !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
+      if (alt) categoriaAtiva = alt.id;
+      locSub = null;
+      renderSidebar();
+      renderCentro();
+      return;
+    }
+
+    if (window.Broker && typeof window.Broker.mount === 'function') {
+      const nome = (formatarNome(auth.currentUser?.displayName) || auth.currentUser?.email || 'Broker');
+      window.Broker.mount({
+        nome,
+        onExit: () => {
+          // Sai do Broker: volta o Hub pra uma categoria não-locação (senão o
+          // renderCentro re-monta o Broker no mesmo instante).
+          const alt = CATEGORIAS.find(c =>
+            c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
+            !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
+          if (alt) categoriaAtiva = alt.id;
+          locSub = null;
+          renderSidebar();
+          renderCentro();
+        }
+      });
+      return;
+    }
 
     if (!locSub) {
       // Grade inicial: cards dos sub-apps (Painel e Imóveis). A aba Locação
@@ -619,7 +658,7 @@ function renderCentro() {
     if (!podeGestaoLoc) { locSub = null; renderCentro(); return; }
     appsGrid.hidden = true;
     const sub = LOC_APPS.find(a => a.id === locSub);
-    tituloCategoria.innerHTML = `<button class="loc-voltar" id="locVoltar">← Locação</button> <span>${sub ? sub.titulo : ''}</span>`;
+    tituloCategoria.innerHTML = `<button class="loc-voltar" id="locVoltar">← Meus Negócios</button> <span>${sub ? sub.titulo : ''}</span>`;
     document.getElementById('locVoltar').addEventListener('click', () => { locSub = null; renderCentro(); });
 
     if (locSub === 'painel')  { secaoPainel.hidden = false;  carregarPainel(); }

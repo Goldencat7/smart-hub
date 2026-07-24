@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <title>Meus Negócios — REMAX Smart</title>
+    <!-- Página DEDICADA da visão nova do Broker, aberta em JANELA PRÓPRIA no
+         Electron (.exe) — "como abrir um app" (pedido do Nathan). No PWA/web o
+         Broker é um overlay dentro do Hub; aqui ele é a janela inteira.
+         A sessão Firebase é a MESMA do Hub: janelas file:// do Electron dividem
+         o IndexedDB (mesma partição), então onAuthStateChanged devolve o usuário
+         já logado no Hub. Ver main.js (ipc 'abrir-meus-negocios') e broker-app.js. -->
+    <link rel="stylesheet" href="broker.css">
+    <style>html,body{margin:0;height:100%;background:#0F1117}</style>
+  </head>
+  <body>
+    <div id="bkRoot"></div>
+
+    <script src="vendor/lucide.min.js"></script>
+    <script type="module" src="broker-app.js"></script>
+    <script type="module">
+      import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+      import { getApp, getApps, initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+      import { firebaseConfig } from "./firebase-env.js";
+
+      const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+
+      const esperarBroker = () => new Promise(res => {
+        (function chk(){ if (window.Broker && window.Broker.mount) return res(); setTimeout(chk, 30); })();
+      });
+
+      onAuthStateChanged(auth, async (user) => {
+        await esperarBroker();
+        const root = document.getElementById('bkRoot');
+        if (!user) {
+          root.hidden = false;
+          root.innerHTML = '<div style="color:#E5E9F2;font-family:system-ui;padding:48px;text-align:center;font-size:15px">Faça login no Hub primeiro e reabra <b>Meus Negócios</b>.</div>';
+          return;
+        }
+        const nome = user.displayName || user.email || 'Broker';
+        window.Broker.mount({
+          nome,
+          // "Voltar ao Hub" fecha esta janela (é um app à parte). Fallback: window.close().
+          onExit: () => { if (window.hubApi && window.hubApi.fecharJanela) window.hubApi.fecharJanela(); else window.close(); }
+        });
+      });
+    </script>
+  </body>
+</html>

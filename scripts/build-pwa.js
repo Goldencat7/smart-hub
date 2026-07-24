@@ -34,6 +34,8 @@ const COMPARTILHADOS = [
   'admin-app.js',
   'firebase-env.js',   // seletor prod/staging/emulador (hub/auth/admin importam dele)
   'styles.css',
+  'broker.css',        // visão nova da Locação (escopada em #bkRoot)
+  'broker-app.js',     // módulo do Broker (montado pelo hub-app.js na aba Locação)
   'logo.png'
 ];
 
@@ -111,6 +113,9 @@ console.log(`  ✓ ${TELAS.length} telas (com o <head> do PWA injetado)`);
 for (const arq of SO_WEB) {
   fs.copyFileSync(path.join(RAIZ, 'pwa', arq), path.join(SAIDA, arq));
 }
+
+// vendor/ (lucide para os ícones do Broker) — copiado como está.
+copiarPasta(path.join(RAIZ, 'vendor'), path.join(SAIDA, 'vendor'));
 
 // Service worker: o nome do cache carrega versão + carimbo do build. O carimbo é o
 // que garante que um deploy de correção (mesma versão do package.json) chegue no
