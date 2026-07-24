@@ -115,9 +115,31 @@
     // ─── Templates de marketing ─────────────────────────────────────────────
     // Podem ser um HTML enviado pro Storage (URL absoluta) ou um dos templates
     // que vêm junto com o app (copiados pra /app/marketing/ no build).
-    abrirTemplate: (arquivo) => {
+    abrirTemplate: (arquivo, prefill) => {
       const raw = String(arquivo || '');
-      abrirAba(/^https?:\/\//i.test(raw) ? raw : 'marketing/' + encodeURIComponent(raw));
+      const ehUrl = /^https?:\/\//i.test(raw);
+      // Storage = URL absoluta; os que vêm com o app = nome local em /app/marketing/.
+      const alvo = ehUrl ? raw : 'marketing/' + encodeURIComponent(raw);
+      // Pré-preenchimento dos templates "vendido" com o perfil do corretor.
+      // O editor do template lê o estado salvo em localStorage['vendido_editor_v6']
+      // e ele VENCE o corretor de demonstração embutido no bundle. Como a aba abre na
+      // MESMA origem (marketing/…), basta semear o localStorage antes de abrir — sem
+      // injeção, sem fetch, sem CORS. (Só funciona nos templates locais; os hospedados
+      // no Storage abrem em outra origem e não enxergam este localStorage.)
+      // Mesclamos pra preservar o que o corretor já ajustou (cargo, CRECI, cidade).
+      // No desktop este caminho nem roda — lá o preload/main trata o abrir-template.
+      if (prefill && !ehUrl && /vendido/i.test(raw) && (prefill.nome || prefill.phone || prefill.agent)) {
+        try {
+          const KEY = 'vendido_editor_v6';
+          let atual = {};
+          try { atual = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) {}
+          if (prefill.nome) atual.nome = prefill.nome;
+          if (prefill.phone) atual.phone = prefill.phone;   // contato na arte
+          if (prefill.agent) atual.agent = prefill.agent;   // foto do corretor
+          localStorage.setItem(KEY, JSON.stringify(atual));
+        } catch (_) { /* localStorage bloqueado: abre sem pré-preencher */ }
+      }
+      abrirAba(alvo);
     },
 
     // ─── Google Agenda ──────────────────────────────────────────────────────

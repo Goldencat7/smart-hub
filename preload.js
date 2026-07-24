@@ -29,8 +29,9 @@ contextBridge.exposeInMainWorld('hubApi', {
   getIniciarWindows: () => ipcRenderer.invoke('get-iniciar-windows'),
   setIniciarWindows: (ligar) => ipcRenderer.invoke('set-iniciar-windows', ligar),
 
-  // Abrir template de marketing numa janela dedicada
-  abrirTemplate: (fileName) => ipcRenderer.send('abrir-template', fileName),
+  // Abrir template de marketing numa janela dedicada. O 2º arg (perfil do corretor)
+  // semeia o editor do template com nome/telefone/foto (ver preload-template.js).
+  abrirTemplate: (fileName, prefill) => ipcRenderer.send('abrir-template', { fileName, prefill }),
 
   // Abrir ficha (visualização ou edição) em janela dedicada
   abrirFicha: (url, titulo) => ipcRenderer.send('abrir-ficha', { url, titulo }),

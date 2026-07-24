@@ -2843,19 +2843,25 @@ exports.getMeuPerfil = onCall(async (req) => {
   return {
     email: (userRec && userRec.email) || (auth.token && auth.token.email) || '',
     displayName: (userRec && userRec.displayName) || '',
-    photo: p.photo || ''
+    photo: p.photo || '',
+    telefone: p.telefone || ''
   };
 });
 
 exports.salvarMeuPerfil = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  const { displayName, photo } = req.data || {};
+  const { displayName, photo, telefone } = req.data || {};
   const upd = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
 
   if (typeof displayName === 'string' && displayName.trim()) {
     const nome = displayName.trim().slice(0, 80);
     await admin.auth().updateUser(auth.uid, { displayName: nome });
     upd.displayName = nome;
+  }
+  // Telefone/WhatsApp: string simples (aparece nos templates de marketing). String
+  // vazia é válida — é como o corretor limpa o campo.
+  if (typeof telefone === 'string') {
+    upd.telefone = telefone.trim().slice(0, 30);
   }
   if (typeof photo === 'string') {
     // foto = data URL (base64) pequena. Limite de segurança ~300KB.
@@ -2866,7 +2872,7 @@ exports.salvarMeuPerfil = onCall(async (req) => {
   }
   await db.collection('user_profiles').doc(auth.uid).set(upd, { merge: true });
   await registrarAudit(auth, 'editou_perfil', { tipo: 'usuario', id: auth.uid },
-    { alterouNome: 'displayName' in upd, alterouFoto: 'photo' in upd });
+    { alterouNome: 'displayName' in upd, alterouFoto: 'photo' in upd, alterouTelefone: 'telefone' in upd });
   return { ok: true };
 });
 

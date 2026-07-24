@@ -98,6 +98,29 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
     largura de novo, quebra no outro formato.
   - ⚠️ O espaçamento entre faixas vive em `.mkt-prateleira + .mkt-prateleira`, **não** num `gap` do
     `.mkt-wrap`: as prateleiras são irmãs dentro do `#mktContainer`, que é filho único do wrap.
+  - **Pré-preenchimento do corretor nos templates "vendido"** (2026-07-24, **staging + `.exe` de dev**;
+    functions do perfil já em produção, o resto só chega aos corretores quando a att grande sair):
+    ao abrir um template Vendido (v1–v5), **nome + telefone + foto** do corretor já vêm preenchidos,
+    puxados do perfil (`getMeuPerfil`). CRECI/cargo/cidade **não** entram — a pessoa edita na hora.
+    - **Como**: os bundles vendido são editores React que leem o estado salvo em
+      **`localStorage['vendido_editor_v6']`**, e esse estado **vence** o corretor de demonstração
+      embutido (o `vendido-data.js` do bundle reescreve `window.VENDIDO_DEFAULTS` **depois** de qualquer
+      injeção, então injetar o global não adianta — tem que ser o localStorage). Campo: `nome` (nome
+      completo), `phone`, `agent` (foto = data URL). `formatarTelefone` (hub-app) põe `(XX) XXXXX-XXXX`.
+    - ⚠️ **A chave `vendido_editor_v6` precisa BATER com o `STORAGE_KEY` do bundle deployado.** O fonte
+      em `marketing/template/editor.jsx` diz `v5`, mas o bundle no ar é `v6` — o deployado é mais novo
+      que o fonte. Se um dia rebuildar os templates e o key virar `v7`, o seed **para em silêncio**
+      (falha segura: abre com o demo). Conferir a chave real no bundle antes de mexer.
+    - **Web** (`platform-web.js` `abrirTemplate`): grava o localStorage **antes** de abrir a aba —
+      same-origin, sem fetch/CORS/injeção. Só pega os templates **locais** (`/app/marketing/…`); os
+      hospedados no Storage abrem em outra origem e ficam de fora.
+    - **Desktop** (`preload-template.js` + `main.js`): a janela do template ganhou um preload que semeia
+      o mesmo localStorage **antes** do editor rodar. O perfil vem do `main` por **IPC síncrono**
+      (`template-prefill-get`), NÃO por `additionalArguments` — a foto (base64) estouraria o limite de
+      argv. ⚠️ No `'closed'` o `webContents` já morreu: guardar `w.webContents.id` numa variável antes
+      (ler lá dentro dá `Object has been destroyed`). No desktop pega até os vendido do Storage.
+    - **Foto**: só entra se o corretor tiver foto no perfil; sem foto, fica a ilustração demo do bundle
+      (a foto do perfil é avatar quadrado, a arte espera recorte — manter a demo costuma ficar melhor).
 - **Cadastro / Fichas** (web, Firebase Hosting): locador, PF, PJ, locação c/ fiador, vendedor, proposta, fiança (`public/ficha-*.html`). Cliente preenche por link (`geraLink`); upload de documentos com **download token próprio** (ver `project-fichas-documentos`). Todas as fichas (locação e venda) vivem no Cadastro.
   - **A ficha vem SEMPRE do Hosting, inclusive dentro do .exe** (v1.0.100). Antes o `abrir-ficha-local`
     do `main.js` carregava do disco (`public/` empacotado no instalador) — a ficha virava uma **cópia
@@ -144,7 +167,7 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - **Calculadoras** (`public/calculadoras.html`): aluguel proporcional + multa rescisória (conferidas com o Excel do financeiro).
 - **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.
 - **Documentos (Google Drive)**: embed da pasta do Drive — **desabilitado temporariamente** no `index.html` (limitação de service account/tamanho).
-- **Configurações**: perfil (nome + foto, `user_profiles`, base64). Functions: `getMeuPerfil`, `salvarMeuPerfil`.
+- **Configurações**: perfil (nome + foto + **telefone**, `user_profiles`, foto em base64). Functions: `getMeuPerfil`, `salvarMeuPerfil` (as duas já retornam/aceitam `telefone` **em produção** — deploy aditivo de 2026-07-24). O telefone reaproveita o campo `cfgWhatsapp` (era placeholder desabilitado) e alimenta o pré-preenchimento dos templates de Marketing (ver Marketing).
 - **Admin**: credenciais dos sistemas (cripto KMS), códigos de convite, usuários (admin/excluir/**permissões granulares**), banners (reordenáveis), "último app acessado". O **painel de Lançamento** ("Publicar para todos") e o checkbox "Acesso de teste" ainda aparecem na tela mas **não fazem nada** — ver "Dívida técnica intencional".
 
 ## Como PUBLICAR uma nova versão (os 4 passos)

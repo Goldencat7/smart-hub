@@ -315,7 +315,17 @@ ipcMain.handle('verificar-atualizacao', async () => {
 });
 
 // ─── Templates de Marketing ──────────────────────────────────────────────────
-ipcMain.on('abrir-template', async (_e, fileName) => {
+// Perfil do corretor por janela de template (webContents.id → prefill), servido ao
+// preload-template.js por IPC síncrono. Não vai por argv (a foto estouraria o limite).
+const _templatePrefill = new Map();
+ipcMain.on('template-prefill-get', (e) => {
+  e.returnValue = _templatePrefill.get(e.sender.id) || null;
+});
+
+ipcMain.on('abrir-template', async (_e, payload) => {
+  // Compat: aceita string (formato antigo) ou { fileName, prefill } (com perfil do corretor).
+  const fileName = typeof payload === 'string' ? payload : (payload && payload.fileName) || '';
+  const prefill  = (payload && typeof payload === 'object') ? payload.prefill : null;
   const raw = String(fileName || '');
   // URL absoluta (Firebase Storage etc): só aceita https/http — outros esquemas são rejeitados.
   const ehUrlHttps = /^https:\/\//i.test(raw);
@@ -329,9 +339,21 @@ ipcMain.on('abrir-template', async (_e, fileName) => {
     webPreferences: {
       devTools: DEVTOOLS_HABILITADO,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // Semeia o editor com o perfil do corretor (ver preload-template.js). Inócuo
+      // pros templates que não leem esse estado.
+      preload: path.join(__dirname, 'preload-template.js')
     }
   });
+  // Só os "vendido" leem o estado do editor, e só semeamos se há perfil. O preload
+  // pega isto por IPC síncrono; limpa ao fechar pra não vazar entre janelas.
+  // Guardamos o id numa variável: no 'closed' o webContents já foi destruído e
+  // ler w.webContents.id lá estoura "Object has been destroyed".
+  const wcId = w.webContents.id;
+  if (/vendido/i.test(raw) && prefill && (prefill.nome || prefill.phone || prefill.agent)) {
+    _templatePrefill.set(wcId, prefill);
+    w.on('closed', () => _templatePrefill.delete(wcId));
+  }
   try {
     if (ehUrlHttps || ehUrlHttp) {
       // Só permite hostnames do Firebase Storage (defesa contra abrir qualquer site)

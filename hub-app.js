@@ -365,6 +365,7 @@ const cfgRemoverFoto = document.getElementById('cfgRemoverFoto');
 const cfgFileInput   = document.getElementById('cfgFileInput');
 const cfgNome        = document.getElementById('cfgNome');
 const cfgEmail       = document.getElementById('cfgEmail');
+const cfgWhatsapp    = document.getElementById('cfgWhatsapp');
 const cfgSalvar      = document.getElementById('cfgSalvar');
 const cfgMsg         = document.getElementById('cfgMsg');
 const cfgAlterarSenha    = document.getElementById('cfgAlterarSenha');
@@ -891,12 +892,14 @@ async function carregarPerfil() {
   fotoPendente = null;
   cfgNome.value = '';
   cfgEmail.value = '';
+  cfgWhatsapp.value = '';
   setFoto('');
   carregarIniciarWindows();
   try {
     const r = await getMeuPerfil();
     cfgEmail.value = r.data.email || '';
     cfgNome.value = r.data.displayName || '';
+    cfgWhatsapp.value = r.data.telefone || '';
     setFoto(r.data.photo || '');
   } catch (e) {
     console.warn('Perfil:', e);
@@ -938,7 +941,7 @@ cfgFileInput.addEventListener('change', () => {
 
 cfgSalvar.addEventListener('click', async () => {
   cfgSalvar.disabled = true;
-  const payload = { displayName: cfgNome.value };
+  const payload = { displayName: cfgNome.value, telefone: cfgWhatsapp.value };
   if (fotoPendente !== null) payload.photo = fotoPendente;
   try {
     await salvarMeuPerfil(payload);
@@ -2004,7 +2007,7 @@ document.getElementById('secaoMarketing').addEventListener('click', (e) => {
   }
   const card = e.target.closest('.mkt-card');
   if (!card) return;
-  window.hubApi.abrirTemplate(card.dataset.template);
+  window.hubApi.abrirTemplate(card.dataset.template, mktPrefill);
 });
 
 // Pesquisa de templates: filtra em memória a cada tecla (os dados já estão
@@ -2021,13 +2024,39 @@ document.getElementById('secaoMarketing').addEventListener('keydown', (e) => {
   const card = e.target.closest('.mkt-card');
   if (!card) return;
   e.preventDefault();
-  window.hubApi.abrirTemplate(card.dataset.template);
+  window.hubApi.abrirTemplate(card.dataset.template, mktPrefill);
 });
 
 // ─── Marketing dinâmico + gerenciamento ─────────────────────────────────────
 const listarMarketingConfig = httpsCallable(fns, 'listarMarketingConfig');
 const salvarMarketingConfig = httpsCallable(fns, 'salvarMarketingConfig');
 let mktConfig = { sanfonas: [] };
+
+// Perfil do corretor pré-carregado pra semear os templates de marketing (nome + foto).
+// Usado só na WEB: o platform-web grava em localStorage['vendido_editor_v6'] antes de
+// abrir a aba, e o editor do template lê de lá (vence o corretor de demonstração).
+// No desktop o abrirTemplate ignora o 2º argumento (o preload manda só o nome do arquivo).
+let mktPrefill = null;
+// (XX) XXXXX-XXXX pra celular (11 díg.) ou (XX) XXXX-XXXX pra fixo (10). Tira tudo que
+// não é dígito antes, então funciona com o número cru ou já com máscara. Formato
+// inesperado (menos/mais dígitos) volta como veio, sem mexer.
+function formatarTelefone(bruto) {
+  const d = String(bruto || '').replace(/\D/g, '');
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return String(bruto || '').trim();
+}
+async function carregarPrefillMkt() {
+  if (mktPrefill) return;
+  try {
+    const r = await getMeuPerfil();
+    mktPrefill = {
+      nome: (r.data.displayName || '').trim(),
+      phone: formatarTelefone(r.data.telefone),   // telefone formatado → contato na arte
+      agent: r.data.photo || ''                    // foto do corretor (data URL) → foto na arte
+    };
+  } catch (_) { /* sem perfil: os templates abrem com o padrão de sempre */ }
+}
 let mktModoGerenciar = false;
 let temPermMarketing = false; // vem do getMinhasPermissoes
 let mktBusca = ''; // termo da pesquisa (só filtra o modo visualizar)
@@ -2041,6 +2070,7 @@ function mktNorm(s) {
 const MKT_EMOJIS = ['🏆','🏠','🏡','🏘️','🏢','🔑','💰','💎','📣','📢','⭐','🌟','✨','🔥','🎯','🎉','🎁','🥳','📸','🖼️','🎨','👑','❤️','✅','📌','🚀','💼','🛋️','🌆','🏅','🤝','📈'];
 
 async function carregarMarketing() {
+  carregarPrefillMkt();   // fire-and-forget: perfil pronto antes do 1º clique num card
   const cont = document.getElementById('mktContainer');
   const toolbar = document.getElementById('mktToolbar');
   const info = document.getElementById('mktToolbarInfo');
