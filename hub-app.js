@@ -108,6 +108,20 @@ const carteiraArquivar     = httpsCallable(fns, 'carteiraArquivar');
 const carteiraSituacaoFn   = httpsCallable(fns, 'carteiraSituacao');
 const carteiraInteressado  = httpsCallable(fns, 'carteiraInteressado');
 const negocioGerarFn       = httpsCallable(fns, 'negocioGerar');
+const gerarContratoVendaFn = httpsCallable(fns, 'gerarContratoVenda');
+
+// Baixa um PDF a partir de base64 (o backend devolve o contrato assim). Funciona
+// tanto no .exe (Electron) quanto no navegador/PWA — só um <a download> com blob.
+function baixarBase64Pdf(b64, filename) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || 'contrato.pdf';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+}
 const negocioListarFn      = httpsCallable(fns, 'negocioListar');
 const negocioObterFn       = httpsCallable(fns, 'negocioObter');
 const negocioAtualizarFn   = httpsCallable(fns, 'negocioAtualizar');
@@ -366,6 +380,8 @@ const cfgFileInput   = document.getElementById('cfgFileInput');
 const cfgNome        = document.getElementById('cfgNome');
 const cfgEmail       = document.getElementById('cfgEmail');
 const cfgWhatsapp    = document.getElementById('cfgWhatsapp');
+const cfgCreci       = document.getElementById('cfgCreci');
+const cfgCpf         = document.getElementById('cfgCpf');
 const cfgSalvar      = document.getElementById('cfgSalvar');
 const cfgMsg         = document.getElementById('cfgMsg');
 const cfgAlterarSenha    = document.getElementById('cfgAlterarSenha');
@@ -893,6 +909,8 @@ async function carregarPerfil() {
   cfgNome.value = '';
   cfgEmail.value = '';
   cfgWhatsapp.value = '';
+  if (cfgCreci) cfgCreci.value = '';
+  if (cfgCpf) cfgCpf.value = '';
   setFoto('');
   carregarIniciarWindows();
   try {
@@ -900,6 +918,8 @@ async function carregarPerfil() {
     cfgEmail.value = r.data.email || '';
     cfgNome.value = r.data.displayName || '';
     cfgWhatsapp.value = r.data.telefone || '';
+    if (cfgCreci) cfgCreci.value = r.data.creci || '';
+    if (cfgCpf) cfgCpf.value = r.data.cpf || '';
     setFoto(r.data.photo || '');
   } catch (e) {
     console.warn('Perfil:', e);
@@ -942,6 +962,8 @@ cfgFileInput.addEventListener('change', () => {
 cfgSalvar.addEventListener('click', async () => {
   cfgSalvar.disabled = true;
   const payload = { displayName: cfgNome.value, telefone: cfgWhatsapp.value };
+  if (cfgCreci) payload.creci = cfgCreci.value;
+  if (cfgCpf) payload.cpf = cfgCpf.value;
   if (fotoPendente !== null) payload.photo = fotoPendente;
   try {
     await salvarMeuPerfil(payload);
@@ -3878,6 +3900,7 @@ function renderTela03(d) {
       <span style="font-size:12px;font-weight:700;color:var(--text-muted);background:var(--hover);border:1px solid var(--border);padding:3px 10px;border-radius:6px">${fmtCodigoSH(im)}</span>
       <span style="flex:1"></span>
       <button id="t3Editar" class="topbar-btn" style="font-size:12px;padding:6px 14px">✎ Editar Imóvel</button>
+      ${(im.finalidade === 'venda' || im.finalidade === 'venda_locacao') ? '<button id="t3Contrato" class="topbar-btn" style="font-size:12px;padding:6px 14px">📄 Gerar Contrato</button>' : ''}
       ${ehGestorTela ? '<button id="t3GerarNeg" class="topbar-btn" style="font-size:12px;font-weight:700;padding:6px 14px;background:#002749;color:#fff;border-color:#002749">⚡ Gerar Negócio</button>' : ''}
       <button id="t3Arquivar" class="topbar-btn" style="font-size:12px;padding:6px 12px;color:${im.arquivado ? '#16a34a' : '#6b7280'}">${im.arquivado ? '↩ Restaurar' : '🗂 Arquivar'}</button>
     </div>
@@ -3991,6 +4014,28 @@ function wireTela03(d) {
     ev.target.disabled = true;
     try { await locMoverImovelStatus({ imovelId: id, novoStatus: ev.target.value }); cartToast('Esteira atualizada'); abrirTela03(id); }
     catch (e) { alert('Erro ao mover: ' + e.message); abrirTela03(id); }
+  });
+
+  // Gerar Contrato de representação (só imóvel de venda): backend preenche o PDF-modelo
+  // da RE/MAX com vendedores + imóvel + corretor e devolve pronto pra baixar.
+  $('t3Contrato')?.addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    const txt = btn.textContent;
+    btn.disabled = true; btn.textContent = '⏳ Gerando...';
+    try {
+      const r = await gerarContratoVendaFn({ imovelId: id });
+      const d = r.data || {};
+      baixarBase64Pdf(d.pdfBase64, d.filename);
+      let msg = 'Contrato gerado — confira e suba no ClickSign.';
+      if (d.semFicha) msg = 'Contrato gerado, mas este imóvel não tem ficha de vendedor: os dados dos vendedores saíram em branco.';
+      else if (!d.vendedores) msg = 'Contrato gerado, mas nenhum vendedor foi encontrado na ficha.';
+      if (d.semCreci) msg += ' (CRECI/CPF do corretor não está no perfil — Configurações.)';
+      cartToast(msg);
+    } catch (e) {
+      alert('Erro ao gerar contrato: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = txt;
+    }
   });
 
   // Gerar Negócio (cabeçalho): aponta pro interessado aprovado — o botão ⚡ mora na linha dele.

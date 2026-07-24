@@ -2844,13 +2844,15 @@ exports.getMeuPerfil = onCall(async (req) => {
     email: (userRec && userRec.email) || (auth.token && auth.token.email) || '',
     displayName: (userRec && userRec.displayName) || '',
     photo: p.photo || '',
-    telefone: p.telefone || ''
+    telefone: p.telefone || '',
+    creci: p.creci || '',
+    cpf: p.cpf || ''
   };
 });
 
 exports.salvarMeuPerfil = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  const { displayName, photo, telefone } = req.data || {};
+  const { displayName, photo, telefone, creci, cpf } = req.data || {};
   const upd = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
 
   if (typeof displayName === 'string' && displayName.trim()) {
@@ -2863,6 +2865,14 @@ exports.salvarMeuPerfil = onCall(async (req) => {
   if (typeof telefone === 'string') {
     upd.telefone = telefone.trim().slice(0, 30);
   }
+  // CRECI e CPF: preenchem o contrato de representação (venda). String vazia é
+  // válida (limpa o campo). Mesmo padrão aditivo do telefone.
+  if (typeof creci === 'string') {
+    upd.creci = creci.trim().slice(0, 30);
+  }
+  if (typeof cpf === 'string') {
+    upd.cpf = cpf.trim().slice(0, 20);
+  }
   if (typeof photo === 'string') {
     // foto = data URL (base64) pequena. Limite de segurança ~300KB.
     if (photo.length > 400000) {
@@ -2872,8 +2882,161 @@ exports.salvarMeuPerfil = onCall(async (req) => {
   }
   await db.collection('user_profiles').doc(auth.uid).set(upd, { merge: true });
   await registrarAudit(auth, 'editou_perfil', { tipo: 'usuario', id: auth.uid },
-    { alterouNome: 'displayName' in upd, alterouFoto: 'photo' in upd, alterouTelefone: 'telefone' in upd });
+    { alterouNome: 'displayName' in upd, alterouFoto: 'photo' in upd, alterouTelefone: 'telefone' in upd,
+      alterouCreci: 'creci' in upd, alterouCpf: 'cpf' in upd });
   return { ok: true };
+});
+
+// ─── Contrato de Representação (venda) ────────────────────────────────────────
+// Preenche o PDF-modelo da RE/MAX (AcroForm) com os dados dos vendedores + imóvel
+// + corretor e devolve o PDF pronto (base64). O texto jurídico, os dados da REMAX
+// e prazo/%/foro JÁ vêm no modelo — a gente só injeta o que falta.
+//
+// ⚠️ Os nomes dos campos do PDF são "sem sentido" (foi um editável mal nomeado);
+// o mapa abaixo foi conferido VISUALMENTE campo a campo (não reordenar às cegas).
+const CONTRATO_CAMPOS = {
+  // 4 blocos de contratante (pág. 3), na ordem em que aparecem
+  vendedores: [
+    { nome:'07ggfA',     rg:'07gggA',  cpf:'07ggAuu0',      endereco:'07ggsA',     nacionalidade:'07ggAs0',  civil:'07ggAyy0',   email:'07ggAe',    tel1:'07ggAt0',  tel2:'07ggAt0fg1' },
+    { nome:'07ggAy0',    rg:'07ggAnn0',cpf:'07ggAj0',       endereco:'07ggAn0',    nacionalidade:'07ggAgg0', civil:'07ggAy0h1',  email:'07ggAr0',   tel1:'07ggAhh0', tel2:'07ggfAb1' },
+    { nome:'07ggAgg041', rg:'07ggAll0',cpf:'07ggArr1',      endereco:'07ggAk0',    nacionalidade:'07ggAçç0', civil:'07ggA',      email:'07ggAl0',   tel1:'07ggAoo0', tel2:'07ggAu0' },
+    { nome:'07ggAqwq1',  rg:'07ggA771',cpf:'07ggAh1',       endereco:'07ggA451',   nacionalidade:'07ggA871', civil:'07ggA441',   email:'07ggAss1',  tel1:'07ggA331', tel2:'07ggAj0765561' }
+  ],
+  // bloco do imóvel (pág. 4)
+  imovel: { tipo:'25dFDG', endereco:'BBB', complemento:'2EE5', bairro:'25RR', municipio:'2W5', estado:'2wE',
+            classificacaoFiscal:'25RfR', matricula:'25E', cartorio:'2gg5RR', valor:'25FDvG', observacoes:'25FDG' },
+  // corretor (pág. 5, ao lado da assinatura da CONTRATADA)
+  corretor: { nome:'Texto novo 0006', creci:'Texto novo 00006', cpf:'Texto novo 000006' }
+};
+
+function _contratoEndereco(o) {
+  const p = k => (o[k] || '').toString().trim();
+  const rua = p('logradouro') || p('endereco');
+  const partes = [
+    rua + (p('numero') ? ', ' + p('numero') : ''),
+    p('complemento'),
+    p('bairro'),
+    (p('cidade') ? p('cidade') + (p('estado') ? '/' + p('estado') : '') : p('estado')),
+    p('cep') ? 'CEP ' + p('cep') : ''
+  ].filter(Boolean);
+  return partes.join(' - ');
+}
+
+// (autenticado, com posse) Gera o contrato de representação de um imóvel de VENDA.
+exports.gerarContratoVenda = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const { imovelId } = req.data || {};
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+
+  const imSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const imovel = imSnap.data();
+
+  // posse: corretor dono OU gestor/administrativo
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && imovel.corretorUid !== auth.uid) {
+    throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
+  }
+  const finalidade = imovel.finalidade || 'locacao';
+  if (finalidade !== 'venda' && finalidade !== 'venda_locacao') {
+    throw new HttpsError('failed-precondition', 'O contrato de representação é só para imóveis de venda.');
+  }
+
+  // Vendedores: vêm da ficha do vendedor que originou o imóvel (dados pessoais ficam
+  // na ficha, não em `pessoas`). Imóvel manual não tem ficha → sai sem vendedores.
+  let fichaDados = null;
+  if (imovel.fichaTipo === 'vendedor' && imovel.fichaId) {
+    const fSnap = await db.collection('fichas').doc(imovel.fichaId).get();
+    if (fSnap.exists) fichaDados = fSnap.data().dados || {};
+  }
+  if (!fichaDados) {
+    const q = await db.collection('fichas').where('imovelId', '==', imovelId).where('tipo', '==', 'vendedor').limit(1).get();
+    if (!q.empty) fichaDados = q.docs[0].data().dados || {};
+  }
+
+  const vendedores = [];
+  if (fichaDados) {
+    const prefixos = ['', 'loc2_', 'loc3_', 'loc4_'];
+    prefixos.forEach((P, i) => {
+      const d = fichaDados;
+      const nome = (d[P + 'nome'] || '').toString().trim();
+      if (!nome) return;
+      vendedores.push({
+        nome,
+        rg: d[P + 'rg'] || '',
+        cpf: d[P + 'cpf'] || '',
+        endereco: _contratoEndereco({
+          logradouro: d[P + 'endereco'], numero: d[P + 'numero'], complemento: d[P + 'complemento'],
+          bairro: d[P + 'bairro'], cidade: d[P + 'cidade'], estado: d[P + 'estado'], cep: d[P + 'cep']
+        }),
+        nacionalidade: d[P + 'nacionalidade'] || 'Brasileiro(a)',
+        civil: d[P + 'civil'] || '',
+        email: d[P + 'email'] || '',
+        tel1: (i === 0 ? d['whatsapp'] : d[P + 'celular']) || '',
+        tel2: d[P + 'fixo'] || ''
+      });
+    });
+  }
+
+  // Corretor = quem enviou a ficha (dono do imóvel). Nome vem do imóvel/Auth; CRECI/CPF do perfil.
+  const perfilSnap = await db.collection('user_profiles').doc(imovel.corretorUid).get();
+  const perfil = perfilSnap.exists ? perfilSnap.data() : {};
+  const donoRec = await admin.auth().getUser(imovel.corretorUid).catch(() => null);
+  const corretor = {
+    nome: imovel.corretorNome || (donoRec && donoRec.displayName) || '',
+    creci: perfil.creci || '',
+    cpf: perfil.cpf || ''
+  };
+
+  // Preenche o PDF-modelo
+  const fs = require('fs');
+  const path = require('path');
+  const { PDFDocument } = require('pdf-lib');
+  const tpl = fs.readFileSync(path.join(__dirname, 'assets', 'contrato-representacao-pf.pdf'));
+  const pdf = await PDFDocument.load(tpl);
+  const form = pdf.getForm();
+  const setF = (campo, valor) => {
+    if (!campo || valor == null || String(valor).trim() === '') return;
+    try { form.getTextField(campo).setText(String(valor)); } catch (_) { /* campo ausente no modelo */ }
+  };
+
+  vendedores.slice(0, 4).forEach((v, i) => {
+    const c = CONTRATO_CAMPOS.vendedores[i];
+    setF(c.nome, v.nome);   setF(c.rg, v.rg);   setF(c.cpf, v.cpf);
+    setF(c.endereco, v.endereco);  setF(c.nacionalidade, v.nacionalidade);  setF(c.civil, v.civil);
+    setF(c.email, v.email);  setF(c.tel1, v.tel1);  setF(c.tel2, v.tel2);
+  });
+
+  const im = CONTRATO_CAMPOS.imovel;
+  const e = imovel.endereco || {};
+  setF(im.tipo, imovel.tipo);
+  setF(im.endereco, [e.logradouro, e.numero].filter(Boolean).join(', '));
+  setF(im.complemento, e.complemento);
+  setF(im.bairro, e.bairro);
+  setF(im.municipio, e.cidade);
+  setF(im.estado, e.estado);
+  setF(im.classificacaoFiscal, imovel.contribuinteIptu);
+  setF(im.valor, imovel.valorAnuncio || imovel.valorProposta);
+  setF(im.observacoes, (imovel.administracao && imovel.administracao.observacoes) || '');
+  // matrícula/cartório: não capturamos hoje → ficam em branco
+
+  setF(CONTRATO_CAMPOS.corretor.nome, corretor.nome);
+  setF(CONTRATO_CAMPOS.corretor.creci, corretor.creci);
+  setF(CONTRATO_CAMPOS.corretor.cpf, corretor.cpf);
+
+  const bytes = await pdf.save();
+  const ref = imovel.referencia || imovel.numeroProtocolo || imovelId;
+  const filename = 'Contrato-Representacao-' + String(ref).replace(/[^a-zA-Z0-9-]+/g, '_') + '.pdf';
+
+  await registrarAudit(auth, 'gerou_contrato_venda', { tipo: 'imovel', id: imovelId }, { vendedores: vendedores.length });
+
+  return {
+    pdfBase64: Buffer.from(bytes).toString('base64'),
+    filename,
+    vendedores: vendedores.length,
+    semFicha: !fichaDados,
+    semCreci: !corretor.creci
+  };
 });
 
 // ─── Treinamento — links dos materiais por item ───────────────────────────────
