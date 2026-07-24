@@ -30,6 +30,8 @@ const fnDash      = call('dashboardDados');
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
 const fnRoster    = call('listarPessoas');    // usuários do Auth {uid,nome}
 const fnFotos     = call('listarFotosPerfil');// {uids} -> {fotos:{uid:dataUrl}}
+const fnGetPerfil = call('getMeuPerfil');     // {nome,photo,telefone,creci,cpf,email}
+const fnSalvarPerfil = call('salvarMeuPerfil');
 
 /* ============================ ESTADO ============================ */
 const state = {
@@ -41,6 +43,8 @@ const state = {
   currentDeal:null, dealTab:'timeline', currentPerson:null, pessoaTab:'dados',
   currentProp:null, imovelTab:'dados',
   loaded:false, meuNome:'Broker', onExit:null,
+  role:'broker',        // 'broker' (gestor) | 'corretor' | 'administrativo'
+  filaBusca:'', perfilCache:null,
 };
 
 // Dados reais (preenchidos por carregarDados) — no FORMATO do mockup.
@@ -271,7 +275,7 @@ function shellHTML(){
   +     '<div style="margin-top:auto;padding:12px">'
   +       '<div class="fx ac g3" style="padding:12px;border-radius:12px;background:var(--base);border:1px solid var(--bd)">'
   +         '<span class="avatar" id="bkMeAvatar" style="width:36px;height:36px;background:var(--brand)">'+ini(state.meuNome)+'</span>'
-  +         '<div class="mw0"><div class="fz13 fw6 tw trunc" id="bkMeNome">'+esc(state.meuNome)+'</div><div class="fz11 tmut">Broker</div></div>'
+  +         '<div class="mw0"><div class="fz13 fw6 tw trunc" id="bkMeNome">'+esc(state.meuNome)+'</div><div class="fz11 tmut">'+roleLabel()+'</div></div>'
   +       '</div>'
   +     '</div>'
   +   '</aside>'
@@ -280,7 +284,7 @@ function shellHTML(){
   +       '<div class="fx ac g3 mw0"><button class="menuBtn" data-action="mobilenav"><i data-lucide="menu" style="width:20px;height:20px"></i></button><div id="breadcrumb" class="fx ac g2 fz13 fw5 mw0"></div></div>'
   +       '<div class="fx ac g3 nsh">'
   +         '<div class="searchbox"><i data-lucide="search" style="width:16px;height:16px;color:var(--ondarkmuted)"></i><input id="globalSearch" placeholder="Buscar pessoas, imóveis, negócios…"></div>'
-  +         '<div class="fx ac g2 hide-sm" style="padding-left:4px"><span class="avatar" id="bkMeAvatar2" style="width:38px;height:38px;background:var(--brand)">'+ini(state.meuNome)+'</span><div style="line-height:1.3"><div class="fz13 fw6 tw" id="bkMeNome2">'+esc(state.meuNome)+'</div><div class="fz11 tmut">Broker · RE/MAX SMART</div></div></div>'
+  +         '<div class="fx ac g2 hide-sm" style="padding-left:4px"><span class="avatar" id="bkMeAvatar2" style="width:38px;height:38px;background:var(--brand)">'+ini(state.meuNome)+'</span><div style="line-height:1.3"><div class="fz13 fw6 tw" id="bkMeNome2">'+esc(state.meuNome)+'</div><div class="fz11 tmut">'+roleLabel()+' · RE/MAX SMART</div></div></div>'
   +       '</div>'
   +     '</header>'
   +     '<main id="scroller"><div id="root"></div></main>'
@@ -298,6 +302,8 @@ async function mount(opts){
   opts = opts||{};
   state.onExit = opts.onExit || null;
   state.meuNome = opts.nome || state.meuNome;
+  state.role = opts.role || 'broker';
+  state.view = 'dashboard';
   const root = ROOT();
   if(!root){ console.warn('[broker] #bkRoot ausente'); return; }
   root.innerHTML = shellHTML();
@@ -465,7 +471,7 @@ function negRows(){
 function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); refreshIcons(); } const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
 RENDERERS.negocios = function(host){
   const tipos=['Todos','Venda','Locação']; const ALL_STATUS=allStatusReais();
-  host.innerHTML = pageHead('Negócios','Em que etapa está cada negociação? Acompanhe todos os negócios da imobiliária.','')
+  host.innerHTML = pageHead(hTitulo('Negócios'),'Em que etapa está cada negociação? Acompanhe todos os negócios da imobiliária.','')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:16px">'
     + '<div class="fx ac g2 wrap">'+tipos.map(t=>'<button class="chip'+(state.negFiltroTipo===t?' active':'')+'" data-action="negtipo" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
     + '<div class="fx ac g2">'
@@ -536,7 +542,7 @@ function pessoasList(){
 }
 function updatePessoas(){ const el=$('#pessoasList'); if(el){ el.innerHTML=pessoasList(); refreshIcons(); } }
 RENDERERS.pessoas=function(host){
-  host.innerHTML=pageHead('Pessoas','Proprietários, compradores, locatários e fiadores vindos das fichas e dos interessados.','')
+  host.innerHTML=pageHead(hTitulo('Pessoas'),'Proprietários, compradores, locatários e fiadores vindos das fichas e dos interessados.','')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+PTIPOS.map(t=>'<button class="chip'+(state.pessoasFiltro===t?' active':'')+'" data-action="pesstipo" data-v="'+t+'">'+t+'</button>').join('')+'</div><div class="fx ac g2"><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,55vw)">'+icon('search',16,'tmut')+'<input data-input="pessoasBusca" value="'+esc(state.pessoasBusca||'')+'" placeholder="Buscar pessoa…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div><div class="fx" style="background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:3px"><button class="seg'+(state.pessoasView==='tabela'?" active":"")+'" data-action="pessview" data-v="tabela" style="color:'+(state.pessoasView==='tabela'?'':'var(--ondarkmuted)')+'">'+icon('list',15)+'</button><button class="seg'+(state.pessoasView==='cards'?" active":"")+'" data-action="pessview" data-v="cards" style="color:'+(state.pessoasView==='cards'?'':'var(--ondarkmuted)')+'">'+icon('layout-grid',15)+'</button></div></div></div>'
   + '<div id="pessoasList">'+pessoasList()+'</div>';
 };
@@ -571,7 +577,7 @@ function imoveisList(){
 function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imoveisList(); refreshIcons(); } }
 RENDERERS.imoveis=function(host){
   const fs=['Todos','Venda','Locação'];
-  host.innerHTML=pageHead('Imóveis','Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','')
+  host.innerHTML=pageHead(hTitulo('Imóveis'),'Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+fs.map(t=>'<button class="chip'+(state.imoveisFiltro===t?' active':'')+'" data-action="imotipo" data-v="'+t+'">'+t+'</button>').join('')+'</div><div class="fx ac g2"><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,55vw)">'+icon('search',16,'tmut')+'<input data-input="imoveisBusca" value="'+esc(state.imoveisBusca||'')+'" placeholder="Buscar imóvel…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div><div class="fx" style="background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:3px"><button class="seg'+(state.imoveisView==='cards'?" active":"")+'" data-action="imoview" data-v="cards" style="color:'+(state.imoveisView==='cards'?'':'var(--ondarkmuted)')+'">'+icon('layout-grid',15)+'</button><button class="seg'+(state.imoveisView==='tabela'?" active":"")+'" data-action="imoview" data-v="tabela" style="color:'+(state.imoveisView==='tabela'?'':'var(--ondarkmuted)')+'">'+icon('list',15)+'</button></div></div></div>'
   + '<div id="imoveisList">'+imoveisList()+'</div>';
 };
@@ -601,7 +607,7 @@ RENDERERS.relatorios=function(host){
   function relKpi(label,val,sub,cor){ return '<div class="card" style="padding:18px"><div class="fz13 fw5 t500">'+label+'</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:'+(cor||'var(--ink900)')+'">'+val+'</div><div class="fz12 t500" style="margin-top:4px">'+sub+'</div></div>'; }
   const nomes=['Todos'].concat(perc.map(p=>p.nome));
   const sel=(id,opts,val)=>'<select class="input" data-action="'+id+'" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
-  host.innerHTML=pageHead('Relatórios','Visão executiva da operação — comissões, produção e funil.', sel('relcorr',nomes,corr)+'<button class="btn btn-outline" data-action="export-rel">'+icon('download',16)+'Exportar</button>')
+  host.innerHTML=pageHead(hTitulo('Relatórios'),'Visão executiva da operação — comissões, produção e funil.', sel('relcorr',nomes,corr)+'<button class="btn btn-outline" data-action="export-rel">'+icon('download',16)+'Exportar</button>')
   + '<div class="grid4" style="margin-bottom:16px">'+relKpi('Comissão prevista',brl(KPI.comissaoPrevista),'Pipeline total','var(--ink900)')+relKpi('Comissão recebida',brl(KPI.comissaoRecebida),'Concluídos','var(--successtx)')+relKpi('Comissão pendente',brl(KPI.comissaoPendente),'A receber','var(--warningtx)')+relKpi('Negócios encerrados',KPI.encerradosMes,'No período','var(--ink900)')+'</div>'
   + '<div class="split" style="margin-bottom:16px">'
     + '<div class="card" style="overflow:hidden">'+cardHead('Produção por corretor')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">'+(perc.length?perc.filter(p=>corr==='Todos'||p.nome===corr).map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow"><div class="fz14 fw6 t900">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem negócios no período.</div>')+'</div></div>'
@@ -671,3 +677,192 @@ function handleAction(a,el){
 /* Rerender pessoas carrega a lista sob demanda ao entrar na aba */
 const _origPessoas = RENDERERS.pessoas;
 RENDERERS.pessoas = function(host){ _origPessoas(host); if(!PEOPLE.length){ carregarPessoas().then(()=>{ if(state.view==='pessoas') updatePessoas(); }); } };
+
+/* ============================================================================
+   PAPÉIS — Corretor e Administrativo (além do Broker/gestor).
+   O mesmo app serve os 3; o backend já filtra por papel (corretor só o dele,
+   administrativo/gestor veem tudo). Aqui muda o MENU e algumas telas próprias.
+   Mockups do Nathan: "Corretor (offline)" e "Administrativo (offline)".
+   ============================================================================ */
+function roleLabel(){ return {broker:'Broker', corretor:'Corretor', administrativo:'Administrativo'}[state.role] || 'Broker'; }
+
+// Menu por papel. Broker = NAVITEMS (já definido). Corretor/Administrativo abaixo.
+const NAV_ROLE = {
+  broker: NAVITEMS,
+  corretor: [
+    {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},
+    {id:'clientes',ico:'users',label:'Meus Clientes'},
+    {id:'imoveis',ico:'building-2',label:'Meus Imóveis'},
+    {id:'negocios',ico:'handshake',label:'Meus Negócios'},
+    {id:'comissoes',ico:'wallet',label:'Minhas Comissões'},
+    {id:'perfil',ico:'user',label:'Meu Perfil'},
+  ],
+  administrativo: [
+    {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},
+    {id:'fila',ico:'kanban',label:'Fila de Trabalho'},
+    {id:'pessoas',ico:'users',label:'Pessoas'},
+    {id:'imoveis',ico:'building-2',label:'Imóveis'},
+    {id:'negocios',ico:'handshake',label:'Negócios'},
+    {id:'documentos',ico:'folder',label:'Documentos'},
+    {id:'relatorios',ico:'clipboard-list',label:'Relatórios Operacionais'},
+    {id:'perfil',ico:'user',label:'Meu Perfil'},
+  ],
+};
+renderNav = function(target){ if(!target) return; const items=NAV_ROLE[state.role]||NAV_ROLE.broker; target.innerHTML=items.map(n=>'<button class="navitem'+(state.view===n.id?' active':'')+'" data-nav="'+n.id+'">'+icon(n.ico,18)+n.label+'</button>').join(''); };
+Object.assign(CRUMB, {
+  clientes:['SMART HUB','Meus Clientes'], comissoes:['SMART HUB','Minhas Comissões'], perfil:['SMART HUB','Meu Perfil'],
+  fila:['SMART HUB','Fila de Trabalho'], documentos:['SMART HUB','Documentos'],
+});
+
+// Título por papel/tela (Meus Imóveis, Meus Negócios, Meus Clientes, Relatórios Operacionais).
+function hTitulo(base){
+  const r=state.role, v=state.view;
+  if(r==='corretor'){ if(v==='imoveis') return 'Meus Imóveis'; if(v==='negocios') return 'Meus Negócios'; if(v==='pessoas'||v==='clientes') return 'Meus Clientes'; }
+  if(r==='administrativo' && v==='relatorios') return 'Relatórios Operacionais';
+  return base;
+}
+
+// Clientes (corretor) reaproveita a tela Pessoas (backend já devolve só os dele).
+RENDERERS.clientes = function(host){ RENDERERS.pessoas(host); };
+
+/* ---------------- DASHBOARD por papel ---------------- */
+const _dashBroker = RENDERERS.dashboard;
+RENDERERS.dashboard = function(host){
+  if(state.role==='corretor') return renderDashCorretor(host);
+  if(state.role==='administrativo') return renderDashAdmin(host);
+  return _dashBroker(host);
+};
+
+const FICHA_HOST = 'https://remax-smart-hub.web.app';
+const FICHAS_CORRETOR = [
+  ['ficha-locador.html','Locador','house','info'],
+  ['ficha-vendedor.html','Vendedor','key-round','success'],
+  ['ficha-pf.html','Pessoa Física','user','ai'],
+  ['ficha-pj.html','Pessoa Jurídica','building-2','brand'],
+  ['ficha-locacao-fiador.html','Locação c/ Fiador','shield','warning'],
+  ['ficha-proposta.html','Proposta','file-signature','danger'],
+];
+function fichaLink(arquivo){ const uid=(auth.currentUser&&auth.currentUser.uid)||''; return FICHA_HOST+'/'+arquivo+'?corretor='+encodeURIComponent(uid)+'&nome='+encodeURIComponent(state.meuNome||''); }
+
+function renderDashCorretor(host){
+  const primeiro=(state.meuNome||'Corretor').split(' ')[0];
+  const ativos=DEALS.length;
+  const propostas=DEALS.filter(d=>['negocio_criado','em_andamento'].includes(d.statusRaw)).length;
+  const captacoes=PROPERTIES.length;
+  const comPrev=DEALS.reduce((s,d)=>s+Math.round((d.comValor||0)*0.5),0);
+  const comReceb=DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+Math.round((d.comValor||0)*0.5),0);
+  const acoes=DEALS.slice().sort((a,b)=>b.diasParado-a.diasParado).slice(0,6);
+  const kcard=(ico,variant,label,valor,sub,view)=>'<button class="card card-hover" style="padding:18px;text-align:left" data-nav="'+view+'"><div class="fx as jb g3"><div class="mw0"><div class="fz13 fw5 t500">'+label+'</div><div style="margin-top:8px;font-size:24px;line-height:1;font-weight:700;letter-spacing:-.02em;color:var(--ink900)" class="'+(String(valor).indexOf("R$")===0?"mono":"")+'">'+valor+'</div></div>'+iconChip(ico,variant,40)+'</div>'+(sub?'<div class="fz12 fw6 '+sub[1]+'" style="margin-top:10px">'+sub[0]+'</div>':'')+'</button>';
+  const blockH=(t,sub,badge)=>'<div style="margin:26px 0 14px"><div class="fx ac g2"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(badge||'')+'</div>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>';
+  const iaB=['Mantenha o follow-up dos clientes sem contato há mais de 7 dias.','Priorize os negócios parados há mais tempo (lista abaixo).','Envie a ficha certa pelo card ao lado pra iniciar um novo atendimento.'];
+  host.innerHTML=
+    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Seu centro de trabalho — seus números, suas ações e suas fichas à mão.</p></div>'
+  + '<div class="grid3" style="margin-top:20px">'
+    + kcard('handshake','info','Meus negócios ativos',ativos,['Em andamento','c-inf'],'negocios')
+    + kcard('house','brand','Minhas captações',captacoes,['Imóveis na carteira','c-suc'],'imoveis')
+    + kcard('file-signature','warning','Propostas em andamento',propostas,['Em negociação','c-war'],'negocios')
+    + kcard('wallet','success','Comissão prevista',brl(comPrev),['Repasse estimado (50%)','c-suc'],'comissoes')
+    + kcard('badge-dollar-sign','success','Comissão recebida',brl(comReceb),['Negócios concluídos','c-suc'],'comissoes')
+    + kcard('users','ai','Meus clientes',PEOPLE.length||DEALS.length,['Vinculados a você','c-ai'],'clientes')
+  + '</div>'
+  + blockH('Fichas digitais','Envie a ficha cadastral e inicie o atendimento — link já sai com seu nome')
+  + '<div class="card" style="overflow:hidden"><div style="padding:8px">'+FICHAS_CORRETOR.map(f=>'<div class="fx ac g3 hoverbg" style="padding:11px 12px;border-radius:10px">'+iconChip(f[2],f[3],38)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+f[1]+'</div><div class="fz12 t500">Ficha digital · link personalizado</div></div><div class="fx g1 nsh">'+[['ficha-copy','copy','Copiar link'],['ficha-whats','message-circle','WhatsApp'],['ficha-view','eye','Visualizar']].map(a=>'<button class="iconbtn" title="'+a[2]+'" style="background:var(--ink50);border-color:var(--ink200);color:var(--ink600);width:34px;height:34px" data-action="'+a[0]+'" data-arq="'+f[0]+'" data-nome="'+esc(f[1])+'">'+icon(a[1],15)+'</button>').join('')+'</div></div>').join('')+'</div></div>'
+  + blockH('Precisa da sua atenção','Seus negócios ordenados por tempo parado')
+  + '<div class="card" style="overflow:hidden"><div style="padding:8px">'+(acoes.length?acoes.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:none;padding:12px;border-radius:10px;cursor:pointer"><span style="width:10px;height:10px;border-radius:50%;background:'+(d.diasParado>7?'var(--danger)':'var(--warning)')+';flex-shrink:0"></span><div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.prox)+'</div><div class="fz12 t500 trunc">'+esc(d.code)+' · '+esc(propDoDeal(d).rua)+'</div></div><div class="fx ac g2 nsh">'+statusPill(d.status)+'<span class="fz12 t500 mono">'+d.diasParado+'d</span></div></button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem negócios ativos ainda.</div>')+'</div></div>'
+  + blockH('SMART IA','Recomendações do seu dia',badgeTeste)
+  + '<div class="card" style="padding:18px;background:linear-gradient(180deg,var(--aibg),#fff);border-color:#EBD9FF"><div class="fx ac g2" style="margin-bottom:12px">'+iconChip('sparkles','ai',34)+'<div class="fz13 up fw7 c-ai">SMART IA</div></div><div class="fx col g2">'+iaB.map(b=>'<div class="fx as g2 fz14 t800" style="line-height:1.5">'+icon('chevron-right',15,'c-ai')+'<span>'+b+'</span></div>').join('')+'</div></div>';
+}
+
+function renderDashAdmin(host){
+  const primeiro=(state.meuNome||'Administrativo').split(' ')[0];
+  const cnt=raw=>DEALS.filter(d=>d.statusRaw===raw).length;
+  const emAndamento=DEALS.filter(d=>['negocio_criado','em_andamento','aguardando_corretor','aguardando_administrativo','aguardando_broker'].includes(d.statusRaw)).length;
+  const aguardBroker=cnt('aguardando_broker'), aguardAdm=cnt('aguardando_administrativo');
+  const docsPend=DEALS.filter(d=>(d.checklist||[]).some(x=>x.obrigatoria&&!x.feito)).length;
+  const entregues=cnt('entregue_gestao');
+  const ops=(ico,variant,label,qty,view)=>'<button class="card card-hover" style="padding:16px;text-align:left" data-nav="'+view+'"><div class="fx as jb g2">'+iconChip(ico,variant,38)+icon('chevron-right',16,'t400')+'</div><div style="margin-top:12px;font-size:26px;font-weight:700;color:var(--ink900)">'+qty+'</div><div class="fz13 fw5 t600" style="margin-top:2px">'+label+'</div></button>';
+  const blockH=(t,sub)=>'<div style="margin:26px 0 14px"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>';
+  host.innerHTML=
+    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central operacional — processe negócios, documentos e contratos da imobiliária.</p></div>'
+  + '<div class="grid4" style="margin-top:20px">'
+    + ops('kanban','info','Em andamento',emAndamento,'fila')
+    + ops('user-check','warning','Aguardando administrativo',aguardAdm,'fila')
+    + ops('gavel','warning','Aguardando broker',aguardBroker,'fila')
+    + ops('folder-clock','danger','Documentos pendentes',docsPend,'negocios')
+  + '</div>'
+  + blockH('Fila de trabalho','Resumo por etapa — abra a fila pra processar')
+  + '<div class="grid4">'+[['negocio_criado','Novos','info'],['em_andamento','Em andamento','info'],['aguardando_administrativo','Comigo','warning'],['entregue_gestao','Entregues','success']].map(s=>'<button class="card card-hover" style="padding:18px;text-align:left" data-nav="fila"><div class="fz13 fw5 t500">'+s[1]+'</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:var(--'+s[2]+'tx)">'+cnt(s[0])+'</div></button>').join('')+'</div>'
+  + blockH('Atividades recentes','Últimas movimentações dos negócios')
+  + '<div class="card" style="overflow:hidden"><div style="padding:16px">'+(ACTIVITY.length?ACTIVITY.map((a,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',32)+(i<ACTIVITY.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:16px" class="mw0 grow"><div class="fz13 fw6 t900">'+esc(a.txt)+'</div><div class="fz12 t500 trunc">'+esc(a.sub)+'</div><div class="fz11 t400 mono" style="margin-top:2px">'+esc(a.quando)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem atividades recentes.</div>')+'</div></div>';
+}
+
+/* ---------------- FILA DE TRABALHO (kanban real — administrativo) ---------------- */
+RENDERERS.fila = function(host){
+  const COLS=[['Novos',['negocio_criado']],['Em andamento',['em_andamento','aguardando_corretor']],['Aguardando',['aguardando_administrativo','aguardando_broker']],['Entregues',['entregue_gestao','concluido']]];
+  const q=(state.filaBusca||'').toLowerCase().trim();
+  const inQ=d=>!q||(d.code+' '+propDoDeal(d).rua+' '+d.clienteNome).toLowerCase().indexOf(q)>=0;
+  host.innerHTML=pageHead('Fila de Trabalho','Todos os negócios por etapa — clique num cartão pra abrir.','<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(280px,50vw)">'+icon('search',16,'tmut')+'<input data-input="filaBusca" value="'+esc(state.filaBusca||'')+'" placeholder="Buscar…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>')
+  + '<div id="filaBoard" class="gd" style="grid-template-columns:repeat('+COLS.length+',minmax(0,1fr));gap:14px;align-items:start">'+COLS.map(c=>{ const list=DEALS.filter(d=>c[1].includes(d.statusRaw)&&inQ(d)); return '<div class="card" style="padding:0;overflow:hidden"><div class="fx ac jb" style="padding:12px 14px;border-bottom:1px solid var(--ink100)"><span class="fz12 up fw7 t700">'+c[0]+'</span><span class="pill neutral">'+list.length+'</span></div><div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:60px">'+(list.length?list.map(d=>'<button class="card card-hover" data-deal="'+d.id+'" style="padding:12px;text-align:left"><div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px;padding:1px 7px">'+d.tipo+'</span></div><div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div><div class="fx ac jb g2" style="margin-top:8px"><span class="fz11 t400 mono">'+d.diasParado+'d parado</span>'+avatar(corrNome(d.corretor),22,'var(--ink800)',corrFoto(d.corretor))+'</div></button>').join(''):'<div class="tcenter t400 fz12" style="padding:16px 0">—</div>')+'</div></div>'; }).join('')+'</div>';
+};
+function updateFila(){ if(state.view==='fila') RENDERERS.fila($('#root')); refreshIcons(); }
+
+/* ---------------- MINHAS COMISSÕES (corretor) ---------------- */
+RENDERERS.comissoes = function(host){
+  const rep=d=>Math.round((d.comValor||0)*0.5);
+  const prevista=DEALS.reduce((s,d)=>s+rep(d),0);
+  const recebida=DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+rep(d),0);
+  const pendente=prevista-recebida;
+  const rows=DEALS.map(d=>({code:d.code,cli:d.clienteNome,val:rep(d),st:d.statusRaw==='concluido'?'Recebida':'Prevista'}));
+  const card=(l,v,ico,variant,cor)=>'<div class="card" style="padding:20px"><div class="fx ac jb"><div class="fz13 fw5 t500">'+l+'</div>'+iconChip(ico,variant,36)+'</div><div class="mono '+(cor||'')+'" style="margin-top:10px;font-size:26px;font-weight:700;color:'+(cor?'':'var(--ink900)')+'">'+brlFull(v)+'</div></div>';
+  host.innerHTML=pageHead('Minhas Comissões','Sua comissão (repasse estimado de 50%) por negócio. Valores estimados até a baixa financeira.','')
+  + '<div class="grid3" style="margin-bottom:16px">'+card('Prevista',prevista,'wallet','info')+card('Recebida',recebida,'badge-dollar-sign','success','var(--successtx)')+card('Pendente',pendente,'hand-coins','warning','var(--warningtx)')+'</div>'
+  + '<div class="card" style="overflow:hidden">'+cardHead('Comissões por negócio')+'<div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:520px"><thead><tr><th>Negócio</th><th>Cliente</th><th>Status</th><th class="tright">Repasse</th></tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr style="cursor:default"><td class="mono fz13 fw6 t900">'+esc(r.code)+'</td><td class="t700">'+esc(r.cli)+'</td><td>'+pill(r.st,r.st==='Recebida'?'success':'info')+'</td><td class="tright mono fw6 t900">'+brlFull(r.val)+'</td></tr>').join(''):'<tr><td colspan="4" class="tcenter t500" style="padding:24px">Sem negócios ainda.</td></tr>')+'</tbody></table></div></div>';
+};
+
+/* ---------------- MEU PERFIL (real — getMeuPerfil/salvarMeuPerfil) ---------------- */
+RENDERERS.perfil = function(host){
+  host.innerHTML=pageHead('Meu Perfil','Seus dados de contato. Usados nos links de ficha e no contrato de representação.','')
+  + '<div id="perfilBox"><div class="tcenter t500" style="padding:60px 0">'+icon('loader-2',28,'spin')+'</div></div>';
+  refreshIcons();
+  fnGetPerfil({}).then(r=>{ state.perfilCache=r.data||{}; pintarPerfil(); }).catch(()=>{ const b=$('#perfilBox'); if(b) b.innerHTML='<div class="card" style="padding:24px" class="t500">Não consegui carregar o perfil.</div>'; });
+};
+function pintarPerfil(){
+  const p=state.perfilCache||{}; const box=$('#perfilBox'); if(!box) return;
+  const foto=p.photo||'';
+  const campo=(id,label,val,ph,extra)=>'<div><label class="lbl">'+label+'</label><input id="'+id+'" class="input" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" '+(extra||'')+'></div>';
+  box.innerHTML='<div class="split-r">'
+    + '<div class="card" style="padding:22px;text-align:center">'+(foto?'<span class="avatar" style="width:88px;height:88px;background-image:url('+foto+');background-size:cover;background-position:center;margin:0 auto"></span>':avatar(p.displayName||state.meuNome,88,'var(--brand)'))+'<div class="fz18 fw7 t900" style="margin-top:12px">'+esc(p.displayName||state.meuNome)+'</div><div class="fz13 t500">'+roleLabel()+' · RE/MAX SMART</div><div class="fz12 t500" style="margin-top:8px">'+esc(p.email||'')+'</div></div>'
+    + '<div class="card" style="padding:22px"><div class="fz12 up fw7 t500" style="margin-bottom:14px">Meus dados</div><div class="gd" style="grid-template-columns:1fr 1fr;gap:14px">'
+      + campo('pfTel','Telefone / WhatsApp',p.telefone,'(11) 90000-0000')
+      + campo('pfCreci','CRECI',p.creci,'Ex.: 123456-F')
+      + campo('pfCpf','CPF',p.cpf,'000.000.000-00')
+      + '</div><div class="fx je" style="margin-top:18px"><button class="btn btn-primary" data-action="salvar-perfil">'+icon('check',16)+'Salvar</button></div>'
+      + '<div class="fz12 t500" style="margin-top:12px">Nome e foto do perfil são alterados nas Configurações do Hub.</div>'
+    + '</div></div>';
+  refreshIcons();
+}
+
+/* ---------------- Placeholders MODO DE TESTE (Documentos) ---------------- */
+function placeholderTela(host, titulo, desc, ico, txt){
+  host.innerHTML=pageHead(titulo,desc,'')
+  + '<div class="card" style="padding:48px 24px;text-align:center">'+iconChip(ico,'brand',52)+'<div class="fz16 fw7 t900" style="margin-top:14px">'+titulo+' '+badgeTeste+'</div><p class="fz14 t500" style="max-width:520px;margin:10px auto 0;line-height:1.55">'+txt+'</p></div>';
+}
+RENDERERS.documentos = function(host){ placeholderTela(host,'Documentos','Central de documentos dos negócios.','folder','Em construção. A central de documentos vai reunir aqui os anexos das fichas e os contratos de cada negócio (hoje eles vivem no negócio e no Google Drive). Enquanto isso, use a aba Negócios.'); };
+
+/* Ações extras de fichas (corretor) e salvar perfil — estende o handleAction. */
+const _handleAction = handleAction;
+handleAction = function(a, el){
+  if(a==='ficha-copy'){ const l=fichaLink(el.dataset.arq); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha '+(el.dataset.nome||'')+' copiado','copy'); return; }
+  if(a==='ficha-whats'){ const l=fichaLink(el.dataset.arq); window.open('https://wa.me/?text='+encodeURIComponent('Olá! Segue o link da ficha cadastral. Ao concluir, me avise pra dar continuidade.\n\n'+l),'_blank'); return; }
+  if(a==='ficha-view'){ window.open(fichaLink(el.dataset.arq),'_blank'); return; }
+  if(a==='salvar-perfil'){
+    const payload={ telefone:($('#pfTel')||{}).value||'', creci:($('#pfCreci')||{}).value||'', cpf:($('#pfCpf')||{}).value||'' };
+    toast('Salvando…','loader-2','var(--brand)');
+    fnSalvarPerfil(payload).then(()=>{ if(state.perfilCache) Object.assign(state.perfilCache,payload); toast('Perfil salvo'); }).catch(e=>toast(e.message||'Erro','alert-triangle','var(--danger)'));
+    return;
+  }
+  return _handleAction(a, el);
+};
+
+/* Busca da Fila de Trabalho — listener próprio no #bkRoot (o de wireEvents não cobre filaBusca). */
+(function(){ const r=ROOT(); if(r) r.addEventListener('input', e=>{ const t=e.target.closest('[data-input="filaBusca"]'); if(t){ state.filaBusca=t.value; updateFila(); } }); })();

@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('hubApi', {
 
   // "Meus Negócios" (visão nova do Broker) abre em JANELA PRÓPRIA no desktop —
   // como abrir um app. No PWA/web isso não existe (é overlay dentro do Hub).
-  abrirMeusNegocios: () => ipcRenderer.send('abrir-meus-negocios'),
+  abrirMeusNegocios: (role) => ipcRenderer.send('abrir-meus-negocios', role),
   // Fecha a janela atual (usado pelo "Voltar ao Hub" da janela do Broker).
   fecharJanela: () => ipcRenderer.send('fechar-janela'),
 

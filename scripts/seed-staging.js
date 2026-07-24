@@ -26,9 +26,15 @@ const auth = admin.auth();
 const db = admin.firestore();
 
 const SENHA = 'teste1234';
+// locGestao liga a aba "Meus Negócios" como GESTOR (visão Broker). Corretor e
+// Administrativo NÃO têm loc_gestao — o papel vem do claim locRole, e a visão é
+// roteada por ele (gestor→Broker, administrativo→Admin, corretor→Corretor).
 const USERS = [
-  { uid: 'stg-admin',  email: 'admin@teste.local',        nome: 'Admin de Teste', claims: { admin: true } },
-  { uid: 'stg-colega', email: 'teste@staggin.com.br',     nome: 'Teste (Gestor)', senha: '12345678', claims: { admin: true, locRole: 'gestor' } },
+  { uid: 'stg-admin',  email: 'admin@teste.local',    nome: 'Admin de Teste',   claims: { admin: true }, locGestao: true },
+  { uid: 'stg-colega', email: 'teste@staggin.com.br', nome: 'Teste (Gestor)',   senha: '12345678', claims: { admin: true, locRole: 'gestor' }, locGestao: true },
+  // Contas novas pra testar as visões novas (pedido do Nathan):
+  { uid: 'stg-corretor', email: 'corretor@staggin.com.br', nome: 'Corretor de Teste',      senha: '12345678', claims: { locRole: 'corretor' },      locGestao: false },
+  { uid: 'stg-adm',      email: 'adm@staggin.com.br',      nome: 'Administrativo de Teste', senha: '12345678', claims: { locRole: 'administrativo' }, locGestao: false },
 ];
 
 async function criarUsuario(u) {
@@ -40,8 +46,9 @@ async function criarUsuario(u) {
   await auth.createUser({ uid: u.uid, email: u.email, password: senha, displayName: u.nome, emailVerified: true });
   if (u.claims) await auth.setCustomUserClaims(u.uid, u.claims);
   await db.collection('user_profiles').doc(u.uid).set({ nome: u.nome, email: u.email, isAdmin: !!(u.claims && u.claims.admin) });
-  // user_access liga a aba Locação (loc_gestao) — não herda de admin.
-  await db.collection('user_access').doc(u.uid).set({ apps: [], loc_gestao: true, loc_beta: false }, { merge: true });
+  // user_access liga a aba Locação como gestor (loc_gestao) — não herda de admin.
+  const locGestao = u.locGestao !== false;
+  await db.collection('user_access').doc(u.uid).set({ apps: [], loc_gestao: locGestao, loc_beta: false }, { merge: true });
 }
 
 (async () => {

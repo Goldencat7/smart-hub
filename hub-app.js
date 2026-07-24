@@ -292,7 +292,11 @@ const CATEGORIAS = [
   { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true, soLocGestao: true },
+  // "Meus Negócios" agora aparece pra TODOS os papéis de locação (gestor→Broker,
+  // administrativo→Admin, corretor→Corretor). A visão é roteada por papel no
+  // branch cat.locacoes. ⚠️ Gating amplo de propósito (staging); pra produção,
+  // decidir quem vê (hoje: qualquer usuário logado).
+  { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
   { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
   { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
@@ -603,11 +607,15 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
 
+    // Papel: gestor/loc_gestao → Broker; administrativo → Admin; senão → Corretor.
+    const papelLoc = (podeGestaoLoc || locRoleAtual === 'gestor') ? 'broker'
+                   : (locRoleAtual === 'administrativo' ? 'administrativo' : 'corretor');
+
     // Desktop: janela separada. Depois volta o Hub pra uma categoria normal
-    // (a janela nova cuida do Broker; o Hub não pode ficar numa tela vazia).
+    // (a janela nova cuida do app; o Hub não pode ficar numa tela vazia).
     const ehDesktop = !!(window.hubApi && window.hubApi.autologin === true && typeof window.hubApi.abrirMeusNegocios === 'function');
     if (ehDesktop) {
-      window.hubApi.abrirMeusNegocios();
+      window.hubApi.abrirMeusNegocios(papelLoc);
       const alt = CATEGORIAS.find(c =>
         c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
         !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
@@ -621,6 +629,7 @@ function renderCentro() {
     if (window.Broker && typeof window.Broker.mount === 'function') {
       const nome = (formatarNome(auth.currentUser?.displayName) || auth.currentUser?.email || 'Broker');
       window.Broker.mount({
+        role: papelLoc,
         nome,
         onExit: () => {
           // Sai do Broker: volta o Hub pra uma categoria não-locação (senão o

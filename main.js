@@ -255,7 +255,8 @@ ipcMain.on('voltar-para-hub', () => {
 // estiver aberta, só foca (não abre várias). A sessão Firebase é a mesma do Hub
 // (janelas file:// dividem o IndexedDB), então o Broker já entra logado.
 let janelaMeusNegocios = null;
-ipcMain.on('abrir-meus-negocios', () => {
+ipcMain.on('abrir-meus-negocios', (_e, role) => {
+  const papel = ['broker', 'corretor', 'administrativo'].includes(role) ? role : 'corretor';
   if (janelaMeusNegocios && !janelaMeusNegocios.isDestroyed()) {
     if (janelaMeusNegocios.isMinimized()) janelaMeusNegocios.restore();
     janelaMeusNegocios.focus();
@@ -276,7 +277,7 @@ ipcMain.on('abrir-meus-negocios', () => {
   janelaMeusNegocios = w;
   w.once('ready-to-show', () => { w.maximize(); w.show(); });
   w.on('closed', () => { janelaMeusNegocios = null; });
-  w.loadFile('broker.html');
+  w.loadFile('broker.html', { query: { role: papel } });
 });
 
 // Fecha a janela que enviou (usado pelo "Voltar ao Hub" do Broker). Nunca fecha a principal.
