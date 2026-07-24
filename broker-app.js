@@ -304,6 +304,9 @@ async function mount(opts){
   state.meuNome = opts.nome || state.meuNome;
   state.role = opts.role || 'broker';
   state.view = 'dashboard';
+  // Reabrir a Locação começa limpo: sem filtros/seleções/pessoas da sessão anterior.
+  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline' });
+  PEOPLE = [];
   const root = ROOT();
   if(!root){ console.warn('[broker] #bkRoot ausente'); return; }
   root.innerHTML = shellHTML();
@@ -338,7 +341,10 @@ async function carregarRoster(){
     users.forEach(u=>{ if(!CORRETORES[u.uid]) CORRETORES[u.uid]={id:u.uid,nome:u.nome,ini:ini(u.nome),cor:corDe(u.uid),foto:''}; else if(u.nome) CORRETORES[u.uid].nome=u.nome; });
     const uids = Object.keys(CORRETORES).slice(0,100);
     if(uids.length){ const f = await fnFotos({uids}); const fotos=(f.data&&f.data.fotos)||{}; Object.entries(fotos).forEach(([uid,foto])=>{ if(CORRETORES[uid]) CORRETORES[uid].foto=foto; }); }
-    if(state.view==='dashboard'||state.view==='relatorios'||state.view==='negocios') navigate(state.view);
+    // NÃO re-navega em 'negocios': openDeal não muda state.view, então re-render
+    // fecharia um detalhe aberto. A lista já mostra os nomes (vêm dos docs); o
+    // roster só acrescenta fotos, que aparecem no próximo render natural.
+    if(state.view==='dashboard'||state.view==='relatorios') navigate(state.view);
   } catch(e){ /* silencioso — nomes já vêm dos docs */ }
 }
 
@@ -640,6 +646,9 @@ RENDERERS.configuracoes=function(host){
 /* ============================ EVENTOS (escopados no #bkRoot) ============================ */
 function wireEvents(root){
   root.addEventListener('click', e=>{
+    // Clicar no backdrop fecha drawer/modal/gaveta. Delegado no `root` (persistente)
+    // — o #overlay é recriado a cada mount, então um listener direto nele vazaria.
+    if(e.target.id==='overlay'){ closeDrawer(); closeModal(); closeMobileNav(); return; }
     const nav=e.target.closest('[data-nav]'); if(nav){ navigate(nav.dataset.nav); return; }
     const ops=e.target.closest('[data-ops]'); if(ops){ navigate('negocios'); return; }
     const cr=e.target.closest('[data-corr]'); if(cr){ openCorretor(cr.dataset.corr); return; }
@@ -651,7 +660,6 @@ function wireEvents(root){
   });
   root.addEventListener('input', e=>{ const t=e.target.closest('[data-input]'); if(!t) return; const k=t.dataset.input; if(k==='negBusca'){ state.negBusca=t.value; updateNegTable(); } else if(k==='pessoasBusca'){ state.pessoasBusca=t.value; updatePessoas(); } else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); } });
   root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } });
-  const ov=$('#overlay'); if(ov) ov.addEventListener('click', ()=>{ closeDrawer(); closeModal(); closeMobileNav(); });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } });
 }
 function handleAction(a,el){
@@ -676,7 +684,7 @@ function handleAction(a,el){
 
 /* Rerender pessoas carrega a lista sob demanda ao entrar na aba */
 const _origPessoas = RENDERERS.pessoas;
-RENDERERS.pessoas = function(host){ _origPessoas(host); if(!PEOPLE.length){ carregarPessoas().then(()=>{ if(state.view==='pessoas') updatePessoas(); }); } };
+RENDERERS.pessoas = function(host){ _origPessoas(host); if(!PEOPLE.length){ carregarPessoas().then(()=>{ if(state.view==='pessoas'||state.view==='clientes') updatePessoas(); }); } };
 
 /* ============================================================================
    PAPÉIS — Corretor e Administrativo (além do Broker/gestor).
@@ -802,7 +810,7 @@ RENDERERS.fila = function(host){
   const q=(state.filaBusca||'').toLowerCase().trim();
   const inQ=d=>!q||(d.code+' '+propDoDeal(d).rua+' '+d.clienteNome).toLowerCase().indexOf(q)>=0;
   host.innerHTML=pageHead('Fila de Trabalho','Todos os negócios por etapa — clique num cartão pra abrir.','<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(280px,50vw)">'+icon('search',16,'tmut')+'<input data-input="filaBusca" value="'+esc(state.filaBusca||'')+'" placeholder="Buscar…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>')
-  + '<div id="filaBoard" class="gd" style="grid-template-columns:repeat('+COLS.length+',minmax(0,1fr));gap:14px;align-items:start">'+COLS.map(c=>{ const list=DEALS.filter(d=>c[1].includes(d.statusRaw)&&inQ(d)); return '<div class="card" style="padding:0;overflow:hidden"><div class="fx ac jb" style="padding:12px 14px;border-bottom:1px solid var(--ink100)"><span class="fz12 up fw7 t700">'+c[0]+'</span><span class="pill neutral">'+list.length+'</span></div><div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:60px">'+(list.length?list.map(d=>'<button class="card card-hover" data-deal="'+d.id+'" style="padding:12px;text-align:left"><div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px;padding:1px 7px">'+d.tipo+'</span></div><div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div><div class="fx ac jb g2" style="margin-top:8px"><span class="fz11 t400 mono">'+d.diasParado+'d parado</span>'+avatar(corrNome(d.corretor),22,'var(--ink800)',corrFoto(d.corretor))+'</div></button>').join(''):'<div class="tcenter t400 fz12" style="padding:16px 0">—</div>')+'</div></div>'; }).join('')+'</div>';
+  + '<div style="overflow-x:auto" class="scrolly"><div id="filaBoard" class="gd" style="grid-template-columns:repeat('+COLS.length+',minmax(240px,1fr));gap:14px;align-items:start;min-width:760px">'+COLS.map(c=>{ const list=DEALS.filter(d=>c[1].includes(d.statusRaw)&&inQ(d)); return '<div class="card" style="padding:0;overflow:hidden"><div class="fx ac jb" style="padding:12px 14px;border-bottom:1px solid var(--ink100)"><span class="fz12 up fw7 t700">'+c[0]+'</span><span class="pill neutral">'+list.length+'</span></div><div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:60px">'+(list.length?list.map(d=>'<button class="card card-hover" data-deal="'+d.id+'" style="padding:12px;text-align:left"><div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px;padding:1px 7px">'+d.tipo+'</span></div><div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div><div class="fx ac jb g2" style="margin-top:8px"><span class="fz11 t400 mono">'+d.diasParado+'d parado</span>'+avatar(corrNome(d.corretor),22,'var(--ink800)',corrFoto(d.corretor))+'</div></button>').join(''):'<div class="tcenter t400 fz12" style="padding:16px 0">—</div>')+'</div></div>'; }).join('')+'</div></div>';
 };
 function updateFila(){ if(state.view==='fila') RENDERERS.fila($('#root')); refreshIcons(); }
 

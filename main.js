@@ -259,6 +259,11 @@ ipcMain.on('abrir-meus-negocios', (_e, role) => {
   const papel = ['broker', 'corretor', 'administrativo'].includes(role) ? role : 'corretor';
   if (janelaMeusNegocios && !janelaMeusNegocios.isDestroyed()) {
     if (janelaMeusNegocios.isMinimized()) janelaMeusNegocios.restore();
+    // Defensivo: se reaberta com papel diferente do carregado, recarrega o certo.
+    if (janelaMeusNegocios._papel !== papel) {
+      janelaMeusNegocios._papel = papel;
+      janelaMeusNegocios.loadFile('broker.html', { query: { role: papel } });
+    }
     janelaMeusNegocios.focus();
     return;
   }
@@ -275,6 +280,7 @@ ipcMain.on('abrir-meus-negocios', (_e, role) => {
     }
   });
   janelaMeusNegocios = w;
+  w._papel = papel;
   w.once('ready-to-show', () => { w.maximize(); w.show(); });
   w.on('closed', () => { janelaMeusNegocios = null; });
   w.loadFile('broker.html', { query: { role: papel } });
