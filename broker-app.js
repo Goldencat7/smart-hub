@@ -284,7 +284,7 @@ function shellHTML(){
   +       '<div class="fx ac g3 mw0"><button class="menuBtn" data-action="mobilenav"><i data-lucide="menu" style="width:20px;height:20px"></i></button><div id="breadcrumb" class="fx ac g2 fz13 fw5 mw0"></div></div>'
   +       '<div class="fx ac g3 nsh">'
   +         '<div class="searchbox"><i data-lucide="search" style="width:16px;height:16px;color:var(--ondarkmuted)"></i><input id="globalSearch" placeholder="Buscar pessoas, imóveis, negócios…"></div>'
-  +         '<div class="fx ac g2 hide-sm" style="padding-left:4px"><span class="avatar" id="bkMeAvatar2" style="width:38px;height:38px;background:var(--brand)">'+ini(state.meuNome)+'</span><div style="line-height:1.3"><div class="fz13 fw6 tw" id="bkMeNome2">'+esc(state.meuNome)+'</div><div class="fz11 tmut">'+roleLabel()+' · RE/MAX SMART</div></div></div>'
+  +         '<div class="fx ac g2 hide-sm" style="padding-left:4px"><span class="avatar" id="bkMeAvatar2" style="width:38px;height:38px;background:var(--brand)">'+ini(state.meuNome)+'</span><div style="line-height:1.3"><div class="fz13 fw6 tw" id="bkMeNome2">'+esc(state.meuNome)+'</div><div class="fz11 tmut">'+roleLabel()+' · REMAX SMART</div></div></div>'
   +       '</div>'
   +     '</header>'
   +     '<main id="scroller"><div id="root"></div></main>'
@@ -405,7 +405,7 @@ RENDERERS.dashboard = function(host){
   const primeiroNome=(state.meuNome||'Broker').split(' ')[0];
 
   host.innerHTML =
-    '<div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da RE/MAX SMART — veja onde concentrar sua atenção hoje.</p></div>'
+    '<div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da REMAX SMART — veja onde concentrar sua atenção hoje.</p></div>'
   + blockH('Centro de operações','O que precisa da sua atenção agora')
   + '<div class="grid4">'
     + ops('search-check','info','Aguardando análise',analise,'Média')
@@ -447,7 +447,7 @@ function corretorDrawer(id){
   const chart='<div class="fx g1" style="height:120px;align-items:flex-end">'+c.mensal.map((v,i)=>'<div class="grow" style="text-align:center"><div style="height:'+Math.round(v/mx*96)+'px;border-radius:4px 4px 0 0;background:'+(i===6?c.cor:'#C9D2E3')+'"></div><div class="fz11" style="margin-top:4px;color:'+(i===6?'var(--ink900)':'var(--ink400)')+';font-weight:'+(i===6?'700':'400')+'">'+MESES[i]+'</div></div>').join('')+'</div>';
   const stat=(l,v)=>'<div class="card" style="padding:12px 14px"><div class="fz11 t500">'+l+'</div><div class="fz15 fw7 t900" style="margin-top:2px">'+v+'</div></div>';
   const sc=scoreColor(c.score);
-  return drawerHead(c.nome,c.cargo+' · RE/MAX SMART')
+  return drawerHead(c.nome,c.cargo+' · REMAX SMART')
    + '<div class="grow scrolly" style="overflow:auto;padding:18px 20px">'
    + '<div class="fx ac g2" style="margin-bottom:14px">'+badgeTeste+'<span class="fz11 t500">Métricas de performance ainda são demonstração.</span></div>'
    + '<div class="fx ac g3" style="margin-bottom:16px">'+avatar(c.nome,56,c.cor)+'<div class="grow mw0"><div class="fx ac g2 fz13 t500">'+icon('phone',14,'t400')+c.tel+'</div></div><div class="tright nsh"><div class="fz11 t500">Smart Score</div><div class="fz22 fw7" style="color:'+sc+'">'+c.score+'</div></div></div>'
@@ -620,7 +620,7 @@ RENDERERS.relatorios=function(host){
 const CFG_TABS=[['usuarios','Usuários','users'],['permissoes','Permissões','shield'],['status','Status','flag'],['comissao','Tipos de comissão','percent'],['categorias','Categorias','tag'],['templates','Templates','file-text']];
 function cfgPanel(k){
   const box=(title,inner)=>'<div class="card" style="overflow:hidden">'+cardHead(title)+'<div style="padding:6px 8px">'+inner+'</div></div>';
-  if(k==='usuarios'){ const us=Object.values(CORRETORES); return box('Usuários do sistema', (us.length?us.map(u=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+avatar(u.nome,38,u.cor,u.foto)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+esc(u.nome)+'</div><div class="fz12 t500">RE/MAX SMART</div></div></div>').join(''):'<div class="fz13 t500" style="padding:12px">Carregando corretores…</div>')+'<div style="padding:12px"><div class="fz12 t500">Gerenciar usuários e permissões continua no Admin do Hub.</div></div>'); }
+  if(k==='usuarios'){ const us=Object.values(CORRETORES); return box('Usuários do sistema', (us.length?us.map(u=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+avatar(u.nome,38,u.cor,u.foto)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+esc(u.nome)+'</div><div class="fz12 t500">REMAX SMART</div></div></div>').join(''):'<div class="fz13 t500" style="padding:12px">Carregando corretores…</div>')+'<div style="padding:12px"><div class="fz12 t500">Gerenciar usuários e permissões continua no Admin do Hub.</div></div>'); }
   if(k==='permissoes'){ const rows=[['Ver todos os negócios','Broker'],['Criar e editar negócios','Broker + Corretor'],['Aprovar comprador / locatário','Broker'],['Ver relatórios financeiros','Broker'],['Gerenciar usuários','Admin']]; return box('Matriz de permissões (resumo)', rows.map(r=>'<div class="fx ac jb" style="padding:11px 12px;border-bottom:1px solid var(--ink100)"><span class="fz13 fw5 t800">'+r[0]+'</span>'+pill(r[1],'neutral')+'</div>').join('')+'<div style="padding:12px" class="fz12 t500">As permissões granulares por pessoa são concedidas no Admin do Hub.</div>'); }
   if(k==='status'){ const st=allStatusReais(); return box('Status dos negócios','<div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px">'+(st.length?st.map(s=>statusPill(s)).join(''):'<span class="fz13 t500">Sem negócios ainda.</span>')+'</div>'); }
   if(k==='comissao'){ return box('Tipos de comissão',[['Venda','6% sobre o valor da venda','percent','info'],['Locação','100% do primeiro aluguel','key-round','ai'],['Repasse corretor','50% da comissão da imobiliária','users','success']].map(r=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+iconChip(r[2],r[3],38)+'<div class="grow"><div class="fz14 fw6 t900">'+r[0]+'</div><div class="fz12 t500">'+r[1]+'</div></div></div>').join('')); }
@@ -831,7 +831,7 @@ function pintarPerfil(){
   const foto=p.photo||'';
   const campo=(id,label,val,ph,extra)=>'<div><label class="lbl">'+label+'</label><input id="'+id+'" class="input" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" '+(extra||'')+'></div>';
   box.innerHTML='<div class="split-r">'
-    + '<div class="card" style="padding:22px;text-align:center">'+(foto?'<span class="avatar" style="width:88px;height:88px;background-image:url('+foto+');background-size:cover;background-position:center;margin:0 auto"></span>':avatar(p.displayName||state.meuNome,88,'var(--brand)'))+'<div class="fz18 fw7 t900" style="margin-top:12px">'+esc(p.displayName||state.meuNome)+'</div><div class="fz13 t500">'+roleLabel()+' · RE/MAX SMART</div><div class="fz12 t500" style="margin-top:8px">'+esc(p.email||'')+'</div></div>'
+    + '<div class="card" style="padding:22px;text-align:center">'+(foto?'<span class="avatar" style="width:88px;height:88px;background-image:url('+foto+');background-size:cover;background-position:center;margin:0 auto"></span>':avatar(p.displayName||state.meuNome,88,'var(--brand)'))+'<div class="fz18 fw7 t900" style="margin-top:12px">'+esc(p.displayName||state.meuNome)+'</div><div class="fz13 t500">'+roleLabel()+' · REMAX SMART</div><div class="fz12 t500" style="margin-top:8px">'+esc(p.email||'')+'</div></div>'
     + '<div class="card" style="padding:22px"><div class="fz12 up fw7 t500" style="margin-bottom:14px">Meus dados</div><div class="gd" style="grid-template-columns:1fr 1fr;gap:14px">'
       + campo('pfTel','Telefone / WhatsApp',p.telefone,'(11) 90000-0000')
       + campo('pfCreci','CRECI',p.creci,'Ex.: 123456-F')
