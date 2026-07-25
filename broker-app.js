@@ -27,7 +27,6 @@ const call = (name) => httpsCallable(fns, name);
 const fnImoveis   = call('locListarImoveis');
 const fnNegocios  = call('negocioListar');
 const fnNegAtual  = call('negocioAtualizar');
-const fnDash      = call('dashboardDados');
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
 const fnRoster    = call('listarPessoas');    // usuários do Auth {uid,nome}
 const fnFotos     = call('listarFotosPerfil');// {uids} -> {fotos:{uid:dataUrl}}
@@ -62,9 +61,30 @@ const ROOT = () => document.getElementById('bkRoot');
 const $ = (s) => ROOT() ? ROOT().querySelector(s) : null;
 const person = id => PEOPLE.find(p=>p.id===id) || {nome:'—', tipos:[], docs:[], obs:'—', cpf:'—', email:'—', tel:'—', cidade:'—', desde:'—'};
 const prop = id => PROPERTIES.find(p=>p.id===id) || {rua:'—', bairro:'', cidade:'', code:'', tipo:'', preco:0, finalidade:'', docs:[]};
-const dealsByCorretor = c => DEALS.filter(d=>d.corretor===c);
 function brl(n){ n=Number(n)||0; if(n>=1000000) return 'R$ '+(n/1000000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'M'; if(n>=10000) return 'R$ '+Math.round(n/1000)+'k'; return 'R$ '+n.toLocaleString('pt-BR'); }
 function brlFull(n){ return 'R$ '+(Number(n)||0).toLocaleString('pt-BR'); }
+// Valores de imóvel (valorAnuncio/valorComissao) são TEXTO LIVRE no backend
+// ("R$ 2.500,00", "2.500", "2500/mês"). Number() cru → NaN e contamina VGV/ticket/comissão.
+// Parser tolerante ao formato pt-BR: mantém só dígitos/separadores e resolve milhar × decimal.
+function parseMoney(v){
+  if(typeof v==='number') return isFinite(v)?v:0;
+  if(v==null) return 0;
+  let s=String(v).replace(/[^\d.,]/g,'');
+  if(!s) return 0;
+  if(s.includes(',')&&s.includes('.')){
+    // o último separador é o decimal
+    if(s.lastIndexOf(',')>s.lastIndexOf('.')) s=s.replace(/\./g,'').replace(',','.');
+    else s=s.replace(/,/g,'');
+  } else if(s.includes(',')){
+    s=s.replace(/\./g,'').replace(',','.');
+  } else {
+    // só pontos: "2.500" = milhar (grupo final de 3 dígitos); "2.5" = decimal
+    const parts=s.split('.');
+    if(parts.length>1 && parts[parts.length-1].length===3) s=s.replace(/\./g,'');
+  }
+  const n=Number(s);
+  return isFinite(n)?n:0;
+}
 function ini(nome){ const p=(nome||'').trim().split(/\s+/); return (((p[0]||'')[0]||'')+((p[p.length-1]||'')[0]||'')).toUpperCase()||'?'; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function icon(n,sz=18,cls=''){ return '<i data-lucide="'+n+'" class="'+cls+'" style="width:'+sz+'px;height:'+sz+'px"></i>'; }
@@ -102,7 +122,7 @@ function endImovel(im){ const e=im.endereco||{}; const l=[e.logradouro, e.numero
 function mapImovel(im){
   const e = im.endereco||{};
   const fin = FINAL_LABEL[im.finalidade] || 'Locação';
-  const preco = Number(im.valorAnuncio || im.valorProposta || im.valorFechamento || 0);
+  const preco = parseMoney(im.valorAnuncio || im.valorProposta || im.valorFechamento || 0);
   const situ = im.arquivado ? 'Arquivado' : (im.situacao==='em_negociacao' ? 'Em negociação' : 'Disponível');
   return {
     id: im.id, raw: im,
@@ -131,7 +151,8 @@ function mapNegocio(n){
   const im = PROPERTIES.find(p=>p.id===n.imovelId);
   const preco = im ? im.preco : 0;
   const tipo = n.tipo==='venda' ? 'Venda' : 'Locação';
-  const comValor = Number((im&&im.raw&&im.raw.valorComissao) || (tipo==='Venda' ? preco*0.06 : preco));
+  const comBruto = (im&&im.raw&&im.raw.valorComissao) ? parseMoney(im.raw.valorComissao) : 0;
+  const comValor = comBruto || (tipo==='Venda' ? preco*0.06 : preco);
   const rel = relData(n.atualizadoEm || n.criadoEm);
   return {
     id: n.id, raw: n,
@@ -158,10 +179,9 @@ function propDoDeal(d){ return PROPERTIES.find(p=>p.id===d.imovelId) || {rua:d.i
 
 /* ============================ CARREGAMENTO DE DADOS ============================ */
 async function carregarDados(){
-  const [imR, ngR, dashR] = await Promise.all([
+  const [imR, ngR] = await Promise.all([
     fnImoveis({}).catch(()=>({data:{imoveis:[]}})),
     fnNegocios({}).catch(()=>({data:{negocios:[]}})),
-    fnDash({}).catch(()=>({data:null})),
   ]);
   const imoveisRaw = (imR.data&&imR.data.imoveis)||[];
   PROPERTIES = imoveisRaw.filter(im=>!im.arquivado).map(mapImovel);
@@ -177,8 +197,8 @@ async function carregarDados(){
   const soma = DEALS.reduce((s,d)=>s+(d.comValor||0),0);
   KPI = {
     comissaoPrevista: soma,
-    comissaoRecebida: DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+d.comValor,0),
-    comissaoPendente: DEALS.filter(d=>d.statusRaw!=='concluido').reduce((s,d)=>s+d.comValor,0),
+    comissaoRecebida: DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+(d.comValor||0),0),
+    comissaoPendente: DEALS.filter(d=>d.statusRaw!=='concluido').reduce((s,d)=>s+(d.comValor||0),0),
     pagoCorretores: 0, pendenteCorretores: 0,
     encerradosMes: DEALS.filter(d=>d.statusRaw==='concluido'||d.statusRaw==='entregue_gestao').length,
     tempoMedioDias: 0,
@@ -374,7 +394,7 @@ RENDERERS.dashboard = function(host){
   const ticket=nVendas?Math.round(vgv/nVendas):0;
   // Produção por corretor — REAL (agregado dos negócios).
   const uids=[...new Set(DEALS.map(d=>d.corretor).filter(Boolean))];
-  const prod=uids.map(uid=>{ const ds=DEALS.filter(d=>d.corretor===uid); return {uid,nome:corrNome(uid),foto:corrFoto(uid),cor:(CORRETORES[uid]&&CORRETORES[uid].cor)||'#2563EB',vendas:ds.filter(d=>d.tipo==='Venda').length,loc:ds.filter(d=>d.tipo==='Locação').length,com:ds.reduce((s,d)=>s+d.comValor,0),vgv:ds.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+d.valor,0)}; }).sort((a,b)=>b.com-a.com);
+  const prod=uids.map(uid=>{ const ds=DEALS.filter(d=>d.corretor===uid); return {uid,nome:corrNome(uid),foto:corrFoto(uid),cor:(CORRETORES[uid]&&CORRETORES[uid].cor)||'#2563EB',vendas:ds.filter(d=>d.tipo==='Venda').length,loc:ds.filter(d=>d.tipo==='Locação').length,com:ds.reduce((s,d)=>s+(d.comValor||0),0),vgv:ds.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+(d.valor||0),0)}; }).sort((a,b)=>b.com-a.com);
   const maxCom=Math.max(1,...prod.map(p=>p.com));
 
   // flt = status que o clique aplica na tela Negócios (como no mockup); 'Todos' = sem filtro.
@@ -500,13 +520,15 @@ async function negAtualizar(payload, okMsg){
 const PTIPOS=['Todos','Proprietário','Comprador','Locatário','Fiador'];
 function filteredPeople(){ const q=(state.pessoasBusca||'').toLowerCase().trim(); return PEOPLE.filter(p=>{ if(state.pessoasFiltro!=='Todos'&&!p.tipos.includes(state.pessoasFiltro))return false; if(q&&(p.nome+' '+p.email+' '+p.cpf).toLowerCase().indexOf(q)<0)return false; return true; }); }
 function tipoColor(t){ return t==='Proprietário'?'info':t==='Comprador'?'success':t==='Locatário'?'ai':'warning'; }
+function vinculos(p){ const negs=DEALS.filter(d=>d.clienteNome===p.nome).length; const ims=PROPERTIES.filter(im=>im.proprietarioNome===p.nome).length; return {negs, ims}; }
+function vincLabel(p){ const v=vinculos(p); const parts=[]; if(v.negs)parts.push(v.negs+' neg.'); if(v.ims)parts.push(v.ims+' imó.'); return parts.length?parts.join(' · '):'—'; }
 function pessoasList(){
   const list=filteredPeople();
   if(!list.length) return vazio('user-x','Nenhuma pessoa encontrada. (As pessoas vêm das fichas e dos interessados dos imóveis.)');
   if(state.pessoasView==='cards'){
-    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">'+list.map(p=>{ const negs=DEALS.filter(d=>d.clienteNome===p.nome).length; return '<button class="card card-hover" data-person="'+p.id+'" style="text-align:left;padding:16px"><div class="fx ac g3">'+avatar(p.nome,44,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(p.nome)+'</div><div style="margin-top:4px">'+p.tipos.map(t=>pill(t,tipoColor(t))).join(' ')+'</div></div></div><div class="fx col g2" style="margin-top:14px"><div class="fx ac g2 fz12 t500">'+icon('mail',13,'t400')+'<span class="trunc">'+esc(p.email)+'</span></div><div class="fx ac g2 fz12 t500">'+icon('phone',13,'t400')+esc(p.tel)+'</div></div></button>'; }).join('')+'</div>';
+    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px">'+list.map(p=>{ return '<button class="card card-hover" data-person="'+p.id+'" style="text-align:left;padding:16px"><div class="fx ac g3">'+avatar(p.nome,44,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(p.nome)+'</div><div style="margin-top:4px">'+p.tipos.map(t=>pill(t,tipoColor(t))).join(' ')+'</div></div></div><div class="fx col g2" style="margin-top:14px"><div class="fx ac g2 fz12 t500">'+icon('mail',13,'t400')+'<span class="trunc">'+esc(p.email)+'</span></div><div class="fx ac g2 fz12 t500">'+icon('phone',13,'t400')+esc(p.tel)+'</div></div><div class="fx ac g2 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+icon('link',13,'t400')+'<span class="fw6 t700">'+esc(vincLabel(p))+'</span></div></button>'; }).join('')+'</div>';
   }
-  return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:720px"><thead><tr><th>Nome</th><th>Tipo</th><th>Contato</th><th>CPF</th></tr></thead><tbody>'+list.map(p=>'<tr data-person="'+p.id+'"><td><div class="fx ac g2">'+avatar(p.nome,30,'var(--ink800)')+'<span class="fw6 t900">'+esc(p.nome)+'</span></div></td><td>'+p.tipos.map(t=>pill(t,tipoColor(t))).join(' ')+'</td><td class="t700">'+esc(p.email)+'<div class="fz12 t500">'+esc(p.tel)+'</div></td><td class="mono fz13 t700">'+esc(p.cpf)+'</td></tr>').join('')+'</tbody></table></div></div>';
+  return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:720px"><thead><tr><th>Nome</th><th>Tipo</th><th>Contato</th><th>CPF</th><th>Vínculos</th></tr></thead><tbody>'+list.map(p=>'<tr data-person="'+p.id+'"><td><div class="fx ac g2">'+avatar(p.nome,30,'var(--ink800)')+'<span class="fw6 t900">'+esc(p.nome)+'</span></div></td><td>'+p.tipos.map(t=>pill(t,tipoColor(t))).join(' ')+'</td><td class="t700">'+esc(p.email)+'<div class="fz12 t500">'+esc(p.tel)+'</div></td><td class="mono fz13 t700">'+esc(p.cpf)+'</td><td class="fz13 fw6 t700">'+esc(vincLabel(p))+'</td></tr>').join('')+'</tbody></table></div></div>';
 }
 function updatePessoas(){ const el=$('#pessoasList'); if(el){ el.innerHTML=pessoasList(); refreshIcons(); } }
 RENDERERS.pessoas=function(host){
@@ -582,7 +604,7 @@ function propDrawer(id){
 RENDERERS.relatorios=function(host){
   const corr=state.relCorretor;
   const uids=[...new Set(DEALS.map(d=>d.corretor).filter(Boolean))];
-  const perc=uids.map(uid=>{ const ds=DEALS.filter(d=>d.corretor===uid); return {uid, nome:corrNome(uid), foto:corrFoto(uid), cor:(CORRETORES[uid]&&CORRETORES[uid].cor)||'#2563EB', vendas:ds.filter(d=>d.tipo==='Venda').length, loc:ds.filter(d=>d.tipo==='Locação').length, com:ds.reduce((s,d)=>s+d.comValor,0), vgv:ds.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+d.valor,0)}; }).sort((a,b)=>b.com-a.com);
+  const perc=uids.map(uid=>{ const ds=DEALS.filter(d=>d.corretor===uid); return {uid, nome:corrNome(uid), foto:corrFoto(uid), cor:(CORRETORES[uid]&&CORRETORES[uid].cor)||'#2563EB', vendas:ds.filter(d=>d.tipo==='Venda').length, loc:ds.filter(d=>d.tipo==='Locação').length, com:ds.reduce((s,d)=>s+(d.comValor||0),0), vgv:ds.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+(d.valor||0),0)}; }).sort((a,b)=>b.com-a.com);
   const maxCom=Math.max(1,...perc.map(p=>p.com));
   const funil=[['Negócios ativos',DEALS.length,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.encerradosMes,'#16A34A']];
   const maxF=Math.max(1,...funil.map(f=>f[1]));
@@ -620,6 +642,15 @@ RENDERERS.configuracoes=function(host){
   + '</div>';
 };
 
+// Busca global do topbar → filtra a lista da tela ativa (se ela tiver busca).
+function globalFilter(v){
+  const view=state.view;
+  if(view==='negocios'){ state.negBusca=v; updateNegTable(); }
+  else if(view==='pessoas'){ state.pessoasBusca=v; updatePessoas(); }
+  else if(view==='imoveis'){ state.imoveisBusca=v; updateImoveis(); }
+  else if(view==='clientes'){ state.cliBusca=v; if(typeof updateClientes==='function') updateClientes(); }
+}
+
 /* ============================ EVENTOS (escopados no #bkRoot) ============================ */
 function wireEvents(root){
   root.addEventListener('click', e=>{
@@ -629,12 +660,24 @@ function wireEvents(root){
     const nav=e.target.closest('[data-nav]'); if(nav){ navigate(nav.dataset.nav); return; }
     const ops=e.target.closest('[data-ops]'); if(ops){ const f=ops.dataset.ops; state.negFiltroStatus=(f&&f!=='Todos')?f:'Todos'; navigate('negocios'); return; }
     const chk=e.target.closest('[data-chk]'); if(chk){ negAtualizar({negocioId:state.currentDeal, acao:'checklist', key:chk.dataset.chk, feito:chk.dataset.feito==='1'}); return; }
+    // [data-action] ANTES das linhas container: um botão de ação dentro de uma
+    // linha `data-deal` (ex.: Clicksign "Abrir"/"Reenviar") deve disparar a ação,
+    // não abrir o detalhe da linha que o envolve.
+    const act=e.target.closest('[data-action]'); if(act){ handleAction(act.dataset.action, act); return; }
     const deal=e.target.closest('[data-deal]'); if(deal){ openDeal(deal.dataset.deal); return; }
     const pers=e.target.closest('[data-person]'); if(pers){ openPerson(pers.dataset.person); return; }
     const pr=e.target.closest('[data-prop]'); if(pr){ openProp(pr.dataset.prop); return; }
-    const act=e.target.closest('[data-action]'); if(act){ handleAction(act.dataset.action, act); return; }
   });
-  root.addEventListener('input', e=>{ const t=e.target.closest('[data-input]'); if(!t) return; const k=t.dataset.input; if(k==='negBusca'){ state.negBusca=t.value; updateNegTable(); } else if(k==='pessoasBusca'){ state.pessoasBusca=t.value; updatePessoas(); } else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); } else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); } });
+  root.addEventListener('input', e=>{
+    // Busca do topbar (só visível na janela standalone; no Hub o topbar é escondido):
+    // roteia pra busca da tela ativa em vez de ficar inerte.
+    if(e.target.id==='globalSearch'){ globalFilter(e.target.value); return; }
+    const t=e.target.closest('[data-input]'); if(!t) return; const k=t.dataset.input;
+    if(k==='negBusca'){ state.negBusca=t.value; updateNegTable(); }
+    else if(k==='pessoasBusca'){ state.pessoasBusca=t.value; updatePessoas(); }
+    else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); }
+    else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); }
+  });
   root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } });
 }
@@ -741,9 +784,12 @@ RENDERERS.dashboard = function(host){
 // Mesmo critério do Hub (BASE_HOSTING): a ficha resolve o backend pelo hostname
 // DELA, então link de produção gravaria dado de teste na PRODUÇÃO quando o
 // corretor está no staging. `.exe` (file://) e web.app de produção → produção.
-const FICHA_HOST = (typeof location !== 'undefined' && location.hostname.includes('remax-smart-hub-staging'))
-  ? 'https://remax-smart-hub-staging.web.app'
-  : 'https://remax-smart-hub.web.app';
+// Produção SÓ quando roda em produção de verdade: `.exe` (file://, sem hostname)
+// ou o web.app de produção. Staging, localhost e emulador → staging (nunca gerar
+// link que gravaria ficha de teste na PRODUÇÃO).
+const _fichaHost = (typeof location !== 'undefined') ? location.hostname : '';
+const _fichaProd = (_fichaHost === '' || _fichaHost === 'remax-smart-hub.web.app' || _fichaHost === 'remax-smart-hub.firebaseapp.com');
+const FICHA_HOST = _fichaProd ? 'https://remax-smart-hub.web.app' : 'https://remax-smart-hub-staging.web.app';
 const FICHAS_CORRETOR = [
   ['ficha-locador.html','Locador','house','info'],
   ['ficha-vendedor.html','Vendedor','key-round','success'],
@@ -881,7 +927,7 @@ RENDERERS.perfil = function(host){
   host.innerHTML=pageHead('Meu Perfil','Seus dados de contato. Usados nos links de ficha e no contrato de representação.','')
   + '<div id="perfilBox"><div class="tcenter t500" style="padding:60px 0">'+icon('loader-2',28,'spin')+'</div></div>';
   refreshIcons();
-  fnGetPerfil({}).then(r=>{ state.perfilCache=r.data||{}; pintarPerfil(); }).catch(()=>{ const b=$('#perfilBox'); if(b) b.innerHTML='<div class="card" style="padding:24px" class="t500">Não consegui carregar o perfil.</div>'; });
+  fnGetPerfil({}).then(r=>{ state.perfilCache=r.data||{}; pintarPerfil(); }).catch(()=>{ const b=$('#perfilBox'); if(b) b.innerHTML='<div class="card t500" style="padding:24px">Não consegui carregar o perfil.</div>'; });
 };
 function pintarPerfil(){
   const p=state.perfilCache||{}; const box=$('#perfilBox'); if(!box) return;
@@ -930,7 +976,7 @@ RENDERERS.drive = function(host){
 
 /* ---- Agenda (corretor + administrativo) — sem fonte de eventos ainda ---- */
 RENDERERS.agenda = function(host){
-  emBreveTela(host,'Agenda','Visitas, vistorias, assinaturas e reuniões.','calendar','A agenda desta visão ainda não está conectada a uma fonte de eventos. A agenda da equipe fica no Hub (categoria Agenda).');
+  emBreveTela(host,'Agenda','Visitas, vistorias, assinaturas e reuniões.','calendar','A visão de calendário desta tela ainda está por vir. A agenda da equipe (com seus eventos reais) já funciona no Hub — abra por aqui.','<button class="btn btn-primary sm" data-action="hub-agenda"><i data-lucide="calendar" style="width:16px;height:16px"></i>Abrir agenda do Hub</button>');
 };
 
 /* ---- Relatórios Operacionais (administrativo) — REAL, sem financeiro ---- */
