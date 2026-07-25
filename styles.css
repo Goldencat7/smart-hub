@@ -242,6 +242,26 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .nav-label  { flex: 1; }
 .acc-notif-dot { width: 8px; height: 8px; border-radius: 50%; background: #DC1C2E; flex-shrink: 0; }
 
+/* ── Sanfona "Meus Negócios" (sub-itens do Broker embutido) ─────────── */
+.nav-caret { margin-left: auto; font-size: 10px; opacity: .7; transition: transform .15s; }
+.nav-subwrap { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
+.nav-subitem {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 20px; width: 100%; text-align: left;
+  background: transparent; color: var(--text-nav-inactive);
+  border: none; border-left: 2px solid transparent; border-radius: var(--radius-card);
+  font-family: inherit; font-size: 12px; cursor: pointer;
+}
+.nav-subitem:hover { background: rgba(255,255,255,0.07); color: #DDE4EC; }
+.nav-subitem.ativo { color: #fff; background: rgba(255,255,255,0.10); border-left-color: var(--blue); font-weight: 600; }
+.nav-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: .55; }
+
+/* ── Broker embutido na área central do Hub ─────────────────────────── */
+.hub-main.hub-main--broker { padding: 0; gap: 0; overflow: hidden; }
+.hub-main.hub-main--broker > #bkRoot { flex: 1 1 auto; min-height: 0; }
+.hub-layout.loc-embed { grid-template-columns: 160px 1fr; }
+.hub-layout.loc-embed .agenda-panel { display: none; }
+
 /* ── Área central ────────────────────────────────────────────────── */
 .hub-main {
   padding: 16px 20px 32px; background: var(--bg);
@@ -940,6 +960,41 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 }
 .config-linha + .config-linha { border-top: 1px solid var(--border); padding-top: 14px; }
 .config-linha-titulo { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+
+/* ── Meu Perfil: layout em 2 colunas (perfil+conta à esq, métricas à dir) ─ */
+.config-wrap.perfil-cols { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.perfil-cols .cfg-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.perfil-cols .config-card { max-width: none; }
+@media (max-width: 900px) { .config-wrap.perfil-cols { grid-template-columns: 1fr; } }
+
+/* ── Meu Perfil: Metas / Indicadores / Especialidades / Preferências ─── */
+.cfg-meta { display: flex; flex-direction: column; gap: 6px; }
+.cfg-meta-top { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-primary); }
+.cfg-meta-top strong { font-weight: 700; }
+.cfg-bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+.cfg-bar > div { height: 100%; border-radius: 999px; background: var(--blue); }
+.cfg-ind-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cfg-ind { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.03); }
+.cfg-ind-l { font-size: 12px; color: var(--text-muted); }
+.cfg-ind-v { font-size: 18px; font-weight: 700; color: var(--text-primary); }
+.cfg-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.cfg-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 6px 10px 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,.04); color: var(--text-primary); }
+.cfg-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: none; border-radius: 50%; background: rgba(255,255,255,.12); color: var(--text-primary); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
+.cfg-chip-x:hover { background: var(--danger, #DC1C2E); color: #fff; }
+.cfg-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cfg-add-btn { flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,.04); color: var(--text-primary); font-size: 18px; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.cfg-add-btn:hover { background: var(--blue); border-color: var(--blue); color: #fff; }
+.cfg-esp-input { display: flex; gap: 8px; }
+.cfg-esp-input input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text-primary); font-size: 13px; }
+.cfg-pref { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--text-primary); cursor: pointer; }
+.cfg-pref:last-child { border-bottom: none; }
+.cfg-switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+.cfg-switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.cfg-switch-track { position: absolute; inset: 0; border-radius: 999px; background: rgba(255,255,255,.16); transition: background .2s; }
+.cfg-switch-track::before { content: ''; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.cfg-switch input:checked + .cfg-switch-track { background: var(--blue); }
+.cfg-switch input:checked + .cfg-switch-track::before { transform: translateX(18px); }
+@media (max-width: 600px) { .cfg-ind-grid { grid-template-columns: repeat(2, 1fr); } }
 .config-linha .config-dica { margin-top: 3px; }
 
 .cfg-label-linha { display: inline-flex; align-items: center; gap: 8px; }

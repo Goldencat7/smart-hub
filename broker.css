@@ -5,6 +5,18 @@
    Editar o mockup/scoper e regerar, não editar à mão sem necessidade.
    ============================================================ */
 #bkRoot{position:fixed;inset:0;z-index:1200;overflow:hidden}
+/* Modo EMBUTIDO (sanfona do Hub): o Broker vive dentro da área central do Hub,
+   sem sidebar/topbar próprios (a navegação vem da sanfona do Hub). `relative` +
+   filhos `absolute` = overlay/drawer/modal ficam DENTRO da área central (sem
+   cobrir a sidebar clara do Hub com a sanfona). */
+#bkRoot.bk-embedded{position:relative;inset:auto;z-index:auto;height:100%;width:100%}
+#bkRoot.bk-embedded .sidebar,
+#bkRoot.bk-embedded .topbar,
+#bkRoot.bk-embedded .menuBtn{display:none}
+#bkRoot.bk-embedded .ov,
+#bkRoot.bk-embedded .drawer,
+#bkRoot.bk-embedded .modal,
+#bkRoot.bk-embedded .toast{position:absolute}
 #bkRoot{
   --brand:#2563EB;--brandh:#1D4ED8;--base:#0F1117;--raised:#1A1F29;--bd:#262C38;
   --ondark:#E5E9F2;--ondarkmuted:#9AA4B6;

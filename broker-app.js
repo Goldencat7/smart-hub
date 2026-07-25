@@ -5,9 +5,10 @@
      - monta o SPA dentro de #bkRoot (overlay tela cheia sobre o Hub);
      - carrega DADOS REAIS via Cloud Functions e mapeia pro formato que os
        renderizadores do mockup esperam (assim o visual fica idêntico);
-     - Imóveis / Negócios / Relatórios / Pessoas = dado real;
-     - Dashboard "Performance da equipe" + "SMART IA" = MODO DE TESTE
-       (dados de demonstração, marcados na tela) até o Nathan definir as métricas.
+     - TODAS as telas usam dado real (dashboards, fila, relatórios, comissões,
+       clicksign, pessoas, imóveis, negócios). SEM dados de demonstração.
+     - Onde ainda não há fonte real (Documentos/Drive/Agenda desta visão), a tela
+       mostra um estado honesto de "em breve" — nunca números falsos.
    Exposto como window.Broker = { mount, unmount }. Chamado pelo hub-app.js
    quando o gestor abre a aba Locação. NÃO toca nas telas antigas da Locação.
    ============================================================================ */
@@ -32,6 +33,7 @@ const fnRoster    = call('listarPessoas');    // usuários do Auth {uid,nome}
 const fnFotos     = call('listarFotosPerfil');// {uids} -> {fotos:{uid:dataUrl}}
 const fnGetPerfil = call('getMeuPerfil');     // {nome,photo,telefone,creci,cpf,email}
 const fnSalvarPerfil = call('salvarMeuPerfil');
+const fnEventos   = call('listarEventos');    // agenda real do Hub ({de,ate} -> [eventos])
 
 /* ============================ ESTADO ============================ */
 const state = {
@@ -84,17 +86,8 @@ function corDe(uid){ let h=0; const s=String(uid||''); for(let i=0;i<s.length;i+
 function diasEntre(iso){ if(!iso) return 0; return Math.max(0, Math.floor((Date.now()-new Date(iso).getTime())/86400000)); }
 function relData(iso){ const d=diasEntre(iso); if(d===0) return 'Hoje'; if(d===1) return 'Ontem'; return 'Há '+d+' dias'; }
 
-/* ============================ MODO DE TESTE (dashboard equipe/IA) ============================ */
-// Dados de DEMONSTRAÇÃO — não vêm do Firestore. Ver CLAUDE.md. Marcados na tela.
-const STALE = { d2:12, d4:8 };
-const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-const TEAM = {
-  aline:{id:'aline',nome:'Aline Sales',cargo:'Corretora',cor:'#DB2777',score:96,cap:8,capV:2,capL:6,vendas:1,loc:4,conversao:72,comPrev:420000,comReceb:180000,comPend:240000,ativos:5,encerrados:6,vgv:520000,ticket:520000,tempoFech:29,tempoResp:'1 h',docsPend:0,tel:'(11) 98330-7742',flag:'green',analise:'Excelente desempenho em captação e alta produtividade em locações. Há uma boa oportunidade de aumentar o número de vendas.',attTxt:'Melhor desempenho geral da imobiliária.',attRec:'',mensal:[30,42,38,55,60,68,72,65,78,82,88,92]},
-  alexandre:{id:'alexandre',nome:'Alexandre Gutierres',cargo:'Corretor',cor:'#0EA5E9',score:88,cap:7,capV:2,capL:5,vendas:1,loc:4,conversao:68,comPrev:398000,comReceb:150000,comPend:248000,ativos:5,encerrados:5,vgv:498000,ticket:498000,tempoFech:31,tempoResp:'2 h',docsPend:1,tel:'(11) 99120-4471',flag:'green',analise:'Excelente equilíbrio entre captação e fechamento. Mantém ótima produtividade e consistência ao longo do mês.',attTxt:'Todos os indicadores dentro da meta.',attRec:'',mensal:[45,50,48,58,55,62,66,60,70,68,74,78]},
-  leandro:{id:'leandro',nome:'Leandro Freitas',cargo:'Corretor',cor:'#2563EB',score:73,cap:6,capV:4,capL:2,vendas:3,loc:2,conversao:44,comPrev:184700,comReceb:96500,comPend:88200,ativos:5,encerrados:3,vgv:2900000,ticket:966667,tempoFech:31,tempoResp:'2 h',docsPend:1,tel:'(11) 98420-1180',flag:'yellow',analise:'Especialista em vendas de alto valor. A conversão está abaixo da média da equipe e pode melhorar com follow-up.',attTxt:'Conversão abaixo da média da equipe.',attRec:'Reforçar técnicas de negociação e follow-up.',mensal:[22,28,25,31,29,34,38,33,42,45,40,48]},
-  adriana:{id:'adriana',nome:'Adriana Dias',cargo:'Corretora',cor:'#7C3AED',score:71,cap:2,capV:1,capL:1,vendas:3,loc:2,conversao:58,comPrev:380200,comReceb:118300,comPend:261900,ativos:5,encerrados:5,vgv:6040000,ticket:2013333,tempoFech:38,tempoResp:'5 h',docsPend:3,tel:'(11) 99655-3320',flag:'red',analise:'Excelente em vendas de alto padrão. Necessita aumentar a captação de novos imóveis para manter o pipeline.',attTxt:'Captação caiu nos últimos 30 dias.',attRec:'Focar em prospecção de novos proprietários.',mensal:[40,55,48,62,58,70,52,60,72,68,75,80]}
-};
-const badgeTeste = '<span class="pill warning" style="font-size:10.5px;padding:2px 8px" title="Dados de demonstração — as métricas de performance/IA ainda não têm fonte real. Ver CLAUDE.md.">'+icon('flask-conical',12)+'MODO DE TESTE</span>';
+/* (Removidos os dados de DEMONSTRAÇÃO — TEAM/Smart Score/IA. Todas as telas usam
+   dado real; onde ainda não há fonte, a tela mostra estado "em breve".) */
 
 /* ============================ MAPEADORES real -> shape do mockup ============================ */
 const FINAL_LABEL = { locacao:'Locação', venda:'Venda', venda_locacao:'Venda e Locação' };
@@ -154,7 +147,9 @@ function mapNegocio(n){
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
-    podeComentar: n.comentarios!==null,
+    // O servidor só devolve o array pra quem PODE comentar (broker + corretor do
+    // negócio); ausente/null = sem permissão. `!==null` deixava `undefined` passar.
+    podeComentar: Array.isArray(n.comentarios),
   };
 }
 
@@ -241,6 +236,9 @@ function renderBreadcrumb(){ const c=CRUMB[state.view]||['SMART HUB','—']; con
 
 function navigate(view){
   if(view) state.view=view;
+  // Modo embutido: avisa o Hub pra sanfona destacar o sub-item certo mesmo quando
+  // a navegação nasce DENTRO do Broker (KPI cards, "Voltar aos Negócios" etc.).
+  if(state.embedded && typeof state.onNavigate==='function'){ try{ state.onNavigate(state.view); }catch(e){} }
   closeDrawer(); closeModal(); closeMobileNav();
   renderNav($('#nav')); renderNav($('#navMobile')); renderBreadcrumb();
   const host=$('#root'); if(!host) return;
@@ -283,6 +281,7 @@ function shellHTML(){
   +     '<header class="topbar">'
   +       '<div class="fx ac g3 mw0"><button class="menuBtn" data-action="mobilenav"><i data-lucide="menu" style="width:20px;height:20px"></i></button><div id="breadcrumb" class="fx ac g2 fz13 fw5 mw0"></div></div>'
   +       '<div class="fx ac g3 nsh">'
+  +         (state.role==='corretor' ? '<button class="btn btn-primary sm" data-action="novo-menu" style="white-space:nowrap"><i data-lucide="plus" style="width:16px;height:16px"></i>Novo</button>' : '')
   +         '<div class="searchbox"><i data-lucide="search" style="width:16px;height:16px;color:var(--ondarkmuted)"></i><input id="globalSearch" placeholder="Buscar pessoas, imóveis, negócios…"></div>'
   +         '<div class="fx ac g2 hide-sm" style="padding-left:4px"><span class="avatar" id="bkMeAvatar2" style="width:38px;height:38px;background:var(--brand)">'+ini(state.meuNome)+'</span><div style="line-height:1.3"><div class="fz13 fw6 tw" id="bkMeNome2">'+esc(state.meuNome)+'</div><div class="fz11 tmut">'+roleLabel()+' · REMAX SMART</div></div></div>'
   +       '</div>'
@@ -301,19 +300,22 @@ let wired = false;
 async function mount(opts){
   opts = opts||{};
   state.onExit = opts.onExit || null;
+  state.onNavigate = opts.onNavigate || null;   // Hub sincroniza a sanfona por aqui
   state.meuNome = opts.nome || state.meuNome;
   state.role = opts.role || 'broker';
-  state.view = 'dashboard';
+  state.embedded = !!opts.embedded;   // embutido na área central do Hub (sanfona)
+  state.view = opts.view || 'dashboard';
   // Reabrir a Locação começa limpo: sem filtros/seleções/pessoas da sessão anterior.
-  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline' });
+  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline', cliFiltro:'Todos', cliBusca:'', agView:'mes', driveTipo:'Venda' });
   PEOPLE = [];
   const root = ROOT();
   if(!root){ console.warn('[broker] #bkRoot ausente'); return; }
   root.innerHTML = shellHTML();
+  root.classList.toggle('bk-embedded', state.embedded);
   root.hidden = false;
   document.body.classList.add('bk-open');
   if(!wired){ wireEvents(root); wired = true; }
-  navigate('dashboard');
+  navigate(state.view);
   refreshIcons();
   // Carrega dados reais e re-renderiza a view atual.
   const host = $('#root');
@@ -355,31 +357,6 @@ window.Broker = { mount, unmount };
    ============================================================================ */
 
 /* ---------------- DASHBOARD (Central de Comando) ---------------- */
-function scoreColor(s){ return s>=90?'#16A34A':s>=75?'#2563EB':s>=60?'#F59E0B':'#DC2626'; }
-function cstat(id){ return Object.assign({}, TEAM[id]); }
-function destaquesFor(t){ const all=Object.values(TEAM); const mx=k=>Math.max.apply(null,all.map(x=>x[k])); const out=[];
-  if(t.cap===mx('cap')) out.push({ic:'house',txt:'Melhor captação',v:'success'});
-  if(t.conversao===mx('conversao')) out.push({ic:'trending-up',txt:'Melhor conversão',v:'info'});
-  if(t.comPrev===mx('comPrev')) out.push({ic:'coins',txt:'Maior comissão',v:'success'});
-  if(t.ticket===mx('ticket')) out.push({ic:'gem',txt:'Maior ticket médio',v:'ai'});
-  if(t.vendas===mx('vendas')) out.push({ic:'trophy',txt:'Destaque em vendas',v:'success'});
-  if(t.flag==='red') out.push({ic:'triangle-alert',txt:'Baixa captação',v:'danger'});
-  else if(t.flag==='yellow') out.push({ic:'triangle-alert',txt:'Conversão abaixo da média',v:'warning'});
-  if(!out.length) out.push({ic:'circle-check',txt:'Metas em dia',v:'success'});
-  return out.slice(0,4);
-}
-function teamCard(t,rank){
-  const medal=['🥇','🥈','🥉'][rank]||''; const sc=scoreColor(t.score);
-  const inds=[['house','Captações',t.cap],['dollar-sign','Vendas',t.vendas],['key-round','Locações',t.loc],['trending-up','Conversão',t.conversao+'%'],['wallet','Comissão',brl(t.comPrev)],['handshake','Ativos',t.ativos]];
-  const dest=destaquesFor(t);
-  return '<div class="card" style="padding:0;overflow:hidden;margin-bottom:14px"><div class="teamgrid">'
-   + '<div class="fx col" style="gap:16px"><div class="fx ac g3"><div class="rel">'+avatar(t.nome,52,t.cor)+(medal?'<span style="position:absolute;bottom:-6px;right:-6px;font-size:20px">'+medal+'</span>':'')+'</div><div class="mw0"><div class="fz15 fw7 t900 trunc">'+esc(t.nome)+'</div><div class="fz12 t500">'+t.cargo+' · Ranking #'+(rank+1)+'</div></div></div>'
-     + '<div><div class="fx ac jb"><span class="fz11 up fw7 t500">Smart Score</span><span class="fz22 fw7" style="color:'+sc+'">'+t.score+'</span></div><div style="height:8px;border-radius:999px;background:var(--ink100);overflow:hidden;margin-top:6px"><div style="height:100%;border-radius:999px;width:'+t.score+'%;background:'+sc+'"></div></div></div>'
-     + '<button class="btn btn-outline sm" data-corr="'+t.id+'" style="margin-top:auto">Ver perfil '+icon('arrow-right',14)+'</button></div>'
-   + '<div><div class="gd" style="grid-template-columns:repeat(3,1fr);gap:16px 14px">'+inds.map(x=>'<div class="fx ac g2">'+iconChip(x[0],'brand',34)+'<div class="mw0"><div class="fz11 t500">'+x[1]+'</div><div class="fz15 fw7 t900 trunc">'+x[2]+'</div></div></div>').join('')+'</div><div class="fz13 t600" style="margin-top:16px;line-height:1.55;padding-top:14px;border-top:1px solid var(--ink100)">'+t.analise+'</div></div>'
-   + '<div style="background:var(--ink50)"><div class="fz11 up fw7 t500" style="margin-bottom:12px">Destaques</div><div class="fx col g2">'+dest.map(d=>'<div class="fx ac g2 fz13 fw6" style="color:var(--'+d.v+'tx)"><span class="iconchip" style="width:26px;height:26px;background:var(--'+d.v+'bg)">'+icon(d.ic,14)+'</span>'+d.txt+'</div>').join('')+'</div></div>'
-   + '</div></div>';
-}
 function blockH(t,sub,badge){ return '<div style="margin:28px 0 14px"><div class="fx ac g2"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff;letter-spacing:-.01em">'+t+'</h2>'+(badge||'')+'</div>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>'; }
 
 RENDERERS.dashboard = function(host){
@@ -393,76 +370,56 @@ RENDERERS.dashboard = function(host){
   const hoje=DEALS.filter(d=>d.proxData==='Hoje').length;
   const vencidas=DEALS.filter(d=>d.diasParado>14 && d.statusRaw!=='entregue_gestao' && d.statusRaw!=='concluido').length;
   const nVendas=DEALS.filter(d=>d.tipo==='Venda').length, nLoc=DEALS.filter(d=>d.tipo==='Locação').length;
+  const vgv=DEALS.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+(d.valor||0),0);
+  const ticket=nVendas?Math.round(vgv/nVendas):0;
+  // Produção por corretor — REAL (agregado dos negócios).
+  const uids=[...new Set(DEALS.map(d=>d.corretor).filter(Boolean))];
+  const prod=uids.map(uid=>{ const ds=DEALS.filter(d=>d.corretor===uid); return {uid,nome:corrNome(uid),foto:corrFoto(uid),cor:(CORRETORES[uid]&&CORRETORES[uid].cor)||'#2563EB',vendas:ds.filter(d=>d.tipo==='Venda').length,loc:ds.filter(d=>d.tipo==='Locação').length,com:ds.reduce((s,d)=>s+d.comValor,0),vgv:ds.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+d.valor,0)}; }).sort((a,b)=>b.com-a.com);
+  const maxCom=Math.max(1,...prod.map(p=>p.com));
 
-  function ops(ico,variant,label,qty,prio){ const pc={Alta:'danger','Média':'warning',Baixa:'neutral'}[prio];
-    return '<button class="card card-hover" style="padding:16px;text-align:left" data-ops="1"><div class="fx as jb g2">'+iconChip(ico,variant,38)+'<span class="pill '+pc+'">'+prio+'</span></div><div style="margin-top:12px;font-size:26px;font-weight:700;letter-spacing:-.02em;color:var(--ink900)">'+qty+'</div><div class="fz13 fw5 t600" style="margin-top:2px">'+label+'</div></button>'; }
-  function tile(label,valor,delta,dir){ const c=dir==='up'?'c-suc':dir==='down'?'c-dan':'t400'; const ar=dir==='up'?'trending-up':dir==='down'?'trending-down':'minus'; const mono=(typeof valor==='string'&&valor.indexOf('R$')===0)?'mono':'';
-    return '<div class="card" style="padding:16px"><div class="fz12 fw5 t500">'+label+'</div><div class="'+mono+'" style="margin-top:6px;font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--ink900)">'+valor+'</div><div class="fx ac g1 fz12 fw6 '+c+'" style="margin-top:6px">'+icon(ar,13)+delta+'</div></div>'; }
+  // flt = status que o clique aplica na tela Negócios (como no mockup); 'Todos' = sem filtro.
+  function ops(ico,variant,label,qty,prio,flt){ const pc={Alta:'danger','Média':'warning',Baixa:'neutral'}[prio];
+    return '<button class="card card-hover" style="padding:16px;text-align:left" data-ops="'+esc(flt||'Todos')+'"><div class="fx as jb g2">'+iconChip(ico,variant,38)+'<span class="pill '+pc+'">'+prio+'</span></div><div style="margin-top:12px;font-size:26px;font-weight:700;letter-spacing:-.02em;color:var(--ink900)">'+qty+'</div><div class="fz13 fw5 t600" style="margin-top:2px">'+label+'</div></button>'; }
+  function tile(label,valor,sub){ const mono=(typeof valor==='string'&&valor.indexOf('R$')===0)?'mono':'';
+    return '<div class="card" style="padding:16px"><div class="fz12 fw5 t500">'+label+'</div><div class="'+mono+'" style="margin-top:6px;font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--ink900)">'+valor+'</div>'+(sub?'<div class="fz12 fw5 t400" style="margin-top:6px">'+sub+'</div>':'')+'</div>'; }
 
-  const ia=[
-    {tag:'Aline Sales',ic:'award',txt:'Melhor Smart Score da equipe, impulsionada por captação e conversão acima da média.',sug:'Direcionar leads de venda para aproveitar a alta conversão.'},
-    {tag:'Adriana Dias',ic:'target',txt:'Forte em vendas de alto padrão, porém com baixa captação nos últimos 30 dias.',sug:'Focar em prospecção de novos proprietários.'},
-    {tag:'Mercado',ic:'trending-up',txt:'As vendas cresceram 18% em relação ao mês anterior.',sug:''},
-    {tag:'Operação',ic:'flame',txt:'4 negócios estão muito próximos do fechamento.',sug:'Comissão estimada: R$ 215.000.'}
-  ];
-  const funil=[['Leads',60,'#2563EB'],['Visitas',32,'#7C3AED'],['Propostas',18,'#F59E0B'],['Fechados',8,'#16A34A']];
-  const maxF=funil[0][1];
-  const flagOrder={red:0,yellow:1,green:2};
+  const funil=[['Negócios ativos',DEALS.length,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.encerradosMes,'#16A34A']];
+  const maxF=Math.max(1,...funil.map(f=>f[1]));
+  const recPct=KPI.comissaoPrevista?Math.round(KPI.comissaoRecebida/KPI.comissaoPrevista*100):0;
   const primeiroNome=(state.meuNome||'Broker').split(' ')[0];
 
   host.innerHTML =
-    '<div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da REMAX SMART — veja onde concentrar sua atenção hoje.</p></div>'
+    '<div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da REMAX SMART — veja onde concentrar sua atenção hoje.</p></div>'
   + blockH('Centro de operações','O que precisa da sua atenção agora')
   + '<div class="grid4">'
-    + ops('search-check','info','Aguardando análise',analise,'Média')
-    + ops('file-signature','warning','Aguardando assinatura',assin,'Alta')
-    + ops('file-text','warning','Aguardando documentação',docum,'Média')
-    + ops('hand-coins','danger','Aguardando comissão',comis,'Alta')
-    + ops('pause-circle','danger','Sem movimentação +7 dias',stale,'Alta')
-    + ops('folder-clock','warning','Documentos pendentes',docsPend,'Média')
-    + ops('calendar-check','info','Próximas ações hoje',hoje,'Alta')
-    + ops('alert-triangle','danger','Pendências vencidas',vencidas,'Alta')
+    + ops('search-check','info','Aguardando análise',analise,'Média','Negócio criado')
+    + ops('file-signature','warning','Aguardando assinatura',assin,'Alta','Todos')
+    + ops('file-text','warning','Aguardando documentação',docum,'Média','Todos')
+    + ops('hand-coins','danger','Aguardando comissão',comis,'Alta','Concluído')
+    + ops('pause-circle','danger','Sem movimentação +7 dias',stale,'Alta','Todos')
+    + ops('folder-clock','warning','Documentos pendentes',docsPend,'Média','Todos')
+    + ops('calendar-check','info','Próximas ações hoje',hoje,'Alta','Todos')
+    + ops('alert-triangle','danger','Pendências vencidas',vencidas,'Alta','Todos')
   + '</div>'
-  + blockH('Performance da imobiliária','Resultados do mês',badgeTeste)
+  + blockH('Performance da imobiliária','Números atuais da operação')
   + '<div class="grid4">'
-    + tile('Captações',String(PROPERTIES.length),'imóveis na carteira','flat')
-    + tile('Vendas',String(nVendas),'negócios de venda','flat')
-    + tile('Locações',String(nLoc),'negócios de locação','flat')
-    + tile('VGV','R$ 8,9M','+18% vs mês anterior','up')
-    + tile('Ticket médio','R$ 1,49M','+6% vs mês anterior','up')
-    + tile('Tempo médio de fechamento','34 dias','-3 dias (melhor)','down')
-    + tile('Negócios encerrados',String(KPI.encerradosMes),'no período','flat')
-    + tile('Comissão prevista',brl(KPI.comissaoPrevista),'pipeline atual','flat')
+    + tile('Captações',String(PROPERTIES.length),'imóveis na carteira')
+    + tile('Vendas',String(nVendas),'negócios de venda')
+    + tile('Locações',String(nLoc),'negócios de locação')
+    + tile('VGV',brl(vgv),'valor de venda no pipeline')
+    + tile('Ticket médio',ticket?brl(ticket):'—',nVendas?'por venda':'sem vendas ainda')
+    + tile('Negócios ativos',String(DEALS.length),'em andamento')
+    + tile('Negócios encerrados',String(KPI.encerradosMes),'no período')
+    + tile('Comissão prevista',brl(KPI.comissaoPrevista),'pipeline atual')
   + '</div>'
   + '<div class="grid3" style="margin-top:16px">'
-    + '<div class="card" style="padding:20px"><div class="fz13 fw5 t500">Comissão</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.comissaoPrevista)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:38%;background:var(--success)"></div><div style="width:62%;background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Recebida '+brl(KPI.comissaoRecebida)+'</span><span class="c-war fw6">Pendente '+brl(KPI.comissaoPendente)+'</span></div></div>'
-    + '<div class="card" style="padding:20px"><div class="fx ac jb"><div class="fz13 fw6 t800">Funil de conversão</div>'+badgeTeste+'</div><div class="fz11 t400" style="margin-bottom:12px">Oportunidades no trimestre</div>'+funil.map(f=>'<div style="margin-bottom:9px"><div class="fx jb fz12" style="margin-bottom:4px"><span class="t600 fw5">'+f[0]+'</span><span class="fw7 t900">'+f[1]+'</span></div><div style="height:9px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(f[1]/maxF*100)+'%;background:'+f[2]+'"></div></div></div>').join('')+'<div class="fz12 t500" style="margin-top:8px">Taxa de conversão: <strong class="c-suc">13%</strong></div></div>'
+    + '<div class="card" style="padding:20px"><div class="fz13 fw5 t500">Comissão</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.comissaoPrevista)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+recPct+'%;background:var(--success)"></div><div style="width:'+(100-recPct)+'%;background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Recebida '+brl(KPI.comissaoRecebida)+'</span><span class="c-war fw6">Pendente '+brl(KPI.comissaoPendente)+'</span></div></div>'
+    + '<div class="card" style="padding:20px"><div class="fz13 fw6 t800" style="margin-bottom:12px">Funil operacional</div>'+funil.map(f=>'<div style="margin-bottom:9px"><div class="fx jb fz12" style="margin-bottom:4px"><span class="t600 fw5">'+f[0]+'</span><span class="fw7 t900">'+f[1]+'</span></div><div style="height:9px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(f[1]/maxF*100)+'%;background:'+f[2]+'"></div></div></div>').join('')+'</div>'
     + '<div class="card" style="padding:20px"><div class="fz13 fw6 t800" style="margin-bottom:14px">Carteira por finalidade</div><div class="fx col g3">'+[['Venda',PROPERTIES.filter(p=>p.finalidadeRaw==='venda').length,'info','building-2'],['Locação',PROPERTIES.filter(p=>p.finalidadeRaw==='locacao').length,'ai','key-round'],['Venda e Locação',PROPERTIES.filter(p=>p.finalidadeRaw==='venda_locacao').length,'brand','layers']].map(r=>'<div class="fx ac jb"><span class="fx ac g2 fz13 t600">'+iconChip(r[3],r[2],30)+r[0]+'</span><span class="fz18 fw7 t900">'+r[1]+'</span></div>').join('')+'<div class="fx ac jb" style="padding-top:12px;border-top:1px solid var(--ink100)"><span class="fz13 fw6 t900">Total</span><span class="fz20 fw7" style="color:var(--brand)">'+PROPERTIES.length+'</span></div></div></div>'
   + '</div>'
-  + blockH('Performance da equipe','Quem está em alta, quem evolui e quem precisa de atenção',badgeTeste)
-  + Object.values(TEAM).sort((a,b)=>b.score-a.score).map((t,i)=>teamCard(t,i)).join('')
-  + blockH('Corretores que precisam da sua atenção','Painel de decisão — onde o Broker deve agir primeiro',badgeTeste)
-  + '<div class="grid2">'+Object.values(TEAM).slice().sort((a,b)=>flagOrder[a.flag]-flagOrder[b.flag]).map(t=>{ const dc={red:'#DC2626',yellow:'#F59E0B',green:'#16A34A'}[t.flag]; const lb={red:'Precisa de ação',yellow:'Atenção',green:'No caminho certo'}[t.flag]; return '<div class="card" style="padding:18px;border-left:3px solid '+dc+'"><div class="fx ac g3"><span style="width:12px;height:12px;border-radius:50%;background:'+dc+';box-shadow:0 0 0 4px '+dc+'22"></span>'+avatar(t.nome,36,t.cor)+'<div class="grow mw0"><div class="fz14 fw7 t900 trunc">'+esc(t.nome)+'</div><div class="fz12 fw6" style="color:'+dc+'">'+lb+'</div></div></div><div class="fz13 t700" style="margin-top:12px;line-height:1.5">'+t.attTxt+'</div>'+(t.attRec?'<div class="fx as g2 fz12 t500" style="margin-top:8px">'+icon('lightbulb',14,'c-war')+'<span>Recomendação: '+t.attRec+'</span></div>':'')+'<button class="btn btn-outline sm" style="width:100%;margin-top:14px" data-corr="'+t.id+'">Abrir perfil</button></div>'; }).join('')+'</div>'
-  + blockH('SMART IA','Insights inteligentes da operação',badgeTeste)
-  + '<div class="grid2">'+ia.map(x=>'<div class="card" style="padding:18px;background:linear-gradient(180deg,var(--aibg),#fff);border-color:#EBD9FF"><div class="fx ac g2" style="margin-bottom:8px">'+iconChip('sparkles','ai',32)+'<div class="fz11 up fw7 c-ai">SMART IA · '+x.tag+'</div></div><div class="fz14 t800 fw5" style="line-height:1.5">'+x.txt+'</div>'+(x.sug?'<div class="fx ac g2 fz13 fw6 t900" style="margin-top:10px;padding-top:10px;border-top:1px solid #EBD9FF">'+icon(x.ic,15,'c-ai')+x.sug+'</div>':'')+'</div>').join('')+'</div>';
+  + blockH('Produção por corretor','Vendas, locações e comissão prevista por pessoa')
+  + '<div class="card" style="padding:18px 20px">'+(prod.length?'<div class="fx col g4">'+prod.map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900 nsh">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join('')+'</div>':'<div class="tcenter t500 fz13" style="padding:24px">Nenhum negócio com corretor atribuído ainda.</div>')+'</div>';
 };
-
-function openCorretor(id){ openDrawer(corretorDrawer(id)); }
-function corretorDrawer(id){
-  const c=cstat(id); const mx=Math.max.apply(null,c.mensal);
-  const chart='<div class="fx g1" style="height:120px;align-items:flex-end">'+c.mensal.map((v,i)=>'<div class="grow" style="text-align:center"><div style="height:'+Math.round(v/mx*96)+'px;border-radius:4px 4px 0 0;background:'+(i===6?c.cor:'#C9D2E3')+'"></div><div class="fz11" style="margin-top:4px;color:'+(i===6?'var(--ink900)':'var(--ink400)')+';font-weight:'+(i===6?'700':'400')+'">'+MESES[i]+'</div></div>').join('')+'</div>';
-  const stat=(l,v)=>'<div class="card" style="padding:12px 14px"><div class="fz11 t500">'+l+'</div><div class="fz15 fw7 t900" style="margin-top:2px">'+v+'</div></div>';
-  const sc=scoreColor(c.score);
-  return drawerHead(c.nome,c.cargo+' · REMAX SMART')
-   + '<div class="grow scrolly" style="overflow:auto;padding:18px 20px">'
-   + '<div class="fx ac g2" style="margin-bottom:14px">'+badgeTeste+'<span class="fz11 t500">Métricas de performance ainda são demonstração.</span></div>'
-   + '<div class="fx ac g3" style="margin-bottom:16px">'+avatar(c.nome,56,c.cor)+'<div class="grow mw0"><div class="fx ac g2 fz13 t500">'+icon('phone',14,'t400')+c.tel+'</div></div><div class="tright nsh"><div class="fz11 t500">Smart Score</div><div class="fz22 fw7" style="color:'+sc+'">'+c.score+'</div></div></div>'
-   + '<div class="gd" style="grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">'+stat('Captações',c.cap)+stat('Vendas',c.vendas)+stat('Locações',c.loc)+stat('Ativos',c.ativos)+stat('Encerrados',c.encerrados)+stat('Conversão',c.conversao+'%')+stat('VGV',brl(c.vgv))+stat('Ticket médio',brl(c.ticket))+stat('T. resposta',c.tempoResp)+'</div>'
-   + '<div class="card" style="padding:14px 16px;margin-bottom:16px"><div class="fx jb wrap g2"><div><div class="fz11 t500">Comissão prevista</div><div class="fz15 fw7 mono t900">'+brlFull(c.comPrev)+'</div></div><div class="tright"><div class="fz11 t500">Recebida / Pendente</div><div class="fz13 fw6"><span class="c-suc">'+brl(c.comReceb)+'</span> / <span class="c-war">'+brl(c.comPend)+'</span></div></div></div></div>'
-   + '<div class="fz12 up fw7 t500" style="margin-bottom:10px">Produção mensal (comissão)</div>'+chart
-   + '</div>'
-   + '<div class="fx g2" style="padding:14px 20px;border-top:1px solid var(--ink100)"><button class="btn btn-outline sm grow" data-action="close-drawer">Fechar</button></div>';
-}
 
 /* ---------------- NEGÓCIOS ---------------- */
 function filteredDeals(){ const q=(state.negBusca||'').toLowerCase().trim(); return DEALS.filter(d=>{ if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(state.negFiltroStatus!=='Todos'&&d.status!==state.negFiltroStatus)return false; if(q){ const im=propDoDeal(d); const s=(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)).toLowerCase(); if(s.indexOf(q)<0)return false; } return true; }); }
@@ -471,8 +428,9 @@ function corrNome(uid){ return CORRETORES[uid]?CORRETORES[uid].nome:'—'; }
 function corrFoto(uid){ return CORRETORES[uid]?CORRETORES[uid].foto:''; }
 function negRows(){
   const list=filteredDeals();
-  if(!list.length) return '<tr><td colspan="7"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
-  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div></td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td><td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td><td>'+statusPill(d.status)+'</td><td class="tright mono fw6 t900">'+brl(d.comValor)+'</td></tr>'; }).join('');
+  const meu=state.role==='corretor';   // corretor: sem coluna Corretor, comissão = repasse 50% (mockup)
+  if(!list.length) return '<tr><td colspan="'+(meu?6:7)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
+  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div></td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
 function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); refreshIcons(); } const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
 RENDERERS.negocios = function(host){
@@ -486,7 +444,7 @@ RENDERERS.negocios = function(host){
     + '</div>'
   + '</div>'
   + '<div class="fz13 tmut" style="margin-bottom:12px"><strong class="tw" id="negCount">'+filteredDeals().length+'</strong> negócios · '+(state.negFiltroTipo)+(state.negFiltroStatus!=='Todos'?' · '+state.negFiltroStatus:'')+'</div>'
-  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:820px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Cliente</th><th>Corretor</th><th>Status</th><th class="tright">Comissão</th></tr></thead><tbody id="negTbody">'+negRows()+'</tbody></table></div></div>';
+  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(state.role==='corretor'?'720':'820')+'px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Cliente</th>'+(state.role==='corretor'?'':'<th>Corretor</th>')+'<th>Status</th><th class="tright">'+(state.role==='corretor'?'Minha comissão':'Comissão')+'</th></tr></thead><tbody id="negTbody">'+negRows()+'</tbody></table></div></div>';
 };
 
 function renderStepper(d){
@@ -499,6 +457,10 @@ function renderStepper(d){
 
 function openDeal(id){
   const d=DEALS.find(x=>x.id===id); if(!d) return; state.currentDeal=id; const tab=state.dealTab||'timeline';
+  // Vindo de um drawer (pessoa/imóvel), fecha ele — senão o detalhe renderiza atrás.
+  closeDrawer(); closeModal();
+  // O detalhe é logicamente a tela Negócios (sanfona destaca certo + ESC/voltar coerentes).
+  if(state.view!=='negocios'){ state.view='negocios'; if(state.embedded && typeof state.onNavigate==='function'){ try{ state.onNavigate('negocios'); }catch(e){} } }
   const im=propDoDeal(d), corr=CORRETORES[d.corretor]||{nome:'—'};
   const bc=$('#breadcrumb'); if(bc) bc.innerHTML='<button class="btn-dark-ghost" data-nav="negocios">SMART HUB</button>'+icon('chevron-right',15,'tmut')+'<button class="btn-dark-ghost" data-nav="negocios">Negócios</button>'+icon('chevron-right',15,'tmut')+'<span class="tw fw6 mono trunc">'+esc(d.code)+'</span>';
 
@@ -513,11 +475,11 @@ function openDeal(id){
   host.innerHTML =
     '<button class="btn-dark-ghost" style="margin-bottom:16px" data-nav="negocios">'+icon('arrow-left',15)+'Voltar aos Negócios</button>'
   + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'<button class="btn btn-outline sm" data-action="sem-drive">'+icon('folder-open',15)+'Sem Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
-  + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
+  + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500">'+esc(d.clienteContato||'—')+'</div></div></div></div>'
-      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
+      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor (50%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
     + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
@@ -562,7 +524,10 @@ function personDrawer(id){
   if(tab==='dados'){ body='<div>'+kv('E-mail',esc(p.email))+kv('Telefone',esc(p.tel))+kv('CPF','<span class="mono">'+esc(p.cpf)+'</span>')+kv('Cidade',esc(p.cidade))+'</div>'; }
   else if(tab==='vinc'){ body=negs.length?negs.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px">'+iconChip('handshake',d.tipo==='Venda'?'info':'ai',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 mono">'+esc(d.code)+'</div><div class="fz11 t500 trunc">'+esc(propDoDeal(d).rua)+'</div></div>'+statusPill(d.status)+'</button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum negócio vinculado.</div>'; }
   else { body='<div class="fz13 t700" style="line-height:1.55">'+esc(p.obs||'—')+'</div>'; }
+  const telNum=(p.tel&&p.tel!=='—')?String(p.tel).replace(/\D/g,''):'';
+  const acoesContato=telNum?'<div class="fx g2" style="padding:12px 16px 0"><a class="btn btn-success sm grow" href="https://wa.me/55'+telNum+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',15)+'WhatsApp</a><a class="btn btn-outline sm grow" href="tel:+55'+telNum+'" style="text-decoration:none">'+icon('phone',15)+'Ligar</a></div>':'';
   return drawerHead(p.nome, p.tipos.join(' · '))
+   + acoesContato
    + '<div class="fx g1" style="padding:2px 16px 0;border-bottom:1px solid var(--ink100);overflow-x:auto">'+tabs.map(t=>'<button class="tab'+(tab===t[0]?' active':'')+'" data-action="ptab-'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'
    + '<div class="grow scrolly" style="overflow:auto;padding:18px 20px">'+body+'</div>'
    + '<div class="fx g2" style="padding:14px 20px;border-top:1px solid var(--ink100)"><button class="btn btn-outline sm grow" data-action="close-drawer">Fechar</button></div>';
@@ -576,7 +541,7 @@ function imoveisList(){
   const list=filteredProps();
   if(!list.length) return vazio('building','Nenhum imóvel encontrado.');
   if(state.imoveisView==='cards'){
-    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">'+list.map((p,i)=>'<button class="card card-hover" data-prop="'+p.id+'" style="overflow:hidden;text-align:left;padding:0"><div style="height:148px;background:'+GRAD[i%GRAD.length]+';position:relative"><span class="pill" style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span>'+(p.fotos?'<span style="position:absolute;top:10px;right:10px"><span class="pill" style="background:rgba(0,0,0,.35);color:#fff">'+icon("image",12)+p.fotos+'</span></span>':'')+'<span class="mono" style="position:absolute;bottom:10px;left:12px;color:#fff;font-weight:700;font-size:17px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:12px;font-weight:500">/mês</span>':''):'Sem valor')+'</span></div><div style="padding:14px"><div class="fz14 fw6 t900 trunc">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+' · '+esc(p.tipo)+'</div><div class="fx ac g3 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+statusPill(p.status)+'<span class="mono t400" style="margin-left:auto">'+esc(p.code)+'</span></div></div></button>').join('')+'</div>';
+    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">'+list.map((p,i)=>'<button class="card card-hover" data-prop="'+p.id+'" style="overflow:hidden;text-align:left;padding:0"><div style="height:148px;background:'+GRAD[i%GRAD.length]+';position:relative"><span class="pill" style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span>'+(p.fotos?'<span style="position:absolute;top:10px;right:10px"><span class="pill" style="background:rgba(0,0,0,.35);color:#fff">'+icon("image",12)+p.fotos+'</span></span>':'')+'<span class="mono" style="position:absolute;bottom:10px;left:12px;color:#fff;font-weight:700;font-size:17px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:12px;font-weight:500">/mês</span>':''):'Sem valor')+'</span></div><div style="padding:14px"><div class="fz14 fw6 t900 trunc">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+' · '+esc(p.tipo)+'</div>'+((p.dorm||p.vaga!=null||p.area)?'<div class="fx ac g3 fz12 t500" style="margin-top:8px">'+(p.dorm?'<span class="fx ac g1">'+icon('bed-double',13,'t400')+p.dorm+'</span>':'')+(p.vaga!=null?'<span class="fx ac g1">'+icon('car',13,'t400')+p.vaga+'</span>':'')+(p.area?'<span class="fx ac g1">'+icon('ruler',13,'t400')+p.area+'m²</span>':'')+'</div>':'')+(state.role!=='corretor'&&corrNome(p.corretor)!=='—'?'<div class="fz12 t500" style="margin-top:6px">Corretor: '+esc(corrNome(p.corretor))+'</div>':'')+'<div class="fx ac g3 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+statusPill(p.status)+'<span class="mono t400" style="margin-left:auto">'+esc(p.code)+'</span></div></div></button>').join('')+'</div>';
   }
   return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:760px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Finalidade</th><th>Proprietário</th><th class="tright">Valor</th></tr></thead><tbody>'+list.map(p=>'<tr data-prop="'+p.id+'"><td class="mono fz13 fw6 t900">'+esc(p.code)+'</td><td><div class="fw6 t900">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+'</div></td><td class="t700">'+esc(p.tipo)+'</td><td>'+pill(p.finalidade,p.finalidadeRaw==='locacao'?'ai':'info')+'</td><td class="t700">'+esc(p.proprietarioNome)+'</td><td class="tright mono fw6 t900">'+(p.preco?brlFull(p.preco):'—')+'</td></tr>').join('')+'</tbody></table></div></div>';
 }
@@ -588,12 +553,23 @@ RENDERERS.imoveis=function(host){
   + '<div id="imoveisList">'+imoveisList()+'</div>';
 };
 function openProp(id){ state.currentProp=id; if(!state.imovelTab)state.imovelTab='dados'; openDrawer(propDrawer(id)); }
+const DOC_LABELS={matricula:'Matrícula',iptu:'IPTU',escritura:'Escritura',contaConsumo:'Conta de consumo',rgCpf:'RG / CPF',comprovanteRenda:'Comprovante de renda',contrato:'Contrato',habitese:'Habite-se',planta:'Planta',fotos:'Fotos'};
+function docLabel(k){ return DOC_LABELS[k] || String(k).replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase()); }
 function propDrawer(id){
   const p=prop(id); const tab=state.imovelTab||'dados'; const negs=DEALS.filter(d=>d.imovelId===id); const gi=PROPERTIES.indexOf(PROPERTIES.find(x=>x.id===id));
-  const tabs=[['dados','Dados'],['interessados','Interessados'],['vinc','Negócios']];
+  const tabs=[['dados','Dados'],['interessados','Interessados'],['docs','Documentos'],['vinc','Negócios']];
   let body='';
-  if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>')+kv('Situação',p.status)+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+'</div>'; }
+  if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>')+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+'</div>'; }
   else if(tab==='interessados'){ const its=p.interessados||[]; body=its.length?its.map(it=>'<div class="fx ac g3" style="padding:11px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div><div class="fz11 t500">'+esc(it.contato||'')+'</div></div>'+pill((it.status||'').replace(/_/g,' '),'neutral')+'</div>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado neste imóvel.</div>'; }
+  else if(tab==='docs'){
+    const raw=(p.raw&&p.raw.documentos)||{};
+    const anexos=Object.entries(raw).filter(([,url])=>typeof url==='string' && /^https?:/i.test(url));
+    const ehVenda=p.finalidadeRaw==='venda'||p.finalidadeRaw==='venda_locacao';
+    body=(ehVenda?'<button class="btn btn-primary sm" data-action="gerar-contrato" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('file-text',15)+'Gerar Contrato de representação</button>':'')
+      + '<div class="fz12 up fw7 t500" style="margin-bottom:10px">Anexos da ficha</div>'
+      + (anexos.length?anexos.map(([k,url])=>'<a class="fx ac g3 hoverbg" href="'+esc(url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+iconChip('file-text','info',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(docLabel(k))+'</div><div class="fz11 t500">Anexo do imóvel</div></div>'+icon('download',15,'t400')+'</a>').join(''):'<div class="fz13 t500" style="margin-bottom:12px">Nenhum anexo enviado ainda.</div>')
+      + '<button class="btn btn-outline sm" data-action="add-doc" style="width:100%;margin-top:6px">'+icon('plus',15)+'Adicionar documento</button>';
+  }
   else { body=negs.length?negs.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px">'+iconChip('handshake',d.tipo==='Venda'?'info':'ai',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 mono">'+esc(d.code)+'</div><div class="fz11 t500 trunc">'+esc(d.clienteNome)+'</div></div>'+statusPill(d.status)+'</button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum negócio vinculado.</div>'; }
   return drawerHead(p.rua, esc(p.tipo)+' · '+esc(p.code))
    + '<div style="height:150px;background:'+GRAD[(gi<0?0:gi)%GRAD.length]+';position:relative;flex-shrink:0"><span class="mono" style="position:absolute;bottom:12px;left:16px;color:#fff;font-weight:700;font-size:20px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:13px;font-weight:500">/mês</span>':''):'')+'</span><span class="pill" style="position:absolute;top:12px;left:16px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span></div>'
@@ -615,6 +591,7 @@ RENDERERS.relatorios=function(host){
   const sel=(id,opts,val)=>'<select class="input" data-action="'+id+'" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
   host.innerHTML=pageHead(hTitulo('Relatórios'),'Visão executiva da operação — comissões, produção e funil.', sel('relcorr',nomes,corr)+'<button class="btn btn-outline" data-action="export-rel">'+icon('download',16)+'Exportar</button>')
   + '<div class="grid4" style="margin-bottom:16px">'+relKpi('Comissão prevista',brl(KPI.comissaoPrevista),'Pipeline total','var(--ink900)')+relKpi('Comissão recebida',brl(KPI.comissaoRecebida),'Concluídos','var(--successtx)')+relKpi('Comissão pendente',brl(KPI.comissaoPendente),'A receber','var(--warningtx)')+relKpi('Negócios encerrados',KPI.encerradosMes,'No período','var(--ink900)')+'</div>'
+  + '<div class="card" style="padding:20px;margin-bottom:16px"><div class="fz13 fw5 t500">Repasse aos corretores (50%)</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.pagoCorretores+KPI.pendenteCorretores)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+((KPI.pagoCorretores+KPI.pendenteCorretores)?Math.round(KPI.pagoCorretores/(KPI.pagoCorretores+KPI.pendenteCorretores)*100):0)+'%;background:var(--success)"></div><div class="grow" style="background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Pago '+brl(KPI.pagoCorretores)+'</span><span class="c-war fw6">Pendente '+brl(KPI.pendenteCorretores)+'</span></div></div>'
   + '<div class="split" style="margin-bottom:16px">'
     + '<div class="card" style="overflow:hidden">'+cardHead('Produção por corretor')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">'+(perc.length?perc.filter(p=>corr==='Todos'||p.nome===corr).map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow"><div class="fz14 fw6 t900">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem negócios no período.</div>')+'</div></div>'
     + '<div class="card" style="overflow:hidden">'+cardHead('Funil operacional')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px">'+funil.map(f=>'<div><div class="fx jb fz12" style="margin-bottom:5px"><span class="t600 fw5">'+f[0]+'</span><span class="fw7 t900">'+f[1]+'</span></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(f[1]/maxF*100)+'%;background:'+f[2]+'"></div></div></div>').join('')+'</div></div>'
@@ -650,15 +627,14 @@ function wireEvents(root){
     // — o #overlay é recriado a cada mount, então um listener direto nele vazaria.
     if(e.target.id==='overlay'){ closeDrawer(); closeModal(); closeMobileNav(); return; }
     const nav=e.target.closest('[data-nav]'); if(nav){ navigate(nav.dataset.nav); return; }
-    const ops=e.target.closest('[data-ops]'); if(ops){ navigate('negocios'); return; }
-    const cr=e.target.closest('[data-corr]'); if(cr){ openCorretor(cr.dataset.corr); return; }
+    const ops=e.target.closest('[data-ops]'); if(ops){ const f=ops.dataset.ops; state.negFiltroStatus=(f&&f!=='Todos')?f:'Todos'; navigate('negocios'); return; }
     const chk=e.target.closest('[data-chk]'); if(chk){ negAtualizar({negocioId:state.currentDeal, acao:'checklist', key:chk.dataset.chk, feito:chk.dataset.feito==='1'}); return; }
     const deal=e.target.closest('[data-deal]'); if(deal){ openDeal(deal.dataset.deal); return; }
     const pers=e.target.closest('[data-person]'); if(pers){ openPerson(pers.dataset.person); return; }
     const pr=e.target.closest('[data-prop]'); if(pr){ openProp(pr.dataset.prop); return; }
     const act=e.target.closest('[data-action]'); if(act){ handleAction(act.dataset.action, act); return; }
   });
-  root.addEventListener('input', e=>{ const t=e.target.closest('[data-input]'); if(!t) return; const k=t.dataset.input; if(k==='negBusca'){ state.negBusca=t.value; updateNegTable(); } else if(k==='pessoasBusca'){ state.pessoasBusca=t.value; updatePessoas(); } else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); } });
+  root.addEventListener('input', e=>{ const t=e.target.closest('[data-input]'); if(!t) return; const k=t.dataset.input; if(k==='negBusca'){ state.negBusca=t.value; updateNegTable(); } else if(k==='pessoasBusca'){ state.pessoasBusca=t.value; updatePessoas(); } else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); } else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); } });
   root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } });
 }
@@ -702,6 +678,8 @@ const NAV_ROLE = {
     {id:'clientes',ico:'users',label:'Meus Clientes'},
     {id:'imoveis',ico:'building-2',label:'Meus Imóveis'},
     {id:'negocios',ico:'handshake',label:'Meus Negócios'},
+    {id:'agenda',ico:'calendar',label:'Agenda'},
+    {id:'documentos',ico:'folder',label:'Documentos'},
     {id:'comissoes',ico:'wallet',label:'Minhas Comissões'},
     {id:'perfil',ico:'user',label:'Meu Perfil'},
   ],
@@ -712,6 +690,9 @@ const NAV_ROLE = {
     {id:'imoveis',ico:'building-2',label:'Imóveis'},
     {id:'negocios',ico:'handshake',label:'Negócios'},
     {id:'documentos',ico:'folder',label:'Documentos'},
+    {id:'clicksign',ico:'file-signature',label:'Clicksign'},
+    {id:'drive',ico:'hard-drive',label:'Google Drive'},
+    {id:'agenda',ico:'calendar',label:'Agenda'},
     {id:'relatorios',ico:'clipboard-list',label:'Relatórios Operacionais'},
     {id:'perfil',ico:'user',label:'Meu Perfil'},
   ],
@@ -720,6 +701,7 @@ renderNav = function(target){ if(!target) return; const items=NAV_ROLE[state.rol
 Object.assign(CRUMB, {
   clientes:['SMART HUB','Meus Clientes'], comissoes:['SMART HUB','Minhas Comissões'], perfil:['SMART HUB','Meu Perfil'],
   fila:['SMART HUB','Fila de Trabalho'], documentos:['SMART HUB','Documentos'],
+  agenda:['SMART HUB','Agenda'], clicksign:['SMART HUB','Clicksign'], drive:['SMART HUB','Google Drive'],
 });
 
 // Título por papel/tela (Meus Imóveis, Meus Negócios, Meus Clientes, Relatórios Operacionais).
@@ -730,8 +712,23 @@ function hTitulo(base){
   return base;
 }
 
-// Clientes (corretor) reaproveita a tela Pessoas (backend já devolve só os dele).
-RENDERERS.clientes = function(host){ RENDERERS.pessoas(host); };
+// Clientes (corretor) — layout do mockup (Nome/Tipo/Telefone/Negócios), dado REAL
+// (o backend já devolve só as pessoas do corretor via `pessoasListar`).
+const CLI_TIPOS=['Todos','Comprador','Locatário','Proprietário','Fiador'];
+function cliTipoColor(t){ return t==='Comprador'?'success':t==='Locatário'?'ai':t==='Fiador'?'warning':'info'; }
+function clientesRows(){
+  const q=(state.cliBusca||'').toLowerCase().trim(); const f=state.cliFiltro||'Todos';
+  const list=PEOPLE.filter(p=>{ if(f!=='Todos'&&!p.tipos.includes(f))return false; if(q&&(p.nome+' '+p.email+' '+p.cpf).toLowerCase().indexOf(q)<0)return false; return true; });
+  if(!list.length) return '<tr><td colspan="4"><div class="tcenter t500" style="padding:40px 0">'+icon('user-x',24)+'<p style="margin-top:8px" class="fz14 fw5">Nenhum cliente encontrado.</p></div></td></tr>';
+  return list.map(p=>{ const negs=DEALS.filter(d=>d.clienteNome===p.nome).length; return '<tr data-person="'+p.id+'"><td><div class="fx ac g2">'+avatar(p.nome,30,'var(--ink800)')+'<span class="fw6 t900">'+esc(p.nome)+'</span></div></td><td>'+p.tipos.map(t=>pill(t,cliTipoColor(t))).join(' ')+'</td><td class="t700">'+esc(p.tel)+'</td><td class="tright fw6 t900">'+negs+' neg.</td></tr>'; }).join('');
+}
+function updateClientes(){ const el=$('#cliBody'); if(el){ el.innerHTML=clientesRows(); refreshIcons(); } }
+RENDERERS.clientes = function(host){
+  host.innerHTML=pageHead('Meus Clientes','Todos os clientes vinculados aos seus negócios.','')
+  + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+CLI_TIPOS.map(t=>'<button class="chip'+((state.cliFiltro||'Todos')===t?' active':'')+'" data-action="clifiltro" data-v="'+t+'">'+t+'</button>').join('')+'</div><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,60vw)">'+icon('search',16,'tmut')+'<input data-input="cliBusca" value="'+esc(state.cliBusca||'')+'" placeholder="Buscar cliente…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div></div>'
+  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:560px"><thead><tr><th>Nome</th><th>Tipo</th><th>Telefone</th><th class="tright">Negócios</th></tr></thead><tbody id="cliBody">'+clientesRows()+'</tbody></table></div></div>';
+  if(!PEOPLE.length){ carregarPessoas().then(()=>{ if(state.view==='clientes') updateClientes(); }); }
+};
 
 /* ---------------- DASHBOARD por papel ---------------- */
 const _dashBroker = RENDERERS.dashboard;
@@ -741,7 +738,12 @@ RENDERERS.dashboard = function(host){
   return _dashBroker(host);
 };
 
-const FICHA_HOST = 'https://remax-smart-hub.web.app';
+// Mesmo critério do Hub (BASE_HOSTING): a ficha resolve o backend pelo hostname
+// DELA, então link de produção gravaria dado de teste na PRODUÇÃO quando o
+// corretor está no staging. `.exe` (file://) e web.app de produção → produção.
+const FICHA_HOST = (typeof location !== 'undefined' && location.hostname.includes('remax-smart-hub-staging'))
+  ? 'https://remax-smart-hub-staging.web.app'
+  : 'https://remax-smart-hub.web.app';
 const FICHAS_CORRETOR = [
   ['ficha-locador.html','Locador','house','info'],
   ['ficha-vendedor.html','Vendedor','key-round','success'],
@@ -752,65 +754,104 @@ const FICHAS_CORRETOR = [
 ];
 function fichaLink(arquivo){ const uid=(auth.currentUser&&auth.currentUser.uid)||''; return FICHA_HOST+'/'+arquivo+'?corretor='+encodeURIComponent(uid)+'&nome='+encodeURIComponent(state.meuNome||''); }
 
+function saudacao(){ const h=new Date().getHours(); return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'; }
+const repasse = d => Math.round((d.comValor||0)*0.5);
 function renderDashCorretor(host){
   const primeiro=(state.meuNome||'Corretor').split(' ')[0];
+  // Dados REAIS (o backend já devolve só os negócios/imóveis do corretor).
   const ativos=DEALS.length;
-  const propostas=DEALS.filter(d=>['negocio_criado','em_andamento'].includes(d.statusRaw)).length;
+  const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
+  const props=DEALS.filter(d=>['negocio_criado','em_andamento'].includes(d.statusRaw)).length;
   const captacoes=PROPERTIES.length;
-  const comPrev=DEALS.reduce((s,d)=>s+Math.round((d.comValor||0)*0.5),0);
-  const comReceb=DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+Math.round((d.comValor||0)*0.5),0);
-  const acoes=DEALS.slice().sort((a,b)=>b.diasParado-a.diasParado).slice(0,6);
+  const MYCOM={ prevista:DEALS.reduce((s,d)=>s+repasse(d),0), recebida:DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+repasse(d),0) };
   const kcard=(ico,variant,label,valor,sub,view)=>'<button class="card card-hover" style="padding:18px;text-align:left" data-nav="'+view+'"><div class="fx as jb g3"><div class="mw0"><div class="fz13 fw5 t500">'+label+'</div><div style="margin-top:8px;font-size:24px;line-height:1;font-weight:700;letter-spacing:-.02em;color:var(--ink900)" class="'+(String(valor).indexOf("R$")===0?"mono":"")+'">'+valor+'</div></div>'+iconChip(ico,variant,40)+'</div>'+(sub?'<div class="fz12 fw6 '+sub[1]+'" style="margin-top:10px">'+sub[0]+'</div>':'')+'</button>';
-  const blockH=(t,sub,badge)=>'<div style="margin:26px 0 14px"><div class="fx ac g2"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(badge||'')+'</div>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>';
-  const iaB=['Mantenha o follow-up dos clientes sem contato há mais de 7 dias.','Priorize os negócios parados há mais tempo (lista abaixo).','Envie a ficha certa pelo card ao lado pra iniciar um novo atendimento.'];
+  const atalhos=[['novo-cliente','user-plus','Novo Cliente'],['novo-imovel','building-2','Novo Imóvel'],['novo-negocio','handshake','Novo Negócio'],['agendar-visita','calendar-plus','Agendar Visita'],['enviar-ficha','clipboard-list','Enviar Ficha'],['whatsapp-quick','message-circle','WhatsApp'],['abrir-drive','folder-open','Google Drive'],['clicksign','file-signature','Clicksign']];
+  // Próximas ações / pendências — REAIS, dos negócios do corretor.
+  const acoes=DEALS.slice().sort((a,b)=>b.diasParado-a.diasParado).slice(0,5).map(d=>[d.prox,d.code+' · '+propDoDeal(d).rua,d.diasParado>7?'warning':'info',d.id]);
+  const pend=DEALS.filter(d=>(d.checklist||[]).some(x=>x.obrigatoria&&!x.feito)||d.diasParado>7).slice(0,5).map(d=>[(d.diasParado>7?'Negócio parado há '+d.diasParado+' dias':'Documentação pendente'),d.code+' · '+propDoDeal(d).rua,d.diasParado>7?'danger':'warning',d.id]);
+  // Pipeline — REAL, por etapa do negócio.
+  const bucket=arr=>DEALS.filter(d=>arr.includes(d.statusRaw)).length;
+  const pipe=[['Captação',captacoes,'#2563EB'],['Novos',bucket(['negocio_criado']),'#7C3AED'],['Em andamento',bucket(['em_andamento','aguardando_corretor']),'#0EA5E9'],['Documentação',bucket(['aguardando_administrativo','aguardando_broker']),'#F59E0B'],['Assinatura',assin,'#F59E0B'],['Concluído',bucket(['concluido']),'#16A34A']];
+  const maxP=Math.max.apply(null,pipe.map(p=>p[1]))||1;
+  const recs=DEALS.slice().sort((a,b)=>repasse(b)-repasse(a)).slice(0,5);
+  const blockH=(t,sub,right)=>'<div class="fx ac jb g3" style="margin:26px 0 14px"><div class="fx ac g2"><div><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div></div>'+(right||'')+'</div>';
   host.innerHTML=
-    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Seu centro de trabalho — seus números, suas ações e suas fichas à mão.</p></div>'
+    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Seu centro de trabalho — ações do dia e ferramentas sempre à mão.</p></div>'
   + '<div class="grid3" style="margin-top:20px">'
-    + kcard('handshake','info','Meus negócios ativos',ativos,['Em andamento','c-inf'],'negocios')
-    + kcard('house','brand','Minhas captações',captacoes,['Imóveis na carteira','c-suc'],'imoveis')
-    + kcard('file-signature','warning','Propostas em andamento',propostas,['Em negociação','c-war'],'negocios')
-    + kcard('wallet','success','Comissão prevista',brl(comPrev),['Repasse estimado (50%)','c-suc'],'comissoes')
-    + kcard('badge-dollar-sign','success','Comissão recebida',brl(comReceb),['Negócios concluídos','c-suc'],'comissoes')
-    + kcard('users','ai','Meus clientes',PEOPLE.length||DEALS.length,['Vinculados a você','c-ai'],'clientes')
+    + kcard('handshake','info','Negócios ativos',ativos,['Em andamento','c-inf'],'negocios')
+    + kcard('house','brand','Captações',captacoes,['Imóveis na carteira','c-suc'],'imoveis')
+    + kcard('users','ai','Meus clientes',PEOPLE.length,['Vinculados a você','c-ai'],'clientes')
+    + kcard('file-signature','warning','Propostas em andamento',props,['Em negociação','c-war'],'negocios')
+    + kcard('wallet','success','Comissão prevista',brl(MYCOM.prevista),['Repasse estimado (50%)','c-suc'],'comissoes')
+    + kcard('badge-dollar-sign','success','Comissão recebida',brl(MYCOM.recebida),['Negócios concluídos','c-suc'],'comissoes')
   + '</div>'
-  + blockH('Fichas digitais','Envie a ficha cadastral e inicie o atendimento — link já sai com seu nome')
-  + '<div class="card" style="overflow:hidden"><div style="padding:8px">'+FICHAS_CORRETOR.map(f=>'<div class="fx ac g3 hoverbg" style="padding:11px 12px;border-radius:10px">'+iconChip(f[2],f[3],38)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+f[1]+'</div><div class="fz12 t500">Ficha digital · link personalizado</div></div><div class="fx g1 nsh">'+[['ficha-copy','copy','Copiar link'],['ficha-whats','message-circle','WhatsApp'],['ficha-view','eye','Visualizar']].map(a=>'<button class="iconbtn" title="'+a[2]+'" style="background:var(--ink50);border-color:var(--ink200);color:var(--ink600);width:34px;height:34px" data-action="'+a[0]+'" data-arq="'+f[0]+'" data-nome="'+esc(f[1])+'">'+icon(a[1],15)+'</button>').join('')+'</div></div>').join('')+'</div></div>'
-  + blockH('Precisa da sua atenção','Seus negócios ordenados por tempo parado')
-  + '<div class="card" style="overflow:hidden"><div style="padding:8px">'+(acoes.length?acoes.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:none;padding:12px;border-radius:10px;cursor:pointer"><span style="width:10px;height:10px;border-radius:50%;background:'+(d.diasParado>7?'var(--danger)':'var(--warning)')+';flex-shrink:0"></span><div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.prox)+'</div><div class="fz12 t500 trunc">'+esc(d.code)+' · '+esc(propDoDeal(d).rua)+'</div></div><div class="fx ac g2 nsh">'+statusPill(d.status)+'<span class="fz12 t500 mono">'+d.diasParado+'d</span></div></button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem negócios ativos ainda.</div>')+'</div></div>'
-  + blockH('SMART IA','Recomendações do seu dia',badgeTeste)
-  + '<div class="card" style="padding:18px;background:linear-gradient(180deg,var(--aibg),#fff);border-color:#EBD9FF"><div class="fx ac g2" style="margin-bottom:12px">'+iconChip('sparkles','ai',34)+'<div class="fz13 up fw7 c-ai">SMART IA</div></div><div class="fx col g2">'+iaB.map(b=>'<div class="fx as g2 fz14 t800" style="line-height:1.5">'+icon('chevron-right',15,'c-ai')+'<span>'+b+'</span></div>').join('')+'</div></div>';
+  + '<div class="card" style="padding:12px;margin-top:16px"><div class="fx wrap g2">'+atalhos.map(x=>'<button class="btn btn-outline sm" data-action="'+x[0]+'">'+icon(x[1],15)+x[2]+'</button>').join('')+'</div></div>'
+  + blockH('Fichas digitais','Envie a ficha cadastral e inicie o processo de locação ou venda')
+  + '<div class="card" style="overflow:hidden"><div style="padding:8px">'+FICHAS_CORRETOR.map(f=>'<div class="fx ac g3 hoverbg" style="padding:11px 12px;border-radius:10px">'+iconChip(f[2],f[3],38)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+f[1]+'</div><div class="fz12 t500">Ficha digital · link personalizado</div></div><div class="fx g1 nsh">'+[['ficha-copy','copy','Copiar link'],['ficha-whats','message-circle','WhatsApp'],['ficha-email','mail','E-mail'],['ficha-view','eye','Visualizar']].map(a=>'<button class="iconbtn" title="'+a[2]+'" style="background:var(--ink50);border-color:var(--ink200);color:var(--ink600);width:34px;height:34px" data-action="'+a[0]+'" data-arq="'+f[0]+'" data-nome="'+esc(f[1])+'">'+icon(a[1],15)+'</button>').join('')+'</div></div>').join('')+'</div></div>'
+  + blockH('Meu dia','Suas tarefas e pendências')
+  + '<div class="split">'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Próximas ações','<button class="btn-dark-ghost" style="color:var(--brand)" data-action="hub-agenda">Ver agenda</button>')+'<div style="padding:8px">'+(acoes.length?acoes.map(a=>'<div class="fx ac g3 hoverbg" style="padding:12px;border-radius:10px">'+iconChip('circle-dot',a[2],32)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(a[0])+'</div><div class="fz12 t500 trunc">'+esc(a[1])+'</div></div><button class="btn btn-outline sm nsh" data-deal="'+a[3]+'">Abrir negócio</button></div>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nada pendente. 🎉</div>')+'</div></div>'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Minhas pendências')+'<div style="padding:8px">'+(pend.length?pend.map(p=>'<button class="fx ac g3 hoverbg" data-deal="'+p[3]+'" style="width:100%;text-align:left;background:none;border:none;padding:11px 12px;border-radius:10px;cursor:pointer"><span style="width:10px;height:10px;border-radius:50%;background:var(--'+p[2]+');box-shadow:0 0 0 3px var(--'+p[2]+'bg);flex-shrink:0"></span><div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(p[0])+'</div><div class="fz12 t500 trunc">'+esc(p[1])+'</div></div>'+icon('chevron-right',15,'t400')+'</button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem pendências.</div>')+'</div></div>'
+  + '</div>'
+  + blockH('Meu pipeline','Acompanhe seus negócios por etapa')
+  + '<div class="card" style="padding:18px 20px"><div class="fx col g3">'+pipe.map(p=>'<button class="fx ac g3" data-nav="negocios" style="width:100%;background:none;border:none;cursor:pointer;padding:0"><span class="fz12 t500 tright nsh" style="width:104px">'+p[0]+'</span><div class="grow" style="height:26px;border-radius:6px;background:var(--ink100);overflow:hidden"><div class="fx ac" style="height:100%;border-radius:6px;padding:0 10px;color:#fff;font-size:12px;font-weight:600;width:'+Math.max(Math.round(p[1]/maxP*100),12)+'%;background:'+p[2]+'">'+p[1]+'</div></div></button>').join('')+'</div></div>'
+  + blockH('Agenda &amp; recebimentos','Seu dia e as próximas comissões')
+  + '<div class="split">'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Agenda do dia')+'<div id="bkAgendaDia" style="padding:8px"><div class="tcenter t500" style="padding:24px">'+icon('loader-2',22,'spin')+'</div></div></div>'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Comissões previstas','<button class="btn-dark-ghost" style="color:var(--brand)" data-nav="comissoes">Ver todas</button>')+'<div style="padding:8px">'+(recs.length?recs.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:none;padding:12px;border-radius:10px;cursor:pointer"><div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500">'+esc(d.code)+' · '+esc(d.clienteNome)+'</div></div><span class="fz15 fw7 c-suc mono nsh">'+brlFull(repasse(d))+'</span></button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem comissões previstas ainda.</div>')+'</div></div>'
+  + '</div>';
+  carregarAgendaDia();
+  // KPI "Meus clientes": PEOPLE é lazy (só carregava ao entrar em Meus Clientes) —
+  // sem isto o card mostrava 0 mesmo com clientes. Re-renderiza 1x quando chegar.
+  if(!PEOPLE.length){ carregarPessoas().then(()=>{ if(PEOPLE.length && state.view==='dashboard' && state.role==='corretor') navigate('dashboard'); }); }
+}
+
+/* Agenda do dia (dashboard do corretor) — eventos REAIS de hoje (listarEventos do Hub). */
+async function carregarAgendaDia(){
+  const box=$('#bkAgendaDia'); if(!box) return;
+  try {
+    const h=new Date();
+    const ini=new Date(h.getFullYear(),h.getMonth(),h.getDate(),0,0,0);
+    const fim=new Date(h.getFullYear(),h.getMonth(),h.getDate(),23,59,59);
+    const r=await fnEventos({ de:ini.toISOString(), ate:fim.toISOString() });
+    const evs=((r&&r.data)||[]).filter(e=>e.meuRsvp!=='recusado').sort((a,b)=>(a.inicio||'').localeCompare(b.inicio||''));
+    const b2=$('#bkAgendaDia'); if(!b2) return;   // navegou pra outra tela
+    if(!evs.length){ b2.innerHTML='<div class="tcenter t500 fz13" style="padding:24px">Nenhum evento para hoje.</div>'; return; }
+    b2.innerHTML=evs.map(e=>{ const dt=new Date(e.inicio); const hh=isNaN(dt)?'--:--':dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); return '<div class="fx ac g3 hoverbg" style="padding:11px 12px;border-radius:10px"><span class="fz13 fw7 t900 mono nsh" style="width:46px">'+hh+'</span>'+iconChip('calendar','info',32)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(e.titulo||'Evento')+'</div>'+(e.descricao?'<div class="fz12 t500 trunc">'+esc(e.descricao)+'</div>':'')+'</div></div>'; }).join('');
+    refreshIcons();
+  } catch(e){ const b=$('#bkAgendaDia'); if(b) b.innerHTML='<div class="tcenter t500 fz13" style="padding:24px">Não consegui carregar a agenda.</div>'; }
 }
 
 function renderDashAdmin(host){
   const primeiro=(state.meuNome||'Administrativo').split(' ')[0];
   const cnt=raw=>DEALS.filter(d=>d.statusRaw===raw).length;
-  const emAndamento=DEALS.filter(d=>['negocio_criado','em_andamento','aguardando_corretor','aguardando_administrativo','aguardando_broker'].includes(d.statusRaw)).length;
-  const aguardBroker=cnt('aguardando_broker'), aguardAdm=cnt('aguardando_administrativo');
   const docsPend=DEALS.filter(d=>(d.checklist||[]).some(x=>x.obrigatoria&&!x.feito)).length;
-  const entregues=cnt('entregue_gestao');
-  const ops=(ico,variant,label,qty,view)=>'<button class="card card-hover" style="padding:16px;text-align:left" data-nav="'+view+'"><div class="fx as jb g2">'+iconChip(ico,variant,38)+icon('chevron-right',16,'t400')+'</div><div style="margin-top:12px;font-size:26px;font-weight:700;color:var(--ink900)">'+qty+'</div><div class="fz13 fw5 t600" style="margin-top:2px">'+label+'</div></button>';
+  const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
+  const stale=DEALS.filter(d=>d.diasParado>7 && d.statusRaw!=='entregue_gestao' && d.statusRaw!=='concluido');
+  const emAndamento=DEALS.filter(d=>['negocio_criado','em_andamento','aguardando_corretor','aguardando_administrativo','aguardando_broker'].includes(d.statusRaw)).length;
+  const cards=[['handshake','info','Negócios ativos',DEALS.length,'negocios'],['file-warning','warning','Documentações pendentes',docsPend,'negocios'],['file-signature','ai','Contratos para assinatura',assin,'clicksign'],['kanban','info','Em andamento',emAndamento,'fila'],['user-check','warning','Aguardando administrativo',cnt('aguardando_administrativo'),'fila'],['alert-triangle','danger','Parados +7 dias',stale.length,'fila']];
+  const kc=c=>'<button class="card card-hover" style="padding:18px;text-align:left" data-nav="'+c[4]+'"><div class="fx as jb g3"><div class="mw0"><div class="fz13 fw5 t500">'+c[2]+'</div><div style="margin-top:8px;font-size:28px;line-height:1;font-weight:700;color:var(--ink900)">'+c[3]+'</div></div>'+iconChip(c[0],c[1],42)+'</div></button>';
+  const RESUMO=[['Novos',cnt('negocio_criado'),'#2563EB'],['Em andamento',cnt('em_andamento')+cnt('aguardando_corretor'),'#7C3AED'],['Aguardando',cnt('aguardando_administrativo')+cnt('aguardando_broker'),'#F59E0B'],['Entregues',cnt('entregue_gestao'),'#0EA5E9'],['Concluídos',cnt('concluido'),'#16A34A']];
+  const crit=stale.slice().sort((a,b)=>b.diasParado-a.diasParado).slice(0,6);
   const blockH=(t,sub)=>'<div style="margin:26px 0 14px"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>';
   host.innerHTML=
-    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">Olá, '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central operacional — processe negócios, documentos e contratos da imobiliária.</p></div>'
-  + '<div class="grid4" style="margin-top:20px">'
-    + ops('kanban','info','Em andamento',emAndamento,'fila')
-    + ops('user-check','warning','Aguardando administrativo',aguardAdm,'fila')
-    + ops('gavel','warning','Aguardando broker',aguardBroker,'fila')
-    + ops('folder-clock','danger','Documentos pendentes',docsPend,'negocios')
-  + '</div>'
-  + blockH('Fila de trabalho','Resumo por etapa — abra a fila pra processar')
-  + '<div class="grid4">'+[['negocio_criado','Novos','info'],['em_andamento','Em andamento','info'],['aguardando_administrativo','Comigo','warning'],['entregue_gestao','Entregues','success']].map(s=>'<button class="card card-hover" style="padding:18px;text-align:left" data-nav="fila"><div class="fz13 fw5 t500">'+s[1]+'</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:var(--'+s[2]+'tx)">'+cnt(s[0])+'</div></button>').join('')+'</div>'
-  + blockH('Atividades recentes','Últimas movimentações dos negócios')
-  + '<div class="card" style="overflow:hidden"><div style="padding:16px">'+(ACTIVITY.length?ACTIVITY.map((a,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',32)+(i<ACTIVITY.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:16px" class="mw0 grow"><div class="fz13 fw6 t900">'+esc(a.txt)+'</div><div class="fz12 t500 trunc">'+esc(a.sub)+'</div><div class="fz11 t400 mono" style="margin-top:2px">'+esc(a.quando)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem atividades recentes.</div>')+'</div></div>';
+    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Centro de operações — mantenha todos os processos em andamento.</p></div>'
+  + '<div class="grid3" style="margin-top:20px">'+cards.map(kc).join('')+'</div>'
+  + blockH('Resumo da fila','Distribuição dos negócios por etapa')
+  + '<div class="card" style="padding:16px"><div class="fx wrap g2">'+RESUMO.map(c=>'<button class="fx ac g2 hoverbg" data-nav="fila" style="flex:1;min-width:150px;background:var(--ink50);border:none;border-radius:10px;padding:12px;cursor:pointer;text-align:left"><span style="width:10px;height:10px;border-radius:50%;background:'+c[2]+'"></span><div><div class="fz18 fw7 t900">'+c[1]+'</div><div class="fz12 t500">'+c[0]+'</div></div></button>').join('')+'</div></div>'
+  + '<div class="split" style="margin-top:16px">'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Precisa de atenção','<button class="btn-dark-ghost" style="color:var(--brand)" data-nav="fila">Ver fila</button>')+'<div style="padding:8px">'+(crit.length?crit.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:none;padding:11px 12px;border-radius:10px;cursor:pointer">'+iconChip('alert-triangle','danger',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(d.code)+' · '+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500 trunc">'+esc(d.clienteNome)+' · '+esc(corrNome(d.corretor))+'</div></div><span class="fz12 t500 mono nsh">'+d.diasParado+'d</span></button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nada parado. 🎉</div>')+'</div></div>'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Atividades recentes')+'<div style="padding:16px">'+(ACTIVITY.length?ACTIVITY.map((a,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',30)+(i<ACTIVITY.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:14px" class="mw0 grow"><div class="fz13 fw6 t900 trunc">'+esc(a.txt)+'</div><div class="fz12 t500 trunc">'+esc(a.sub)+'</div><div class="fz11 t400 mono" style="margin-top:2px">'+esc(a.quando)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Sem atividades recentes.</div>')+'</div></div>'
+  + '</div>';
 }
 
-/* ---------------- FILA DE TRABALHO (kanban real — administrativo) ---------------- */
+/* ---------------- FILA DE TRABALHO (kanban REAL, por status do negócio) ---------------- */
 RENDERERS.fila = function(host){
-  const COLS=[['Novos',['negocio_criado']],['Em andamento',['em_andamento','aguardando_corretor']],['Aguardando',['aguardando_administrativo','aguardando_broker']],['Entregues',['entregue_gestao','concluido']]];
+  const COLS=[['Novos',['negocio_criado'],'#2563EB'],['Em andamento',['em_andamento','aguardando_corretor'],'#7C3AED'],['Aguardando',['aguardando_administrativo','aguardando_broker'],'#F59E0B'],['Entregues',['entregue_gestao','concluido'],'#16A34A']];
   const q=(state.filaBusca||'').toLowerCase().trim();
-  const inQ=d=>!q||(d.code+' '+propDoDeal(d).rua+' '+d.clienteNome).toLowerCase().indexOf(q)>=0;
+  const inQ=d=>!q||(d.code+' '+propDoDeal(d).rua+' '+d.clienteNome+' '+corrNome(d.corretor)).toLowerCase().indexOf(q)>=0;
   host.innerHTML=pageHead('Fila de Trabalho','Todos os negócios por etapa — clique num cartão pra abrir.','<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(280px,50vw)">'+icon('search',16,'tmut')+'<input data-input="filaBusca" value="'+esc(state.filaBusca||'')+'" placeholder="Buscar…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>')
-  + '<div style="overflow-x:auto" class="scrolly"><div id="filaBoard" class="gd" style="grid-template-columns:repeat('+COLS.length+',minmax(240px,1fr));gap:14px;align-items:start;min-width:760px">'+COLS.map(c=>{ const list=DEALS.filter(d=>c[1].includes(d.statusRaw)&&inQ(d)); return '<div class="card" style="padding:0;overflow:hidden"><div class="fx ac jb" style="padding:12px 14px;border-bottom:1px solid var(--ink100)"><span class="fz12 up fw7 t700">'+c[0]+'</span><span class="pill neutral">'+list.length+'</span></div><div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:60px">'+(list.length?list.map(d=>'<button class="card card-hover" data-deal="'+d.id+'" style="padding:12px;text-align:left"><div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px;padding:1px 7px">'+d.tipo+'</span></div><div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div><div class="fx ac jb g2" style="margin-top:8px"><span class="fz11 t400 mono">'+d.diasParado+'d parado</span>'+avatar(corrNome(d.corretor),22,'var(--ink800)',corrFoto(d.corretor))+'</div></button>').join(''):'<div class="tcenter t400 fz12" style="padding:16px 0">—</div>')+'</div></div>'; }).join('')+'</div></div>';
+  + '<div style="overflow-x:auto;padding-bottom:8px" class="scrolly"><div class="gd" style="grid-template-columns:repeat('+COLS.length+',minmax(240px,1fr));gap:14px;align-items:start;min-width:900px">'+COLS.map(c=>{ const list=DEALS.filter(d=>c[1].includes(d.statusRaw)&&inQ(d)); return '<div class="card" style="padding:0;overflow:hidden"><div class="fx ac jb" style="padding:12px 14px;border-bottom:1px solid var(--ink100)"><span class="fx ac g2 fz12 up fw7 t700"><span style="width:9px;height:9px;border-radius:50%;background:'+c[2]+'"></span>'+c[0]+'</span><span class="pill neutral">'+list.length+'</span></div><div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:60px">'+(list.length?list.map(d=>'<button class="card card-hover" data-deal="'+d.id+'" style="padding:12px;text-align:left"><div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px;padding:1px 7px">'+d.tipo+'</span></div><div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(propDoDeal(d).rua)+'</div><div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div><div class="fx ac jb g2" style="margin-top:8px"><span class="fz11 t400 mono">'+d.diasParado+'d parado</span>'+avatar(corrNome(d.corretor),22,'var(--ink800)',corrFoto(d.corretor))+'</div></button>').join(''):'<div class="tcenter t400 fz12" style="padding:16px 0">—</div>')+'</div></div>'; }).join('')+'</div></div>';
 };
 function updateFila(){ if(state.view==='fila') RENDERERS.fila($('#root')); refreshIcons(); }
 
@@ -822,8 +863,16 @@ RENDERERS.comissoes = function(host){
   const pendente=prevista-recebida;
   const rows=DEALS.map(d=>({code:d.code,cli:d.clienteNome,val:rep(d),st:d.statusRaw==='concluido'?'Recebida':'Prevista'}));
   const card=(l,v,ico,variant,cor)=>'<div class="card" style="padding:20px"><div class="fx ac jb"><div class="fz13 fw5 t500">'+l+'</div>'+iconChip(ico,variant,36)+'</div><div class="mono '+(cor||'')+'" style="margin-top:10px;font-size:26px;font-weight:700;color:'+(cor?'':'var(--ink900)')+'">'+brlFull(v)+'</div></div>';
+  // Evolução mensal REAL: repasse dos negócios concluídos, por mês de conclusão (12 meses).
+  const NOMES_MES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const agora=new Date(); const meses=[];
+  for(let i=11;i>=0;i--){ const dt=new Date(agora.getFullYear(),agora.getMonth()-i,1); meses.push({y:dt.getFullYear(),m:dt.getMonth(),label:NOMES_MES[dt.getMonth()],total:0}); }
+  DEALS.filter(d=>d.statusRaw==='concluido').forEach(d=>{ const iso=(d.raw&&(d.raw.atualizadoEm||d.raw.criadoEm))||''; const dt=new Date(iso); if(isNaN(dt)) return; const hit=meses.find(x=>x.y===dt.getFullYear()&&x.m===dt.getMonth()); if(hit) hit.total+=rep(d); });
+  const mxMes=Math.max.apply(null,meses.map(x=>x.total))||1;
+  const chart='<div class="fx g1" style="height:120px;align-items:flex-end">'+meses.map((x,i)=>'<div class="grow" style="text-align:center"><div title="'+x.label+': '+brlFull(x.total)+'" style="height:'+(x.total?Math.max(Math.round(x.total/mxMes*96),4):2)+'px;border-radius:4px 4px 0 0;background:'+(i===11?'var(--brand)':'#C9D2E3')+'"></div><div class="fz11" style="margin-top:4px;color:'+(i===11?'var(--ink900)':'var(--ink400)')+';font-weight:'+(i===11?'700':'400')+'">'+x.label+'</div></div>').join('')+'</div>';
   host.innerHTML=pageHead('Minhas Comissões','Sua comissão (repasse estimado de 50%) por negócio. Valores estimados até a baixa financeira.','')
   + '<div class="grid3" style="margin-bottom:16px">'+card('Prevista',prevista,'wallet','info')+card('Recebida',recebida,'badge-dollar-sign','success','var(--successtx)')+card('Pendente',pendente,'hand-coins','warning','var(--warningtx)')+'</div>'
+  + '<div class="card" style="padding:18px 20px;margin-bottom:16px"><div class="fz12 up fw7 t500" style="margin-bottom:12px">Evolução mensal (recebido)</div>'+chart+'</div>'
   + '<div class="card" style="overflow:hidden">'+cardHead('Comissões por negócio')+'<div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:520px"><thead><tr><th>Negócio</th><th>Cliente</th><th>Status</th><th class="tright">Repasse</th></tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr style="cursor:default"><td class="mono fz13 fw6 t900">'+esc(r.code)+'</td><td class="t700">'+esc(r.cli)+'</td><td>'+pill(r.st,r.st==='Recebida'?'success':'info')+'</td><td class="tright mono fw6 t900">'+brlFull(r.val)+'</td></tr>').join(''):'<tr><td colspan="4" class="tcenter t500" style="padding:24px">Sem negócios ainda.</td></tr>')+'</tbody></table></div></div>';
 };
 
@@ -850,18 +899,63 @@ function pintarPerfil(){
   refreshIcons();
 }
 
-/* ---------------- Placeholders MODO DE TESTE (Documentos) ---------------- */
-function placeholderTela(host, titulo, desc, ico, txt){
-  host.innerHTML=pageHead(titulo,desc,'')
-  + '<div class="card" style="padding:48px 24px;text-align:center">'+iconChip(ico,'brand',52)+'<div class="fz16 fw7 t900" style="margin-top:14px">'+titulo+' '+badgeTeste+'</div><p class="fz14 t500" style="max-width:520px;margin:10px auto 0;line-height:1.55">'+txt+'</p></div>';
+/* ============================================================================
+   TELAS OPERACIONAIS (Documentos, Clicksign, Drive, Agenda, Relatórios op.)
+   Sem dados de demonstração: Clicksign e Relatórios op. usam o dado REAL dos
+   negócios; Documentos/Drive/Agenda ainda não têm fonte — mostram estado
+   honesto de "em breve" em vez de números falsos.
+   ============================================================================ */
+function emBreveTela(host,titulo,desc,ico,txt,acoes){
+  host.innerHTML=pageHead(titulo,desc,acoes||'')
+  + '<div class="card" style="padding:48px 24px;text-align:center">'+iconChip(ico,'brand',52)+'<div class="fz16 fw7 t900" style="margin-top:14px">'+titulo+' — em breve</div><p class="fz14 t500" style="max-width:560px;margin:10px auto 0;line-height:1.55">'+txt+'</p></div>';
 }
-RENDERERS.documentos = function(host){ placeholderTela(host,'Documentos','Central de documentos dos negócios.','folder','Em construção. A central de documentos vai reunir aqui os anexos das fichas e os contratos de cada negócio (hoje eles vivem no negócio e no Google Drive). Enquanto isso, use a aba Negócios.'); };
+
+/* ---- Documentos (corretor + administrativo) — sem integração ainda ---- */
+RENDERERS.documentos = function(host){
+  if(state.role==='administrativo') return emBreveTela(host,'Documentos','Central documental — categorias, versões e histórico.','folder','A central de documentos vai reunir aqui os anexos das fichas e os contratos de cada negócio. Hoje eles vivem dentro de cada negócio (aba Negócios) e no Google Drive.');
+  return emBreveTela(host,'Documentos','Contratos, propostas e documentos dos seus negócios.','folder','Aqui vão ficar os contratos, propostas e documentos dos seus negócios. Por enquanto, os anexos ficam dentro de cada negócio (aba Meus Negócios).');
+};
+
+/* ---- Clicksign (administrativo) — status vem do checklist REAL dos negócios ---- */
+RENDERERS.clicksign = function(host){
+  const map={'—':['Não enviado','neutral'],'Enviado':['Enviado','info'],'Concluído':['Assinado','success']};
+  host.innerHTML=pageHead('Clicksign','Status de assinatura eletrônica dos negócios (a assinatura em si é feita no app do Clicksign).')
+  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:680px"><thead><tr><th>Negócio</th><th>Cliente</th><th>Tipo</th><th>Status</th><th class="tright">Ações</th></tr></thead><tbody>'+(DEALS.length?DEALS.map(d=>{ const s=map[d.clicksign]||['Não enviado','neutral']; return '<tr data-deal="'+d.id+'"><td class="mono fz13 fw6 t900">'+esc(d.code)+'</td><td class="t700">'+esc(d.clienteNome)+'</td><td>'+pill(d.tipo,d.tipo==='Venda'?'info':'ai')+'</td><td>'+pill(s[0],s[1])+'</td><td class="tright"><div class="fx je g1 nsh"><button class="btn btn-outline sm" data-action="clk-open">'+icon('external-link',14)+'Abrir</button><button class="btn btn-outline sm" data-action="clk-resend">'+icon('send',14)+'Reenviar</button></div></td></tr>'; }).join(''):'<tr><td colspan="5" class="tcenter t500" style="padding:24px">Nenhum negócio ainda.</td></tr>')+'</tbody></table></div></div>';
+};
+
+/* ---- Google Drive (administrativo) — sem integração ainda ---- */
+RENDERERS.drive = function(host){
+  emBreveTela(host,'Google Drive','Estrutura de pastas dos negócios.','hard-drive','A integração com o Google Drive (pastas por negócio, sincronização de anexos) depende de uma service account e ainda não está ligada. Cada negócio pode guardar um link do Drive na aba Negócios.');
+};
+
+/* ---- Agenda (corretor + administrativo) — sem fonte de eventos ainda ---- */
+RENDERERS.agenda = function(host){
+  emBreveTela(host,'Agenda','Visitas, vistorias, assinaturas e reuniões.','calendar','A agenda desta visão ainda não está conectada a uma fonte de eventos. A agenda da equipe fica no Hub (categoria Agenda).');
+};
+
+/* ---- Relatórios Operacionais (administrativo) — REAL, sem financeiro ---- */
+function relatoriosAdmin(host){
+  const cnt=raw=>DEALS.filter(d=>d.statusRaw===raw).length;
+  const docsPend=DEALS.filter(d=>(d.checklist||[]).some(x=>x.obrigatoria&&!x.feito)).length;
+  const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
+  const stale=DEALS.filter(d=>d.diasParado>7 && d.statusRaw!=='entregue_gestao' && d.statusRaw!=='concluido').length;
+  const tile=(l,v,s)=>'<div class="card" style="padding:18px"><div class="fz13 fw5 t500">'+l+'</div><div style="margin-top:8px;font-size:26px;font-weight:700;color:var(--ink900)">'+v+'</div><div class="fz12 t500" style="margin-top:4px">'+s+'</div></div>';
+  const ETAPAS=[['Novos',cnt('negocio_criado'),'#2563EB'],['Em andamento',cnt('em_andamento')+cnt('aguardando_corretor'),'#7C3AED'],['Aguardando',cnt('aguardando_administrativo')+cnt('aguardando_broker'),'#F59E0B'],['Entregues',cnt('entregue_gestao'),'#0EA5E9'],['Concluídos',cnt('concluido'),'#16A34A']];
+  const mx=Math.max(1,...ETAPAS.map(e=>e[1]));
+  host.innerHTML=pageHead('Relatórios Operacionais','Indicadores de execução — sem dados financeiros.')
+  + '<div class="grid3">'+[tile('Negócios ativos',String(DEALS.length),'no total'),tile('Documentações pendentes',String(docsPend),'a regularizar'),tile('Contratos p/ assinatura',String(assin),'no Clicksign'),tile('Entregues à gestão',String(cnt('entregue_gestao')),'no período'),tile('Concluídos',String(cnt('concluido')),'no período'),tile('Parados +7 dias',String(stale),'precisam de ação')].join('')+'</div>'
+  + '<div class="card" style="padding:20px;margin-top:16px"><div class="fz13 fw6 t800" style="margin-bottom:14px">Negócios por etapa</div><div class="fx col g3">'+ETAPAS.map(c=>'<div class="fx ac g3"><span class="fz12 t500 tright nsh" style="width:150px">'+c[0]+'</span><div class="grow" style="height:22px;border-radius:6px;background:var(--ink100);overflow:hidden"><div class="fx ac" style="height:100%;border-radius:6px;padding:0 8px;color:#fff;font-size:12px;font-weight:600;width:'+Math.max(Math.round(c[1]/mx*100),8)+'%;background:'+c[2]+'">'+c[1]+'</div></div></div>').join('')+'</div></div>';
+}
+const _relBroker = RENDERERS.relatorios;
+RENDERERS.relatorios = function(host){ if(state.role==='administrativo') return relatoriosAdmin(host); return _relBroker(host); };
 
 /* Ações extras de fichas (corretor) e salvar perfil — estende o handleAction. */
 const _handleAction = handleAction;
+const emBreve=(msg)=>toast(msg||'Em breve nesta visão.','sparkles','var(--brand)');
 handleAction = function(a, el){
   if(a==='ficha-copy'){ const l=fichaLink(el.dataset.arq); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha '+(el.dataset.nome||'')+' copiado','copy'); return; }
   if(a==='ficha-whats'){ const l=fichaLink(el.dataset.arq); window.open('https://wa.me/?text='+encodeURIComponent('Olá! Segue o link da ficha cadastral. Ao concluir, me avise pra dar continuidade.\n\n'+l),'_blank'); return; }
+  if(a==='ficha-email'){ const l=fichaLink(el.dataset.arq); window.open('mailto:?subject='+encodeURIComponent('Ficha cadastral — REMAX SMART')+'&body='+encodeURIComponent('Olá! Segue o link da ficha cadastral:\n\n'+l),'_blank'); return; }
   if(a==='ficha-view'){ window.open(fichaLink(el.dataset.arq),'_blank'); return; }
   if(a==='salvar-perfil'){
     const payload={ telefone:($('#pfTel')||{}).value||'', creci:($('#pfCreci')||{}).value||'', cpf:($('#pfCpf')||{}).value||'' };
@@ -869,8 +963,52 @@ handleAction = function(a, el){
     fnSalvarPerfil(payload).then(()=>{ if(state.perfilCache) Object.assign(state.perfilCache,payload); toast('Perfil salvo'); }).catch(e=>toast(e.message||'Erro','alert-triangle','var(--danger)'));
     return;
   }
+  // Filtros / toggles das telas novas
+  if(a==='clifiltro'){ state.cliFiltro=el.dataset.v; RENDERERS.clientes($('#root')); refreshIcons(); return; }
+  if(a==='agview'){ state.agView=el.dataset.v; RENDERERS.agenda($('#root')); refreshIcons(); return; }
+  if(a==='drivetipo'){ state.driveTipo=el.dataset.v; RENDERERS.drive($('#root')); refreshIcons(); return; }
+  // Atalhos do corretor
+  if(a==='novo-menu'){ toast('Use os atalhos do painel para começar','plus','var(--brand)'); return; }
+  if(a==='novo-cliente'||a==='novo-imovel'||a==='novo-negocio'){ emBreve('Cadastro por aqui em breve — por ora, use o Cadastro/Carteira no Hub.'); return; }
+  if(a==='agendar-visita'||a==='hub-agenda'){
+    // Agenda de verdade é a do HUB (a interna saiu do menu). Fallback: tela interna.
+    if(!(window.hubAbrirCategoria && window.hubAbrirCategoria('agenda'))) navigate('agenda');
+    return;
+  }
+  if(a==='enviar-ficha'){ navigate('dashboard'); toast('Escolha a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); return; }
+  if(a==='whatsapp-quick'){ window.open('https://wa.me/','_blank'); return; }
+  if(a==='abrir-drive'){ emBreve('Integração com o Google Drive em breve.'); return; }
+  if(a==='clicksign'){
+    if(state.role==='administrativo'){ navigate('clicksign'); return; }
+    // Integra com o app ClickSign do Hub (restrito — o Hub checa a permissão).
+    if(!(window.hubAbrirApp && window.hubAbrirApp('clicksign'))) emBreve('ClickSign é liberado por pessoa no Admin do Hub.');
+    return;
+  }
+  if(a==='clk-open'){ if(!(window.hubAbrirApp && window.hubAbrirApp('clicksign'))) emBreve('ClickSign é liberado por pessoa no Admin do Hub.'); return; }
+  if(a==='gerar-contrato'){
+    if(typeof window.hubGerarContratoVenda!=='function'){ emBreve('Geração de contrato disponível no Hub.'); return; }
+    toast('Gerando contrato…','loader-2','var(--brand)');
+    window.hubGerarContratoVenda(el.dataset.imovel).then(r=>{ toast((r&&r.msg)||'Pronto', (r&&r.ok)?'file-text':'alert-triangle', (r&&r.ok)?'var(--success)':'var(--danger)'); });
+    return;
+  }
+  if(a==='add-doc'){ emBreve('Upload de documento por aqui em breve — por ora, os anexos vêm das fichas.'); return; }
+  if(a==='concluir-proxima'){
+    const d=DEALS.find(x=>x.id===state.currentDeal); if(!d) return;
+    const nx=(d.checklist||[]).find(x=>!x.feito);
+    if(!nx){ toast('Todas as etapas já estão concluídas'); return; }
+    negAtualizar({negocioId:d.id, acao:'checklist', key:nx.key, feito:true}, 'Etapa concluída: '+(nx.label||''));
+    return;
+  }
+  // Ações operacionais de demonstração (administrativo)
+  if(['upload-doc','preview-doc','download-doc','drive-sync','drive-new','clk-resend','reenviar-ficha','alterar-senha','maps','editar','notif'].indexOf(a)>=0){ emBreve('Ação de demonstração — integração em breve.'); return; }
   return _handleAction(a, el);
 };
 
 /* Busca da Fila de Trabalho — listener próprio no #bkRoot (o de wireEvents não cobre filaBusca). */
 (function(){ const r=ROOT(); if(r) r.addEventListener('input', e=>{ const t=e.target.closest('[data-input="filaBusca"]'); if(t){ state.filaBusca=t.value; updateFila(); } }); })();
+
+/* API pública extra — usada pela SANFONA do Hub (modo embutido):
+   - navigate(view): troca de tela do Broker sem remontar (a nav vem da sidebar do Hub);
+   - getNav(role): itens de menu daquele papel (o Hub filtra o que quiser, ex.: tira "agenda"). */
+window.Broker.navigate = function(view){ const r=ROOT(); if(r && !r.hidden && view){ navigate(view); } };
+window.Broker.getNav = function(role){ return (NAV_ROLE[role] || NAV_ROLE.broker).map(n=>({ id:n.id, label:n.label, ico:n.ico })); };

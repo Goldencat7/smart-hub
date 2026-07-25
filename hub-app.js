@@ -234,7 +234,8 @@ const ICN = {
   financeiro:   svgIcone('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.4"/>'),
   locadmin:     svgIcone('<path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="M9 12l2 2 4-4"/>'),
   painel:       svgIcone('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'),
-  config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>')
+  config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
+  perfil:      svgIcone('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>')
 };
 
 // ─── Estrutura fixa dos treinamentos ─────────────────────────────────────────
@@ -305,7 +306,7 @@ const CATEGORIAS = [
   { id: 'notas',        nome: 'Bloco de Notas',  icone: ICN.notas, notas: true },
   { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp' },
   { id: 'ti',          nome: 'Suporte / TI',  icone: ICN.ti, ti: true, soTI: true },
-  { id: 'config',      nome: 'Configurações', icone: ICN.config, config: true }
+  { id: 'config',      nome: 'Meu Perfil', icone: ICN.perfil, config: true }
 ];
 
 // Avatar padrão (quando a pessoa não tem foto)
@@ -315,6 +316,9 @@ const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
 
 let categoriaAtiva = 'captacao';
 let locSub = null;              // sub-app aberto dentro da aba Locação (null = grade de cards)
+let locSanfonaAberta = false;   // "Meus Negócios" expandido na sidebar (sanfona)
+let locBrokerView = 'dashboard';// tela ativa do Broker embutido (sub-item da sanfona)
+let brokerMontado = false;      // Broker já montado (embutido) na área central
 let termoBusca = '';
 let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
@@ -337,6 +341,8 @@ let verificandoNotif = false;     // Bug 5: evita chamadas concorrentes de verif
 // ─── DOM ─────────────────────────────────────────────────────────────────
 const navCategorias  = document.getElementById('navCategorias');
 const tituloCategoria = document.getElementById('tituloCategoria');
+const hubMain        = document.querySelector('.hub-main');
+const hubMainHead    = document.querySelector('.hub-main-head');
 const inputBusca     = document.getElementById('inputBusca');
 const searchWrap     = document.querySelector('.search-wrap');
 const appsGrid       = document.getElementById('appsGrid');
@@ -426,12 +432,28 @@ function renderSidebar() {
     (!c.soTI || temPermTI || isAdmin)
   );
 
-  navCategorias.innerHTML = visiveis.map(c => `
+  navCategorias.innerHTML = visiveis.map(c => {
+    const btn = `
     <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''} ${c.config ? 'nav-item-fim' : ''}" data-cat="${c.id}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
-    </button>
-  `).join('');
+      ${c.locacoes ? `<span class="nav-caret">${locSanfonaAberta ? '▾' : '▸'}</span>` : ''}
+    </button>`;
+    // Sanfona "Meus Negócios": sub-itens do Broker abaixo do item (menos "Agenda" e
+    // "Meu Perfil", que já existem no Hub). Sem o módulo do Broker (fallback pra
+    // grade antiga), a lista vem vazia — aí não renderiza sanfona nenhuma.
+    if (c.locacoes && locSanfonaAberta) {
+      const itens = locSubItens();
+      if (itens.length) {
+        const subs = itens.map(s => `
+        <button class="nav-subitem ${locBrokerView === s.id ? 'ativo' : ''}" data-locview="${s.id}">
+          <span class="nav-sub-dot"></span><span>${s.label}</span>
+        </button>`).join('');
+        return btn + `<div class="nav-subwrap">${subs}</div>`;
+      }
+    }
+    return btn;
+  }).join('');
 
   navCategorias.querySelectorAll('.nav-item').forEach(b => {
     const cat = CATEGORIAS.find(c => c.id === b.dataset.cat);
@@ -440,8 +462,32 @@ function renderSidebar() {
         abrirApp(cat.appDireto);
         return;
       }
+      if (cat && cat.locacoes) {
+        // Sanfona: se já está aberta e ativa, clicar de novo FECHA (recolhe + sai do Broker).
+        if (locSanfonaAberta && categoriaAtiva === 'locacoes') {
+          locSanfonaAberta = false;
+          const alt = CATEGORIAS.find(c =>
+            c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
+            !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
+          categoriaAtiva = alt ? alt.id : 'captacao';
+          locSub = null;
+          renderSidebar();
+          renderCentro();   // desmonta o Broker e restaura o layout do Hub
+          return;
+        }
+        // Abre/ativa "Meus Negócios" como sanfona embutida (sem janela/tela nova).
+        categoriaAtiva = 'locacoes';
+        locSanfonaAberta = true;
+        if (!locBrokerView) locBrokerView = 'dashboard';
+        termoBusca = ''; inputBusca.value = '';
+        renderSidebar();
+        renderCentro();
+        registrarAcesso({ siteKey: 'locacoes', titulo: 'Meus Negócios' }).catch(() => {});
+        return;
+      }
       categoriaAtiva = b.dataset.cat;
       locSub = null;
+      locSanfonaAberta = false;   // sai da sanfona ao trocar de categoria
       termoBusca = '';
       inputBusca.value = '';
       renderSidebar();
@@ -452,12 +498,45 @@ function renderSidebar() {
       }
     });
   });
+
+  // Sub-itens da sanfona: trocam a tela do Broker embutido sem remontar.
+  navCategorias.querySelectorAll('.nav-subitem').forEach(b => {
+    b.addEventListener('click', () => {
+      locBrokerView = b.dataset.locview;
+      if (window.Broker && window.Broker.navigate) window.Broker.navigate(locBrokerView);
+      // re-render só pra atualizar o destaque do sub-item ativo
+      navCategorias.querySelectorAll('.nav-subitem').forEach(x => x.classList.toggle('ativo', x.dataset.locview === locBrokerView));
+    });
+  });
+}
+
+// Papel na Gestão de Locações → Broker/Corretor/Administrativo.
+function locPapel() {
+  return (podeGestaoLoc || locRoleAtual === 'gestor') ? 'broker'
+       : (locRoleAtual === 'administrativo' ? 'administrativo' : 'corretor');
+}
+// Sub-itens da sanfona = menu do Broker daquele papel, SEM "Agenda" nem "Meu Perfil"
+// (Agenda já existe no Hub; "Meu Perfil" virou a aba de baixo do Hub, no lugar de Configurações).
+function locSubItens() {
+  const nav = (window.Broker && window.Broker.getNav) ? window.Broker.getNav(locPapel()) : [];
+  return nav.filter(n => n.id !== 'agenda' && n.id !== 'perfil');
 }
 
 // ─── Render central (cards filtrados) ────────────────────────────────────
 function renderCentro() {
   const cat = CATEGORIAS.find(c => c.id === categoriaAtiva);
   tituloCategoria.textContent = cat.nome;
+
+  // Saiu do "Meus Negócios" embutido → desmonta o Broker e restaura o layout do Hub.
+  if (!cat.locacoes && brokerMontado) {
+    if (window.Broker && window.Broker.unmount) window.Broker.unmount();
+    brokerMontado = false;
+    const bk = document.getElementById('bkRoot'); if (bk) bk.hidden = true;
+    hubMainHead.hidden = false;
+    hubMain.classList.remove('hub-main--broker');
+    hubLayout.classList.remove('loc-embed');
+  }
+
   secaoConfig.hidden = true;
   secaoAgenda.hidden = true;
   secaoMarketing.hidden = true;
@@ -596,10 +675,10 @@ function renderCentro() {
   }
 
   // Aba "Meus Negócios" (Gestão de Locações) — visão NOVA do Broker (broker-app.js).
-  // DESKTOP (.exe): abre em JANELA PRÓPRIA (como um app) via IPC. WEB/PWA: monta
-  // o Broker em overlay tela cheia sobre o Hub. As telas antigas (renderCarteira,
-  // carregarPainel, renderTela03/04A/04B/05) ficam intactas como fallback caso o
-  // módulo do Broker não carregue.
+  // Roda EMBUTIDO na área central do Hub (sanfona na sidebar), sem janela/tela nova:
+  // a sidebar do Hub mostra os sub-itens (Dashboard/Pessoas/Imóveis/Negócios/…) e o
+  // conteúdo do Broker aparece aqui. As telas antigas (renderCarteira, carregarPainel,
+  // renderTela03/04A/04B/05) ficam de fallback caso o módulo do Broker não carregue.
   if (cat.locacoes) {
     estadoVazio.hidden = true;
     secaoDocs.hidden = true;
@@ -607,42 +686,29 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
 
-    // Papel: gestor/loc_gestao → Broker; administrativo → Admin; senão → Corretor.
-    const papelLoc = (podeGestaoLoc || locRoleAtual === 'gestor') ? 'broker'
-                   : (locRoleAtual === 'administrativo' ? 'administrativo' : 'corretor');
-
-    // Desktop: janela separada. Depois volta o Hub pra uma categoria normal
-    // (a janela nova cuida do app; o Hub não pode ficar numa tela vazia).
-    const ehDesktop = !!(window.hubApi && window.hubApi.autologin === true && typeof window.hubApi.abrirMeusNegocios === 'function');
-    if (ehDesktop) {
-      window.hubApi.abrirMeusNegocios(papelLoc);
-      const alt = CATEGORIAS.find(c =>
-        c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
-        !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
-      if (alt) categoriaAtiva = alt.id;
-      locSub = null;
-      renderSidebar();
-      renderCentro();
-      return;
-    }
-
     if (window.Broker && typeof window.Broker.mount === 'function') {
-      const nome = (formatarNome(auth.currentUser?.displayName) || auth.currentUser?.email || 'Broker');
-      window.Broker.mount({
-        role: papelLoc,
-        nome,
-        onExit: () => {
-          // Sai do Broker: volta o Hub pra uma categoria não-locação (senão o
-          // renderCentro re-monta o Broker no mesmo instante).
-          const alt = CATEGORIAS.find(c =>
-            c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
-            !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
-          if (alt) categoriaAtiva = alt.id;
-          locSub = null;
-          renderSidebar();
-          renderCentro();
-        }
-      });
+      const bk = document.getElementById('bkRoot');
+      hubMainHead.hidden = true;                 // o Broker tem título próprio (pageHead)
+      hubMain.classList.add('hub-main--broker');  // tira padding/scroll da main
+      hubLayout.classList.add('loc-embed');       // esconde o painel direito (agenda) → largura cheia
+      if (bk && bk.parentElement !== hubMain) hubMain.appendChild(bk);
+      if (bk) bk.hidden = false;
+      if (!locBrokerView) locBrokerView = 'dashboard';
+      if (!brokerMontado) {
+        const nome = (formatarNome(auth.currentUser?.displayName) || auth.currentUser?.email || 'Broker');
+        window.Broker.mount({
+          role: locPapel(), nome, embedded: true, view: locBrokerView,
+          // Navegação que nasce DENTRO do Broker (KPI card, "Voltar aos Negócios"…)
+          // sincroniza o destaque da sanfona aqui.
+          onNavigate: (v) => {
+            locBrokerView = v;
+            navCategorias.querySelectorAll('.nav-subitem').forEach(x => x.classList.toggle('ativo', x.dataset.locview === v));
+          }
+        });
+        brokerMontado = true;
+      } else {
+        window.Broker.navigate(locBrokerView);
+      }
       return;
     }
 
@@ -892,9 +958,47 @@ function avisoStatusApp(app, status) {
 }
 
 // ─── Abrir app (com ou sem autologin) ────────────────────────────────────
+// Ponte pro Broker embutido: troca a categoria ativa do Hub (ex.: Agenda).
+// Sai do "Meus Negócios" — o renderCentro desmonta o Broker e restaura o layout.
+window.hubAbrirCategoria = (id) => {
+  const cat = CATEGORIAS.find(c => c.id === id);
+  if (!cat) return false;
+  categoriaAtiva = id; locSub = null; locSanfonaAberta = false;
+  renderSidebar(); renderCentro();
+  return true;
+};
+
+// Ponte pro Broker embutido: gera o contrato de representação (venda) reusando a
+// MESMA function do Hub (gerarContratoVenda) e baixa o PDF. Devolve {ok,msg}.
+window.hubGerarContratoVenda = async (imovelId) => {
+  try {
+    const r = await gerarContratoVendaFn({ imovelId });
+    const d = r.data || {};
+    baixarBase64Pdf(d.pdfBase64, d.filename);
+    let msg = 'Contrato gerado — confira e suba no ClickSign.';
+    if (d.semFicha) msg = 'Contrato gerado, mas sem ficha de vendedor: os dados dos vendedores saíram em branco.';
+    else if (!d.vendedores) msg = 'Contrato gerado, mas nenhum vendedor foi encontrado na ficha.';
+    if (d.semCreci) msg += ' (Preencha CRECI/CPF em Meu Perfil.)';
+    return { ok: true, msg };
+  } catch (e) {
+    return { ok: false, msg: 'Erro ao gerar contrato: ' + (e.message || e) };
+  }
+};
+
+// Ponte pro Broker embutido (Meus Negócios): deixa o Broker abrir um app do Hub
+// (ex.: ClickSign) respeitando a permissão por pessoa. Devolve false se não pode.
+window.hubAbrirApp = (siteKey) => {
+  const app = APPS.find(a => a.key === siteKey);
+  if (!app) return false;
+  if (app.restrito && !(isAdmin || appsPermitidos.includes(siteKey))) return false;
+  abrirApp(siteKey);
+  return true;
+};
+
 async function abrirApp(siteKey) {
   const app = APPS.find(a => a.key === siteKey);
   if (!app) return;
+
 
   // Status postado pelo admin: "Indisponível"/"Em manutenção" bloqueiam a
   // abertura no Hub; "Instável" só avisa. Nos dois casos, se o app tiver
@@ -961,6 +1065,7 @@ async function carregarPerfil() {
   if (cfgCpf) cfgCpf.value = '';
   setFoto('');
   carregarIniciarWindows();
+  carregarEspecialidades();
   try {
     const r = await getMeuPerfil();
     cfgEmail.value = r.data.email || '';
@@ -983,6 +1088,47 @@ function mostrarMsgCfg(texto, ok) {
 
 cfgTrocarFoto.addEventListener('click', () => cfgFileInput.click());
 cfgRemoverFoto.addEventListener('click', () => { fotoPendente = ''; setFoto(''); });
+
+/* ── Especialidades & atuação (Meu Perfil) ─────────────────────────────────
+   Chips com botão + pra adicionar e × pra remover. Salvo no dispositivo
+   (localStorage por uid) por enquanto — quando houver campo no backend,
+   trocar por salvarMeuPerfil({ especialidades }). */
+let cfgEspLista = [];
+const cfgEspAdd       = document.getElementById('cfgEspAdd');
+const cfgEspInputWrap = document.getElementById('cfgEspInputWrap');
+const cfgEspInput     = document.getElementById('cfgEspInput');
+const cfgEspConfirm   = document.getElementById('cfgEspConfirm');
+const cfgEspBox       = document.getElementById('cfgEspecialidades');
+
+function espChave() { return 'cfgEsp_' + (currentUid || 'anon'); }
+function carregarEspecialidades() {
+  try { cfgEspLista = JSON.parse(localStorage.getItem(espChave()) || '[]'); } catch (_) { cfgEspLista = []; }
+  if (!Array.isArray(cfgEspLista)) cfgEspLista = [];
+  renderEspecialidades();
+}
+function salvarEspecialidades() { try { localStorage.setItem(espChave(), JSON.stringify(cfgEspLista)); } catch (_) {} }
+function renderEspecialidades() {
+  if (!cfgEspBox) return;
+  cfgEspBox.innerHTML = cfgEspLista.length
+    ? cfgEspLista.map((e, i) => `<span class="cfg-chip">${escapeHtml(e)}<button type="button" class="cfg-chip-x" data-esp="${i}" title="Remover" aria-label="Remover">×</button></span>`).join('')
+    : '<span class="muted config-dica">Nenhuma especialidade cadastrada ainda.</span>';
+}
+function addEspecialidade() {
+  const v = (cfgEspInput.value || '').trim();
+  if (!v) { cfgEspInput.focus(); return; }
+  if (!cfgEspLista.some(x => x.toLowerCase() === v.toLowerCase())) { cfgEspLista.push(v); salvarEspecialidades(); renderEspecialidades(); }
+  cfgEspInput.value = ''; cfgEspInput.focus();
+}
+if (cfgEspAdd) cfgEspAdd.addEventListener('click', () => {
+  cfgEspInputWrap.hidden = !cfgEspInputWrap.hidden;
+  if (!cfgEspInputWrap.hidden) cfgEspInput.focus();
+});
+if (cfgEspConfirm) cfgEspConfirm.addEventListener('click', addEspecialidade);
+if (cfgEspInput) cfgEspInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addEspecialidade(); } });
+if (cfgEspBox) cfgEspBox.addEventListener('click', e => {
+  const x = e.target.closest('.cfg-chip-x'); if (!x) return;
+  cfgEspLista.splice(+x.dataset.esp, 1); salvarEspecialidades(); renderEspecialidades();
+});
 
 cfgFileInput.addEventListener('change', () => {
   const f = cfgFileInput.files[0];
