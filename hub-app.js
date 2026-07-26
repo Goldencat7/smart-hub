@@ -313,11 +313,15 @@ const CATEGORIAS = [
   { id: 'config',      nome: 'Meu Perfil', icone: ICN.perfil, config: true }
 ];
 
-// PWA/celular? O shim web zera o autologin (`hubApi.autologin === false`, `plataforma:'web'`).
-// No PWA escondemos as categorias `webOculto` e, nas que ficam (Captação/Vistoria), só os
-// apps que funcionam como link web normal.
+// Web/PWA? O shim web zera o autologin (`hubApi.autologin === false`, `plataforma:'web'`).
+// (No .exe/desktop isso é sempre false → nada é escondido.)
 function ehWeb() { return !!(window.hubApi && (window.hubApi.plataforma === 'web' || window.hubApi.autologin === false)); }
-// Apps liberados no PWA (não dependem de autologin — abrem como link web).
+// Tela de celular? (mesmo breakpoint do layout mobile). O PWA aberto num PC (tela larga)
+// NÃO conta como celular.
+function ehTelaCelular() { return typeof window !== 'undefined' && !!(window.matchMedia && window.matchMedia('(max-width: 900px)').matches); }
+// Só o PWA NUM CELULAR enxuga os apps. Desktop (.exe) e PWA num PC mostram tudo.
+function ehPwaCelular() { return ehWeb() && ehTelaCelular(); }
+// Apps liberados no PWA do celular (não dependem de autologin — abrem como link web).
 const WEB_APPS = new Set(['itbi_smart', 'checkvisto']);
 
 // Avatar padrão (quando a pessoa não tem foto)
@@ -436,7 +440,7 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
-    (!c.webOculto || !ehWeb()) &&
+    (!c.webOculto || !ehPwaCelular()) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
     (!c.soTI || temPermTI || isAdmin) &&
@@ -807,7 +811,7 @@ function renderCentro() {
   const termo = termoBusca.trim().toLowerCase();
   const filtrados = APPS.filter(a =>
     a.categoria === categoriaAtiva &&
-    (!ehWeb() || WEB_APPS.has(a.key)) &&
+    (!ehPwaCelular() || WEB_APPS.has(a.key)) &&
     (!a.restrito || isAdmin || appsPermitidos.includes(a.key)) &&
     (!termo || a.titulo.toLowerCase().includes(termo) || a.desc.toLowerCase().includes(termo))
   );
