@@ -1001,7 +1001,7 @@ const emBreve=(msg)=>toast(msg||'Em breve nesta visão.','sparkles','var(--brand
 handleAction = function(a, el){
   if(a==='ficha-copy'){ const l=fichaLink(el.dataset.arq); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha '+(el.dataset.nome||'')+' copiado','copy'); return; }
   if(a==='ficha-whats'){ const l=fichaLink(el.dataset.arq); window.open('https://wa.me/?text='+encodeURIComponent('Olá! Segue o link da ficha cadastral. Ao concluir, me avise pra dar continuidade.\n\n'+l),'_blank'); return; }
-  if(a==='ficha-email'){ const l=fichaLink(el.dataset.arq); window.open('mailto:?subject='+encodeURIComponent('Ficha cadastral — REMAX SMART')+'&body='+encodeURIComponent('Olá! Segue o link da ficha cadastral:\n\n'+l),'_blank'); return; }
+  if(a==='ficha-email'){ const l=fichaLink(el.dataset.arq); const su=encodeURIComponent('Ficha cadastral — REMAX SMART'); const body=encodeURIComponent('Olá! Segue o link da ficha cadastral:\n\n'+l); window.open('https://mail.google.com/mail/?view=cm&fs=1&tf=1&su='+su+'&body='+body,'_blank'); return; }
   if(a==='ficha-view'){ window.open(fichaLink(el.dataset.arq),'_blank'); return; }
   if(a==='salvar-perfil'){
     const payload={ telefone:($('#pfTel')||{}).value||'', creci:($('#pfCreci')||{}).value||'', cpf:($('#pfCpf')||{}).value||'' };
