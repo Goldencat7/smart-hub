@@ -1015,7 +1015,17 @@ handleAction = function(a, el){
   if(a==='drivetipo'){ state.driveTipo=el.dataset.v; RENDERERS.drive($('#root')); refreshIcons(); return; }
   // Atalhos do corretor
   if(a==='novo-menu'){ toast('Use os atalhos do painel para começar','plus','var(--brand)'); return; }
-  if(a==='novo-cliente'||a==='novo-imovel'||a==='novo-negocio'){ emBreve('Cadastro por aqui em breve — por ora, use o Cadastro/Carteira no Hub.'); return; }
+  if(a==='novo-cliente'||a==='novo-imovel'){
+    // Cliente e imóvel nascem de uma FICHA — leva pro Cadastro do Hub (todas as fichas).
+    if(!(window.hubAbrirCategoria && window.hubAbrirCategoria('documentos'))){ navigate('dashboard'); toast('Envie a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); }
+    return;
+  }
+  if(a==='novo-negocio'){
+    // O negócio é GERADO a partir de um interessado aprovado no imóvel (decisão do gestor).
+    navigate('imoveis');
+    toast('O negócio nasce de um interessado aprovado no imóvel — abra o imóvel para gerar','handshake','var(--brand)');
+    return;
+  }
   if(a==='agendar-visita'||a==='hub-agenda'){
     // Agenda de verdade é a do HUB (a interna saiu do menu). Fallback: tela interna.
     if(!(window.hubAbrirCategoria && window.hubAbrirCategoria('agenda'))) navigate('agenda');
@@ -1023,7 +1033,7 @@ handleAction = function(a, el){
   }
   if(a==='enviar-ficha'){ navigate('dashboard'); toast('Escolha a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); return; }
   if(a==='whatsapp-quick'){ window.open('https://wa.me/','_blank'); return; }
-  if(a==='abrir-drive'){ emBreve('Integração com o Google Drive em breve.'); return; }
+  if(a==='abrir-drive'){ window.open('https://drive.google.com','_blank'); return; }
   if(a==='clicksign'){
     if(state.role==='administrativo'){ navigate('clicksign'); return; }
     // Integra com o app ClickSign do Hub (restrito — o Hub checa a permissão).
