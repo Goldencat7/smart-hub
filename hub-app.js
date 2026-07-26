@@ -429,7 +429,11 @@ function renderSidebar() {
     (!c.soLocGestao || podeGestaoLoc) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
-    (!c.soTI || temPermTI || isAdmin)
+    (!c.soTI || temPermTI || isAdmin) &&
+    // "Meus Negócios" volta a ser dark launch: só quem tem "Acesso de teste"
+    // (loc_beta) OU depois que o admin publicar esta versão pra todos (painel
+    // de Lançamento → locacoesPublicadaEm === versão atual). NÃO herda de admin.
+    (!c.locacoes || betaLocacoes || locacoesPublicado)
   );
 
   navCategorias.innerHTML = visiveis.map(c => {
