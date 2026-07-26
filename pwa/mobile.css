@@ -56,14 +56,16 @@
 
   /* Layout de 3 colunas → 1 coluna. dvh (não vh) porque a barra do navegador
      no celular aparece/some e vh mede a tela "cheia" — corta o rodapé.
-     ⚠ `.na-agenda` (ligada na aba Agenda) e `.agenda-oculta` também definem as
-     colunas no styles.css, e com 2 classes elas GANHAM de `.hub-layout` sozinho —
-     mesmo vindo de um arquivo anterior. Sem citá-las aqui, a Agenda ficava com
-     160px reservados pra uma sidebar que no celular virou gaveta, e o conteúdo
-     todo espremido em ~215px de 375. Por isso só ELA parecia quebrada. */
+     ⚠ `.na-agenda` (ligada na aba Agenda), `.agenda-oculta` e `.loc-embed` (ligada
+     na aba "Meus Negócios"/Broker) também definem as colunas no styles.css, e com
+     2 classes elas GANHAM de `.hub-layout` sozinho — mesmo vindo de um arquivo
+     anterior. Sem citá-las aqui, a aba ficava com 160px reservados pra uma sidebar
+     que no celular virou gaveta, e o conteúdo todo espremido em ~215px de 375. Foi
+     o que quebrou TODAS as telas do Broker no celular. */
   .hub-layout,
   .hub-layout.na-agenda,
-  .hub-layout.agenda-oculta {
+  .hub-layout.agenda-oculta,
+  .hub-layout.loc-embed {
     grid-template-columns: 1fr;
     height: calc(100dvh - 52px);
   }
