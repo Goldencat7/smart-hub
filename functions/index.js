@@ -3843,6 +3843,32 @@ async function _driveUpload(token, nome, parentId, url) {
   return data;
 }
 
+// Dedup: já existe arquivo com esse nome na pasta? (torna o trigger idempotente)
+async function _driveArquivoExiste(token, nome, parentId) {
+  const q = `name='${nome.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const r = await _driveApi(token, `files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
+  return !!(r.files && r.files.length);
+}
+// Núcleo da sincronização — usado pela callable (auth.uid) e pelo trigger (corretorUid).
+async function _driveSyncFicha(uid, fichaId, col) {
+  const snap = await db.collection(col).doc(fichaId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  const ficha = snap.data();
+  const tipo = col === 'fichas_locador' ? 'locador' : (ficha.tipo || 'diversos');
+  const d = ficha.dados || {};
+  const nomePessoa = _driveSanitizar(d.nome || d.razaoSocial || d.nomeCompleto || ('Ficha ' + fichaId.slice(0, 8)));
+  const campos = Object.entries(ficha.documentos || {}).filter(([, u]) => typeof u === 'string' && /^https?:/.test(u));
+  const token = await _driveToken(uid);
+  const { pastas } = await _driveEstrutura(token, uid);
+  const pastaPessoa = await _driveFindOrCreateFolder(token, nomePessoa, pastas[_drivePastaDoTipo(tipo)]);
+  const arquivos = [];
+  for (const [campo, url] of campos) {
+    const nome = _driveSanitizar(campo);
+    try { if (await _driveArquivoExiste(token, nome, pastaPessoa)) continue; const up = await _driveUpload(token, nome, pastaPessoa, url); arquivos.push(up.name); } catch (_e) { /* segue os demais */ }
+  }
+  return { ok: true, pasta: nomePessoa, tipoPasta: _drivePastaDoTipo(tipo), enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
+}
+
 exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);
   const tok = await db.collection('google_tokens').doc(auth.uid).get();
@@ -3861,21 +3887,24 @@ exports.driveSincronizarFicha = onCall({ secrets: [GOOGLE_CLIENT_SECRET], timeou
   const auth = exigirAutenticado(req);
   const { fichaId, colecao } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId é obrigatório.');
-  const col = colecao === 'fichas_locador' ? 'fichas_locador' : 'fichas';
-  const snap = await db.collection(col).doc(fichaId).get();
-  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
-  const ficha = snap.data();
-  const tipo = col === 'fichas_locador' ? 'locador' : (ficha.tipo || 'diversos');
-  const d = ficha.dados || {};
-  const nomePessoa = _driveSanitizar(d.nome || d.razaoSocial || d.nomeCompleto || ('Ficha ' + fichaId.slice(0, 8)));
-  const campos = Object.entries(ficha.documentos || {}).filter(([, u]) => typeof u === 'string' && /^https?:/.test(u));
-  const token = await _driveToken(auth.uid);
-  const { pastas } = await _driveEstrutura(token, auth.uid);
-  const pastaPessoa = await _driveFindOrCreateFolder(token, nomePessoa, pastas[_drivePastaDoTipo(tipo)]);
-  const arquivos = [];
-  for (const [campo, url] of campos) { try { const up = await _driveUpload(token, _driveSanitizar(campo), pastaPessoa, url); arquivos.push(up.name); } catch (_e) { /* segue os demais */ } }
-  return { ok: true, pasta: nomePessoa, tipoPasta: _drivePastaDoTipo(tipo), enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
+  return _driveSyncFicha(auth.uid, fichaId, colecao === 'fichas_locador' ? 'fichas_locador' : 'fichas');
 });
+
+// Gatilho: ficha COM documentos gravada → sincroniza pro Drive do corretor DONO
+// (se ele conectou o Google). Falha graciosamente se não conectado. Dedup evita
+// reenvio a cada gravação.
+async function _driveTriggerFicha(event, col) {
+  const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+  if (!after) return;
+  const temDocs = after.documentos && Object.values(after.documentos).some(u => typeof u === 'string' && /^https?:/.test(u));
+  if (!temDocs || !after.corretorUid) return;
+  const tok = await db.collection('google_tokens').doc(after.corretorUid).get();
+  if (!tok.exists || !tok.data().refreshToken) return; // corretor não conectou o Drive
+  try { await _driveSyncFicha(after.corretorUid, event.params.fichaId, col); }
+  catch (e) { console.error('driveTriggerFicha', (e && e.message) || e); }
+}
+exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET] }, (event) => _driveTriggerFicha(event, 'fichas'));
+exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET] }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
 
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".
