@@ -3826,15 +3826,11 @@ async function _driveEstrutura(token, uid) {
   await cfgRef.set({ rootId, pastas, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   return { rootId, pastas };
 }
-// Baixa de uma URL (Storage) e sobe pro Drive (multipart).
-async function _driveUpload(token, nome, parentId, url) {
-  const r = await fetch(url);
-  if (!r.ok) throw new HttpsError('internal', 'Falha ao baixar anexo (' + r.status + ')');
-  const buf = Buffer.from(await r.arrayBuffer());
-  const contentType = r.headers.get('content-type') || 'application/octet-stream';
+// Sobe um Buffer pro Drive (multipart).
+async function _driveUploadBuffer(token, nome, parentId, buf, contentType) {
   const boundary = 'rmxdrv' + Buffer.from(nome).length + parentId.slice(-6);
   const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [parentId] })}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [parentId] })}\r\n--${boundary}\r\nContent-Type: ${contentType || 'application/octet-stream'}\r\n\r\n`),
     buf,
     Buffer.from(`\r\n--${boundary}--`)
   ]);
@@ -3844,6 +3840,12 @@ async function _driveUpload(token, nome, parentId, url) {
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new HttpsError('internal', 'Drive upload: ' + ((data.error && data.error.message) || resp.status));
   return data;
+}
+// Baixa de uma URL (Storage) e sobe pro Drive.
+async function _driveUpload(token, nome, parentId, url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new HttpsError('internal', 'Falha ao baixar anexo (' + r.status + ')');
+  return _driveUploadBuffer(token, nome, parentId, Buffer.from(await r.arrayBuffer()), r.headers.get('content-type') || 'application/octet-stream');
 }
 
 // Dedup: já existe arquivo com esse nome na pasta? (torna o trigger idempotente)
@@ -3869,6 +3871,16 @@ async function _driveSyncFicha(uid, fichaId, col) {
     const nome = _driveSanitizar(campo);
     try { if (await _driveArquivoExiste(token, nome, pastaPessoa)) continue; const up = await _driveUpload(token, nome, pastaPessoa, url); arquivos.push(up.name); } catch (_e) { /* segue os demais */ }
   }
+  // Sobe também o PDF da própria ficha (dados + documentos embutidos).
+  try {
+    const label = { locador: 'Locador', pf: 'Pessoa Física', pj: 'Pessoa Jurídica', 'locacao-fiador': 'Locação c/ Fiador', locacao_fiador: 'Locação c/ Fiador', vendedor: 'Vendedor', proposta: 'Proposta' }[tipo] || 'Ficha';
+    const pdfNome = _driveSanitizar(`Ficha ${label} - ${nomePessoa}`) + '.pdf';
+    if (!(await _driveArquivoExiste(token, pdfNome, pastaPessoa))) {
+      const pdfBuf = await gerarPdfFicha(ficha, label);
+      const up = await _driveUploadBuffer(token, pdfNome, pastaPessoa, pdfBuf, 'application/pdf');
+      arquivos.push(up.name);
+    }
+  } catch (e) { console.error('drivePdfFicha', (e && e.message) || e); }
   return { ok: true, pasta: nomePessoa, tipoPasta: _drivePastaDoTipo(tipo), enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
 }
 
@@ -3906,8 +3918,8 @@ async function _driveTriggerFicha(event, col) {
   try { await _driveSyncFicha(after.corretorUid, event.params.fichaId, col); }
   catch (e) { console.error('driveTriggerFicha', (e && e.message) || e); }
 }
-exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET] }, (event) => _driveTriggerFicha(event, 'fichas'));
-exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET] }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
+exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '512MiB' }, (event) => _driveTriggerFicha(event, 'fichas'));
+exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '512MiB' }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
 
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".
