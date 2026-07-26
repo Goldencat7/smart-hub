@@ -159,7 +159,6 @@
                 <button id="calHoje" class="topbar-btn">Hoje</button>
                 <button id="calRecarregar" class="topbar-btn" title="Atualizar a agenda">↻ Atualizar</button>
                 <button id="btnNovoEvento2" class="topbar-btn primario">+ Criar</button>
-                <button id="btnGoogleAgenda" class="topbar-btn google-btn" title="Sincronizar com a Google Agenda"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Conectar Google</button>
               </div>
             </div>
             <div id="calGrade" class="cal-grade"></div>
@@ -221,6 +220,14 @@
           <!-- Card: Conta e Aplicativo -->
           <div class="config-card">
             <h3 class="config-card-titulo">Conta e aplicativo</h3>
+
+            <div class="config-linha">
+              <div>
+                <div class="config-linha-titulo">Conta Google (Agenda + Drive)</div>
+                <div class="muted config-dica">Conecte sua conta Google da empresa: os compromissos vão pra sua Google Agenda e os documentos das fichas são organizados sozinhos no seu Google Drive. (Só no app de computador.)</div>
+              </div>
+              <button type="button" id="btnGoogleAgenda" class="topbar-btn google-btn" title="Conectar sua conta Google (Agenda + Drive)"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Conectar Google</button>
+            </div>
 
             <div class="config-linha">
               <div>

@@ -619,6 +619,7 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarPerfil();
+    atualizarStatusGoogle(); // pinta o botão "Conectar Google" (Agenda + Drive) em Meu Perfil
     return;
   }
 
@@ -2134,7 +2135,7 @@ async function atualizarStatusGoogle(){
 btnGoogleAgenda.addEventListener('click', async ()=>{
   // Já conectado → oferece desconectar
   if(googleConectado){
-    if(!confirm('Desconectar sua Google Agenda? Os compromissos já enviados continuam lá.')) return;
+    if(!confirm('Desconectar sua conta Google (Agenda + Drive)? Os compromissos e documentos já enviados continuam lá.')) return;
     btnGoogleAgenda.disabled = true;
     try { await desconectarGoogleAgenda(); pintarBotaoGoogle(false, ''); }
     catch(e){ alert('Erro ao desconectar: '+e.message); }
@@ -2151,7 +2152,7 @@ btnGoogleAgenda.addEventListener('click', async ()=>{
     btnGoogleAgenda.textContent = 'Finalizando...';
     const res = await conectarGoogleAgenda({ code: r.code, codeVerifier: r.codeVerifier, redirectUri: r.redirectUri });
     pintarBotaoGoogle(true, (res.data && res.data.email) || '');
-    alert('Google Agenda conectada! ✅ Novos compromissos vão aparecer lá também.');
+    alert('Conta Google conectada! ✅ A agenda sincroniza e os documentos das fichas vão pro seu Google Drive automaticamente.');
   } catch(e){
     alert('Erro ao conectar: '+e.message);
   } finally {
