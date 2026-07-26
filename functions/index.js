@@ -3750,6 +3750,9 @@ exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async
   await db.collection('google_tokens').doc(auth.uid).set({
     refreshToken: tokens.refresh_token,
     email,
+    // marca se este consentimento concedeu o escopo do Drive — o trigger de
+    // sincronização só age em quem tem `drive:true` (evita 403 em quem só ligou a Agenda).
+    drive: (tokens.scope || '').includes('/auth/drive.file'),
     connectedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   return { ok: true, email };
@@ -3873,7 +3876,7 @@ exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
   const auth = exigirAutenticado(req);
   const tok = await db.collection('google_tokens').doc(auth.uid).get();
   const cfg = await db.collection('drive_config').doc(auth.uid).get();
-  return { conectado: tok.exists && !!tok.data().refreshToken, email: tok.exists ? (tok.data().email || '') : '', estruturaCriada: cfg.exists && !!cfg.data().rootId };
+  return { conectado: tok.exists && !!tok.data().refreshToken && !!tok.data().drive, email: tok.exists ? (tok.data().email || '') : '', estruturaCriada: cfg.exists && !!cfg.data().rootId };
 });
 // Cria/garante a raiz + as 4 pastas na conta conectada ("Preparar Drive").
 exports.drivePrepararEstrutura = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
@@ -3899,7 +3902,7 @@ async function _driveTriggerFicha(event, col) {
   const temDocs = after.documentos && Object.values(after.documentos).some(u => typeof u === 'string' && /^https?:/.test(u));
   if (!temDocs || !after.corretorUid) return;
   const tok = await db.collection('google_tokens').doc(after.corretorUid).get();
-  if (!tok.exists || !tok.data().refreshToken) return; // corretor não conectou o Drive
+  if (!tok.exists || !tok.data().refreshToken || !tok.data().drive) return; // corretor não concedeu o Drive
   try { await _driveSyncFicha(after.corretorUid, event.params.fichaId, col); }
   catch (e) { console.error('driveTriggerFicha', (e && e.message) || e); }
 }
