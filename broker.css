@@ -213,11 +213,21 @@
 
 @media(max-width:767px){
 #bkRoot .searchbox{display:none}
-#bkRoot .grid3{grid-template-columns:1fr}
+#bkRoot .grid3{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 
+/* Celular: KPIs/indicadores em 2 COLUNAS compactas (não empilhados 1x1) — cards
+   menores, gap e padding reduzidos pra caber mais na tela. */
 @media(max-width:639px){
 #bkRoot .hide-sm{display:none}
-#bkRoot .grid4,#bkRoot .grid2{grid-template-columns:1fr}
+#bkRoot #root{padding:14px 12px 40px}
+#bkRoot .grid4,#bkRoot .grid3,#bkRoot .grid2{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+#bkRoot .card[style*="padding:16px"],#bkRoot .card[style*="padding:18px"]{padding:12px!important}
 #bkRoot .topbar{padding:0 16px}
+}
+
+/* Telas bem estreitas (~360px): encolhe os números grandes dos KPIs pra não vazar. */
+@media(max-width:400px){
+#bkRoot .grid4 .card>div[style*="font-size:26px"],
+#bkRoot .grid4 .card>div[style*="font-size:22px"]{font-size:20px!important}
 }
