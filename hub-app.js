@@ -1001,6 +1001,7 @@ window.hubGerarContratoVenda = async (imovelId) => {
     if (d.semFicha) msg = 'Contrato gerado, mas sem ficha de vendedor: os dados dos vendedores saíram em branco.';
     else if (!d.vendedores) msg = 'Contrato gerado, mas nenhum vendedor foi encontrado na ficha.';
     if (d.semCreci) msg += ' (Preencha CRECI/CPF em Meu Perfil.)';
+    if (d.drive) msg += ' 📁 Também salvo no seu Google Drive.';
     return { ok: true, msg };
   } catch (e) {
     return { ok: false, msg: 'Erro ao gerar contrato: ' + (e.message || e) };
@@ -4245,6 +4246,7 @@ function wireTela03(d) {
       if (d.semFicha) msg = 'Contrato gerado, mas este imóvel não tem ficha de vendedor: os dados dos vendedores saíram em branco.';
       else if (!d.vendedores) msg = 'Contrato gerado, mas nenhum vendedor foi encontrado na ficha.';
       if (d.semCreci) msg += ' (CRECI/CPF do corretor não está no perfil — Configurações.)';
+      if (d.drive) msg += ' 📁 Também salvo no seu Google Drive.';
       cartToast(msg);
     } catch (e) {
       alert('Erro ao gerar contrato: ' + e.message);

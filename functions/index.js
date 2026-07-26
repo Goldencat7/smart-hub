@@ -2953,7 +2953,7 @@ function _contratoEndereco(o) {
 }
 
 // (autenticado, com posse) Gera o contrato de representação de um imóvel de VENDA.
-exports.gerarContratoVenda = onCall(async (req) => {
+exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { imovelId } = req.data || {};
   if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
@@ -3058,14 +3058,33 @@ exports.gerarContratoVenda = onCall(async (req) => {
   const ref = imovel.referencia || imovel.numeroProtocolo || imovelId;
   const filename = 'Contrato-Representacao-' + String(ref).replace(/[^a-zA-Z0-9-]+/g, '_') + '.pdf';
 
-  await registrarAudit(auth, 'gerou_contrato_venda', { tipo: 'imovel', id: imovelId }, { vendedores: vendedores.length });
+  // Sobe o contrato pro Drive do DONO do imóvel (se conectado), na pasta do vendedor
+  // → Documentos Diversos. Best-effort: nunca falha a geração do contrato.
+  let drive = false;
+  try {
+    const uid = imovel.corretorUid;
+    const tokDoc = uid && (await db.collection('google_tokens').doc(uid).get());
+    if (tokDoc && tokDoc.exists && tokDoc.data().drive) {
+      const nomePessoa = _driveSanitizar((vendedores[0] && vendedores[0].nome) || imovel.proprietarioNome || ('Imóvel ' + imovelId.slice(0, 8)));
+      const token = await _driveToken(uid);
+      const rootId = await _driveRoot(token, uid);
+      const pastaPessoa = await _driveFindOrCreateFolder(token, nomePessoa, rootId);
+      const diversos = await _driveFindOrCreateFolder(token, 'Documentos Diversos', pastaPessoa);
+      const nomeArq = _driveSanitizar('Contrato de Representação - ' + nomePessoa) + '.pdf';
+      if (!(await _driveArquivoExiste(token, nomeArq, diversos))) await _driveUploadBuffer(token, nomeArq, diversos, Buffer.from(bytes), 'application/pdf');
+      drive = true;
+    }
+  } catch (e) { console.error('driveContrato', (e && e.message) || e); }
+
+  await registrarAudit(auth, 'gerou_contrato_venda', { tipo: 'imovel', id: imovelId }, { vendedores: vendedores.length, drive });
 
   return {
     pdfBase64: Buffer.from(bytes).toString('base64'),
     filename,
     vendedores: vendedores.length,
     semFicha: !fichaDados,
-    semCreci: !corretor.creci
+    semCreci: !corretor.creci,
+    drive
   };
 });
 
