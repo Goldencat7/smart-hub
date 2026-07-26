@@ -47,7 +47,8 @@
 
   <p class="lead">A visão <b>Administrativo</b> é o centro de operações. Você <b>enxerga tudo</b> (como o gestor) e cuida da parte operacional — organizar a fila, acompanhar documentos e assinaturas — <b>sem</b> tomar as decisões do funil (isso é do gestor).</p>
 
-  <div class="callout accent"><b>Como abrir:</b> na barra lateral do Hub, clique em <b>“Meus Negócios”</b>. Ele expande em sanfona e o conteúdo aparece dentro do Hub. Durante o piloto, só quem tem <b>“Acesso de teste”</b> vê essa área.</div>
+  <div class="callout accent"><b>Como abrir:</b> na barra lateral do Hub, clique em <b>“Meus Negócios”</b>. Ele expande em sanfona e o conteúdo aparece dentro do Hub.</div>
+  <div class="callout"><b>No computador:</b> app REMAX Smart Hub (atualiza sozinho). &nbsp;<b>No celular:</b> acesse <b>remax-smart-hub.web.app/app/</b> pelo navegador e “Adicionar à tela inicial” pra virar app.</div>
 
   <h2>Seu menu</h2>
   <div class="grid">
@@ -62,9 +63,9 @@
   <h2>A Fila de Trabalho</h2>
   <p>O quadro mostra cada negócio na sua etapa, para você acompanhar a operação de ponta a ponta:</p>
   <div class="flow">
-    <span>Novos</span><span class="arr">→</span><span>Em andamento</span><span class="arr">→</span><span>Aguardando</span><span class="arr">→</span><span>Entregues</span><span class="arr">→</span><span>Concluídos</span>
+    <span>Novos</span><span class="arr">→</span><span>Em andamento</span><span class="arr">→</span><span>Aguardando</span><span class="arr">→</span><span>Entregues</span>
   </div>
-  <p>Clique num cartão para abrir o negócio e ver os detalhes.</p>
+  <p>Clique num cartão para abrir o negócio e ver os detalhes. (A coluna <b>Entregues</b> reúne os negócios entregues à gestão e os já concluídos.)</p>
 
   <h2>No negócio: o que você faz</h2>
   <p>Você abre <b>qualquer</b> negócio e ajuda na operação:</p>
@@ -77,24 +78,12 @@
   <h2>Clicksign, Documentos e Agenda</h2>
   <p><b>Clicksign</b> mostra o status de assinatura de cada negócio (o app de assinatura em si abre à parte). <b>Documentos</b> e <b>Agenda</b> desta visão estão em integração — quando não há fonte de dados ainda, a tela avisa <b>“em breve”</b> em vez de mostrar número falso.</p>
 
-  <h2>📁 Google Drive (documentos organizados sozinhos) — JÁ FUNCIONA</h2>
-  <h3>Como ligar (uma vez só)</h3>
-  <ol class="steps" style="counter-reset:s;list-style:none;padding-left:0">
-    <li style="counter-increment:s;position:relative;padding-left:38px;margin:10px 0"><span style="position:absolute;left:0;top:-1px;width:26px;height:26px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">1</span>Abra <b>Meu Perfil</b> (último item da barra lateral do Hub).</li>
-    <li style="counter-increment:s;position:relative;padding-left:38px;margin:10px 0"><span style="position:absolute;left:0;top:-1px;width:26px;height:26px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">2</span>No card <b>“Conta e aplicativo”</b>, clique em <b>“Conectar Google”</b>.</li>
-    <li style="counter-increment:s;position:relative;padding-left:38px;margin:10px 0"><span style="position:absolute;left:0;top:-1px;width:26px;height:26px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">3</span>Entre com a sua <b>conta Google da empresa</b> e <b>autorize</b> (Agenda + Drive juntos).</li>
-  </ol>
-  <h3>O que acontece depois (automático)</h3>
-  <p>Toda ficha com documentos vinculada à conta conectada é organizada sozinha no Google Drive:</p>
+  <h2>📁 Google Drive — como funciona (importante entender o papel)</h2>
+  <p>A <b>organização automática de documentos no Drive</b> é uma função de <b>cada corretor</b>: quando chega uma ficha com documentos, os arquivos vão para o Google Drive <b>do corretor dono da ficha</b> — não para o seu. A estrutura que se cria (no Drive de cada corretor) é:</p>
   <ul>
-    <li><b>REMAX Smart Hub — Documentos</b> (pasta-raiz, criada sozinha)</li>
-    <li>→ uma pasta com o <b>nome da pessoa</b> (exatamente como veio na ficha)</li>
-    <li>→ dentro dela, <b>4 pastas por tipo de documento</b>:
-      <b>Identidade</b> (RG, CPF, CNH) · <b>Comprovantes</b> (renda, endereço) · <b>Imóvel</b> (matrícula, IPTU, escritura) · <b>Documentos Diversos</b> (contrato e demais)</li>
-    <li>→ e um <b>PDF completo da ficha</b> (dados + documentos embutidos) em Documentos Diversos.</li>
+    <li><b>REMAX Smart Hub — Documentos</b> → pasta com o <b>nome da pessoa</b> → 4 categorias: <b>Identidade</b> · <b>Comprovantes</b> · <b>Imóvel</b> · <b>Documentos Diversos</b> (+ o PDF da ficha).</li>
   </ul>
-  <p>O sistema reconhece <b>o que cada arquivo é</b> pelo campo da ficha (RG → Identidade, comprovante → Comprovantes…), e <b>não duplica</b>: reenviar a mesma ficha não cria arquivo repetido.</p>
-  <div class="callout ok"><b>Privacidade:</b> sem link público — os documentos ficam no Drive <b>da conta conectada</b>, com o acesso dela. Quem não conectou não sincroniza (sem erro, sem susto).</div>
+  <div class="callout warn"><b>Atenção:</b> a aba <b>“Google Drive”</b> aqui no Meus Negócios (a sua) ainda está <b>“em breve”</b> — é uma futura central de arquivos da equipe. Conectar o seu Google serve para a <b>Agenda</b>; ele não puxa os documentos dos corretores (esses ficam no Drive de cada um).</div>
 
   <footer>
     <span>REMAX Smart Hub — material interno de treinamento</span>
