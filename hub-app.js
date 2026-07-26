@@ -283,14 +283,18 @@ const LOC_APPS = [
   { id: 'relatorios', titulo: 'Relatórios', desc: 'Indicadores e exportações',      icone: ICN.financeiro },
 ];
 
+// webOculto: escondida no PWA/celular (apps externos que dependem de autologin, ou
+// não fazem sentido no celular). No PWA sobram só as ferramentas que funcionam como
+// link web (ITBI Smart, Smart Vistorias) + as telas internas (Meus Negócios, Cadastro,
+// Agenda, Calculadoras, Notas, Meu Perfil). Marketing sai do PWA a pedido do Nathan.
 const CATEGORIAS = [
   { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
-  { id: 'crm',         nome: 'CRM',         icone: ICN.crm },
+  { id: 'crm',         nome: 'CRM',         icone: ICN.crm, webOculto: true },
   { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
-  { id: 'performance', nome: 'Performance', icone: ICN.performance },
-  { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true },
-  { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true },
-  { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true },
+  { id: 'performance', nome: 'Performance', icone: ICN.performance, webOculto: true },
+  { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true, webOculto: true },
+  { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true, webOculto: true },
+  { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true, webOculto: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
   // "Meus Negócios" agora aparece pra TODOS os papéis de locação (gestor→Broker,
@@ -298,16 +302,23 @@ const CATEGORIAS = [
   // branch cat.locacoes. ⚠️ Gating amplo de propósito (staging); pra produção,
   // decidir quem vê (hoje: qualquer usuário logado).
   { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true },
-  { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },
-  { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true },
-  { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true },
-  { id: 'ia',           nome: 'IA',              icone: ICN.ia, ia: true },
+  { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true, webOculto: true },
+  { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true, webOculto: true },
+  { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
+  { id: 'ia',           nome: 'IA',              icone: ICN.ia, ia: true, webOculto: true },
   { id: 'calculadoras', nome: 'Calculadoras',    icone: ICN.calculadoras, calculadoras: true },
   { id: 'notas',        nome: 'Bloco de Notas',  icone: ICN.notas, notas: true },
-  { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp' },
+  { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp', webOculto: true },
   { id: 'ti',          nome: 'Suporte / TI',  icone: ICN.ti, ti: true, soTI: true },
   { id: 'config',      nome: 'Meu Perfil', icone: ICN.perfil, config: true }
 ];
+
+// PWA/celular? O shim web zera o autologin (`hubApi.autologin === false`, `plataforma:'web'`).
+// No PWA escondemos as categorias `webOculto` e, nas que ficam (Captação/Vistoria), só os
+// apps que funcionam como link web normal.
+function ehWeb() { return !!(window.hubApi && (window.hubApi.plataforma === 'web' || window.hubApi.autologin === false)); }
+// Apps liberados no PWA (não dependem de autologin — abrem como link web).
+const WEB_APPS = new Set(['itbi_smart', 'checkvisto']);
 
 // Avatar padrão (quando a pessoa não tem foto)
 const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
@@ -425,6 +436,7 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
+    (!c.webOculto || !ehWeb()) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
     (!c.soTI || temPermTI || isAdmin) &&
@@ -795,6 +807,7 @@ function renderCentro() {
   const termo = termoBusca.trim().toLowerCase();
   const filtrados = APPS.filter(a =>
     a.categoria === categoriaAtiva &&
+    (!ehWeb() || WEB_APPS.has(a.key)) &&
     (!a.restrito || isAdmin || appsPermitidos.includes(a.key)) &&
     (!termo || a.titulo.toLowerCase().includes(termo) || a.desc.toLowerCase().includes(termo))
   );
