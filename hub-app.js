@@ -324,7 +324,6 @@ let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
 let betaLocacoes = false;       // acesso de teste ao módulo de Locações (feature flag) — gate das abas
 let locacoesPublicado = false;  // true quando a versão deste app foi publicada p/ todos (painel de Admin)
-let podeGestaoLoc = false;      // permissão loc_gestao — vê as abas de gestão (Painel/Imóveis/Financeiro/Alertas/Relatórios). Fichas é pra todos.
 let currentUid = null;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
@@ -426,7 +425,6 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 function renderSidebar() {
   const visiveis = CATEGORIAS.filter(c =>
     !c.oculto &&
-    (!c.soLocGestao || podeGestaoLoc) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
     (!c.soTI || temPermTI || isAdmin) &&
@@ -471,7 +469,7 @@ function renderSidebar() {
         if (locSanfonaAberta && categoriaAtiva === 'locacoes') {
           locSanfonaAberta = false;
           const alt = CATEGORIAS.find(c =>
-            c.id !== 'locacoes' && !c.oculto && !c.soLocGestao && !c.soGestor &&
+            c.id !== 'locacoes' && !c.oculto && !c.soGestor &&
             !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
           categoriaAtiva = alt ? alt.id : 'captacao';
           locSub = null;
@@ -514,9 +512,11 @@ function renderSidebar() {
   });
 }
 
-// Papel na Gestão de Locações → Broker/Corretor/Administrativo.
+// Papel na Gestão de Locações → Broker/Corretor/Administrativo. Fonte ÚNICA: a
+// claim `locRole` (via locMeuPerfil). gestor→Broker, administrativo→Admin, resto→Corretor.
+// (A antiga permissão `loc_gestao` foi removida — ver CLAUDE.md.)
 function locPapel() {
-  return (podeGestaoLoc || locRoleAtual === 'gestor') ? 'broker'
+  return locRoleAtual === 'gestor' ? 'broker'
        : (locRoleAtual === 'administrativo' ? 'administrativo' : 'corretor');
 }
 // Sub-itens da sanfona = menu do Broker daquele papel, SEM "Agenda" nem "Meu Perfil"
@@ -734,7 +734,7 @@ function renderCentro() {
     }
 
     // Sub-app aberto: título vira "voltar + nome" e mostra a seção.
-    if (!podeGestaoLoc) { locSub = null; renderCentro(); return; }
+    if (locRoleAtual !== 'gestor') { locSub = null; renderCentro(); return; }
     appsGrid.hidden = true;
     const sub = LOC_APPS.find(a => a.id === locSub);
     tituloCategoria.innerHTML = `<button class="loc-voltar" id="locVoltar">← Meus Negócios</button> <span>${sub ? sub.titulo : ''}</span>`;
@@ -1483,7 +1483,6 @@ onAuthStateChanged(auth, async (user) => {
     temPermTI = !!perm.data.ti;
     temPermMarketing = !!perm.data.marketing_gerenciar;
     betaLocacoes = !!perm.data.loc_beta;
-    podeGestaoLoc = !!perm.data.loc_gestao;
     try {
       const v = await window.hubApi.getAppVersion();
       locacoesPublicado = !!perm.data.locacoesPublicadaEm && v === perm.data.locacoesPublicadaEm;
