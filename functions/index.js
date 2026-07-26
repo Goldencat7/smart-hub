@@ -3768,6 +3768,115 @@ exports.statusGoogleAgenda = onCall(async (req) => {
   return { conectado: true, email: snap.data().email || '' };
 });
 
+// ═══ Google Drive: organização automática de documentos (escopo drive.file) ═══
+// Reaproveita o MESMO OAuth da Agenda (google_tokens/{uid}.refreshToken) — basta o
+// escopo drive.file estar no consentimento. Como drive.file só dá acesso ao que o
+// APP cria, a raiz é uma pasta criada por nós na conta conectada. (Fase 2: apontar
+// pra pasta da empresa via Google Picker, mantendo drive.file — sem verificação pesada.)
+const DRIVE_ROOT_NOME = 'REMAX Smart Hub — Documentos';
+const DRIVE_PASTAS = [
+  { key: 'proprietarios', nome: 'Proprietários (Locadores e Vendedores)' },
+  { key: 'compradores',   nome: 'Compradores' },
+  { key: 'locatarios',    nome: 'Locatários e Fiadores' },
+  { key: 'diversos',      nome: 'Documentos Diversos' },
+];
+function _drivePastaDoTipo(tipo) {
+  if (tipo === 'locador' || tipo === 'vendedor') return 'proprietarios';
+  if (tipo === 'proposta') return 'compradores';
+  if (tipo === 'pf' || tipo === 'pj' || tipo === 'fiador' || tipo === 'locacao' || tipo === 'locacao-fiador') return 'locatarios';
+  return 'diversos';
+}
+function _driveSanitizar(nome) { return String(nome || '').replace(/[\\/:*?"<>|\r\n]+/g, '-').trim().slice(0, 120) || 'Sem nome'; }
+
+async function _driveToken(uid) {
+  const snap = await db.collection('google_tokens').doc(uid).get();
+  if (!snap.exists || !snap.data().refreshToken) throw new HttpsError('failed-precondition', 'Conta Google não conectada — conecte nas Configurações.');
+  return getAccessToken(snap.data().refreshToken);
+}
+async function _driveApi(token, path, opts = {}) {
+  const resp = await fetch('https://www.googleapis.com/drive/v3/' + path, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new HttpsError('internal', 'Drive: ' + ((data.error && data.error.message) || resp.status));
+  return data;
+}
+// Procura (só entre o que o app criou) uma pasta por nome+pai; cria se não existir.
+async function _driveFindOrCreateFolder(token, nome, parentId) {
+  const nomeEsc = nome.replace(/'/g, "\\'");
+  let q = `mimeType='application/vnd.google-apps.folder' and name='${nomeEsc}' and trashed=false`;
+  if (parentId) q += ` and '${parentId}' in parents`;
+  const found = await _driveApi(token, `files?q=${encodeURIComponent(q)}&fields=files(id,name)&spaces=drive&pageSize=1`);
+  if (found.files && found.files.length) return found.files[0].id;
+  const meta = { name: nome, mimeType: 'application/vnd.google-apps.folder' };
+  if (parentId) meta.parents = [parentId];
+  const created = await _driveApi(token, 'files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) });
+  return created.id;
+}
+// Garante raiz + 4 pastas; cacheia os ids em drive_config/{uid}.
+async function _driveEstrutura(token, uid) {
+  const cfgRef = db.collection('drive_config').doc(uid);
+  const cfg = (await cfgRef.get()).data() || {};
+  let rootId = cfg.rootId;
+  if (rootId) { try { const r = await _driveApi(token, `files/${rootId}?fields=id,trashed`); if (r.trashed) rootId = null; } catch (_e) { rootId = null; } }
+  if (!rootId) rootId = await _driveFindOrCreateFolder(token, DRIVE_ROOT_NOME, null);
+  const pastas = {};
+  for (const p of DRIVE_PASTAS) pastas[p.key] = await _driveFindOrCreateFolder(token, p.nome, rootId);
+  await cfgRef.set({ rootId, pastas, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { rootId, pastas };
+}
+// Baixa de uma URL (Storage) e sobe pro Drive (multipart).
+async function _driveUpload(token, nome, parentId, url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new HttpsError('internal', 'Falha ao baixar anexo (' + r.status + ')');
+  const buf = Buffer.from(await r.arrayBuffer());
+  const contentType = r.headers.get('content-type') || 'application/octet-stream';
+  const boundary = 'rmxdrv' + Buffer.from(nome).length + parentId.slice(-6);
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [parentId] })}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`),
+    buf,
+    Buffer.from(`\r\n--${boundary}--`)
+  ]);
+  const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': `multipart/related; boundary=${boundary}` }, body
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new HttpsError('internal', 'Drive upload: ' + ((data.error && data.error.message) || resp.status));
+  return data;
+}
+
+exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const tok = await db.collection('google_tokens').doc(auth.uid).get();
+  const cfg = await db.collection('drive_config').doc(auth.uid).get();
+  return { conectado: tok.exists && !!tok.data().refreshToken, email: tok.exists ? (tok.data().email || '') : '', estruturaCriada: cfg.exists && !!cfg.data().rootId };
+});
+// Cria/garante a raiz + as 4 pastas na conta conectada ("Preparar Drive").
+exports.drivePrepararEstrutura = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const token = await _driveToken(auth.uid);
+  const est = await _driveEstrutura(token, auth.uid);
+  return { ok: true, rootId: est.rootId, pastas: DRIVE_PASTAS.map(p => p.nome) };
+});
+// Sincroniza os documentos de UMA ficha pro Drive (pasta do tipo → subpasta da pessoa).
+exports.driveSincronizarFicha = onCall({ secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 120 }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { fichaId, colecao } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId é obrigatório.');
+  const col = colecao === 'fichas_locador' ? 'fichas_locador' : 'fichas';
+  const snap = await db.collection(col).doc(fichaId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  const ficha = snap.data();
+  const tipo = col === 'fichas_locador' ? 'locador' : (ficha.tipo || 'diversos');
+  const d = ficha.dados || {};
+  const nomePessoa = _driveSanitizar(d.nome || d.razaoSocial || d.nomeCompleto || ('Ficha ' + fichaId.slice(0, 8)));
+  const campos = Object.entries(ficha.documentos || {}).filter(([, u]) => typeof u === 'string' && /^https?:/.test(u));
+  const token = await _driveToken(auth.uid);
+  const { pastas } = await _driveEstrutura(token, auth.uid);
+  const pastaPessoa = await _driveFindOrCreateFolder(token, nomePessoa, pastas[_drivePastaDoTipo(tipo)]);
+  const arquivos = [];
+  for (const [campo, url] of campos) { try { const up = await _driveUpload(token, _driveSanitizar(campo), pastaPessoa, url); arquivos.push(up.name); } catch (_e) { /* segue os demais */ } }
+  return { ok: true, pasta: nomePessoa, tipoPasta: _drivePastaDoTipo(tipo), enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
+});
+
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".
 exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
