@@ -3777,17 +3777,20 @@ exports.statusGoogleAgenda = onCall(async (req) => {
 // APP cria, a raiz é uma pasta criada por nós na conta conectada. (Fase 2: apontar
 // pra pasta da empresa via Google Picker, mantendo drive.file — sem verificação pesada.)
 const DRIVE_ROOT_NOME = 'REMAX Smart Hub — Documentos';
-const DRIVE_PASTAS = [
-  { key: 'proprietarios', nome: 'Proprietários (Locadores e Vendedores)' },
-  { key: 'compradores',   nome: 'Compradores' },
-  { key: 'locatarios',    nome: 'Locatários e Fiadores' },
-  { key: 'diversos',      nome: 'Documentos Diversos' },
+// Estrutura: raiz → pasta da PESSOA (nome vindo da ficha) → 4 categorias de documento.
+const DRIVE_CATEGORIAS = [
+  { key: 'identidade',   nome: 'Identidade' },
+  { key: 'comprovantes', nome: 'Comprovantes' },
+  { key: 'imovel',       nome: 'Imóvel' },
+  { key: 'diversos',     nome: 'Documentos Diversos' },
 ];
-function _drivePastaDoTipo(tipo) {
-  if (tipo === 'locador' || tipo === 'vendedor') return 'proprietarios';
-  if (tipo === 'proposta') return 'compradores';
-  if (tipo === 'pf' || tipo === 'pj' || tipo === 'fiador' || tipo === 'locacao' || tipo === 'locacao-fiador') return 'locatarios';
-  return 'diversos';
+// Decide a categoria pelo NOME DO CAMPO do documento (o app sabe o que cada arquivo é).
+function _categoriaDoc(campo) {
+  const c = String(campo || '').toLowerCase();
+  if (/\brg\b|identidade|cnh|\bcpf\b|ident/.test(c)) return 'identidade';
+  if (/comprov|renda|endere/.test(c)) return 'comprovantes';
+  if (/matric|iptu|escritura|im[oó]vel|condom/.test(c)) return 'imovel';
+  return 'diversos'; // contrato e demais
 }
 function _driveSanitizar(nome) { return String(nome || '').replace(/[\\/:*?"<>|\r\n]+/g, '-').trim().slice(0, 120) || 'Sem nome'; }
 
@@ -3814,17 +3817,16 @@ async function _driveFindOrCreateFolder(token, nome, parentId) {
   const created = await _driveApi(token, 'files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) });
   return created.id;
 }
-// Garante raiz + 4 pastas; cacheia os ids em drive_config/{uid}.
-async function _driveEstrutura(token, uid) {
+// Garante a pasta-raiz (as categorias agora vivem dentro da pasta de cada pessoa);
+// cacheia o rootId em drive_config/{uid}.
+async function _driveRoot(token, uid) {
   const cfgRef = db.collection('drive_config').doc(uid);
   const cfg = (await cfgRef.get()).data() || {};
   let rootId = cfg.rootId;
   if (rootId) { try { const r = await _driveApi(token, `files/${rootId}?fields=id,trashed`); if (r.trashed) rootId = null; } catch (_e) { rootId = null; } }
   if (!rootId) rootId = await _driveFindOrCreateFolder(token, DRIVE_ROOT_NOME, null);
-  const pastas = {};
-  for (const p of DRIVE_PASTAS) pastas[p.key] = await _driveFindOrCreateFolder(token, p.nome, rootId);
-  await cfgRef.set({ rootId, pastas, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-  return { rootId, pastas };
+  await cfgRef.set({ rootId, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return rootId;
 }
 // Sobe um Buffer pro Drive (multipart).
 async function _driveUploadBuffer(token, nome, parentId, buf, contentType) {
@@ -3864,24 +3866,28 @@ async function _driveSyncFicha(uid, fichaId, col) {
   const nomePessoa = _driveSanitizar(d.nome || d.razaoSocial || d.nomeCompleto || ('Ficha ' + fichaId.slice(0, 8)));
   const campos = Object.entries(ficha.documentos || {}).filter(([, u]) => typeof u === 'string' && /^https?:/.test(u));
   const token = await _driveToken(uid);
-  const { pastas } = await _driveEstrutura(token, uid);
-  const pastaPessoa = await _driveFindOrCreateFolder(token, nomePessoa, pastas[_drivePastaDoTipo(tipo)]);
+  const rootId = await _driveRoot(token, uid);
+  // Pasta da PESSOA (nome vindo da ficha) na raiz, e as 4 categorias dentro dela.
+  const pastaPessoa = await _driveFindOrCreateFolder(token, nomePessoa, rootId);
+  const cats = {};
+  for (const c of DRIVE_CATEGORIAS) cats[c.key] = await _driveFindOrCreateFolder(token, c.nome, pastaPessoa);
   const arquivos = [];
   for (const [campo, url] of campos) {
     const nome = _driveSanitizar(campo);
-    try { if (await _driveArquivoExiste(token, nome, pastaPessoa)) continue; const up = await _driveUpload(token, nome, pastaPessoa, url); arquivos.push(up.name); } catch (_e) { /* segue os demais */ }
+    const dest = cats[_categoriaDoc(campo)];
+    try { if (await _driveArquivoExiste(token, nome, dest)) continue; const up = await _driveUpload(token, nome, dest, url); arquivos.push(up.name); } catch (_e) { /* segue os demais */ }
   }
-  // Sobe também o PDF da própria ficha (dados + documentos embutidos).
+  // Sobe também o PDF da própria ficha (dados + documentos embutidos) em Documentos Diversos.
   try {
     const label = { locador: 'Locador', pf: 'Pessoa Física', pj: 'Pessoa Jurídica', 'locacao-fiador': 'Locação c/ Fiador', locacao_fiador: 'Locação c/ Fiador', vendedor: 'Vendedor', proposta: 'Proposta' }[tipo] || 'Ficha';
     const pdfNome = _driveSanitizar(`Ficha ${label} - ${nomePessoa}`) + '.pdf';
-    if (!(await _driveArquivoExiste(token, pdfNome, pastaPessoa))) {
+    if (!(await _driveArquivoExiste(token, pdfNome, cats.diversos))) {
       const pdfBuf = await gerarPdfFicha(ficha, label);
-      const up = await _driveUploadBuffer(token, pdfNome, pastaPessoa, pdfBuf, 'application/pdf');
+      const up = await _driveUploadBuffer(token, pdfNome, cats.diversos, pdfBuf, 'application/pdf');
       arquivos.push(up.name);
     }
   } catch (e) { console.error('drivePdfFicha', (e && e.message) || e); }
-  return { ok: true, pasta: nomePessoa, tipoPasta: _drivePastaDoTipo(tipo), enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
+  return { ok: true, pasta: nomePessoa, enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
 }
 
 exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
@@ -3894,10 +3900,10 @@ exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
 exports.drivePrepararEstrutura = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
   const auth = exigirAutenticado(req);
   const token = await _driveToken(auth.uid);
-  const est = await _driveEstrutura(token, auth.uid);
-  return { ok: true, rootId: est.rootId, pastas: DRIVE_PASTAS.map(p => p.nome) };
+  const rootId = await _driveRoot(token, auth.uid);
+  return { ok: true, rootId, categorias: DRIVE_CATEGORIAS.map(p => p.nome) };
 });
-// Sincroniza os documentos de UMA ficha pro Drive (pasta do tipo → subpasta da pessoa).
+// Sincroniza os documentos de UMA ficha pro Drive (pasta da pessoa → categorias por tipo de doc).
 exports.driveSincronizarFicha = onCall({ secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 120 }, async (req) => {
   const auth = exigirAutenticado(req);
   const { fichaId, colecao } = req.data || {};
