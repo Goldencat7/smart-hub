@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guia do Corretor — Meus Negócios · REMAX Smart Hub</title>
+<style>
+  :root{ --brand:#DC1C2E; --accent:#2563EB; --ink:#14181f; --ink2:#3a4250; --mut:#6b7280; --line:#e5e7eb; --bg:#fff; --soft:#f6f7f9; --ok:#16a34a; --warn:#d97706; }
+  *{ box-sizing:border-box; }
+  body{ font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--ink); margin:0; background:#eef0f3; line-height:1.5; }
+  .page{ max-width:820px; margin:24px auto; background:var(--bg); padding:40px 46px; box-shadow:0 4px 24px rgba(0,0,0,.08); }
+  header.top{ border-bottom:4px solid var(--accent); padding-bottom:16px; margin-bottom:22px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+  .logo{ font-weight:800; font-size:15px; letter-spacing:.5px; }
+  .logo b{ color:var(--brand); }
+  h1{ font-size:26px; margin:4px 0 2px; }
+  .role-badge{ display:inline-block; background:var(--accent); color:#fff; font-weight:700; font-size:12px; padding:4px 12px; border-radius:999px; letter-spacing:.5px; }
+  .lead{ color:var(--ink2); font-size:15px; margin:14px 0 6px; }
+  h2{ font-size:18px; margin:26px 0 8px; padding-left:12px; border-left:4px solid var(--accent); }
+  h3{ font-size:15px; margin:16px 0 4px; }
+  p{ margin:6px 0; }
+  ul,ol{ margin:6px 0; padding-left:22px; }
+  li{ margin:4px 0; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:12px 0; }
+  .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:12px 0; }
+  .card{ border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--soft); }
+  .card h3{ margin:0 0 4px; font-size:14px; }
+  .card p{ margin:0; font-size:13px; color:var(--ink2); }
+  .steps{ counter-reset:s; list-style:none; padding-left:0; }
+  .steps li{ counter-increment:s; position:relative; padding-left:38px; margin:10px 0; }
+  .steps li::before{ content:counter(s); position:absolute; left:0; top:-1px; width:26px; height:26px; background:var(--accent); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; }
+  .callout{ border-left:4px solid var(--warn); background:#fff8ec; padding:10px 14px; border-radius:0 8px 8px 0; margin:14px 0; font-size:14px; }
+  .callout.ok{ border-color:var(--ok); background:#f0fdf4; }
+  .callout.accent{ border-color:var(--accent); background:#eff4ff; }
+  .can{ color:var(--ok); font-weight:700; } .cant{ color:var(--brand); font-weight:700; }
+  footer{ margin-top:30px; padding-top:14px; border-top:1px solid var(--line); font-size:12px; color:var(--mut); display:flex; justify-content:space-between; }
+  @media print{ body{ background:#fff; } .page{ box-shadow:none; margin:0; max-width:none; padding:0 6mm; } h2{ break-after:avoid; } .card,.callout{ break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <div class="logo">RE<b>MAX</b> Smart · Hub</div>
+      <h1>Guia da visão <span style="color:var(--accent)">Corretor</span></h1>
+    </div>
+    <span class="role-badge">CORRETOR</span>
+  </header>
+
+  <p class="lead">A visão do <b>Corretor</b> é a sua central de trabalho. Aqui você vê <b>só o que é seu</b> — seus clientes, seus imóveis e seus negócios — e faz o dia a dia: enviar fichas, acompanhar o funil e cuidar dos seus documentos.</p>
+
+  <div class="callout accent"><b>Como abrir:</b> na barra lateral do Hub, clique em <b>“Meus Negócios”</b>. Ele expande em sanfona e o conteúdo aparece dentro do Hub. Durante o piloto, só quem tem <b>“Acesso de teste”</b> vê essa área.</div>
+
+  <h2>Seu Dashboard</h2>
+  <p>Logo no topo você tem <b>6 indicadores</b> (todos com os seus números reais):</p>
+  <div class="grid3">
+    <div class="card"><h3>Negócios ativos</h3><p>Em andamento.</p></div>
+    <div class="card"><h3>Captações</h3><p>Imóveis na sua carteira.</p></div>
+    <div class="card"><h3>Meus clientes</h3><p>Vinculados a você.</p></div>
+    <div class="card"><h3>Propostas</h3><p>Em negociação.</p></div>
+    <div class="card"><h3>Comissão prevista</h3><p>Repasse estimado (50%).</p></div>
+    <div class="card"><h3>Comissão recebida</h3><p>Negócios concluídos.</p></div>
+  </div>
+  <p>Abaixo: a faixa de <b>atalhos</b>, as <b>Fichas digitais</b>, o <b>Meu dia</b> (próximas ações e pendências), o <b>Meu pipeline</b> e <b>Agenda &amp; recebimentos</b>.</p>
+
+  <h2>Os atalhos (faixa de botões)</h2>
+  <div class="grid">
+    <div class="card"><h3>Novo Cliente / Novo Imóvel</h3><p>Abrem o <b>Cadastro</b> — cliente e imóvel nascem de uma ficha.</p></div>
+    <div class="card"><h3>Novo Negócio</h3><p>Leva aos <b>Meus Imóveis</b> — o negócio nasce de um interessado aprovado (o gestor gera).</p></div>
+    <div class="card"><h3>Agendar Visita</h3><p>Abre a <b>Agenda</b> do Hub.</p></div>
+    <div class="card"><h3>Enviar Ficha</h3><p>Leva à seção <b>Fichas digitais</b>.</p></div>
+    <div class="card"><h3>WhatsApp</h3><p>Abre o WhatsApp.</p></div>
+    <div class="card"><h3>Google Drive / Clicksign</h3><p>Abrem o Drive e o Clicksign.</p></div>
+  </div>
+
+  <h2>Fichas digitais (seu principal captador)</h2>
+  <p>Cada tipo de ficha — <b>Locador, Vendedor, Pessoa Física, Pessoa Jurídica, Locação c/ Fiador e Proposta</b> — tem um <b>link personalizado com o seu nome</b>. Em cada uma você pode:</p>
+  <ol class="steps">
+    <li><b>Copiar</b> o link e mandar por onde quiser.</li>
+    <li>Enviar direto por <b>WhatsApp</b> ou <b>E-mail</b> (abre o Gmail com a mensagem pronta).</li>
+    <li><b>Ver</b> a ficha como o cliente vê.</li>
+  </ol>
+  <p>O cliente preenche sem precisar de login, anexa os documentos, e os dados <b>voltam sozinhos</b> para o Hub — virando imóvel (vendedor/locador) ou interessado (comprador/locatário).</p>
+
+  <h2>Meus Clientes · Meus Imóveis · Meus Negócios</h2>
+  <p>Tudo aqui é <b>só seu</b> — o sistema filtra automaticamente pelo seu usuário. Dentro de um negócio <b>seu</b>, você pode <b>marcar o checklist</b> (registrar as etapas que fez) e <b>comentar</b>.</p>
+
+  <div class="callout"><b>O que fica com o Gestor (não é com você):</b> <span class="cant">aprovar interessado</span>, <span class="cant">gerar negócio</span>, <span class="cant">concluir</span> e <span class="cant">cancelar</span>. Você prepara o terreno (envia ficha, acompanha) e o gestor formaliza o negócio.</div>
+
+  <h2>Minhas Comissões &amp; Meu Perfil</h2>
+  <p><b>Minhas Comissões</b> mostra o repasse (50%) previsto e o já recebido, com a evolução por mês. <b>Meu Perfil</b> (no Hub) é onde você preenche <b>telefone, CRECI e CPF</b> — usados nos templates de marketing e no contrato de representação.</p>
+
+  <h2>📁 Google Drive (seus documentos organizados sozinhos) — JÁ FUNCIONA</h2>
+  <h3>Como ligar (uma vez só)</h3>
+  <ol class="steps">
+    <li>Abra <b>Meu Perfil</b> (último item da barra lateral do Hub).</li>
+    <li>No card <b>“Conta e aplicativo”</b>, clique em <b>“Conectar Google”</b>.</li>
+    <li>Entre com a sua <b>conta Google da empresa</b> e <b>autorize</b> (Agenda + Drive na mesma autorização).</li>
+  </ol>
+  <h3>O que acontece depois (automático)</h3>
+  <p>Quando o cliente preenche a <b>sua ficha</b> e anexa os documentos, tudo é organizado sozinho no <b>seu</b> Google Drive:</p>
+  <ul>
+    <li><b>REMAX Smart Hub — Documentos</b> (pasta-raiz, criada sozinha)</li>
+    <li>→ uma pasta com o <b>nome do cliente</b> (exatamente como ele preencheu na ficha)</li>
+    <li>→ dentro dela, <b>4 pastas por tipo de documento</b>:
+      <b>Identidade</b> (RG, CPF, CNH) · <b>Comprovantes</b> (renda, endereço) · <b>Imóvel</b> (matrícula, IPTU, escritura) · <b>Documentos Diversos</b> (contrato e demais)</li>
+    <li>→ e um <b>PDF completo da ficha</b> (dados + documentos embutidos) em Documentos Diversos.</li>
+  </ul>
+  <p>Exemplo: o cliente “João da Silva” envia a ficha com RG e comprovante de renda → no seu Drive nasce <b>João da Silva ▸ Identidade ▸ RG</b> e <b>João da Silva ▸ Comprovantes ▸ comprovante de renda</b>, sem você fazer nada.</p>
+  <div class="callout ok"><b>Privacidade:</b> nada de link público — tudo vai pro Drive <b>da sua conta</b>. Sem duplicar: reenviar a mesma ficha não cria arquivo repetido. Se você ainda não conectou a conta, nada é enviado (sem erro).</div>
+
+  <footer>
+    <span>REMAX Smart Hub — material interno de treinamento</span>
+    <span>Visão: Corretor</span>
+  </footer>
+</div>
+</body>
+</html>

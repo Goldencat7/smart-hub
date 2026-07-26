@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guia do Gestor — Meus Negócios · REMAX Smart Hub</title>
+<style>
+  :root{ --brand:#DC1C2E; --ink:#14181f; --ink2:#3a4250; --mut:#6b7280; --line:#e5e7eb; --bg:#fff; --soft:#f6f7f9; --ok:#16a34a; --warn:#d97706; }
+  *{ box-sizing:border-box; }
+  body{ font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--ink); margin:0; background:#eef0f3; line-height:1.5; }
+  .page{ max-width:820px; margin:24px auto; background:var(--bg); padding:40px 46px; box-shadow:0 4px 24px rgba(0,0,0,.08); }
+  header.top{ border-bottom:4px solid var(--brand); padding-bottom:16px; margin-bottom:22px; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+  .logo{ font-weight:800; font-size:15px; letter-spacing:.5px; }
+  .logo b{ color:var(--brand); }
+  h1{ font-size:26px; margin:4px 0 2px; }
+  .role-badge{ display:inline-block; background:var(--brand); color:#fff; font-weight:700; font-size:12px; padding:4px 12px; border-radius:999px; letter-spacing:.5px; }
+  .lead{ color:var(--ink2); font-size:15px; margin:14px 0 6px; }
+  h2{ font-size:18px; margin:26px 0 8px; padding-left:12px; border-left:4px solid var(--brand); }
+  h3{ font-size:15px; margin:16px 0 4px; }
+  p{ margin:6px 0; }
+  ul,ol{ margin:6px 0 6px; padding-left:22px; }
+  li{ margin:4px 0; }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:12px 0; }
+  .card{ border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:var(--soft); }
+  .card h3{ margin:0 0 4px; font-size:14px; }
+  .card p{ margin:0; font-size:13px; color:var(--ink2); }
+  .steps{ counter-reset:s; list-style:none; padding-left:0; }
+  .steps li{ counter-increment:s; position:relative; padding-left:38px; margin:10px 0; }
+  .steps li::before{ content:counter(s); position:absolute; left:0; top:-1px; width:26px; height:26px; background:var(--brand); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; }
+  .callout{ border-left:4px solid var(--warn); background:#fff8ec; padding:10px 14px; border-radius:0 8px 8px 0; margin:14px 0; font-size:14px; }
+  .callout.ok{ border-color:var(--ok); background:#f0fdf4; }
+  .callout.brand{ border-color:var(--brand); background:#fef2f3; }
+  .pill{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:6px; background:#eef2ff; color:#3730a3; }
+  .can{ color:var(--ok); font-weight:700; } .cant{ color:var(--brand); font-weight:700; }
+  footer{ margin-top:30px; padding-top:14px; border-top:1px solid var(--line); font-size:12px; color:var(--mut); display:flex; justify-content:space-between; }
+  @media print{ body{ background:#fff; } .page{ box-shadow:none; margin:0; max-width:none; padding:0 6mm; } h2{ break-after:avoid; } .card,.callout{ break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <div class="logo">RE<b>MAX</b> Smart · Hub</div>
+      <h1>Guia da visão <span style="color:var(--brand)">Gestor</span></h1>
+    </div>
+    <span class="role-badge">GESTOR / BROKER</span>
+  </header>
+
+  <p class="lead">A visão do <b>Gestor</b> é o comando da imobiliária. Você enxerga <b>tudo</b> — todos os imóveis, clientes e negócios de todos os corretores — e é quem <b>toma as decisões</b> do funil: aprovar interessados, gerar negócios, concluir e cancelar.</p>
+
+  <div class="callout brand"><b>Como abrir:</b> na barra lateral do Hub, clique em <b>“Meus Negócios”</b>. Ele expande em sanfona e o conteúdo aparece dentro do Hub. Durante o piloto, só quem tem a permissão <b>“Acesso de teste”</b> vê essa área.</div>
+
+  <h2>Seu menu</h2>
+  <div class="grid">
+    <div class="card"><h3>📊 Dashboard</h3><p>Centro de operações, performance da imobiliária e produção por corretor.</p></div>
+    <div class="card"><h3>👥 Pessoas</h3><p>Proprietários, compradores, locatários e fiadores — de todos os corretores.</p></div>
+    <div class="card"><h3>🏠 Imóveis</h3><p>A carteira inteira, com interessados e situação de cada um.</p></div>
+    <div class="card"><h3>🤝 Negócios</h3><p>Onde você conduz cada negócio do início ao fim.</p></div>
+    <div class="card"><h3>📈 Relatórios</h3><p>Indicadores, funil e produção da equipe.</p></div>
+  </div>
+
+  <h2>O fluxo principal (do interessado ao negócio)</h2>
+  <ol class="steps">
+    <li><b>A ficha vira imóvel.</b> Quando um corretor envia a ficha de um <b>vendedor</b> ou <b>locador</b>, o imóvel entra sozinho na carteira (venda ou locação).</li>
+    <li><b>O interessado chega no imóvel.</b> Ao enviar uma ficha a um interessado (comprador/locatário), ele aparece dentro do imóvel como <b>“Ficha recebida”</b>.</li>
+    <li><b>Você aprova o interessado.</b> Abra o imóvel, veja o interessado e clique em <b>Aprovar</b>. <span class="pill">só o gestor aprova</span></li>
+    <li><b>Você gera o negócio.</b> Com o interessado aprovado, clique em <b>Gerar negócio</b>. Nasce um código <b>NG-000000</b> e o imóvel passa para <b>“Em negociação”</b>. <span class="pill">só o gestor gera</span></li>
+    <li><b>Conduza o negócio.</b> Dentro dele você marca o <b>checklist</b> (cada etapa), escreve <b>comentários</b>, guarda o <b>link do Drive</b> e muda o <b>status</b>.</li>
+    <li><b>Encerre.</b> <b>Entregar para gestão</b> ou <b>Concluir</b> exigem todas as etapas obrigatórias feitas. <b>Cancelar</b> devolve o imóvel para “Disponível” e o interessado para “Aprovado”.</li>
+  </ol>
+
+  <div class="callout ok"><b>Regra de ouro:</b> só existe <b>um negócio ativo por imóvel</b>. O sistema bloqueia gerar um segundo negócio no mesmo imóvel enquanto houver um em andamento.</div>
+
+  <h2>O que só o Gestor pode fazer</h2>
+  <ul>
+    <li><span class="can">✔</span> Aprovar / reprovar interessados</li>
+    <li><span class="can">✔</span> Gerar negócio, mudar status manual, entregar para gestão, concluir e cancelar</li>
+    <li><span class="can">✔</span> Ver e comentar em qualquer negócio da imobiliária</li>
+  </ul>
+  <p style="font-size:13px;color:var(--mut)">O corretor só mexe nos negócios dele; o administrativo ajuda na operação, mas não decide o funil.</p>
+
+  <h2>Pessoas &amp; Imóveis</h2>
+  <p><b>Pessoas</b> lista todo mundo que passou por uma ficha ou virou interessado, com a coluna <b>Vínculos</b> (quantos negócios e imóveis a pessoa tem). <b>Imóveis</b> é a carteira completa, com filtros por finalidade (venda/locação), situação (disponível/em negociação) e corretor. Clique em <b>Abrir</b> para ver os detalhes, os interessados e a gestão da locação.</p>
+
+  <h2>📁 Google Drive (documentos organizados sozinhos) — JÁ FUNCIONA</h2>
+  <h3>Como ligar (uma vez só)</h3>
+  <ol class="steps">
+    <li>Abra <b>Meu Perfil</b> (último item da barra lateral do Hub).</li>
+    <li>No card <b>“Conta e aplicativo”</b>, clique em <b>“Conectar Google”</b>.</li>
+    <li>Entre com a sua <b>conta Google da empresa</b> e <b>autorize</b> (Agenda + Drive na mesma autorização).</li>
+  </ol>
+  <h3>O que acontece depois (automático)</h3>
+  <p>Toda ficha <b>sua</b> que chegar com documentos é organizada sozinha no <b>seu</b> Google Drive, assim:</p>
+  <ul>
+    <li><b>REMAX Smart Hub — Documentos</b> (pasta-raiz, criada sozinha)</li>
+    <li>→ uma pasta com o <b>nome da pessoa</b> (exatamente como veio na ficha)</li>
+    <li>→ dentro dela, <b>4 pastas por tipo de documento</b>:
+      <b>Identidade</b> (RG, CPF, CNH) · <b>Comprovantes</b> (renda, endereço) · <b>Imóvel</b> (matrícula, IPTU, escritura) · <b>Documentos Diversos</b> (contrato e demais)</li>
+    <li>→ e um <b>PDF completo da ficha</b> (dados + documentos embutidos) em Documentos Diversos.</li>
+  </ul>
+  <p>O sistema sabe <b>o que cada arquivo é</b> (RG vai pra Identidade, comprovante pra Comprovantes, etc.) e <b>não duplica</b> — reenviar a mesma ficha não cria arquivo repetido.</p>
+  <div class="callout ok"><b>Privacidade:</b> nada de link público — tudo vai pro Drive <b>da sua conta</b>, com o seu acesso. Quem não conectou a conta simplesmente não tem sincronização (sem erro, sem susto).</div>
+
+  <footer>
+    <span>REMAX Smart Hub — material interno de treinamento</span>
+    <span>Visão: Gestor</span>
+  </footer>
+</div>
+</body>
+</html>
