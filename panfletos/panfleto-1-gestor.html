@@ -66,9 +66,11 @@
     <li><b>O interessado chega no imóvel.</b> Ao enviar uma ficha a um interessado (comprador/locatário), ele aparece dentro do imóvel como <b>“Ficha recebida”</b>.</li>
     <li><b>Você aprova o interessado.</b> Abra o imóvel, veja o interessado e clique em <b>Aprovar</b>. <span class="pill">só o gestor aprova</span></li>
     <li><b>Você gera o negócio.</b> Com o interessado aprovado, clique em <b>Gerar negócio</b>. Nasce um código <b>NG-000001</b> (e assim por diante) e o imóvel passa para <b>“Em negociação”</b>. <span class="pill">só o gestor gera</span></li>
-    <li><b>Conduza o negócio.</b> Dentro dele você marca o <b>checklist</b> (cada etapa), escreve <b>comentários</b>, guarda o <b>link do Drive</b> e muda o <b>status</b>.</li>
-    <li><b>Encerre.</b> <b>Entregar para gestão</b> ou <b>Concluir</b> exigem todas as etapas obrigatórias feitas. <b>Cancelar</b> devolve o imóvel para “Disponível” e o interessado para “Aprovado”.</li>
+    <li><b>Conduza o negócio.</b> Dentro dele você marca o <b>checklist</b> (cada etapa), escreve <b>comentários</b>, guarda o <b>link do Drive</b> e muda o <b>status</b>. Ao gerar, o Hub já marca sozinho <b>“Ficha cadastral preenchida”</b> e <b>“Documentação salva”</b> (as que ele tem certeza); o resto você marca conforme acontece no mundo real.</li>
+    <li><b>Encerre.</b> <b>Entregar para gestão</b> ou <b>Concluir</b> exigem <b>todas as etapas obrigatórias</b> feitas (o passo-a-passo do topo mostra todas — venda tem 8, locação 7). Ao <b>Concluir</b>, o imóvel sai de “Em negociação” e ganha a tag <b>Vendido</b> (venda) / <b>Alugado</b> (locação). <b>Cancelar</b> devolve o imóvel para “Disponível” e o interessado para “Aprovado”.</li>
   </ol>
+
+  <div class="callout"><b>O checklist é marcado dentro do Hub.</b> Ele é uma <b>lista de conferência</b>: a tarefa em si acontece por fora (juntar documento, emitir/assinar o compromisso, etc.) e você marca a etapa no Hub pra registrar. Não há detecção automática de assinatura ainda (o ClickSign hoje é só acesso rápido).</div>
 
   <div class="callout ok"><b>Regra de ouro:</b> só existe <b>um negócio ativo por imóvel</b>. O sistema bloqueia gerar um segundo negócio no mesmo imóvel enquanto houver um em andamento.</div>
 
@@ -80,8 +82,13 @@
   </ul>
   <p style="font-size:13px;color:var(--mut)">O corretor só mexe nos negócios dele; o administrativo ajuda na operação, mas não decide o funil.</p>
 
+  <h2>Relatórios &amp; valores de comissão</h2>
+  <p>Os <b>Relatórios</b> e o <b>Dashboard</b> trazem VGV, comissões e produção por corretor — úteis para acompanhar a equipe.</p>
+  <div class="callout brand"><b>⚠️ Os valores de comissão/VGV são estimativa — não é controle de pagamento.</b> São calculados sobre o valor cadastrado do imóvel (repasse de 50% da comissão prevista) e servem só para acompanhamento. O Hub <u>não</u> tem integração bancária: uma comissão só entra em <b>“Recebida”</b> quando <b>você marca o negócio como Concluído</b> — ou seja, “Recebida” = negócio fechado, <b>não</b> “pago na conta” (o pagamento é feito por fora, pela imobiliária). O valor real pode diferir (descontos, impostos, parcerias); <b>prevalece o acerto financeiro oficial</b>.</div>
+
   <h2>Pessoas &amp; Imóveis</h2>
   <p><b>Pessoas</b> lista todo mundo que passou por uma ficha ou virou interessado, com a coluna <b>Vínculos</b> (quantos negócios e imóveis a pessoa tem). <b>Imóveis</b> é a carteira completa, com filtros por finalidade (venda/locação), situação (disponível/em negociação) e corretor. Clique em <b>Abrir</b> para ver os detalhes, os interessados e a gestão da locação.</p>
+  <p>Dentro do imóvel, na aba <b>Documentos</b>, você tem as <b>Fichas envolvidas (PDF)</b> — a ficha do <b>proprietário</b> e a de cada <b>interessado</b> — cada uma com botão <b>Baixar PDF</b> (o PDF sai completo, com dados + documentos anexados). Abaixo ficam os anexos soltos da ficha. Imóveis já <b>concluídos</b> aparecem esmaecidos com a tag <b>Vendido</b>/<b>Alugado</b>.</p>
 
   <h2>📄 Gerar Contrato (imóveis de venda)</h2>
   <p>Ao abrir os detalhes de um imóvel de <b>venda</b>, o botão <b>“Gerar Contrato”</b> preenche o <b>contrato de representação da REMAX</b> com os dados do vendedor (da ficha) e do imóvel, e baixa o PDF pronto — é só conferir e subir no ClickSign. Se você conectou o Google, o contrato <b>também é salvo no seu Drive</b>, na pasta do vendedor → Documentos Diversos.</p>
