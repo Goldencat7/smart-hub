@@ -36,12 +36,14 @@
 
 <!-- 3. Documentos -->
 <div class="section"><div class="section-title"><span class="num">3</span> Documentos</div>
+<div id="docs-h1" style="display:none;font-weight:700;color:#002749;font-size:13px;margin:2px 0 8px">👤 Documentos do 1º Cliente</div>
 <div class="docs-grid">
 <div class="doc-wrapper"><div class="doc-area" id="area-rgcpf"><div class="doc-clickable" onclick="triggerFile('rgcpf')"><div class="doc-icon">🪪</div><div class="doc-label">RG, CPF ou CNH <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-rgcpf">Toque para selecionar</div></div><input type="file" id="file-rgcpf" accept="image/*,.pdf" style="display:none" data-doc="rgcpf" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgcpf" style="display:none">Informação pendente</div></div>
 <div class="doc-wrapper"><div class="doc-area" id="area-compEndereco"><div class="doc-clickable" onclick="triggerFile('compEndereco')"><div class="doc-icon">🏠</div><div class="doc-label">Comprovante de endereço <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-compEndereco">Toque para selecionar</div></div><input type="file" id="file-compEndereco" accept="image/*,.pdf" style="display:none" data-doc="compEndereco" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEndereco" style="display:none">Informação pendente</div></div>
 <div class="doc-wrapper"><div class="doc-area" id="area-compRenda"><div class="doc-clickable" onclick="triggerFile('compRenda')"><div class="doc-icon">💰</div><div class="doc-label">Comprovante de renda (90 dias) <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-compRenda">Toque para selecionar</div></div><input type="file" id="file-compRenda" accept="image/*,.pdf" style="display:none" data-doc="compRenda" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compRenda" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRenda"><span>Não tenho agora</span></label></div>
 <div class="doc-wrapper"><div class="doc-area" id="area-compEstadoCivil"><div class="doc-clickable" onclick="triggerFile('compEstadoCivil')"><div class="doc-icon">📋</div><div class="doc-label">Comprovante de estado civil <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-compEstadoCivil">Toque para selecionar</div></div><input type="file" id="file-compEstadoCivil" accept="image/*,.pdf" style="display:none" data-doc="compEstadoCivil" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEstadoCivil" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compEstadoCivil"><span>Não tenho agora</span></label></div>
-</div></div>
+</div>
+<div class="docs-grid" id="docs-extra"></div></div>
 
 <div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
 <div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
@@ -214,6 +216,7 @@ function renderProponentes(){
   // popula o select de UF do imóvel (uma vez basta, mas é barato refazer)
   const imEstado = document.querySelector('[data-key="im_estado"]');
   if(imEstado && !imEstado.dataset.feito){ imEstado.innerHTML = ufOptions(v('im_estado')); imEstado.value = v('im_estado'); imEstado.dataset.feito='1'; }
+  renderDocsExtra();
   atualizarProgresso();
 }
 
@@ -301,7 +304,7 @@ function atualizarProgresso(){
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(isPend(k) || (valores[k]&&(''+valores[k]).trim())) ok++; });
   // documentos obrigatórios contam também
-  ['rgcpf','compEndereco','compRenda','compEstadoCivil'].forEach(k=>{ total++; if(isPend(k)||arquivos[k]||docsExistentes[k]) ok++; });
+  ['rgcpf','compEndereco','compRenda','compEstadoCivil'].concat(docsExtraList().filter(d=>d.key).map(d=>d.key)).forEach(k=>{ total++; if(isPend(k)||arquivos[k]||docsExistentes[k]) ok++; });
   const pct = total? Math.round(ok/total*100):0;
   const bar = document.getElementById('progressFill'); if(bar) bar.style.width = pct+'%';
 }
@@ -355,7 +358,8 @@ form.addEventListener('change', e=>{
     if(!COM_CONJUGE.includes(el.value)){
       const m = el.dataset.key.match(/^p(\d+)_estadoCivil$/);
       const idx = m ? m[1] : '1';
-      Object.keys(valores).forEach(k=>{ if(k.startsWith('p'+idx+'c_')) delete valores[k]; });
+      [valores,arquivos].forEach(o=>Object.keys(o).forEach(k=>{ if(k.startsWith('p'+idx+'c_')) delete o[k]; }));
+      [...pendentes].forEach(k=>{ if(k.startsWith('p'+idx+'c_')) pendentes.delete(k); });
     }
     renderProponentes(); return;
   }
@@ -373,7 +377,8 @@ document.getElementById('proponentes').addEventListener('click', e=>{
   if(rem){
     const i = parseInt(rem,10);
     // limpa os valores do proponente i e do seu cônjuge
-    Object.keys(valores).forEach(k=>{ if(k.startsWith('p'+i+'_')||k.startsWith('p'+i+'c_')) delete valores[k]; });
+    [valores,arquivos].forEach(o=>Object.keys(o).forEach(k=>{ if(k.startsWith('p'+i+'_')||k.startsWith('p'+i+'c_')) delete o[k]; }));
+    [...pendentes].forEach(k=>{ if(k.startsWith('p'+i+'_')||k.startsWith('p'+i+'c_')) pendentes.delete(k); });
     // reindexa: como removemos sempre o último visível para simplificar, apenas decrementa
     nProponentes = Math.max(1, nProponentes-1);
     renderProponentes();
@@ -386,6 +391,49 @@ window.docSelecionado = function(input){
   const k = input.dataset.doc; const area = input.closest('.doc-area');
   if(input.files[0]){ arquivos[k]=input.files[0]; area.classList.add('tem-arquivo'); area.classList.remove('pendente-doc'); const st=document.getElementById('status-'+k); if(st) st.textContent='✓ '+input.files[0].name; const lbl=area.querySelector('.doc-label'); const b=lbl&&lbl.querySelector('.badge-obrig,.badge-preen'); if(b){b.textContent='Preenchido';b.className='badge-preen';} atualizarProgresso(); }
 };
+
+// ── Documentos por pessoa (extras: só aparecem com mais de uma pessoa) ──
+function _docCard(d){
+  if(d.heading) return `<div style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${d.heading}</div>`;
+  const k=d.key, has=arquivos[k], ex=docsExistentes[k], pend=isPend(k);
+  const badge = has?'<span class="badge-preen">Preenchido</span>':(d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>');
+  let status;
+  if(has) status='✓ '+has.name;
+  else if(ex) status=(modo==='corretor')?`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir</a>`:`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+  else if(pend) status='Marcado como pendente';
+  else status='Toque para selecionar';
+  const areaCls='doc-area'+((has||ex)?' tem-arquivo':(pend?' pendente-doc':''));
+  const nta=d.nta?`<label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="${k}"${pend?' checked':''}><span>Não tenho agora</span></label>`:'';
+  return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${k}"><div class="doc-clickable" onclick="triggerFile('${k}')"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${k}">${status}</div></div><input type="file" id="file-${k}" accept="image/*,.pdf" style="display:none" data-doc="${k}" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-${k}" style="display:${pend?'inline-block':'none'}">Informação pendente</div>${nta}</div>`;
+}
+function docsExtraList(){
+  const arr=[];
+  for(let i=1;i<=nProponentes;i++){
+    const P=i===1?'':'p'+i+'_';
+    if(i>1){
+      const nome=(v(P+'nome')||'').trim();
+      arr.push({heading:'👤 Documentos do '+i+'º Cliente'+(nome?' · '+nome:'')});
+      arr.push({key:P+'rgcpf',        icon:'🪪', label:'RG, CPF ou CNH',              badge:'obrig'});
+      arr.push({key:P+'compEndereco', icon:'🏠', label:'Comprovante de endereço',     badge:'obrig'});
+      arr.push({key:P+'compRenda',    icon:'💰', label:'Comprovante de renda (90 dias)',badge:'obrig', nta:true});
+      arr.push({key:P+'compEstadoCivil',icon:'📋',label:'Comprovante de estado civil', badge:'opc', nta:true});
+    }
+    if(COM_CONJUGE.includes(v(i===1?'estadoCivil':'p'+i+'_estadoCivil'))){
+      const C='p'+i+'c_', cn=(v(C+'nome')||'').trim();
+      arr.push({heading:'💑 Documentos do cônjuge do '+i+'º Cliente'+(cn?' · '+cn:'')});
+      arr.push({key:C+'rgcpf',        icon:'🪪', label:'RG, CPF ou CNH',              badge:'obrig'});
+      arr.push({key:C+'compRenda',    icon:'💰', label:'Comprovante de renda (90 dias)',badge:'opc', nta:true});
+      arr.push({key:C+'compEstadoCivil',icon:'📋',label:'Comprovante de estado civil', badge:'opc', nta:true});
+    }
+  }
+  return arr;
+}
+function renderDocsExtra(){
+  const cont=document.getElementById('docs-extra'); if(!cont) return;
+  const list=docsExtraList();
+  const h1=document.getElementById('docs-h1'); if(h1) h1.style.display = list.length ? 'block' : 'none';
+  cont.innerHTML = list.map(_docCard).join('');
+}
 
 // ── Envio ──
 function mostrarErro(msg){ const el=document.getElementById('erroFinal'); el.textContent=msg; el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
@@ -403,6 +451,8 @@ form.addEventListener('submit', async e=>{
   // confirma com o cliente e registra como pendência — antes passavam em
   // silêncio e a ficha chegava "sem pendências" faltando tudo.
   const DOCS_OBRIG = { rgcpf:'RG, CPF ou CNH', compEndereco:'Comprovante de endereço', compRenda:'Comprovante de renda' };
+  let _lastH='';
+  docsExtraList().forEach(d=>{ if(d.heading){ _lastH=d.heading.replace(/^\S+\s/,''); return; } if(d.key && d.badge==='obrig') DOCS_OBRIG[d.key]=d.label+' — '+_lastH; });
   const docsFaltando = Object.keys(DOCS_OBRIG).filter(k => !arquivos[k] && !docsExistentes[k] && !isPend(k));
   const camposFaltando = [...form.querySelectorAll('.field')].filter(f => {
     if(!f.querySelector('.badge-obrig') || !f.offsetParent) return false; // só visíveis

@@ -282,6 +282,7 @@
         <div class="doc-wrapper"><div class="doc-area" id="area-iptu_doc"><div class="doc-clickable" onclick="triggerFile('iptu_doc')"><div class="doc-icon">📄</div><div class="doc-label">Documento do IPTU <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-iptu_doc">Toque para selecionar</div></div><input type="file" id="file-iptu_doc" accept="image/*,.pdf" style="display:none" data-doc="iptu_doc" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-iptu_doc" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="iptu_doc"><span>Não tenho agora</span></label></div>
         <div class="doc-wrapper"><div class="doc-area" id="area-condominio_doc"><div class="doc-clickable" onclick="triggerFile('condominio_doc')"><div class="doc-icon">🏢</div><div class="doc-label">Doc. do condomínio <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-condominio_doc">Toque para selecionar</div></div><input type="file" id="file-condominio_doc" accept="image/*,.pdf" style="display:none" data-doc="condominio_doc" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-doc-condominio_doc" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="condominio_doc"><span>Não tenho agora</span></label></div>
       </div>
+      <div class="docs-grid" id="docs-extra"></div>
     </div>
 
     <div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
@@ -352,6 +353,8 @@ window.toggleConjuge = function(secId, civil) {
     if (!casado) { el.setAttribute('disabled',''); el.value = ''; }
     else if (!somenteLeitura) el.removeAttribute('disabled');
   });
+  if(!casado){ const pre=secId==='sec-conj2'?'loc2_conj_':'conj_'; Object.keys(arquivos).forEach(k=>{ if(k.startsWith(pre)) delete arquivos[k]; }); [...pendentes].forEach(k=>{ if(k.startsWith(pre)) pendentes.delete(k); }); }
+  if(typeof renderDocsExtra==='function'){ renderDocsExtra(); atualizarProgresso(); }
 };
 
 window.toggleLoc2 = function(show) {
@@ -366,7 +369,10 @@ window.toggleLoc2 = function(show) {
     document.getElementById('sec-conj2').style.display = 'none';
     document.querySelectorAll('#sec-conj2 input, #sec-conj2 select').forEach(el => { el.setAttribute('disabled',''); el.value = ''; });
     document.getElementById('civil2').value = '';
+    Object.keys(arquivos).forEach(k=>{ if(k.startsWith('loc2_')) delete arquivos[k]; });
+    [...pendentes].forEach(k=>{ if(k.startsWith('loc2_')) pendentes.delete(k); });
   }
+  if(typeof renderDocsExtra==='function'){ renderDocsExtra(); atualizarProgresso(); }
 };
 
 window.toggleTit2 = function(show) {
@@ -546,6 +552,30 @@ window.docSelecionado = function(input) {
   }
 };
 
+// ── Documentos por pessoa (extras: só aparecem quando a pessoa existe) ──
+function _valNome(n){ const el=document.querySelector(`[name="${n}"]`); return el?(el.value||'').trim():''; }
+function _shown(id){ const el=document.getElementById(id); return el && el.style.display!=='none'; }
+function _docCardLoc(d){
+  if(d.heading) return `<div style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${d.heading}</div>`;
+  const k=d.key, has=arquivos[k], ex=docsExistentes[k], pend=pendentes.has(k);
+  const badge = has?'<span class="badge-preen">Preenchido</span>':(d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>');
+  let status;
+  if(has) status='✓ '+has.name;
+  else if(ex) status=(modo==='corretor')?`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir</a>`:`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+  else if(pend) status='Marcado como pendente';
+  else status='Toque para selecionar';
+  const areaCls='doc-area'+((has||ex)?' tem-arquivo':(pend?' pendente-doc':''));
+  return `<div class="doc-wrapper"><div class="${areaCls}" id="area-${k}"><div class="doc-clickable" onclick="triggerFile('${k}')"><div class="doc-icon">${d.icon||'📄'}</div><div class="doc-label">${d.label} ${badge}</div><div class="doc-status" id="status-${k}">${status}</div></div><input type="file" id="file-${k}" accept="image/*,.pdf" style="display:none" data-doc="${k}" onchange="docSelecionado(this)"></div></div>`;
+}
+function docsExtraList(){
+  const arr=[];
+  if(_shown('sec-conj1')){ const n=_valNome('conj_nome'); arr.push({heading:'💑 RG e CPF do cônjuge do 1º Locador'+(n?' · '+n:'')}); arr.push({key:'conj_rgcpf',icon:'🪪',label:'RG e CPF',badge:'obrig'}); }
+  if(_shown('sec-loc2')){ const n=_valNome('loc2_nome'); arr.push({heading:'👤 RG e CPF do 2º Locador'+(n?' · '+n:'')}); arr.push({key:'loc2_rgcpf',icon:'🪪',label:'RG e CPF',badge:'obrig'});
+    if(_shown('sec-conj2')){ const n2=_valNome('loc2_conj_nome'); arr.push({heading:'💑 RG e CPF do cônjuge do 2º Locador'+(n2?' · '+n2:'')}); arr.push({key:'loc2_conj_rgcpf',icon:'🪪',label:'RG e CPF',badge:'obrig'}); } }
+  return arr;
+}
+function renderDocsExtra(){ const cont=document.getElementById('docs-extra'); if(!cont) return; cont.innerHTML=docsExtraList().map(_docCardLoc).join(''); }
+
 // ── Progresso ───────────────────────────────────────────────────────
 const CAMPOS_PROG = ['nome','rg','cpf','dataNasc','estadoCivil','cep','endereco','numero','bairro','cidade','estado','profissao','email','whatsapp','im_tipo','im_cep','im_endereco','im_numero','im_bairro','im_cidade','im_estado','im_inicio','im_anuncio','im_proposta','fin1_banco','fin1_agencia','fin1_conta','fin1_favorecido','adm_resp','repasse','rgcpf','energia'];
 function atualizarProgresso() {
@@ -554,6 +584,7 @@ function atualizarProgresso() {
     const el = document.querySelector(`[name="${c}"]`);
     if (pendentes.has(c) || arquivos[c] || docsExistentes[c] || (el && el.value.trim())) ok++;
   });
+  docsExtraList().filter(d=>d.key).forEach(d=>{ total++; if(pendentes.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
   const pct = Math.round(ok / total * 100);
   const bar = document.getElementById('progressFill'); if (bar) bar.style.width = pct + '%';
 }
@@ -693,6 +724,8 @@ document.getElementById('formFicha').addEventListener('submit', async function(e
   }).map(f => ({ name: f.querySelector('[name]').name,
                  label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[name]').name }));
   const DOCS_OBRIG = { rgcpf:'RG e CPF', energia:'Conta de energia' };
+  let _lastH='';
+  docsExtraList().forEach(d=>{ if(d.heading){ _lastH=d.heading.replace(/^\S+\s/,''); return; } if(d.key && d.badge==='obrig') DOCS_OBRIG[d.key]=_lastH||d.label; });
   const docsFaltando = Object.keys(DOCS_OBRIG).filter(k => !arquivos[k] && !docsExistentes[k] && !pendentes.has(k));
   if (camposFaltando.length || docsFaltando.length) {
     const itens = [...camposFaltando.map(c=>c.label), ...docsFaltando.map(k=>DOCS_OBRIG[k])];
