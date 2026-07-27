@@ -201,9 +201,13 @@ async function lookupCEP(input){
 }
 
 // ── Documentos ──
+// CFG.docs pode ser ARRAY ou FUNÇÃO — a função gera os slots por pessoa a partir do
+// estado (nº de sócios/fiadores, casado…). Como renderDocs roda a cada rerender()
+// (add/remove pessoa, troca de estado civil), os slots aparecem/somem sozinhos.
+function _docs(){ try{ return (typeof CFG.docs==='function' ? CFG.docs() : CFG.docs) || []; }catch(_e){ return []; } }
 function renderDocs(){
   const grid=document.getElementById('docs-grid'); if(!grid) return;
-  grid.innerHTML = (CFG.docs||[]).map(d=>{
+  grid.innerHTML = _docs().map(d=>{
     const ni=naoExiste.has(d.key), nta=pendentes.has(d.key);
     const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>';
     let toggles='';
@@ -233,7 +237,7 @@ export function atualizarProgresso(){
   const campos=document.querySelectorAll('[data-key]');
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(pendentes.has(k)||naoExiste.has(k)||(valores[k]&&(''+valores[k]).trim())) ok++; });
-  (CFG.docs||[]).forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
+  _docs().forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
   const pct=total?Math.round(ok/total*100):0;
   const bar=document.getElementById('progressFill'); if(bar) bar.style.width=pct+'%';
   if(CFG.aoAtualizar) CFG.aoAtualizar();
@@ -252,7 +256,7 @@ function montarChrome(){
     <div class="intro" id="introTexto"><p>${CFG.intro||'Preencha o máximo possível. Use <strong>"Não tenho agora"</strong> para pendências.'}</p></div>
     <form id="formFicha" novalidate>
       <div id="campos"></div>
-      ${(CFG.docs&&CFG.docs.length)?`<div class="section"><div class="section-title"><span class="num">${CFG.docsNum||'•'}</span> Documentos</div><div class="docs-grid" id="docs-grid"></div></div>`:''}
+      ${(typeof CFG.docs==='function'||(CFG.docs&&CFG.docs.length))?`<div class="section"><div class="section-title"><span class="num">${CFG.docsNum||'•'}</span> Documentos</div><div class="docs-grid" id="docs-grid"></div></div>`:''}
       <div id="erroFinal" style="font-size:12px;color:#DC1C2E;margin-top:4px;display:none;text-align:center;padding:10px"></div>
       <div id="upload-progress" style="height:3px;background:#e5e7eb;border-radius:2px;margin-top:12px;overflow:hidden;display:none"><div id="upload-progress-fill" style="height:100%;background:#002749;width:0%;transition:width .3s"></div></div>
       <button type="submit" class="btn-submit" id="btnSubmit">Enviar ficha</button>
@@ -328,7 +332,7 @@ async function enviar(e){
     return !(valores[k] && (''+valores[k]).trim()) && !pendentes.has(k) && !naoExiste.has(k);
   }).map(f => ({ k: f.querySelector('[data-key]').dataset.key,
                  label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[data-key]').dataset.key }));
-  const docsFaltando = (CFG.docs||[]).filter(d => d.badge==='obrig'
+  const docsFaltando = _docs().filter(d => d.badge==='obrig'
     && !arquivos[d.key] && !docsExistentes[d.key] && !pendentes.has(d.key) && !naoExiste.has(d.key));
   if(camposFaltando.length || docsFaltando.length){
     const itens = [...camposFaltando.map(c=>c.label), ...docsFaltando.map(d=>d.label)];

@@ -8,6 +8,12 @@ import * as FE from './ficha-comum.js';
 
 const st = { has2Prop: false, numFiador: 1 };
 const ordF = ['1º','2º'];
+// Limpa valores/anexos/pendências de uma pessoa removida (evita anexo órfão subir).
+const _limpar = pre => {
+  Object.keys(FE.valores).forEach(k=>{ if(k.startsWith(pre)) delete FE.valores[k]; });
+  Object.keys(FE.arquivos).forEach(k=>{ if(k.startsWith(pre)) delete FE.arquivos[k]; });
+  [FE.pendentes,FE.naoExiste].forEach(set=>[...set].forEach(k=>{ if(k.startsWith(pre)) set.delete(k); }));
+};
 
 function render(){
   // 1. Locador(es)
@@ -56,23 +62,33 @@ FE.iniciarFicha({
   rigidos:['nome','whatsapp','email'],
   msgRigidos:'Preencha pelo menos nome, WhatsApp e e-mail do 1º locador.',
   intro:'Preencha o(s) locador(es), imóvel de interesse, fiador(es) e o imóvel dado em garantia. Use <strong>"Não tenho agora"</strong> para pendências.',
-  docs:[
-    {key:'p_rgcpf',   icon:'🪪', label:'Locador — RG, CPF ou CNH',          badge:'obrig'},
-    {key:'p_endereco',icon:'🏠', label:'Locador — Comp. de endereço',       badge:'obrig'},
-    {key:'p_renda',   icon:'💰', label:'Locador — Comp. de renda (90 dias)',badge:'opc', nta:true},
-    {key:'p_civil',   icon:'📋', label:'Locador — Estado civil',            badge:'opc', ni:true, nta:true},
-    {key:'f_rgcpf',   icon:'🪪', label:'Fiador — RG, CPF ou CNH',              badge:'obrig'},
-    {key:'f_endereco',icon:'🏠', label:'Fiador — Comp. de endereço',           badge:'obrig'},
-    {key:'f_civil',   icon:'📋', label:'Fiador — Estado civil',                badge:'opc', ni:true, nta:true},
-    {key:'g_iptu',    icon:'📄', label:'Garantia — Nº contribuinte IPTU',      badge:'opc', ni:true, nta:true},
-    {key:'g_matricula',icon:'📋',label:'Garantia — Matrícula do imóvel',       badge:'obrig'},
-  ],
+  // Um conjunto de docs por LOCADOR e por FIADOR (aparece conforme adiciona a pessoa)
+  // + docs da garantia (uma vez).
+  docs:()=>{
+    const arr=[]; const nLoc = st.has2Prop?2:1;
+    for(let i=1;i<=nLoc;i++){
+      const s = nLoc>1 ? ` (${i}º)` : '';
+      arr.push({key:'p'+i+'_rgcpf',    icon:'🪪', label:'Locador'+s+' — RG, CPF ou CNH',          badge:'obrig'});
+      arr.push({key:'p'+i+'_endereco', icon:'🏠', label:'Locador'+s+' — Comp. de endereço',       badge:'obrig'});
+      arr.push({key:'p'+i+'_renda',    icon:'💰', label:'Locador'+s+' — Comp. de renda (90 dias)', badge:'opc', nta:true});
+      arr.push({key:'p'+i+'_civil',    icon:'📋', label:'Locador'+s+' — Estado civil',             badge:'opc', ni:true, nta:true});
+    }
+    for(let i=1;i<=st.numFiador;i++){
+      const s = st.numFiador>1 ? ` (${ordF[i-1]})` : '';
+      arr.push({key:'f'+i+'_rgcpf',    icon:'🪪', label:'Fiador'+s+' — RG, CPF ou CNH',    badge:'obrig'});
+      arr.push({key:'f'+i+'_endereco', icon:'🏠', label:'Fiador'+s+' — Comp. de endereço', badge:'obrig'});
+      arr.push({key:'f'+i+'_civil',    icon:'📋', label:'Fiador'+s+' — Estado civil',      badge:'opc', ni:true, nta:true});
+    }
+    arr.push({key:'g_iptu',     icon:'📄', label:'Garantia — Nº contribuinte IPTU', badge:'opc', ni:true, nta:true});
+    arr.push({key:'g_matricula',icon:'📋', label:'Garantia — Matrícula do imóvel',  badge:'obrig'});
+    return arr;
+  },
   render,
   acoes:{
     addProp:()=>{ st.has2Prop=true; },
-    remProp:()=>{ Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('p2_')) delete FE.valores[k]; }); st.has2Prop=false; },
+    remProp:()=>{ _limpar('p2_'); st.has2Prop=false; },
     addFiador:()=>{ if(st.numFiador<2) st.numFiador=2; },
-    remFiador:()=>{ Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('f2_')) delete FE.valores[k]; }); st.numFiador=1; },
+    remFiador:()=>{ _limpar('f2_'); st.numFiador=1; },
   },
   aoCarregar:(f)=>{ const d=f.dados||{};
     if(Object.keys(d).some(k=>k.startsWith('p2_'))) st.has2Prop=true;

@@ -50,18 +50,25 @@ FE.iniciarFicha({
   rigidos:['nome','cnpj','whatsapp','email'],
   msgRigidos:'Preencha pelo menos razão social, CNPJ, WhatsApp e e-mail da empresa.',
   intro:'Preencha os dados da empresa, sócios e imóvel. Use <strong>"Não tenho agora"</strong> para itens indisponíveis.',
-  docs:[
-    {key:'cnpj_card',   icon:'🏢', label:'Cartão CNPJ',                        badge:'obrig'},
-    {key:'contrato',    icon:'📜', label:'Contrato social',                     badge:'obrig'},
-    {key:'emp_renda',   icon:'💰', label:'Comprovante de renda (empresa)',      badge:'obrig'},
-    {key:'soc_rgcpf',   icon:'🪪', label:'RG, CPF ou CNH (sócios)',             badge:'obrig'},
-    {key:'soc_endereco',icon:'🏠', label:'Comprovante de endereço (sócios)',    badge:'obrig'},
-    {key:'soc_civil',   icon:'📋', label:'Comprovante de estado civil (sócios)',badge:'opc', ni:true, nta:true},
-  ],
+  // Docs da empresa (uma vez) + um conjunto por SÓCIO (aparece conforme adiciona sócio).
+  docs:()=>{
+    const arr=[
+      {key:'cnpj_card', icon:'🏢', label:'Cartão CNPJ',                   badge:'obrig'},
+      {key:'contrato',  icon:'📜', label:'Contrato social',                badge:'obrig'},
+      {key:'emp_renda', icon:'💰', label:'Comprovante de renda (empresa)', badge:'obrig'},
+    ];
+    for(let i=1;i<=st.numSocios;i++){
+      const s = st.numSocios>1 ? ` (${ord[i-1]} sócio)` : ' (sócio)';
+      arr.push({key:'s'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH'+s,              badge:'obrig'});
+      arr.push({key:'s'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço'+s,     badge:'obrig'});
+      arr.push({key:'s'+i+'_civil',    icon:'📋', label:'Comprovante de estado civil'+s, badge:'opc', ni:true, nta:true});
+    }
+    return arr;
+  },
   render,
   acoes:{
     addSocio:()=>{ if(st.numSocios<3) st.numSocios++; },
-    remSocio:()=>{ const i=st.numSocios; Object.keys(FE.valores).forEach(k=>{ if(k.startsWith('s'+i+'_')) delete FE.valores[k]; }); st.numSocios=Math.max(1,st.numSocios-1); },
+    remSocio:()=>{ const i=st.numSocios, pre='s'+i+'_'; Object.keys(FE.valores).forEach(k=>{ if(k.startsWith(pre)) delete FE.valores[k]; }); Object.keys(FE.arquivos).forEach(k=>{ if(k.startsWith(pre)) delete FE.arquivos[k]; }); [FE.pendentes,FE.naoExiste].forEach(set=>[...set].forEach(k=>{ if(k.startsWith(pre)) set.delete(k); })); st.numSocios=Math.max(1,st.numSocios-1); },
   },
   aoCarregar:(f)=>{ const d=f.dados||{}; if(Object.keys(d).some(k=>k.startsWith('s3_'))) st.numSocios=3; else if(Object.keys(d).some(k=>k.startsWith('s2_'))) st.numSocios=2; },
 });
