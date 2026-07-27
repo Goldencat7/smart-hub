@@ -27,6 +27,8 @@ const call = (name) => httpsCallable(fns, name);
 const fnImoveis   = call('locListarImoveis');
 const fnNegocios  = call('negocioListar');
 const fnNegAtual  = call('negocioAtualizar');
+const fnInteressado = call('carteiraInteressado'); // aprovar/reprovar interessado (gestor)
+const fnGerarNeg    = call('negocioGerar');         // gerar negócio de um interessado aprovado (gestor)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
 const fnRoster    = call('listarPessoas');    // usuários do Auth {uid,nome}
 const fnFotos     = call('listarFotosPerfil');// {uids} -> {fotos:{uid:dataUrl}}
@@ -201,6 +203,9 @@ async function carregarDados(){
     comissaoPendente: DEALS.filter(d=>d.statusRaw!=='concluido').reduce((s,d)=>s+(d.comValor||0),0),
     pagoCorretores: 0, pendenteCorretores: 0,
     encerradosMes: DEALS.filter(d=>d.statusRaw==='concluido'||d.statusRaw==='entregue_gestao').length,
+    concluidos: DEALS.filter(d=>d.statusRaw==='concluido').length,
+    // "ativos" = em andamento de verdade (exclui concluído/entregue; cancelado já saiu de DEALS)
+    ativos: DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='entregue_gestao').length,
     tempoMedioDias: 0,
   };
   KPI.pagoCorretores = Math.round(KPI.comissaoRecebida*0.5);
@@ -403,7 +408,7 @@ RENDERERS.dashboard = function(host){
   function tile(label,valor,sub){ const mono=(typeof valor==='string'&&valor.indexOf('R$')===0)?'mono':'';
     return '<div class="card" style="padding:16px"><div class="fz12 fw5 t500">'+label+'</div><div class="'+mono+'" style="margin-top:6px;font-size:22px;font-weight:700;letter-spacing:-.02em;color:var(--ink900)">'+valor+'</div>'+(sub?'<div class="fz12 fw5 t400" style="margin-top:6px">'+sub+'</div>':'')+'</div>'; }
 
-  const funil=[['Negócios ativos',DEALS.length,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.encerradosMes,'#16A34A']];
+  const funil=[['Negócios ativos',KPI.ativos,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.concluidos,'#16A34A']];
   const maxF=Math.max(1,...funil.map(f=>f[1]));
   const recPct=KPI.comissaoPrevista?Math.round(KPI.comissaoRecebida/KPI.comissaoPrevista*100):0;
   const primeiroNome=(state.meuNome||'Broker').split(' ')[0];
@@ -428,7 +433,7 @@ RENDERERS.dashboard = function(host){
     + tile('Locações',String(nLoc),'negócios de locação')
     + tile('VGV',brl(vgv),'valor de venda no pipeline')
     + tile('Ticket médio',ticket?brl(ticket):'—',nVendas?'por venda':'sem vendas ainda')
-    + tile('Negócios ativos',String(DEALS.length),'em andamento')
+    + tile('Negócios ativos',String(KPI.ativos),'em andamento')
     + tile('Negócios encerrados',String(KPI.encerradosMes),'no período')
     + tile('Comissão prevista',brl(KPI.comissaoPrevista),'pipeline atual')
   + '</div>'
@@ -496,6 +501,7 @@ function openDeal(id){
     '<button class="btn-dark-ghost" style="margin-bottom:16px" data-nav="negocios">'+icon('arrow-left',15)+'Voltar aos Negócios</button>'
   + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'<button class="btn btn-outline sm" data-action="sem-drive">'+icon('folder-open',15)+'Sem Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
+  + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500">'+esc(d.clienteContato||'—')+'</div></div></div></div>'
@@ -513,6 +519,27 @@ async function negAtualizar(payload, okMsg){
     if(ng){ const mapped=mapNegocio(ng); const i=DEALS.findIndex(x=>x.id===mapped.id); if(i>=0) DEALS[i]=mapped; else DEALS.push(mapped); }
     if(okMsg) toast(okMsg);
     openDeal(state.currentDeal);
+  } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); }
+}
+
+// Aprovar/reprovar um interessado (gestor). Recarrega os dados e reabre o imóvel.
+async function interessadoAcao(imovelId, index, status, okMsg){
+  try {
+    await fnInteressado({ imovelId, acao:'status', index, status });
+    toast(okMsg||'Interessado atualizado', 'check');
+    await carregarDados();
+    openProp(imovelId);
+  } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); }
+}
+// Gerar negócio de um interessado aprovado (gestor). Recarrega e abre o negócio novo.
+async function gerarNegocioUI(imovelId, index){
+  try {
+    toast('Gerando negócio…', 'loader-2', 'var(--brand)');
+    const r = await fnGerarNeg({ imovelId, interessadoIndex: index });
+    await carregarDados();
+    const nid = r.data && r.data.negocioId;
+    toast('Negócio '+((r.data && r.data.codigo)||'')+' criado', 'check');
+    if(nid && DEALS.find(x=>x.id===nid)) openDeal(nid); else navigate('negocios');
   } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); }
 }
 
@@ -582,7 +609,7 @@ function propDrawer(id){
   const tabs=[['dados','Dados'],['interessados','Interessados'],['docs','Documentos'],['vinc','Negócios']];
   let body='';
   if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>')+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+'</div>'; }
-  else if(tab==='interessados'){ const its=p.interessados||[]; body=its.length?its.map(it=>'<div class="fx ac g3" style="padding:11px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div><div class="fz11 t500">'+esc(it.contato||'')+'</div></div>'+pill((it.status||'').replace(/_/g,' '),'neutral')+'</div>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado neste imóvel.</div>'; }
+  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; body=its.length?its.map((it,idx)=>{ const st=it.status||''; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'">'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'">'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'">'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div><div class="fz11 t500">'+esc(it.contato||'')+'</div></div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+ac+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado neste imóvel.</div>'; }
   else if(tab==='docs'){
     const raw=(p.raw&&p.raw.documentos)||{};
     const anexos=Object.entries(raw).filter(([,url])=>typeof url==='string' && /^https?:/i.test(url));
@@ -606,14 +633,14 @@ RENDERERS.relatorios=function(host){
   const uids=[...new Set(DEALS.map(d=>d.corretor).filter(Boolean))];
   const perc=uids.map(uid=>{ const ds=DEALS.filter(d=>d.corretor===uid); return {uid, nome:corrNome(uid), foto:corrFoto(uid), cor:(CORRETORES[uid]&&CORRETORES[uid].cor)||'#2563EB', vendas:ds.filter(d=>d.tipo==='Venda').length, loc:ds.filter(d=>d.tipo==='Locação').length, com:ds.reduce((s,d)=>s+(d.comValor||0),0), vgv:ds.filter(d=>d.tipo==='Venda').reduce((s,d)=>s+(d.valor||0),0)}; }).sort((a,b)=>b.com-a.com);
   const maxCom=Math.max(1,...perc.map(p=>p.com));
-  const funil=[['Negócios ativos',DEALS.length,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.encerradosMes,'#16A34A']];
+  const funil=[['Negócios ativos',KPI.ativos,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.concluidos,'#16A34A']];
   const maxF=Math.max(1,...funil.map(f=>f[1]));
   function relKpi(label,val,sub,cor){ return '<div class="card" style="padding:18px"><div class="fz13 fw5 t500">'+label+'</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:'+(cor||'var(--ink900)')+'">'+val+'</div><div class="fz12 t500" style="margin-top:4px">'+sub+'</div></div>'; }
   const nomes=['Todos'].concat(perc.map(p=>p.nome));
   const sel=(id,opts,val)=>'<select class="input" data-action="'+id+'" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
   host.innerHTML=pageHead(hTitulo('Relatórios'),'Visão executiva da operação — comissões, produção e funil.', sel('relcorr',nomes,corr)+'<button class="btn btn-outline" data-action="export-rel">'+icon('download',16)+'Exportar</button>')
   + '<div class="grid4" style="margin-bottom:16px">'+relKpi('Comissão prevista',brl(KPI.comissaoPrevista),'Pipeline total','var(--ink900)')+relKpi('Comissão recebida',brl(KPI.comissaoRecebida),'Concluídos','var(--successtx)')+relKpi('Comissão pendente',brl(KPI.comissaoPendente),'A receber','var(--warningtx)')+relKpi('Negócios encerrados',KPI.encerradosMes,'No período','var(--ink900)')+'</div>'
-  + '<div class="card" style="padding:20px;margin-bottom:16px"><div class="fz13 fw5 t500">Repasse aos corretores (50%)</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.pagoCorretores+KPI.pendenteCorretores)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+((KPI.pagoCorretores+KPI.pendenteCorretores)?Math.round(KPI.pagoCorretores/(KPI.pagoCorretores+KPI.pendenteCorretores)*100):0)+'%;background:var(--success)"></div><div class="grow" style="background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Pago '+brl(KPI.pagoCorretores)+'</span><span class="c-war fw6">Pendente '+brl(KPI.pendenteCorretores)+'</span></div></div>'
+  + '<div class="card" style="padding:20px;margin-bottom:16px"><div class="fz13 fw5 t500">Repasse aos corretores (50%) <span class="pill neutral" style="font-size:10px">estimado</span></div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.pagoCorretores+KPI.pendenteCorretores)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+((KPI.pagoCorretores+KPI.pendenteCorretores)?Math.round(KPI.pagoCorretores/(KPI.pagoCorretores+KPI.pendenteCorretores)*100):0)+'%;background:var(--success)"></div><div class="grow" style="background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Concluídos '+brl(KPI.pagoCorretores)+'</span><span class="c-war fw6">A receber '+brl(KPI.pendenteCorretores)+'</span></div><div class="fz11 t400" style="margin-top:8px">Valores estimados (50% da comissão) — não é controle de pagamento.</div></div>'
   + '<div class="split" style="margin-bottom:16px">'
     + '<div class="card" style="overflow:hidden">'+cardHead('Produção por corretor')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">'+(perc.length?perc.filter(p=>corr==='Todos'||p.nome===corr).map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow"><div class="fz14 fw6 t900">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem negócios no período.</div>')+'</div></div>'
     + '<div class="card" style="overflow:hidden">'+cardHead('Funil operacional')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px">'+funil.map(f=>'<div><div class="fx jb fz12" style="margin-bottom:5px"><span class="t600 fw5">'+f[0]+'</span><span class="fw7 t900">'+f[1]+'</span></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(f[1]/maxF*100)+'%;background:'+f[2]+'"></div></div></div>').join('')+'</div></div>'
@@ -805,7 +832,7 @@ const repasse = d => Math.round((d.comValor||0)*0.5);
 function renderDashCorretor(host){
   const primeiro=(state.meuNome||'Corretor').split(' ')[0];
   // Dados REAIS (o backend já devolve só os negócios/imóveis do corretor).
-  const ativos=DEALS.length;
+  const ativos=DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='entregue_gestao').length;
   const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
   const props=DEALS.filter(d=>['negocio_criado','em_andamento'].includes(d.statusRaw)).length;
   const captacoes=PROPERTIES.length;
@@ -875,7 +902,7 @@ function renderDashAdmin(host){
   const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
   const stale=DEALS.filter(d=>d.diasParado>7 && d.statusRaw!=='entregue_gestao' && d.statusRaw!=='concluido');
   const emAndamento=DEALS.filter(d=>['negocio_criado','em_andamento','aguardando_corretor','aguardando_administrativo','aguardando_broker'].includes(d.statusRaw)).length;
-  const cards=[['handshake','info','Negócios ativos',DEALS.length,'negocios'],['file-warning','warning','Documentações pendentes',docsPend,'negocios'],['file-signature','ai','Contratos para assinatura',assin,'clicksign'],['kanban','info','Em andamento',emAndamento,'fila'],['user-check','warning','Aguardando administrativo',cnt('aguardando_administrativo'),'fila'],['alert-triangle','danger','Parados +7 dias',stale.length,'fila']];
+  const cards=[['handshake','info','Negócios ativos',KPI.ativos,'negocios'],['file-warning','warning','Documentações pendentes',docsPend,'negocios'],['file-signature','ai','Contratos para assinatura',assin,'clicksign'],['kanban','info','Em andamento',emAndamento,'fila'],['user-check','warning','Aguardando administrativo',cnt('aguardando_administrativo'),'fila'],['alert-triangle','danger','Parados +7 dias',stale.length,'fila']];
   const kc=c=>'<button class="card card-hover" style="padding:18px;text-align:left" data-nav="'+c[4]+'"><div class="fx as jb g3"><div class="mw0"><div class="fz13 fw5 t500">'+c[2]+'</div><div style="margin-top:8px;font-size:28px;line-height:1;font-weight:700;color:var(--ink900)">'+c[3]+'</div></div>'+iconChip(c[0],c[1],42)+'</div></button>';
   const RESUMO=[['Novos',cnt('negocio_criado'),'#2563EB'],['Em andamento',cnt('em_andamento')+cnt('aguardando_corretor'),'#7C3AED'],['Aguardando',cnt('aguardando_administrativo')+cnt('aguardando_broker'),'#F59E0B'],['Entregues',cnt('entregue_gestao'),'#0EA5E9'],['Concluídos',cnt('concluido'),'#16A34A']];
   const crit=stale.slice().sort((a,b)=>b.diasParado-a.diasParado).slice(0,6);
@@ -989,7 +1016,7 @@ function relatoriosAdmin(host){
   const ETAPAS=[['Novos',cnt('negocio_criado'),'#2563EB'],['Em andamento',cnt('em_andamento')+cnt('aguardando_corretor'),'#7C3AED'],['Aguardando',cnt('aguardando_administrativo')+cnt('aguardando_broker'),'#F59E0B'],['Entregues',cnt('entregue_gestao'),'#0EA5E9'],['Concluídos',cnt('concluido'),'#16A34A']];
   const mx=Math.max(1,...ETAPAS.map(e=>e[1]));
   host.innerHTML=pageHead('Relatórios Operacionais','Indicadores de execução — sem dados financeiros.')
-  + '<div class="grid3">'+[tile('Negócios ativos',String(DEALS.length),'no total'),tile('Documentações pendentes',String(docsPend),'a regularizar'),tile('Contratos p/ assinatura',String(assin),'no Clicksign'),tile('Entregues à gestão',String(cnt('entregue_gestao')),'no período'),tile('Concluídos',String(cnt('concluido')),'no período'),tile('Parados +7 dias',String(stale),'precisam de ação')].join('')+'</div>'
+  + '<div class="grid3">'+[tile('Negócios ativos',String(KPI.ativos),'no total'),tile('Documentações pendentes',String(docsPend),'a regularizar'),tile('Contratos p/ assinatura',String(assin),'no Clicksign'),tile('Entregues à gestão',String(cnt('entregue_gestao')),'no período'),tile('Concluídos',String(cnt('concluido')),'no período'),tile('Parados +7 dias',String(stale),'precisam de ação')].join('')+'</div>'
   + '<div class="card" style="padding:20px;margin-top:16px"><div class="fz13 fw6 t800" style="margin-bottom:14px">Negócios por etapa</div><div class="fx col g3">'+ETAPAS.map(c=>'<div class="fx ac g3"><span class="fz12 t500 tright nsh" style="width:150px">'+c[0]+'</span><div class="grow" style="height:22px;border-radius:6px;background:var(--ink100);overflow:hidden"><div class="fx ac" style="height:100%;border-radius:6px;padding:0 8px;color:#fff;font-size:12px;font-weight:600;width:'+Math.max(Math.round(c[1]/mx*100),8)+'%;background:'+c[2]+'">'+c[1]+'</div></div></div>').join('')+'</div></div>';
 }
 const _relBroker = RENDERERS.relatorios;
@@ -1032,7 +1059,7 @@ handleAction = function(a, el){
     return;
   }
   if(a==='enviar-ficha'){ navigate('dashboard'); toast('Escolha a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); return; }
-  if(a==='whatsapp-quick'){ window.open('https://wa.me/','_blank'); return; }
+  if(a==='whatsapp-quick'){ window.open('https://web.whatsapp.com/','_blank'); return; }
   if(a==='abrir-drive'){ window.open('https://drive.google.com','_blank'); return; }
   if(a==='clicksign'){
     if(state.role==='administrativo'){ navigate('clicksign'); return; }
@@ -1055,6 +1082,14 @@ handleAction = function(a, el){
     negAtualizar({negocioId:d.id, acao:'checklist', key:nx.key, feito:true}, 'Etapa concluída: '+(nx.label||''));
     return;
   }
+  // Interessados (gestor): aprovar / reprovar / gerar negócio
+  if(a==='int-aprovar'){ interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado'); return; }
+  if(a==='int-reprovar'){ if(confirm('Reprovar este interessado?')) interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'reprovado', 'Interessado reprovado'); return; }
+  if(a==='int-gerar'){ if(confirm('Gerar o negócio deste interessado? O imóvel entra em negociação.')) gerarNegocioUI(el.dataset.imovel, +el.dataset.idx); return; }
+  // Negócio (gestor): entregar / concluir / cancelar
+  if(a==='neg-entregar'){ if(confirm('Entregar este negócio para a gestão? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'entregar'}, 'Entregue para a gestão'); return; }
+  if(a==='neg-concluir'){ if(confirm('Concluir este negócio? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'concluir'}, 'Negócio concluído'); return; }
+  if(a==='neg-cancelar'){ if(confirm('Cancelar este negócio? O imóvel volta a Disponível e o interessado volta a Aprovado.')) negAtualizar({negocioId:state.currentDeal, acao:'cancelar'}, 'Negócio cancelado'); return; }
   // Ações operacionais de demonstração (administrativo)
   if(['upload-doc','preview-doc','download-doc','drive-sync','drive-new','clk-resend','reenviar-ficha','alterar-senha','maps','editar','notif'].indexOf(a)>=0){ emBreve('Ação de demonstração — integração em breve.'); return; }
   return _handleAction(a, el);
