@@ -3806,8 +3806,10 @@ const DRIVE_CATEGORIAS = [
 // Decide a categoria pelo NOME DO CAMPO do documento (o app sabe o que cada arquivo é).
 function _categoriaDoc(campo) {
   const c = String(campo || '').toLowerCase();
-  if (/\brg\b|identidade|cnh|\bcpf\b|ident/.test(c)) return 'identidade';
-  if (/comprov|renda|endere/.test(c)) return 'comprovantes';
+  // rgcpf/p_rgcpf/f_rgcpf/soc_rgcpf vêm colados (sem \b entre rg e cpf) — casar a string inteira.
+  if (/rgcpf|\brg\b|identidade|cnh|\bcpf\b|cnpj|ident/.test(c)) return 'identidade';
+  // energia/agua/gas = contas de consumo (comprovante de endereço) da ficha do locador.
+  if (/comprov|renda|endere|energia|\bagua\b|\bg[aá]s\b/.test(c)) return 'comprovantes';
   if (/matric|iptu|escritura|im[oó]vel|condom/.test(c)) return 'imovel';
   return 'diversos'; // contrato e demais
 }
