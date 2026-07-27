@@ -831,6 +831,28 @@ exports.locListarFichasImovel = onCall(async (req) => {
   return fichas;
 });
 
+// (autenticado, com posse) Gera o PDF de UMA ficha (dados + documentos embutidos) e
+// devolve em base64 pra download no detalhe do imóvel (ficha do proprietário e dos
+// interessados). Gestor/administrativo baixam qualquer uma; corretor só as suas.
+exports.gerarFichaPdf = onCall({ memory: '512MiB', timeoutSeconds: 120 }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { fichaId } = req.data || {};
+  if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId é obrigatório.');
+  let col = (req.data.colecao === 'fichas_locador') ? 'fichas_locador' : 'fichas';
+  let snap = await db.collection(col).doc(String(fichaId)).get();
+  if (!snap.exists) { const alt = col === 'fichas' ? 'fichas_locador' : 'fichas'; const s2 = await db.collection(alt).doc(String(fichaId)).get(); if (s2.exists) { snap = s2; col = alt; } }
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  const ficha = snap.data();
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && ficha.corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a esta ficha.');
+  const LABELS = { pf: 'Ficha (Pessoa Física)', pj: 'Ficha (Pessoa Jurídica)', proposta: 'Ficha Proposta', vendedor: 'Ficha Vendedor', locacao_fiador: 'Ficha Locação c/ Fiador', fianca: 'Ficha Fiança' };
+  const label = col === 'fichas_locador' ? 'Ficha Locador' : (LABELS[ficha.tipo] || 'Ficha');
+  const buf = await gerarPdfFicha(ficha, label);
+  const nome = (ficha.dados && (ficha.dados.nome || ficha.dados.razaoSocial || ficha.dados.nomeCompleto)) || 'ficha';
+  const filename = (label + ' - ' + nome).replace(/[^\w .À-ÿ-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) + '.pdf';
+  return { base64: buf.toString('base64'), filename };
+});
+
 // (autenticado, com posse) Detalhe de um imóvel + seus locadores (coleção pessoas).
 // Reúne o que a esteira precisa pra revisar antes de aprovar. Respeita a regra de ouro:
 // gestor/administrativo veem qualquer um; corretor só os seus (corretorUid).

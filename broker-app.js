@@ -27,6 +27,7 @@ const call = (name) => httpsCallable(fns, name);
 const fnImoveis   = call('locListarImoveis');
 const fnNegocios  = call('negocioListar');
 const fnNegAtual  = call('negocioAtualizar');
+const fnFichaPdf    = call('gerarFichaPdf');        // gera o PDF de uma ficha p/ download
 const fnInteressado = call('carteiraInteressado'); // aprovar/reprovar interessado (gestor)
 const fnGerarNeg    = call('negocioGerar');         // gerar negócio de um interessado aprovado (gestor)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -91,6 +92,14 @@ function ini(nome){ const p=(nome||'').trim().split(/\s+/); return (((p[0]||'')[
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // Busca sem acento/caixa ("jose" acha "José") — aplicar na query E no texto pesquisado.
 function semAcento(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+// Baixa um PDF a partir de base64 (funciona no .exe e no navegador).
+function baixarPdfBase64(b64, filename){
+  try{ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+    const a=document.createElement('a'); a.href=url; a.download=filename||'ficha.pdf'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+  }catch(e){ toast('Não foi possível baixar o PDF','alert-triangle','var(--danger)'); }
+}
 function icon(n,sz=18,cls=''){ return '<i data-lucide="'+n+'" class="'+cls+'" style="width:'+sz+'px;height:'+sz+'px"></i>'; }
 function refreshIcons(){ if(window.lucide){ try{ window.lucide.createIcons(); }catch(e){} } }
 const STATUS = {
@@ -644,7 +653,12 @@ function propDrawer(id){
     const raw=(p.raw&&p.raw.documentos)||{};
     const anexos=Object.entries(raw).filter(([,url])=>typeof url==='string' && /^https?:/i.test(url));
     const ehVenda=p.finalidadeRaw==='venda'||p.finalidadeRaw==='venda_locacao';
+    const fichasEnv=[];
+    if(p.raw&&p.raw.fichaId) fichasEnv.push({id:p.raw.fichaId, col:(p.raw.fichaTipo==='locador'?'fichas_locador':'fichas'), rot:'Ficha do proprietário'+(p.proprietarioNome?(' — '+p.proprietarioNome):'')});
+    (p.interessados||[]).forEach(it=>{ if(it.fichaId) fichasEnv.push({id:it.fichaId, col:'fichas', rot:'Ficha de '+(it.nome||'interessado')}); });
+    const fichasHtml=fichasEnv.length?('<div class="fz12 up fw7 t500" style="margin-bottom:10px">Fichas envolvidas (PDF)</div>'+fichasEnv.map(f=>'<div class="fx ac g3" style="padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+iconChip('file-text','info',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(f.rot)+'</div><div class="fz11 t500">Dados + documentos embutidos</div></div><button class="btn btn-outline sm nsh" data-action="baixar-ficha-pdf" data-ficha="'+esc(f.id)+'" data-col="'+esc(f.col)+'">'+icon('download',14)+'Baixar PDF</button></div>').join('')+'<div style="height:16px"></div>'):'';
     body=(ehVenda?'<button class="btn btn-primary sm" data-action="gerar-contrato" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('file-text',15)+'Gerar Contrato de representação</button>':'')
+      + fichasHtml
       + '<div class="fz12 up fw7 t500" style="margin-bottom:10px">Anexos da ficha</div>'
       + (anexos.length?anexos.map(([k,url])=>'<a class="fx ac g3 hoverbg" href="'+esc(url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+iconChip('file-text','info',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(docLabel(k))+'</div><div class="fz11 t500">Anexo do imóvel</div></div>'+icon('download',15,'t400')+'</a>').join(''):'<div class="fz13 t500" style="margin-bottom:12px">Nenhum anexo enviado ainda.</div>')
       + '<button class="btn btn-outline sm" data-action="add-doc" style="width:100%;margin-top:6px">'+icon('plus',15)+'Adicionar documento</button>';
@@ -1123,6 +1137,7 @@ handleAction = function(a, el){
     return;
   }
   // Interessados (gestor): aprovar / reprovar / gerar negócio
+  if(a==='baixar-ficha-pdf'){ const b=el; if(b.dataset.busy)return; b.dataset.busy='1'; const oh=b.innerHTML; b.disabled=true; b.innerHTML='Gerando…'; fnFichaPdf({fichaId:b.dataset.ficha, colecao:b.dataset.col||''}).then(r=>{ const d=(r&&r.data)||r; baixarPdfBase64(d.base64,d.filename); toast('PDF gerado','download'); }).catch(e=>toast(e.message||'Erro ao gerar PDF','alert-triangle','var(--danger)')).finally(()=>{ try{ b.disabled=false; b.innerHTML=oh; delete b.dataset.busy; refreshIcons(); }catch(_e){} }); return; }
   if(a==='int-ficha-copy'){ const l=fichaLinkImovel(el.dataset.arq, el.dataset.imovel); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha copiado — mande ao interessado','copy'); return; }
   if(a==='int-ver-ficha'){ const map={proposta:'ficha-proposta.html',pf:'ficha-pf.html',pj:'ficha-pj.html'}; const arq=map[el.dataset.tipo]||'ficha-proposta.html'; const url=FICHA_HOST+'/'+arq+'?modo=corretor&idFicha='+encodeURIComponent(el.dataset.ficha||'')+'&origem=hub'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Ficha do interessado'); } else { window.open(url,'_blank'); } return; }
   if(a==='int-aprovar'){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
