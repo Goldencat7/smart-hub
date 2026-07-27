@@ -7,8 +7,18 @@
 import * as FE from './ficha-comum.js';
 
 function render(){
-  // 1. Valores e Coberturas
-  let h = FE.secao(1, 'Valores e Coberturas',
+  // 1. Identificação — sem isso o e-mail pro admin chegava "Sem nome" e ninguém
+  // sabia de quem era a cotação.
+  let h = FE.secao(1, 'Identificação',
+    FE.campo({label:'Nome do cliente', key:'nome'}) +
+    FE.row(
+      FE.campo({label:'CPF', key:'cpf', cpf:true, ph:'000.000.000-00', badge:'opc', ni:true, nta:true}),
+      FE.campo({label:'Telefone / WhatsApp', key:'whatsapp', ph:'(11) 99999-9999', badge:'opc', ni:true, nta:true})
+    )
+  );
+
+  // 2. Valores e Coberturas
+  h += FE.secao(2, 'Valores e Coberturas',
     FE.row(
       FE.campo({label:'Aluguel', key:'aluguel', money:true, ph:'R$ 0,00'}),
       FE.campo({label:'IPTU', key:'iptu', money:true, ph:'R$ 0,00', badge:'opc', ni:true, nta:true})
@@ -24,8 +34,8 @@ function render(){
     FE.campoRadio({label:'Cobertura de Multa Contratual?', key:'cob_multa', options:['Sim','Não']})
   );
 
-  // 2. Vigência da Locação
-  h += FE.secao(2, 'Vigência da Locação',
+  // 3. Vigência da Locação
+  h += FE.secao(3, 'Vigência da Locação',
     FE.row(
       FE.campo({label:'Início', key:'vigencia_inicio', type:'date'}),
       FE.campo({label:'Fim', key:'vigencia_fim', type:'date'})
@@ -39,8 +49,8 @@ FE.iniciarFicha({
   titulo: 'Ficha Fiança',
   tipo: 'fianca',
   docs: [],
-  rigidos: ['aluguel'],
-  msgRigidos: 'Preencha pelo menos o valor do aluguel.',
+  rigidos: ['nome', 'aluguel'],
+  msgRigidos: 'Preencha o nome do cliente e o valor do aluguel.',
   intro: 'Preencha os valores, coberturas e a vigência para a cotação do seguro fiança.',
   render,
 });

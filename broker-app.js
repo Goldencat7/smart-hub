@@ -487,6 +487,11 @@ function openDeal(id){
   // O detalhe é logicamente a tela Negócios (sanfona destaca certo + ESC/voltar coerentes).
   if(state.view!=='negocios'){ state.view='negocios'; if(state.embedded && typeof state.onNavigate==='function'){ try{ state.onNavigate('negocios'); }catch(e){} } }
   const im=propDoDeal(d), corr=CORRETORES[d.corretor]||{nome:'—'};
+  // Dados completos do cliente: o doc do negócio guarda só nome+contato, mas o
+  // interessado que o gerou (no imóvel) tem email/cpf/telefone/fichaId — busca por
+  // negocioId (com fallback no index) pra cobrir negócios antigos sem mudar backend.
+  const imv=PROPERTIES.find(p=>p.id===d.imovelId);
+  const cli=imv?(((imv.interessados||[]).find(it=>it.negocioId===d.id))||((d.raw&&d.raw.interessadoIndex!=null)?(imv.interessados||[])[d.raw.interessadoIndex]:null)):null;
   const bc=$('#breadcrumb'); if(bc) bc.innerHTML='<button class="btn-dark-ghost" data-nav="negocios">SMART HUB</button>'+icon('chevron-right',15,'tmut')+'<button class="btn-dark-ghost" data-nav="negocios">Negócios</button>'+icon('chevron-right',15,'tmut')+'<span class="tw fw6 mono trunc">'+esc(d.code)+'</span>';
 
   const tl=(d.timeline||[]).slice().reverse();
@@ -504,7 +509,7 @@ function openDeal(id){
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + '<div class="split-r">'
     + '<div class="fx col g4">'
-      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500">'+esc(d.clienteContato||'—')+'</div></div></div></div>'
+      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+'</div>'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor (50%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
     + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
@@ -829,7 +834,7 @@ function fichaLink(arquivo){ const uid=(auth.currentUser&&auth.currentUser.uid)|
 // Link da ficha AMARRADO a um imóvel: carrega o UID do DONO do imóvel (não o do usuário
 // logado) — o gestor manda ficha pro imóvel do corretor sem roubar atribuição, e o trigger
 // só aceita ficha cujo corretorUid === dono do imóvel (trava anti-injeção).
-function fichaLinkImovel(arquivo, imovelId){ const p=prop(imovelId); const uid=(p&&p.corretor)||(auth.currentUser&&auth.currentUser.uid)||''; return FICHA_HOST+'/'+arquivo+'?corretor='+encodeURIComponent(uid)+'&nome='+encodeURIComponent(state.meuNome||'')+'&imovelId='+encodeURIComponent(imovelId); }
+function fichaLinkImovel(arquivo, imovelId){ const p=prop(imovelId); const uid=(p&&p.corretor)||(auth.currentUser&&auth.currentUser.uid)||''; const nome=(p&&p.corretorNome)||state.meuNome||''; return FICHA_HOST+'/'+arquivo+'?corretor='+encodeURIComponent(uid)+'&nome='+encodeURIComponent(nome)+'&imovelId='+encodeURIComponent(imovelId); }
 
 function saudacao(){ const h=new Date().getHours(); return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'; }
 const repasse = d => Math.round((d.comValor||0)*0.5);

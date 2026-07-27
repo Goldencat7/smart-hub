@@ -583,8 +583,8 @@ exports.locListarPessoasPerfis = onCall(async (req) => {
 // Nomes de campo do locador na ficha são irregulares (loc1 usa chaves planas com
 // `dataNasc`/`whatsapp`; loc2 usa prefixo `loc2_` com `nasc`/`celular`), então mapeamos
 // explicitamente pra não perder dado.
-const LOC_KEYS_1 = { nome:'nome', rg:'rg', cpf:'cpf', nasc:'dataNasc', civil:'estadoCivil', prof:'profissao', email:'email', whats:'whatsapp', fixo:'fixo', cep:'cep', end:'endereco', num:'numero', compl:'complemento', bairro:'bairro', cidade:'cidade', estado:'estado', conj:{ nome:'conj_nome', rg:'conj_rg', cpf:'conj_cpf', nasc:'conj_nasc', prof:'conj_profissao', regime:'conj_regime' } };
-const LOC_KEYS_2 = { nome:'loc2_nome', rg:'loc2_rg', cpf:'loc2_cpf', nasc:'loc2_nasc', civil:'loc2_estadoCivil', prof:'loc2_profissao', email:'loc2_email', whats:'loc2_celular', fixo:'', cep:'loc2_cep', end:'loc2_endereco', num:'loc2_numero', compl:'loc2_complemento', bairro:'loc2_bairro', cidade:'loc2_cidade', estado:'loc2_estado', conj:{ nome:'loc2_conj_nome', rg:'loc2_conj_rg', cpf:'loc2_conj_cpf', nasc:'loc2_conj_nasc', prof:'loc2_conj_profissao', regime:'loc2_conj_regime' } };
+const LOC_KEYS_1 = { nome:'nome', rg:'rg', cpf:'cpf', nasc:'dataNasc', civil:'estadoCivil', prof:'profissao', email:'email', whats:'whatsapp', fixo:'fixo', cep:'cep', end:'endereco', num:'numero', compl:'complemento', bairro:'bairro', cidade:'cidade', estado:'estado', conj:{ nome:'conj_nome', rg:'conj_rg', cpf:'conj_cpf', nasc:'conj_nasc', prof:'conj_profissao', regime:'conj_regime', email:'conj_email', celular:'conj_celular', fixo:'conj_fixo' } };
+const LOC_KEYS_2 = { nome:'loc2_nome', rg:'loc2_rg', cpf:'loc2_cpf', nasc:'loc2_nasc', civil:'loc2_estadoCivil', prof:'loc2_profissao', email:'loc2_email', whats:'loc2_celular', fixo:'', cep:'loc2_cep', end:'loc2_endereco', num:'loc2_numero', compl:'loc2_complemento', bairro:'loc2_bairro', cidade:'loc2_cidade', estado:'loc2_estado', conj:{ nome:'loc2_conj_nome', rg:'loc2_conj_rg', cpf:'loc2_conj_cpf', nasc:'loc2_conj_nasc', prof:'loc2_conj_profissao', regime:'loc2_conj_regime', email:'loc2_conj_email', celular:'loc2_conj_celular', fixo:'loc2_conj_fixo' } };
 
 function loc_montarPessoa(dados, keys) {
   const v = k => (k && dados[k]) ? dados[k] : '';
@@ -596,7 +596,8 @@ function loc_montarPessoa(dados, keys) {
     conjuge: null
   };
   if (keys.conj && dados[keys.conj.nome]) {
-    p.conjuge = { nome: v(keys.conj.nome), rg: v(keys.conj.rg), cpf: v(keys.conj.cpf), nasc: v(keys.conj.nasc), profissao: v(keys.conj.prof), regime: v(keys.conj.regime) };
+    p.conjuge = { nome: v(keys.conj.nome), rg: v(keys.conj.rg), cpf: v(keys.conj.cpf), nasc: v(keys.conj.nasc), profissao: v(keys.conj.prof), regime: v(keys.conj.regime),
+      email: v(keys.conj.email), celular: v(keys.conj.celular), fixo: v(keys.conj.fixo) };
   }
   return p;
 }
@@ -695,6 +696,7 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
       fichaId, fichaTipo: 'locador', locadorIds, locadorNome: p1.nome || '',
       proprietarioNome: p1.nome || '',   // campo genérico da Carteira (venda usa o mesmo)
+      proprietarioContato: [p1.whatsapp || p1.fixo, p1.email].filter(Boolean).join(' · '),
       documentos: after.documentos || {}, pendentes: after.pendentes || [],
       atualizadoEm: ts()
     };
@@ -735,6 +737,7 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
       fichaId, fichaTipo: 'vendedor',
       proprietarioNome: dados.nome || '',   // vendedor principal (prefixo vazio na ficha)
+      proprietarioContato: [dados.whatsapp || dados.fixo, dados.email].filter(Boolean).join(' · '),
       documentos: after.documentos || {}, pendentes: after.pendentes || [],
       atualizadoEm: ts()
     };
@@ -5096,7 +5099,7 @@ exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (
   await ref.update({ status: 'enviado_admin', enviadoAdminEm: admin.firestore.FieldValue.serverTimestamp() });
 
   // Avisa o administrativo por email
-  const nomesFicha = { pf:'Ficha (Pessoa Física)', pj:'Ficha (Pessoa Jurídica)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta' };
+  const nomesFicha = { pf:'Ficha (Pessoa Física)', pj:'Ficha (Pessoa Jurídica)', locacao_fiador:'Ficha Locação c/ Fiador', vendedor:'Ficha Vendedor', proposta:'Ficha Proposta', fianca:'Ficha Fiança' };
   const ficha = snap.data();
   await avisarFichaAdminPorEmail(ficha, nomesFicha[ficha.tipo] || 'Ficha');
 
