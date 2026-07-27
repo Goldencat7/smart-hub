@@ -222,7 +222,8 @@ async function sincronizarParaGoogle(uids, ev, tipo) {
 // UIDs dos admins iniciais — usado SÓ pra "bootstrap": setar a claim de admin
 // na primeira vez que cada um logar. Depois disso, admins gerenciam outros admins pela UI.
 const BOOTSTRAP_ADMIN_UIDS = [
-  'OwcT6wCrXMgJ0tPADMUdKdBB8h32' // adminhub@smart.com
+  'OwcT6wCrXMgJ0tPADMUdKdBB8h32', // adminhub@smart.com
+  'GpyXVhlmJhMUHliypiEwhoi27Fp1'  // nathangabrieldovale07@gmail.com (Nathan) — não pode ser rebaixado/deletado
   // adicionar aqui novos UIDs separados por vírgula
 ];
 function ehBootstrapAdmin(uid) {
@@ -3033,8 +3034,8 @@ exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (
     .replace(/[“”„‟]/g, '"')
     .replace(/[–—―]/g, '-')
     .replace(/…/g, '...')
-    .replace(/[   ]/g, ' ')
-    .replace(/[^\x00-\xFF]/g, '');
+    .replace(/\s+/g, ' ')
+    .replace(/[^ -ÿ]/g, '');
   const setF = (campo, valor) => {
     if (!campo || valor == null || String(valor).trim() === '') return;
     try { form.getTextField(campo).setText(_ansi(valor)); } catch (_) { /* campo ausente no modelo */ }

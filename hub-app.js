@@ -128,7 +128,7 @@ const negocioAtualizarFn   = httpsCallable(fns, 'negocioAtualizar');
 const dashboardDadosFn     = httpsCallable(fns, 'dashboardDados');
 const configObterFn        = httpsCallable(fns, 'configObter');
 
-const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32'];
+const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32', 'GpyXVhlmJhMUHliypiEwhoi27Fp1'];
 
 // ─── Catálogo de apps ─────────────────────────────────────────────────────
 // Cada app tem categoria + url + se usa autologin
