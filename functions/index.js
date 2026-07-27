@@ -1693,7 +1693,9 @@ exports.onFichaInteressadoRecebida = onDocumentWritten({ document: 'fichas/{fich
       let i = lista.findIndex(p => p.fichaId === fichaId);
       if (i < 0) i = lista.findIndex(p => p.status !== 'negocio_gerado' && _normNome(p.nome) === _normNome(nome));
       if (i < 0) i = lista.findIndex(p => p.status === 'ficha_enviada' && p.nome && _normNome(nome).startsWith(_normNome(p.nome).slice(0, 30)));
-      const entrada = { nome, contato, tipo: tipoInt, status: 'ficha_recebida', fichaId, statusEm: admin.firestore.Timestamp.now() };
+      const entrada = { nome, contato, tipo: tipoInt, status: 'ficha_recebida', fichaId, fichaTipo: after.tipo,
+        email: _txt(dados.email, 120) || '', cpf: _txt(dados.cpf || dados.cnpj, 30) || '', telefone: _txt(dados.whatsapp || dados.telefone, 40) || '',
+        statusEm: admin.firestore.Timestamp.now() };
       if (i >= 0) {
         // Não rebaixa NENHUMA decisão já tomada: só volta pra "ficha_recebida" quem
         // ainda estava em ficha_enviada/ficha_recebida. Aprovado/reprovado/desistiu/

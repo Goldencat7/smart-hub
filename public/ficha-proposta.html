@@ -27,6 +27,7 @@ function render(){
   let h = FE.secao(1, 'Proposta',
     FE.campo({label:'Nome do cliente',key:'nome'}) +
     FE.campo({label:'CPF',key:'cpf',cpf:true,ph:'000.000.000-00'}) +
+    FE.row(FE.campo({label:'E-mail',key:'email',ph:'email@exemplo.com'}), FE.campo({label:'Telefone / WhatsApp',key:'whatsapp',ph:'(11) 99999-9999'})) +
     FE.campoTextarea({label:'Imóvel',key:'imovel',req:true,ph:'Endereço / identificação do imóvel'}) +
     FE.row(FE.campo({label:'Sinal',key:'sinal',money:true,ph:'R$ 0,00'}), FE.campo({label:'Entrada',key:'entrada',money:true,ph:'R$ 0,00'})) +
     FE.campo({label:'Saldo a pagar (financiamento ou escritura)',key:'saldo',money:true,ph:'R$ 0,00'}) +
