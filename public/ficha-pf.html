@@ -430,12 +430,13 @@ form.addEventListener('submit', async e=>{
   const caminhosDocs = {};
   const falhasUpload = [];
   const docsKeys = Object.keys(arquivos);
+  const _extDoc=f=>{ const m=((f&&f.name)||'').match(/\.([a-z0-9]{1,5})$/i); if(m)return m[1].toLowerCase(); const t=(f&&f.type)||''; return t==='application/pdf'?'pdf':t==='image/png'?'png':t==='image/webp'?'webp':/^image\//.test(t)?'jpg':'dat'; };
   if(docsKeys.length){
     const prog=document.getElementById('upload-progress'); const fill=document.getElementById('upload-progress-fill'); prog.style.display='block';
     let n=0;
     for(const k of docsKeys){
       const _p=`fichas/${tipo}/${fichaId}/${k}`;
-      try{ await uploadBytes(ref(storage,_p),arquivos[k]); caminhosDocs[k]=_p; }
+      try{ await uploadBytes(ref(storage,_p),arquivos[k],{contentType:arquivos[k].type||undefined,contentDisposition:'inline; filename="'+k+'.'+_extDoc(arquivos[k])+'"'}); caminhosDocs[k]=_p; }
       catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); falhasUpload.push(DOCS_OBRIG[k]||k); }
       fill.style.width = Math.round((++n/docsKeys.length)*100)+'%';
     }

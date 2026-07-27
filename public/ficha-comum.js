@@ -348,11 +348,14 @@ async function enviar(e){
   // Upload SEM token no metadata (o Firebase passou a rejeitar isso em cliente
   // anônimo — 2026-07-03). Mandamos só o caminho; a function gera o token.
   const caminhosDocs={}; const falhasUpload=[]; const docsKeys=Object.keys(arquivos);
+  // Extensão do arquivo (do nome original ou do tipo) — pra o download vir "rgcpf.pdf"
+  // em vez de "rgcpf" sem extensão (Windows não sabia abrir).
+  const _extDoc=f=>{ const m=((f&&f.name)||'').match(/\.([a-z0-9]{1,5})$/i); if(m)return m[1].toLowerCase(); const t=(f&&f.type)||''; return t==='application/pdf'?'pdf':t==='image/png'?'png':t==='image/webp'?'webp':/^image\//.test(t)?'jpg':'dat'; };
   if(docsKeys.length){
     const prog=document.getElementById('upload-progress'),fill=document.getElementById('upload-progress-fill'); prog.style.display='block'; let n=0;
     for(const k of docsKeys){
       const _p=`fichas/${CFG.tipo}/${fichaId}/${k}`;
-      try{ await uploadBytes(ref(storage,_p),arquivos[k]); caminhosDocs[k]=_p; }
+      try{ await uploadBytes(ref(storage,_p),arquivos[k],{contentType:arquivos[k].type||undefined,contentDisposition:'inline; filename="'+k+'.'+_extDoc(arquivos[k])+'"'}); caminhosDocs[k]=_p; }
       catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); falhasUpload.push(((CFG.docs||[]).find(d=>d.key===k)||{}).label||k); }
       fill.style.width=Math.round((++n/docsKeys.length)*100)+'%';
     }
