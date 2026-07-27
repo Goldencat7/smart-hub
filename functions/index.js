@@ -1359,6 +1359,21 @@ exports.negocioGerar = onCall(async (req) => {
     : 'locacao';
   const checklist = await _checklistModelo(tipo);   // configurável no Admin (T-06)
 
+  // Auto-marca o que o Hub JÁ tem certeza (o resto é ação no mundo real → manual):
+  //  • "Ficha cadastral preenchida": o negócio nasce de uma ficha (interessado.fichaId).
+  //  • "Documentação salva na pasta": a ficha/imóvel vieram com anexos.
+  const _temDocs = o => !!(o && Object.values(o).some(u => typeof u === 'string' && /^https?:/.test(u)));
+  const fichaPreenchida = !!interessado.fichaId;
+  let temDocs = _temDocs(im.documentos);
+  if (!temDocs && interessado.fichaId) {
+    try { const fS = await db.collection('fichas').doc(interessado.fichaId).get(); if (fS.exists) temDocs = _temDocs(fS.data().documentos); } catch (_) { /* ficha some => segue manual */ }
+  }
+  const _autoMarcados = [];
+  const _autoMarcar = (key, cond) => { if (!cond) return; const it = checklist.find(x => x.key === key); if (it && !it.feito) { it.feito = true; it.feitoPor = 'Sistema'; it.feitoEm = admin.firestore.Timestamp.now(); _autoMarcados.push(it.label); } };
+  _autoMarcar('ficha', fichaPreenchida);
+  _autoMarcar('doc_pasta', temDocs);
+  const _proximaAcao = (checklist.find(x => !x.feito) || checklist[0]).label;
+
   const numero = await proximoNumeroNegocio();
   const codigo = 'NG-' + String(numero).padStart(6, '0');
   const porNome = await _nomeDoUid(auth.uid);
@@ -1391,10 +1406,11 @@ exports.negocioGerar = onCall(async (req) => {
       corretorUid: im2.corretorUid || '', corretorNome: im2.corretorNome || '',
       brokerUid: auth.uid, brokerNome: porNome,
       status: 'negocio_criado',
-      proximaAcao: checklist[0].label,
+      proximaAcao: _proximaAcao,
       checklist,
       comentarios: [],
-      timeline: [{ texto: `Negócio criado a partir do interessado ${it.nome}`, porNome, em: admin.firestore.Timestamp.now() }],
+      timeline: [{ texto: `Negócio criado a partir do interessado ${it.nome}`, porNome, em: admin.firestore.Timestamp.now() }]
+        .concat(_autoMarcados.length ? [{ texto: 'Etapas concluídas automaticamente: ' + _autoMarcados.join(', '), porNome: 'Sistema', em: admin.firestore.Timestamp.now() }] : []),
       criadoEm: admin.firestore.FieldValue.serverTimestamp(),
       atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
     });
