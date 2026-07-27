@@ -68,3 +68,44 @@
     }, ESPERA_MS);
   });
 })();
+
+/* Selo "Obrigatório" só enquanto vazio.
+ * ---------------------------------------------------------------------------
+ * O selo vermelho <span class="badge-obrig">Obrigatório</span> é HTML estático:
+ * sem isto ele fica aceso mesmo depois do campo preenchido — ao reabrir uma ficha
+ * já preenchida, "tudo vem como Obrigatório". Aqui a gente esconde o selo do campo
+ * assim que ele tem valor (ou o "Não tenho agora" está marcado) e reacende se
+ * esvaziar. Vale pras 7 fichas (todas carregam este vigia) e pros campos montados
+ * dinamicamente pelos motores de módulo — por isso o MutationObserver + varreduras
+ * cronometradas (valores pré-preenchidos são setados por JS, sem disparar 'input').
+ */
+(function () {
+  'use strict';
+  function ctrl(f) {
+    var els = f.querySelectorAll('input:not([type=checkbox]):not([type=radio]), select, textarea');
+    return els.length ? els[els.length - 1] : null;   // controle principal do campo
+  }
+  function preenchido(f) {
+    var nt = f.querySelector('input[type=checkbox][data-campo]');   // "Não tenho agora"
+    if (nt && nt.checked) return true;
+    var c = ctrl(f);
+    return !!(c && String(c.value || '').trim() !== '');
+  }
+  function varrer() {
+    var campos = document.querySelectorAll('.field');
+    for (var i = 0; i < campos.length; i++) {
+      var b = campos[i].querySelector('.badge-obrig');
+      if (b) b.style.display = preenchido(campos[i]) ? 'none' : '';
+    }
+  }
+  var raf = 0;
+  function agendar() { if (raf) return; raf = requestAnimationFrame(function () { raf = 0; varrer(); }); }
+  document.addEventListener('input', agendar, true);
+  document.addEventListener('change', agendar, true);
+  try { new MutationObserver(agendar).observe(document.documentElement, { childList: true, subtree: true }); } catch (e) {}
+  window.addEventListener('load', function () {
+    varrer();
+    [150, 600, 1500, 3000].forEach(function (t) { setTimeout(varrer, t); });
+  });
+  window.__varrerObrig = varrer;
+})();

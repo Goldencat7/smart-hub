@@ -662,12 +662,23 @@ async function _uidsDosAdmins() {
 exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, async (event) => {
   const after  = event.data.after?.data();
   const before = event.data.before?.data();
-  if (!after || after.status !== 'enviado_admin') return;
-  if (before && before.status === 'enviado_admin') return;   // já processado nesta transição
+  // Materializa o imóvel assim que a ficha CHEGA (aguardando_corretor) — não espera
+  // mais a aprovação do corretor (enviado_admin). Assim o imóvel nasce na Carteira já
+  // no recebimento, mesmo incompleto/com pendências; o corretor trabalha nele lá dentro.
+  const MATERIALIZA = ['aguardando_corretor', 'enviado_admin'];
+  if (!after || !MATERIALIZA.includes(after.status)) return;
   const fichaId = event.params.fichaId;
   const dados = after.dados || {};
   const ts = () => admin.firestore.FieldValue.serverTimestamp();
   try {
+    // Idempotência que PRESERVA edições do corretor na Carteira: se o imóvel JÁ existe e
+    // os dados/anexos da ficha não mudaram, não reescreve. Imóvel ainda inexistente ⇒
+    // sempre materializa (cobre criação nova, fichas antigas paradas e reenvio com dados novos).
+    const imovelRef = db.collection('imoveis').doc(fichaId);
+    const existente = await imovelRef.get();
+    const mudou = JSON.stringify(before?.dados || {}) !== JSON.stringify(dados)
+      || JSON.stringify(before?.documentos || {}) !== JSON.stringify(after.documentos || {});
+    if (existente.exists && !mudou) return;
     // Pessoas (locadores) — ids determinísticos p/ idempotência
     const locadorIds = [];
     const p1 = loc_montarPessoa(dados, LOC_KEYS_1);
@@ -688,9 +699,7 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       // Se o 2º locador foi removido numa reedição, apaga o doc órfão (LGPD).
       await db.collection('pessoas').doc(id2).delete().catch(() => {});
     }
-    // Imóvel — id = fichaId
-    const imovelRef = db.collection('imoveis').doc(fichaId);
-    const existente = await imovelRef.get();
+    // Imóvel — id = fichaId (imovelRef/existente já lidos no topo p/ a guarda de idempotência)
     const base = {
       ...loc_montarImovel(dados),
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
@@ -724,14 +733,22 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
 exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fichaId}' }, async (event) => {
   const after  = event.data.after?.data();
   const before = event.data.before?.data();
-  if (!after || after.tipo !== 'vendedor' || after.status !== 'enviado_admin') return;
-  if (before && before.status === 'enviado_admin') return;   // já processado nesta transição
+  if (!after || after.tipo !== 'vendedor') return;
+  // Igual ao locador: materializa o imóvel de venda já no recebimento (aguardando_corretor),
+  // sem esperar a aprovação do corretor, mesmo com pendências.
+  const MATERIALIZA = ['aguardando_corretor', 'enviado_admin'];
+  if (!MATERIALIZA.includes(after.status)) return;
   const fichaId = event.params.fichaId;
   const dados = after.dados || {};
   const ts = () => admin.firestore.FieldValue.serverTimestamp();
   try {
     const imovelRef = db.collection('imoveis').doc(fichaId);
     const existente = await imovelRef.get();
+    // Idempotência que preserva edições do corretor: só reescreve se o imóvel ainda não
+    // existe (criação/retroativo) ou se os dados/anexos da ficha mudaram (reenvio).
+    const mudou = JSON.stringify(before?.dados || {}) !== JSON.stringify(dados)
+      || JSON.stringify(before?.documentos || {}) !== JSON.stringify(after.documentos || {});
+    if (existente.exists && !mudou) return;
     const base = {
       ...loc_montarImovel(dados),
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
@@ -1202,11 +1219,20 @@ exports.carteiraInteressado = onCall(async (req) => {
       // Status inicial: 'em_analise' (add manual) ou 'ficha_enviada' (fluxo Enviar Ficha da Tela 03).
       const status = INTERESSADO_STATUS.includes(req.data.status) ? req.data.status : 'em_analise';
       if (INTERESSADO_SO_BROKER.includes(status) || status === 'negocio_gerado') throw new HttpsError('invalid-argument', 'Status inicial inválido.');
+      // Vínculo com a ficha do Cadastro (quando o add vem do seletor "Adicionar interessado"):
+      // guarda fichaId + contatos pra o "Ver ficha" funcionar igual aos interessados automáticos.
+      const extra = {};
+      const _fid = _txt(req.data.fichaId, 200);   if (_fid) extra.fichaId = _fid;
+      const _ftp = _txt(req.data.fichaTipo, 30);  if (_ftp) extra.fichaTipo = _ftp;
+      const _eml = _txt(req.data.email, 160);      if (_eml) extra.email = _eml;
+      const _cpf = _txt(req.data.cpf, 40);         if (_cpf) extra.cpf = _cpf;
+      const _tel = _txt(req.data.telefone, 40);    if (_tel) extra.telefone = _tel;
       lista.push({
         nome,
         contato: _txt(req.data.contato, 120),
         tipo: _txt(req.data.tipo, 20) || 'locatario',
         status,
+        ...extra,
         em: admin.firestore.Timestamp.now()
       });
       evento = `Interessado ${nome} adicionado (${INTERESSADO_LABEL[status]})`;
@@ -4957,7 +4983,7 @@ exports.listarFichasLocador = onCall(async (req) => {
 });
 
 // Corretor envia a ficha revisada para o administrativo.
-exports.enviarFichaParaAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
+exports.enviarFichaParaAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS], memory: '512MiB' }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
   const { fichaId } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
@@ -5133,7 +5159,42 @@ exports.listarFichasTipo = onCall(async (req) => {
     .sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
 });
 
-exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) => {
+// Lista as fichas do Cadastro que podem virar INTERESSADO de um imóvel (locatário/
+// comprador): pf, pj, locação c/ fiador, proposta, fiança. NÃO inclui locador/vendedor
+// (esses são o DONO do imóvel). Corretor vê as suas + as compartilhadas; admin vê todas.
+// Alimenta o seletor "Adicionar interessado" da Tela 03.
+exports.listarFichasInteressaveis = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const uid = auth.uid;
+  const isAdm = !!auth.token.admin;
+  const TIPOS = ['pf', 'pj', 'locacao_fiador', 'proposta', 'fianca'];
+  const col = db.collection('fichas');
+  let docs;
+  if (isAdm) {
+    const snaps = await Promise.all(TIPOS.map(t => col.where('tipo', '==', t).limit(60).get()));
+    docs = snaps.flatMap(s => s.docs);
+  } else {
+    const [minhas, comp] = await Promise.all([
+      Promise.all(TIPOS.map(t => col.where('tipo', '==', t).where('corretorUid', '==', uid).limit(60).get())),
+      Promise.all(TIPOS.map(t => col.where('tipo', '==', t).where('visivelPara', 'array-contains', uid).limit(60).get()))
+    ]);
+    const vistos = new Set(); docs = [];
+    for (const s of [...minhas, ...comp]) for (const d of s.docs) if (!vistos.has(d.id)) { vistos.add(d.id); docs.push(d); }
+  }
+  return docs.map(d => {
+    const f = d.data(); const dd = f.dados || {};
+    return {
+      id: d.id, tipo: f.tipo, status: f.status || '',
+      nome: _txt(dd.nome, 120),
+      email: _txt(dd.email, 160),
+      cpf: _txt(dd.cpf || dd.cnpj, 40),
+      telefone: _txt(dd.whatsapp || dd.celular || dd.fixo, 40),
+      criadoEm: f.criadoEm?.toDate?.()?.toISOString() || ''
+    };
+  }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+});
+
+exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS], memory: '512MiB' }, async (req) => {
   if (!req.auth) throw new HttpsError('unauthenticated', 'Login necessário.');
   const { fichaId } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId obrigatório.');
