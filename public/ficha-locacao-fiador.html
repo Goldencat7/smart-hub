@@ -67,20 +67,25 @@ FE.iniciarFicha({
   docs:()=>{
     const arr=[]; const nLoc = st.has2Prop?2:1;
     for(let i=1;i<=nLoc;i++){
-      const s = nLoc>1 ? ` (${i}º)` : '';
-      arr.push({key:'p'+i+'_rgcpf',    icon:'🪪', label:'Locador'+s+' — RG, CPF ou CNH',          badge:'obrig'});
-      arr.push({key:'p'+i+'_endereco', icon:'🏠', label:'Locador'+s+' — Comp. de endereço',       badge:'obrig'});
-      arr.push({key:'p'+i+'_renda',    icon:'💰', label:'Locador'+s+' — Comp. de renda (90 dias)', badge:'opc', nta:true});
-      arr.push({key:'p'+i+'_civil',    icon:'📋', label:'Locador'+s+' — Estado civil',             badge:'opc', ni:true, nta:true});
+      const nome=(FE.v(i===1?'nome':'p2_nome')||'').trim();
+      const tit=(nLoc>1?(i+'º Locador'):'Locador')+(nome?' · '+nome:'');
+      arr.push({heading:'👤 Documentos do '+tit});
+      arr.push({key:'p'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',            badge:'obrig'});
+      arr.push({key:'p'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço',   badge:'obrig'});
+      arr.push({key:'p'+i+'_renda',    icon:'💰', label:'Comp. de renda (90 dias)',  badge:'opc', nta:true});
+      arr.push({key:'p'+i+'_civil',    icon:'📋', label:'Estado civil',              badge:'opc', ni:true, nta:true});
     }
     for(let i=1;i<=st.numFiador;i++){
-      const s = st.numFiador>1 ? ` (${ordF[i-1]})` : '';
-      arr.push({key:'f'+i+'_rgcpf',    icon:'🪪', label:'Fiador'+s+' — RG, CPF ou CNH',    badge:'obrig'});
-      arr.push({key:'f'+i+'_endereco', icon:'🏠', label:'Fiador'+s+' — Comp. de endereço', badge:'obrig'});
-      arr.push({key:'f'+i+'_civil',    icon:'📋', label:'Fiador'+s+' — Estado civil',      badge:'opc', ni:true, nta:true});
+      const nome=(FE.v('f'+i+'_nome')||'').trim();
+      const tit=(st.numFiador>1?(ordF[i-1]+' Fiador'):'Fiador')+(nome?' · '+nome:'');
+      arr.push({heading:'👤 Documentos do '+tit});
+      arr.push({key:'f'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',          badge:'obrig'});
+      arr.push({key:'f'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço', badge:'obrig'});
+      arr.push({key:'f'+i+'_civil',    icon:'📋', label:'Estado civil',            badge:'opc', ni:true, nta:true});
     }
-    arr.push({key:'g_iptu',     icon:'📄', label:'Garantia — Nº contribuinte IPTU', badge:'opc', ni:true, nta:true});
-    arr.push({key:'g_matricula',icon:'📋', label:'Garantia — Matrícula do imóvel',  badge:'obrig'});
+    arr.push({heading:'🏠 Documentos do imóvel dado em garantia'});
+    arr.push({key:'g_iptu',     icon:'📄', label:'Nº contribuinte IPTU', badge:'opc', ni:true, nta:true});
+    arr.push({key:'g_matricula',icon:'📋', label:'Matrícula do imóvel',  badge:'obrig'});
     return arr;
   },
   render,

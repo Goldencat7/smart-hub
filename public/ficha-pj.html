@@ -53,15 +53,18 @@ FE.iniciarFicha({
   // Docs da empresa (uma vez) + um conjunto por SÓCIO (aparece conforme adiciona sócio).
   docs:()=>{
     const arr=[
+      {heading:'🏢 Documentos da empresa'},
       {key:'cnpj_card', icon:'🏢', label:'Cartão CNPJ',                   badge:'obrig'},
       {key:'contrato',  icon:'📜', label:'Contrato social',                badge:'obrig'},
       {key:'emp_renda', icon:'💰', label:'Comprovante de renda (empresa)', badge:'obrig'},
     ];
     for(let i=1;i<=st.numSocios;i++){
-      const s = st.numSocios>1 ? ` (${ord[i-1]} sócio)` : ' (sócio)';
-      arr.push({key:'s'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH'+s,              badge:'obrig'});
-      arr.push({key:'s'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço'+s,     badge:'obrig'});
-      arr.push({key:'s'+i+'_civil',    icon:'📋', label:'Comprovante de estado civil'+s, badge:'opc', ni:true, nta:true});
+      const nome=(FE.v('s'+i+'_nome')||'').trim();
+      const tit=(st.numSocios>1?ord[i-1]+' Sócio':'Sócio')+(nome?' · '+nome:'');
+      arr.push({heading:'👤 Documentos do '+tit});
+      arr.push({key:'s'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',              badge:'obrig'});
+      arr.push({key:'s'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço',     badge:'obrig'});
+      arr.push({key:'s'+i+'_civil',    icon:'📋', label:'Comprovante de estado civil', badge:'opc', ni:true, nta:true});
     }
     return arr;
   },

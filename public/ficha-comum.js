@@ -208,6 +208,8 @@ function _docs(){ try{ return (typeof CFG.docs==='function' ? CFG.docs() : CFG.d
 function renderDocs(){
   const grid=document.getElementById('docs-grid'); if(!grid) return;
   grid.innerHTML = _docs().map(d=>{
+    // Item de cabeçalho (sem key): agrupa e deixa CLARO de quem são os documentos abaixo.
+    if(d.heading) return `<div class="docs-heading" style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${d.heading}</div>`;
     const ni=naoExiste.has(d.key), nta=pendentes.has(d.key);
     const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>';
     let toggles='';
@@ -237,7 +239,7 @@ export function atualizarProgresso(){
   const campos=document.querySelectorAll('[data-key]');
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(pendentes.has(k)||naoExiste.has(k)||(valores[k]&&(''+valores[k]).trim())) ok++; });
-  _docs().forEach(d=>{ total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
+  _docs().forEach(d=>{ if(!d.key) return; total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
   const pct=total?Math.round(ok/total*100):0;
   const bar=document.getElementById('progressFill'); if(bar) bar.style.width=pct+'%';
   if(CFG.aoAtualizar) CFG.aoAtualizar();
@@ -332,7 +334,7 @@ async function enviar(e){
     return !(valores[k] && (''+valores[k]).trim()) && !pendentes.has(k) && !naoExiste.has(k);
   }).map(f => ({ k: f.querySelector('[data-key]').dataset.key,
                  label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[data-key]').dataset.key }));
-  const docsFaltando = _docs().filter(d => d.badge==='obrig'
+  const docsFaltando = _docs().filter(d => d.key && d.badge==='obrig'
     && !arquivos[d.key] && !docsExistentes[d.key] && !pendentes.has(d.key) && !naoExiste.has(d.key));
   if(camposFaltando.length || docsFaltando.length){
     const itens = [...camposFaltando.map(c=>c.label), ...docsFaltando.map(d=>d.label)];
