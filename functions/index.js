@@ -3025,9 +3025,19 @@ exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (
   const tpl = fs.readFileSync(path.join(__dirname, 'assets', 'contrato-representacao-pf.pdf'));
   const pdf = await PDFDocument.load(tpl);
   const form = pdf.getForm();
+  // A fonte padrão do PDF (Helvetica/WinAnsi) não codifica travessão, aspas curvas,
+  // reticências, emoji etc. — colar de observações/endereço traz isso e o pdf.save()
+  // estouraria. Troca pelos equivalentes ASCII e derruba o resto (acento do português é WinAnsi, fica).
+  const _ansi = (s) => String(s)
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/[–—―]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/[   ]/g, ' ')
+    .replace(/[^\x00-\xFF]/g, '');
   const setF = (campo, valor) => {
     if (!campo || valor == null || String(valor).trim() === '') return;
-    try { form.getTextField(campo).setText(String(valor)); } catch (_) { /* campo ausente no modelo */ }
+    try { form.getTextField(campo).setText(_ansi(valor)); } catch (_) { /* campo ausente no modelo */ }
   };
 
   vendedores.slice(0, 4).forEach((v, i) => {
