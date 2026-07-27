@@ -646,6 +646,32 @@ function disfarcarComoChrome(win) {
   });
 }
 
+// ─── Abrir link em NOVA janela (mesma sessão) ────────────────────────────────
+// Ctrl+clique, botão-do-meio ou target=_blank passam a abrir o link numa janela
+// nova na MESMA partição (login compartilhado), em vez de o Electron bloquear.
+// Assim dá pra abrir um item (ex.: um imóvel num portal de captação) sem perder a
+// página de filtros/busca anterior. Vale pra qualquer app aberto pelo Hub.
+function ligarAberturaNovaJanela(win, partition) {
+  win.webContents.setWindowOpenHandler(({ url: u }) => {
+    if (!/^https?:\/\//i.test(u)) {
+      if (/^(mailto:|tel:)/i.test(u)) shell.openExternal(u).catch(() => {}); // e-mail/telefone vão pro SO
+      return { action: 'deny' };
+    }
+    return { action: 'allow', overrideBrowserWindowOptions: {
+      width: 1200, height: 800, autoHideMenuBar: true,
+      webPreferences: { webSecurity: false, allowRunningInsecureContent: true, partition, devTools: DEVTOOLS_HABILITADO }
+    }};
+  });
+  win.webContents.on('did-create-window', (child) => {
+    disfarcarComoChrome(child);
+    const cid = child.webContents.id;
+    contentsComCertLiberado.add(cid);
+    child.on('closed', () => contentsComCertLiberado.delete(cid));
+    child.webContents.setMaxListeners(50);
+    ligarAberturaNovaJanela(child, partition); // a janela nova também abre as suas em nova janela
+  });
+}
+
 // ─── Janela simples (sem autologin) ──────────────────────────────────────────
 function abrirJanelaSimples(url) {
   const win = new BrowserWindow({
@@ -659,6 +685,7 @@ function abrirJanelaSimples(url) {
   const cidSimples = win.webContents.id;
   contentsComCertLiberado.add(cidSimples);
   win.on('closed', () => contentsComCertLiberado.delete(cidSimples));
+  ligarAberturaNovaJanela(win, 'persist:apps');
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
 }
 
@@ -740,6 +767,9 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
 
   // Páginas com muitos iframes (reCAPTCHA etc.) podem estourar o limite padrão de listeners
   pwaWindow.webContents.setMaxListeners(50);
+
+  // Ctrl+clique / botão-do-meio / target=_blank → nova janela na mesma sessão logada.
+  ligarAberturaNovaJanela(pwaWindow, partition);
 
   pwaWindow.webContents.on('did-fail-load', (_e, errCode, errDesc, failedUrl, isMainFrame) => {
     // Ignora falhas de subframes (reCAPTCHA, anúncios) — só registra a página principal
