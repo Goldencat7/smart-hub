@@ -1604,7 +1604,13 @@ exports.negocioAtualizar = onCall(async (req) => {
   if (efeito === 'entregue') {
     await _imovelTimeline(db.collection('imoveis').doc(imovelId), `Negócio ${codigo} entregue para Gestão`, porNome);
   } else if (efeito === 'concluido') {
-    await _imovelTimeline(db.collection('imoveis').doc(imovelId), `Negócio ${codigo} concluído`, porNome);
+    // Negócio fechado ⇒ o imóvel sai de "Em negociação" e ganha a tag Vendido/Alugado.
+    // NÃO arquiva (o cliente lê o preço do imóvel pra calcular a comissão — arquivar
+    // esconderia e zeraria o valor do negócio concluído).
+    const imRef = db.collection('imoveis').doc(imovelId);
+    const tagFinal = n0.tipo === 'venda' ? 'Vendido' : 'Alugado';
+    await imRef.set({ situacao: 'concluido', tagFinal, concluidoEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await _imovelTimeline(imRef, `Negócio ${codigo} concluído — imóvel marcado como ${tagFinal}`, porNome);
   } else if (efeito === 'cancelar') {
     // Espelho da regra "Reprovar encerra mantendo o imóvel disponível": cancelar
     // devolve o imóvel pra Disponível e o interessado volta pra Aprovado.

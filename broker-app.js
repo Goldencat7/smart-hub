@@ -108,6 +108,7 @@ const STATUS = {
   'Negócio criado':'info','Em andamento':'info','Aguardando broker':'warning',
   'Aguardando corretor':'warning','Aguardando administrativo':'warning',
   'Entregue à gestão':'success','Concluído':'success','Cancelado':'danger',
+  'Vendido':'ai','Alugado':'ai',
 };
 function pill(txt,variant){ return '<span class="pill '+(variant||'neutral')+'"><span class="dot"></span>'+esc(txt)+'</span>'; }
 function statusPill(s){ return pill(s, STATUS[s]||'neutral'); }
@@ -136,7 +137,8 @@ function mapImovel(im){
   const e = im.endereco||{};
   const fin = FINAL_LABEL[im.finalidade] || 'Locação';
   const preco = parseMoney(im.valorAnuncio || im.valorProposta || im.valorFechamento || 0);
-  const situ = im.arquivado ? 'Arquivado' : (im.situacao==='em_negociacao' ? 'Em negociação' : 'Disponível');
+  const concluido = im.situacao==='concluido';
+  const situ = im.arquivado ? 'Arquivado' : (concluido ? (im.tagFinal || 'Concluído') : (im.situacao==='em_negociacao' ? 'Em negociação' : 'Disponível'));
   return {
     id: im.id, raw: im,
     code: fmtCodImovel(im),
@@ -149,7 +151,7 @@ function mapImovel(im){
     proprietarioNome: im.proprietarioNome || im.locadorNome || '—',
     proprietarioContato: im.proprietarioContato || '',
     corretor: im.corretorUid, corretorNome: im.corretorNome||'',
-    status: situ,
+    status: situ, concluido,
     arquivado: !!im.arquivado,
     dorm: im.dormitorios||null, vaga: im.vagas!=null?im.vagas:null, area: im.area||null,
     mat: im.matricula||'—', iptu: im.iptu||im.contribuinteIptu||'—', escritura: !!im.escritura,
@@ -631,9 +633,9 @@ function imoveisList(){
   const list=filteredProps();
   if(!list.length) return vazio('building','Nenhum imóvel encontrado.');
   if(state.imoveisView==='cards'){
-    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">'+list.map((p,i)=>'<button class="card card-hover" data-prop="'+p.id+'" style="overflow:hidden;text-align:left;padding:0"><div style="height:148px;background:'+GRAD[i%GRAD.length]+';position:relative"><span class="pill" style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span>'+(p.fotos?'<span style="position:absolute;top:10px;right:10px"><span class="pill" style="background:rgba(0,0,0,.35);color:#fff">'+icon("image",12)+p.fotos+'</span></span>':'')+'<span class="mono" style="position:absolute;bottom:10px;left:12px;color:#fff;font-weight:700;font-size:17px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:12px;font-weight:500">/mês</span>':''):'Sem valor')+'</span></div><div style="padding:14px"><div class="fz14 fw6 t900 trunc">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+' · '+esc(p.tipo)+'</div>'+((p.dorm||p.vaga!=null||p.area)?'<div class="fx ac g3 fz12 t500" style="margin-top:8px">'+(p.dorm?'<span class="fx ac g1">'+icon('bed-double',13,'t400')+p.dorm+'</span>':'')+(p.vaga!=null?'<span class="fx ac g1">'+icon('car',13,'t400')+p.vaga+'</span>':'')+(p.area?'<span class="fx ac g1">'+icon('ruler',13,'t400')+p.area+'m²</span>':'')+'</div>':'')+(state.role!=='corretor'&&corrNome(p.corretor)!=='—'?'<div class="fz12 t500" style="margin-top:6px">Corretor: '+esc(corrNome(p.corretor))+'</div>':'')+'<div class="fx ac g3 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+statusPill(p.status)+'<span class="mono t400" style="margin-left:auto">'+esc(p.code)+'</span></div></div></button>').join('')+'</div>';
+    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">'+list.map((p,i)=>'<button class="card card-hover" data-prop="'+p.id+'" style="overflow:hidden;text-align:left;padding:0'+(p.concluido?';opacity:.6':'')+'"><div style="height:148px;background:'+GRAD[i%GRAD.length]+';position:relative"><span class="pill" style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span>'+(p.fotos?'<span style="position:absolute;top:10px;right:10px"><span class="pill" style="background:rgba(0,0,0,.35);color:#fff">'+icon("image",12)+p.fotos+'</span></span>':'')+'<span class="mono" style="position:absolute;bottom:10px;left:12px;color:#fff;font-weight:700;font-size:17px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:12px;font-weight:500">/mês</span>':''):'Sem valor')+'</span></div><div style="padding:14px"><div class="fz14 fw6 t900 trunc">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+' · '+esc(p.tipo)+'</div>'+((p.dorm||p.vaga!=null||p.area)?'<div class="fx ac g3 fz12 t500" style="margin-top:8px">'+(p.dorm?'<span class="fx ac g1">'+icon('bed-double',13,'t400')+p.dorm+'</span>':'')+(p.vaga!=null?'<span class="fx ac g1">'+icon('car',13,'t400')+p.vaga+'</span>':'')+(p.area?'<span class="fx ac g1">'+icon('ruler',13,'t400')+p.area+'m²</span>':'')+'</div>':'')+(state.role!=='corretor'&&corrNome(p.corretor)!=='—'?'<div class="fz12 t500" style="margin-top:6px">Corretor: '+esc(corrNome(p.corretor))+'</div>':'')+'<div class="fx ac g3 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+statusPill(p.status)+'<span class="mono t400" style="margin-left:auto">'+esc(p.code)+'</span></div></div></button>').join('')+'</div>';
   }
-  return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:760px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Finalidade</th><th>Proprietário</th><th class="tright">Valor</th></tr></thead><tbody>'+list.map(p=>'<tr data-prop="'+p.id+'"><td class="mono fz13 fw6 t900">'+esc(p.code)+'</td><td><div class="fw6 t900">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+'</div></td><td class="t700">'+esc(p.tipo)+'</td><td>'+pill(p.finalidade,p.finalidadeRaw==='locacao'?'ai':'info')+'</td><td class="t700">'+esc(p.proprietarioNome)+'</td><td class="tright mono fw6 t900">'+(p.preco?brlFull(p.preco):'—')+'</td></tr>').join('')+'</tbody></table></div></div>';
+  return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:760px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Finalidade</th><th>Proprietário</th><th class="tright">Valor</th></tr></thead><tbody>'+list.map(p=>'<tr data-prop="'+p.id+'"'+(p.concluido?' style="opacity:.6"':'')+'><td class="mono fz13 fw6 t900">'+esc(p.code)+'</td><td><div class="fw6 t900">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+'</div></td><td class="t700">'+esc(p.tipo)+'</td><td>'+pill(p.finalidade,p.finalidadeRaw==='locacao'?'ai':'info')+'</td><td class="t700">'+esc(p.proprietarioNome)+'</td><td class="tright mono fw6 t900">'+(p.preco?brlFull(p.preco):'—')+'</td></tr>').join('')+'</tbody></table></div></div>';
 }
 function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imoveisList(); refreshIcons(); } }
 RENDERERS.imoveis=function(host){
