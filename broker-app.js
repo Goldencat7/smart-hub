@@ -490,10 +490,12 @@ RENDERERS.negocios = function(host){
 
 function renderStepper(d){
   const cl=d.checklist||[]; if(!cl.length) return '<div class="fz13 t500">Sem checklist neste negócio.</div>';
-  const doneN=cl.filter(x=>x.feito).length;
-  const stages=cl.slice(0,6);
-  return '<div class="fx">'+stages.map((s,i)=>{ const done=i<doneN, now=i===doneN&&doneN<cl.length; const bg=done?'var(--success)':now?'var(--brand)':'#fff'; const bd=done||now?'transparent':'2px solid var(--ink300)'; const col=done||now?'#fff':'var(--ink400)'; const lineL=i===0?'transparent':(i<=doneN?'var(--success)':'var(--ink200)'); const lineR=i===stages.length-1?'transparent':(i<doneN?'var(--success)':'var(--ink200)'); const cap=done?'Concluído':now?'Em andamento':'Pendente'; const capc=done?'c-suc':now?'c-inf':'t400';
-    return '<div class="fx col ac g2" style="flex:1"><div class="fx ac" style="width:100%"><span style="flex:1;height:2px;background:'+lineL+'"></span><span class="ifx ac jc nsh" style="width:32px;height:32px;border-radius:50%;background:'+bg+';border:'+(bd==='transparent'?'none':bd)+';color:'+col+';font-size:12px;font-weight:700'+(now?';box-shadow:0 0 0 4px rgba(37,99,235,.18)':'')+'">'+(done?icon('check',16):(i+1))+'</span><span style="flex:1;height:2px;background:'+lineR+'"></span></div><div class="tcenter"><div class="fz12 fw6 '+(done||now?'t900':'t500')+'">'+esc((s.label||'').split(' ').slice(0,2).join(' '))+'</div><div class="fz11 '+capc+'" style="margin-top:1px">'+cap+'</div></div></div>'; }).join('')+'</div>';
+  // Mostra TODAS as etapas OBRIGATÓRIAS (as que travam o Concluir) — não só as 6 primeiras —
+  // e usa o estado REAL de cada uma (não a contagem), pra marcar certo mesmo fora de ordem.
+  const stages=cl.filter(x=>x.obrigatoria); if(!stages.length) return '';
+  const nextIdx=stages.findIndex(x=>!x.feito); // 1ª obrigatória pendente = "em andamento"
+  return '<div class="fx" style="overflow-x:auto">'+stages.map((s,i)=>{ const done=!!s.feito, now=!done&&i===nextIdx; const bg=done?'var(--success)':now?'var(--brand)':'#fff'; const bd=done||now?'transparent':'2px solid var(--ink300)'; const col=done||now?'#fff':'var(--ink400)'; const lineL=i===0?'transparent':(stages[i-1].feito?'var(--success)':'var(--ink200)'); const lineR=i===stages.length-1?'transparent':(done?'var(--success)':'var(--ink200)'); const cap=done?'Concluído':now?'Em andamento':'Pendente'; const capc=done?'c-suc':now?'c-inf':'t400';
+    return '<div class="fx col ac g2" style="flex:1;min-width:80px"><div class="fx ac" style="width:100%"><span style="flex:1;height:2px;background:'+lineL+'"></span><span class="ifx ac jc nsh" style="width:32px;height:32px;border-radius:50%;background:'+bg+';border:'+(bd==='transparent'?'none':bd)+';color:'+col+';font-size:12px;font-weight:700'+(now?';box-shadow:0 0 0 4px rgba(37,99,235,.18)':'')+'">'+(done?icon('check',16):(i+1))+'</span><span style="flex:1;height:2px;background:'+lineR+'"></span></div><div class="tcenter"><div class="fz12 fw6 '+(done||now?'t900':'t500')+'">'+esc((s.label||'').split(' ').slice(0,2).join(' '))+'</div><div class="fz11 '+capc+'" style="margin-top:1px">'+cap+'</div></div></div>'; }).join('')+'</div>';
 }
 
 function openDeal(id){
