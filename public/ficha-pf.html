@@ -623,11 +623,15 @@ async function init(){
     }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
     params.forEach((val, key) => { if(key.startsWith('pre_')) valores[key.slice(4)] = val; });
+    // Ficha aberta pelo imóvel (&imovelId=): já traz o bloco "Imóvel de interesse"
+    // preenchido (function pública imovelParaFicha). Silencioso se falhar.
+    if(imovelId){ try{ const r=await chamarFn('imovelParaFicha',{imovelId}); const d=(r&&r.data)||{}; Object.entries(d).forEach(([k,val])=>{ if(val && !valores[k]) valores[k]=val; }); }catch(e){} }
     renderProponentes();
     document.querySelectorAll('#formFicha [data-key]').forEach(el => {
       const val = valores[el.dataset.key];
       if(val) el.value = val;
     });
+    atualizarProgresso();
   }
 }
 init();

@@ -435,8 +435,19 @@ export async function iniciarFicha(cfg){
     try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); if(!origemHub&&f.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(f.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${escHtml(f.observacaoCorretor)}</p>`; } aplicarValores(f.dados); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender(); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
     params.forEach((val, key) => { if(key.startsWith('pre_')) valores[key.slice(4)] = val; });
+    // Ficha aberta pelo imóvel (&imovelId=): já traz o bloco "Imóvel de interesse"
+    // preenchido. Silencioso se falhar — é conveniência, não bloqueia o preenchimento.
+    if(CFG._imovelId){ try{ await prefillImovel(CFG._imovelId); }catch(e){ /* segue sem prefill */ } }
     rerender();
   }
+}
+
+// Pré-preenche os campos im_* do imóvel (via function pública imovelParaFicha).
+// Não sobrescreve nada que já veio por pre_ na URL.
+async function prefillImovel(imovelId){
+  const r = await chamarFn('imovelParaFicha', { imovelId });
+  const d = (r && r.data) || {};
+  Object.entries(d).forEach(([k,v])=>{ if(v && !valores[k]) valores[k]=v; });
 }
 
 export function ehSomenteLeitura(){ return somenteLeitura; }

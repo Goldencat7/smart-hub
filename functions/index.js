@@ -619,6 +619,33 @@ function loc_montarImovel(dados) {
   };
 }
 
+// Público (SEM login): devolve só o bloco "Imóvel de interesse" de um imóvel, pra
+// pré-preencher a ficha que o interessado abre pelo link (&imovelId=). O imovelId
+// (id aleatório do Firestore) é a credencial, como nos portais externos. NÃO devolve
+// PII do proprietário, anexos, financeiro nem a lista de interessados — só endereço,
+// tipo e valor do anúncio (o que o interessado já viu no anúncio do imóvel).
+exports.imovelParaFicha = onCall(async (req) => {
+  const imovelId = _txt(req.data && req.data.imovelId, 200);
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId obrigatório.');
+  const snap = await db.collection('imoveis').doc(imovelId).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const i = snap.data();
+  const e = i.endereco || {};
+  return {
+    im_tipo: i.tipo || '',
+    im_ref: i.referencia || '',
+    im_cep: e.cep || '',
+    im_endereco: e.logradouro || '',
+    im_numero: e.numero || '',
+    im_complemento: e.complemento || '',
+    im_bairro: e.bairro || '',
+    im_cidade: e.cidade || '',
+    im_estado: e.estado || '',
+    im_condominio: i.condominio || '',
+    im_anuncio: i.valorAnuncio || ''
+  };
+});
+
 // Contador transacional de protocolo interno dos imóveis (números sequenciais).
 async function proximoNumeroProtocolo() {
   const ref = db.collection('counters').doc('imoveis');
