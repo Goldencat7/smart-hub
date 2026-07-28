@@ -60,6 +60,7 @@ const state = {
 // Dados reais (preenchidos por carregarDados) — no FORMATO do mockup.
 let PROPERTIES = [];
 let DEALS = [];
+let DEALS_DOCS = [];   // TODOS os negócios (inclui cancelados) — só pra tela Documentos, pra os anexos de negócio cancelado não sumirem da UI (gestor ainda baixa/remove)
 let PEOPLE = [];
 let CORRETORES = {};   // uid -> {id, nome, ini, cor, foto}
 let KPI = { comissaoPrevista:0, comissaoRecebida:0, comissaoPendente:0, pagoCorretores:0, pendenteCorretores:0, encerradosMes:0, tempoMedioDias:0 };
@@ -118,13 +119,13 @@ const STATUS = {
 };
 function pill(txt,variant){ return '<span class="pill '+(variant||'neutral')+'"><span class="dot"></span>'+esc(txt)+'</span>'; }
 function statusPill(s){ return pill(s, STATUS[s]||'neutral'); }
-function avatar(nome,size=36,bg='var(--brand)',foto){ if(foto) return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background-image:url('+foto+');background-size:cover;background-position:center"></span>'; return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background:'+bg+';font-size:'+(size<30?10:12)+'px">'+ini(nome)+'</span>'; }
+function avatar(nome,size=36,bg='var(--brand)',foto){ if(foto) return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background-image:url('+foto+');background-size:cover;background-position:center"></span>'; return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background:'+bg+';font-size:'+(size<30?10:12)+'px">'+esc(ini(nome))+'</span>'; }
 const TINT = { info:['#EFF4FF','#1D4ED8'], success:['#ECFDF3','#15803D'], warning:['#FFFAEB','#B45309'], danger:['#FEF2F2','#B91C1C'], ai:['#F5F0FF','#6D28D9'], brand:['#EFF4FF','#2563EB'] };
 function iconChip(ico,variant,size=40){ const t=TINT[variant]||TINT.brand; return '<span class="iconchip" style="width:'+size+'px;height:'+size+'px;background:'+t[0]+';color:'+t[1]+'">'+icon(ico,size>34?20:16)+'</span>'; }
 const COR_PALETA = ['#2563EB','#7C3AED','#DB2777','#0EA5E9','#16A34A','#F59E0B','#9333EA','#0D9488'];
 function corDe(uid){ let h=0; const s=String(uid||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return COR_PALETA[h%COR_PALETA.length]; }
 function diasEntre(iso){ if(!iso) return 0; return Math.max(0, Math.floor((Date.now()-new Date(iso).getTime())/86400000)); }
-function relData(iso){ const d=diasEntre(iso); if(d===0) return 'Hoje'; if(d===1) return 'Ontem'; return 'Há '+d+' dias'; }
+function relData(iso){ if(!iso) return '—'; const d=diasEntre(iso); if(d===0) return 'Hoje'; if(d===1) return 'Ontem'; return 'Há '+d+' dias'; }
 
 /* (Removidos os dados de DEMONSTRAÇÃO — TEAM/Smart Score/IA. Todas as telas usam
    dado real; onde ainda não há fonte, a tela mostra estado "em breve".) */
@@ -208,7 +209,9 @@ async function carregarDados(){
   ]);
   const imoveisRaw = (imR.data&&imR.data.imoveis)||[];
   PROPERTIES = imoveisRaw.filter(im=>!im.arquivado).map(mapImovel);
-  DEALS = ((ngR.data&&ngR.data.negocios)||[]).filter(n=>n.status!=='cancelado').map(mapNegocio);
+  const negociosRaw = (ngR.data&&ngR.data.negocios)||[];
+  DEALS = negociosRaw.filter(n=>n.status!=='cancelado').map(mapNegocio);
+  DEALS_DOCS = negociosRaw.map(mapNegocio);   // inclui cancelados (docs continuam acessíveis na tela Documentos)
 
   // Corretores (para nomes/cores/fotos nas tabelas). Base: nomes que já vêm nos docs.
   CORRETORES = {};
@@ -1080,9 +1083,9 @@ function emBreveTela(host,titulo,desc,ico,txt,acoes){
    Outros). Sem dado falso: vazio mostra estado honesto até alguém anexar. */
 const DOC_SECOES = [['contrato','Contratos','file-text'],['proposta','Propostas','file-signature'],['cliente','Documentação do cliente','id-card'],['outro','Outros','file']];
 function docFmtTam(b){ b=+b||0; if(b<1024) return b+' B'; if(b<1048576) return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
-function todosDocs(){ const out=[]; DEALS.forEach(d=>{ ((d.raw&&d.raw.documentos)||[]).forEach(x=>{ out.push({...x, dealId:d.id, dealCode:d.code, cliente:d.clienteNome}); }); }); return out; }
+function todosDocs(){ const out=[]; DEALS_DOCS.forEach(d=>{ const cancelado=d.statusRaw==='cancelado'; ((d.raw&&d.raw.documentos)||[]).forEach(x=>{ out.push({...x, dealId:d.id, dealCode:d.code, cliente:d.clienteNome, cancelado}); }); }); return out; }
 function docRow(x,podeSubir){
-  const meta=[x.dealCode, x.cliente, docFmtTam(x.tamanho), relData(x.em)].filter(Boolean).join(' · ');
+  const meta=[x.dealCode, x.cliente, docFmtTam(x.tamanho), relData(x.em), x.cancelado?'⚠ Negócio cancelado':''].filter(Boolean).join(' · ');
   const baixar='<a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',16)+'</a>';
   const rem = podeSubir ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(x.dealId)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',16)+'</button>' : '';
   return '<div class="fx ac g3" style="padding:13px 20px;border-top:1px solid var(--ink100)">'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',38)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500 trunc">'+esc(meta)+'</div></div><div class="fx ac g1 nsh">'+baixar+rem+'</div></div>';
@@ -1234,8 +1237,8 @@ handleAction = function(a, el){
   if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const tipo=(f.tipo==='proposta')?'comprador':'locatario'; el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-remover'){ if(!confirm('Remover este interessado do imóvel?'))return; const imovelId=el.dataset.imovel, idx=+el.dataset.idx; el.disabled=true; fnInteressado({imovelId, acao:'remover', index:idx, esperaNome:el.dataset.nome||'', esperaFichaId:el.dataset.fid||''}).then(async()=>{ toast('Interessado removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-aprovar'){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
-  if(a==='int-reprovar'){ if(confirm('Reprovar este interessado?')) interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'reprovado', 'Interessado reprovado', {nome:el.dataset.nome, fid:el.dataset.fid}); return; }
-  if(a==='int-gerar'){ if(confirm('Gerar o negócio deste interessado? O imóvel entra em negociação.')) gerarNegocioUI(el.dataset.imovel, +el.dataset.idx, {nome:el.dataset.nome, fid:el.dataset.fid}); return; }
+  if(a==='int-reprovar'){ if(confirm('Reprovar este interessado?')){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'reprovado', 'Interessado reprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); } return; }
+  if(a==='int-gerar'){ if(confirm('Gerar o negócio deste interessado? O imóvel entra em negociação.')){ el.disabled=true; gerarNegocioUI(el.dataset.imovel, +el.dataset.idx, {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); } return; }
   // Documentos do negócio (gestor/adm sobe; corretor só baixa)
   if(a==='doc-upload-open'){ openDocUpload(); return; }
   if(a==='doc-upload-send'){
@@ -1243,6 +1246,11 @@ handleAction = function(a, el){
     const f=($('#docFile')||{}).files && $('#docFile').files[0];
     if(!f){ if(errEl) errEl.textContent='Escolha um arquivo.'; return; }
     if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
+    // Valida o tipo AQUI (antes de ler os ~15MB): SVG e tipos fora da lista são
+    // recusados pelo servidor de qualquer jeito — pegar cedo evita o upload inútil.
+    const _tp=(f.type||'').toLowerCase();
+    const _tpOk = _tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp!=='image/svg+xml');
+    if(!_tpOk){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
     el.disabled=true; if(errEl) errEl.textContent='Enviando…';
     const rd=new FileReader();
     rd.onload=async()=>{ try{

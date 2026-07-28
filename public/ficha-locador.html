@@ -353,7 +353,7 @@ window.toggleConjuge = function(secId, civil) {
     if (!casado) { el.setAttribute('disabled',''); el.value = ''; }
     else if (!somenteLeitura) el.removeAttribute('disabled');
   });
-  if(!casado){ const pre=secId==='sec-conj2'?'loc2_conj_':'conj_'; Object.keys(arquivos).forEach(k=>{ if(k.startsWith(pre)) delete arquivos[k]; }); [...pendentes].forEach(k=>{ if(k.startsWith(pre)) pendentes.delete(k); }); }
+  if(!casado){ const pre=secId==='sec-conj2'?'loc2_conj_':'conj_'; Object.keys(arquivos).forEach(k=>{ if(k.startsWith(pre)) delete arquivos[k]; }); Object.keys(docsExistentes).forEach(k=>{ if(k.startsWith(pre)) delete docsExistentes[k]; }); [...pendentes].forEach(k=>{ if(k.startsWith(pre)) pendentes.delete(k); }); }
   if(typeof renderDocsExtra==='function'){ renderDocsExtra(); atualizarProgresso(); }
 };
 
@@ -556,7 +556,7 @@ window.docSelecionado = function(input) {
 function _valNome(n){ const el=document.querySelector(`[name="${n}"]`); return el?(el.value||'').trim():''; }
 function _shown(id){ const el=document.getElementById(id); return el && el.style.display!=='none'; }
 function _docCardLoc(d){
-  if(d.heading) return `<div style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${d.heading}</div>`;
+  if(d.heading) return `<div style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${escHtml(d.heading)}</div>`;
   const k=d.key, has=arquivos[k], ex=docsExistentes[k], pend=pendentes.has(k);
   const badge = has?'<span class="badge-preen">Preenchido</span>':(d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>');
   let status;

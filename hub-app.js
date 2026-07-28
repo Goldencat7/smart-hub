@@ -5987,7 +5987,7 @@ function cadRenderKpisTabs() {
   const c = cadContagens();
   const nomeVisao = cadVisao ? (cadFichas.find(f => f.corretorUid === cadVisao)?.corretorNome || 'Corretor') : '';
   const kpis = [
-    { k:'todas',      cls:'cad-ic-blue',   lbl: nomeVisao ? `Fichas de ${nomeVisao}` : (isAdmin?'Todas as fichas':'Minhas fichas'), sub:'Total geral', n:c.todas },
+    { k:'todas',      cls:'cad-ic-blue',   lbl: nomeVisao ? `Fichas de ${escapeHtml(nomeVisao)}` : (isAdmin?'Todas as fichas':'Minhas fichas'), sub:'Total geral', n:c.todas },
     { k:'pendentes',  cls:'cad-ic-amber',  lbl:'Pendentes',          sub:'Aguardando ação',    n:c.pendentes },
     { k:'enviadas',   cls:'cad-ic-green',  lbl:'Enviadas ao broker', sub:'Aguardando análise', n:c.enviadas },
     { k:'devolvidas', cls:'cad-ic-red',    lbl:'Devolvidas',         sub:'Para correção',      n:c.devolvidas },
@@ -6118,7 +6118,7 @@ function cadAbrirMenu(anchor, f) {
   const menu = document.createElement('div');
   menu.className = 'cad-menu';
   menu.innerHTML = `
-    <button data-a="editar">✏ Editar</button>
+    ${podeMexer ? '<button data-a="editar">✏ Editar</button>' : '<button data-a="ver">👁 Ver ficha</button>'}
     <button data-a="pdf">⬇ Baixar PDF</button>
     ${podeMexer ? '<button data-a="enviar">📤 Enviar ao broker</button>' : ''}
     ${podeReenviar ? '<button data-a="reenviar">↩ Reenviar ao cliente</button>' : ''}
@@ -6142,6 +6142,9 @@ function cadAbrirMenu(anchor, f) {
   menu.querySelectorAll('button[data-a]').forEach(b => b.addEventListener('click', async () => {
     const acao = b.dataset.a; fechar();
     if (acao === 'editar') { abrirModalFicha(f.arquivo, f.id, 'edicao', '✏ Editar ' + f.tipoLabel); return; }
+    // Ficha já enviada/finalizada: só leitura (modo=corretor). Evita o corretor
+    // digitar tudo e o Salvar falhar com "não aceita mais alterações".
+    if (acao === 'ver') { abrirModalFicha(f.arquivo, f.id, 'corretor', '👁 ' + f.tipoLabel); return; }
     if (acao === 'quem') { cadAbrirVisibilidade(f); return; }
     if (acao === 'pdf') {
       const url = `${BASE_HOSTING}/${f.arquivo}?modo=corretor&idFicha=${f.id}&origem=hub`;

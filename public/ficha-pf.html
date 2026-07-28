@@ -358,7 +358,7 @@ form.addEventListener('change', e=>{
     if(!COM_CONJUGE.includes(el.value)){
       const m = el.dataset.key.match(/^p(\d+)_estadoCivil$/);
       const idx = m ? m[1] : '1';
-      [valores,arquivos].forEach(o=>Object.keys(o).forEach(k=>{ if(k.startsWith('p'+idx+'c_')) delete o[k]; }));
+      [valores,arquivos,docsExistentes].forEach(o=>Object.keys(o).forEach(k=>{ if(k.startsWith('p'+idx+'c_')) delete o[k]; }));
       [...pendentes].forEach(k=>{ if(k.startsWith('p'+idx+'c_')) pendentes.delete(k); });
     }
     renderProponentes(); return;
@@ -394,7 +394,7 @@ window.docSelecionado = function(input){
 
 // ── Documentos por pessoa (extras: só aparecem com mais de uma pessoa) ──
 function _docCard(d){
-  if(d.heading) return `<div style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${d.heading}</div>`;
+  if(d.heading) return `<div style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${escHtml(d.heading)}</div>`;
   const k=d.key, has=arquivos[k], ex=docsExistentes[k], pend=isPend(k);
   const badge = has?'<span class="badge-preen">Preenchido</span>':(d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>');
   let status;

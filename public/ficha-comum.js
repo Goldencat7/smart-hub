@@ -87,7 +87,7 @@ export function campoRadio(o){
 export function campoTextarea(o){
   const filled=v(o.key).trim()!=='';
   const badge = o.req ? (filled?'<span class="badge-preen">Preenchido</span>':'<span class="badge-obrig">Obrigatório</span>') : '<span class="badge-opc">opcional</span>';
-  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label></div><textarea data-key="${o.key}"${somenteLeitura?' disabled':''} placeholder="${o.ph||''}">${esc(v(o.key))}</textarea></div>`;
+  return `<div class="field"><div class="field-header"><label>${o.label} ${badge}</label></div><textarea data-key="${o.key}"${somenteLeitura?' disabled':''} placeholder="${o.ph||''}">${escHtml(v(o.key))}</textarea></div>`;
 }
 // Bloco de pessoa padrão (nome/rg/cpf/nascimento/endereço/profissão/estado civil[/renda]/email/celular/fixo)
 export function blocoPessoa(p, opts){
@@ -209,7 +209,7 @@ function renderDocs(){
   const grid=document.getElementById('docs-grid'); if(!grid) return;
   grid.innerHTML = _docs().map(d=>{
     // Item de cabeçalho (sem key): agrupa e deixa CLARO de quem são os documentos abaixo.
-    if(d.heading) return `<div class="docs-heading" style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${d.heading}</div>`;
+    if(d.heading) return `<div class="docs-heading" style="grid-column:1/-1;font-weight:700;color:#002749;font-size:13px;margin:10px 0 2px;padding:8px 0 4px;border-top:1px solid #e7ebf0">${escHtml(d.heading)}</div>`;
     const ni=naoExiste.has(d.key), nta=pendentes.has(d.key);
     const badge = d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>';
     let toggles='';
@@ -300,7 +300,8 @@ function wireEventos(){
       // sem campo visível pra destacar (o bloco some). Espelha o que a ficha-pf já faz.
       if(/civil$/.test(el.dataset.key) && !COM_CONJUGE.includes(el.value)){
         const p=el.dataset.key.replace(/civil$/,'');
-        Object.keys(valores).forEach(k=>{ if(k.startsWith(p+'conj_')) delete valores[k]; });
+        [valores,arquivos,docsExistentes].forEach(o=>Object.keys(o).forEach(k=>{ if(k.startsWith(p+'conj_')) delete o[k]; }));
+        [...pendentes].forEach(k=>{ if(k.startsWith(p+'conj_')) pendentes.delete(k); });
       }
       if(el.hasAttribute('data-rerender')||/civil$/.test(el.dataset.key)) rerender();
     }

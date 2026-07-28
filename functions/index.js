@@ -1298,7 +1298,19 @@ exports.carteiraInteressado = onCall(async (req) => {
       const i = Number(req.data.index);
       if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
       if (!_interessadoConfere(lista[i], req.data)) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
-      if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Este interessado tem um negócio gerado — cancele o negócio antes de removê-lo.');
+      if (lista[i].status === 'negocio_gerado') {
+        // Só bloqueia se o negócio ainda está ATIVO (esse precisa ser cancelado antes).
+        // Negócio concluído/cancelado é só-leitura e não pode ser cancelado — sem esta
+        // saída o interessado ficava preso pra sempre, e o erro pedia uma ação impossível.
+        const negId = lista[i].negocioId;
+        let negAtivo = false;
+        if (negId) {
+          const nSnap = await tx.get(db.collection('negocios').doc(negId));
+          negAtivo = nSnap.exists && !['concluido', 'cancelado'].includes(nSnap.data().status);
+        }
+        if (negAtivo) throw new HttpsError('failed-precondition', 'Este interessado tem um negócio ativo — cancele o negócio antes de removê-lo.');
+        if (!ehGestor) throw new HttpsError('permission-denied', 'Remover um interessado com negócio é decisão do broker.');
+      }
       if (INTERESSADO_SO_BROKER.includes(lista[i].status) && !ehGestor) throw new HttpsError('permission-denied', 'Remover um interessado já avaliado é decisão do broker.');
       evento = `Interessado ${lista[i].nome} removido`;
       lista.splice(i, 1);
@@ -1749,11 +1761,15 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   if (['concluido', 'cancelado'].includes(snap.data().status)) throw new HttpsError('failed-precondition', 'Negócio encerrado — não aceita novos documentos.');
   const categoria = NEGOCIO_DOC_CATEGORIAS.includes(d.categoria) ? d.categoria : 'outro';
   const nome = _txt(d.nome, 160) || 'documento';
-  const mime = _txt(d.mime, 100);
-  // PDF ou imagem raster. SVG fica de fora de propósito: é XML e pode carregar script
-  // que rodaria ao abrir a URL do arquivo (a URL tem token público, como as fichas).
-  const ehImagem = /^image\//.test(mime) && mime !== 'image/svg+xml';
-  if (mime !== 'application/pdf' && !ehImagem) throw new HttpsError('invalid-argument', 'Só PDF ou imagem (JPG, PNG, WEBP…).');
+  // Normaliza o mime (caixa + parâmetros tipo ";charset=") ANTES de validar — é ISSO
+  // que fecha o bypass: "image/SVG+XML" e "image/svg+xml;charset=utf-8" viravam
+  // "image/svg+xml" e batiam no bloqueio. Aceita PDF ou QUALQUER imagem raster; só o
+  // SVG (e variações que contenham "svg") fica de fora — é XML e pode carregar script
+  // que rodaria ao abrir a URL do arquivo (token público). Não restrinjo a uma lista
+  // curta pra não recusar bmp/tiff/avif/heic legítimos de celular.
+  const mime = _txt(d.mime, 100).toLowerCase().split(';')[0].trim();
+  const ehImagem = /^image\//.test(mime) && !mime.includes('svg');
+  if (mime !== 'application/pdf' && !ehImagem) throw new HttpsError('invalid-argument', 'Só PDF ou imagem (SVG não é aceito).');
   const b64 = typeof d.base64 === 'string' ? d.base64 : '';
   const buf = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
   if (!buf.length) throw new HttpsError('invalid-argument', 'Arquivo vazio ou inválido.');
@@ -1774,6 +1790,8 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   try {
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref);
+      if (!s.exists) throw new HttpsError('not-found', 'Negócio não encontrado.');
+      if (['concluido', 'cancelado'].includes(s.data().status)) throw new HttpsError('failed-precondition', 'Negócio encerrado — não aceita novos documentos.');
       const lista = Array.isArray(s.data().documentos) ? [...s.data().documentos] : [];
       if (lista.length >= 100) throw new HttpsError('resource-exhausted', 'Limite de documentos do negócio atingido.');
       lista.push(entrada);
@@ -1802,6 +1820,7 @@ exports.negocioRemoverDoc = onCall(async (req) => {
   let removido = null;
   await db.runTransaction(async (tx) => {
     const s = await tx.get(ref);
+    if (!s.exists) throw new HttpsError('not-found', 'Negócio não encontrado.');
     const lista = Array.isArray(s.data().documentos) ? [...s.data().documentos] : [];
     const idx = lista.findIndex(x => x && x.id === docId);
     if (idx < 0) throw new HttpsError('not-found', 'Documento não encontrado.');
@@ -1840,7 +1859,9 @@ function _docCliLabel(k) {
 exports.documentosClientes = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const uid = auth.uid;
-  const veTudo = ehGestorAuth(auth) || (auth.token && (auth.token.locRole === 'administrativo' || auth.token.admin));
+  // Admin do Hub NÃO herda visão total da Locação (regra do projeto: permissão
+  // granular por pessoa; só o bootstrap admin conta como gestor via ehGestorAuth).
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const TIPOS = ['pf', 'pj', 'locacao_fiador', 'proposta', 'fianca'];
   let fichaDocs = [];
   if (veTudo) {
@@ -3265,14 +3286,16 @@ exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (
 
   // Vendedores: vêm da ficha do vendedor que originou o imóvel (dados pessoais ficam
   // na ficha, não em `pessoas`). Imóvel manual não tem ficha → sai sem vendedores.
+  // SÓ a ficha vinculada pelo próprio imóvel (imovel.fichaId, carimbada pelo trigger
+  // onFichaVendedorEnviadaAdmin). Um imóvel só é escrito por Cloud Function, então
+  // ninguém injeta um fichaId num imóvel manual. NÃO cair num fallback por
+  // where('imovelId','==',...): a salvarFichaPublica é anônima e aceita imovelId
+  // arbitrário, então qualquer um criaria uma ficha de vendedor apontando pro imóvel
+  // e envenenaria os dados do contrato. Imóvel manual (sem fichaId) sai como semFicha.
   let fichaDados = null;
   if (imovel.fichaTipo === 'vendedor' && imovel.fichaId) {
     const fSnap = await db.collection('fichas').doc(imovel.fichaId).get();
     if (fSnap.exists) fichaDados = fSnap.data().dados || {};
-  }
-  if (!fichaDados) {
-    const q = await db.collection('fichas').where('imovelId', '==', imovelId).where('tipo', '==', 'vendedor').limit(1).get();
-    if (!q.empty) fichaDados = q.docs[0].data().dados || {};
   }
 
   const vendedores = [];
