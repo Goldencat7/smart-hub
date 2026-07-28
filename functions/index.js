@@ -1806,6 +1806,67 @@ exports.negocioRemoverDoc = onCall(async (req) => {
   return { ok: true };
 });
 
+// Nome amigável pra chave de documento de ficha (tira prefixo de proponente/sócio/
+// cônjuge e traduz os stems conhecidos; senão humaniza a chave).
+const _DOC_CLI_LABEL = {
+  rgcpf: 'RG / CPF', rg: 'RG', cpf: 'CPF', cnh: 'CNH / Habilitação',
+  compendereco: 'Comprovante de endereço', comprenda: 'Comprovante de renda',
+  compestadocivil: 'Comprovante de estado civil', cnpj_card: 'Cartão CNPJ',
+  contrato: 'Contrato social', emp_renda: 'Comprovante de renda (empresa)',
+  ir: 'Imposto de renda', extrato: 'Extrato bancário'
+};
+function _docCliLabel(k) {
+  const stem = String(k).replace(/^(p\d+_|s\d+_|loc\d+_|conj_)/, '');
+  const low = stem.toLowerCase();
+  if (_DOC_CLI_LABEL[low]) return _DOC_CLI_LABEL[low];
+  return stem.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
+}
+
+// Sanfona "Documentos dos clientes" da tela Documentos: lista as fichas de
+// locatário/comprador (pf/pj/fiador/proposta/fiança) COM anexos, o nome do cliente,
+// o imóvel a que está vinculado (se é interessado de algum) e os documentos reais
+// (URL de download da própria ficha). Role-scoped (regra de ouro): corretor vê as
+// suas + compartilhadas; gestor/administrativo veem todas.
+exports.documentosClientes = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const uid = auth.uid;
+  const veTudo = ehGestorAuth(auth) || (auth.token && (auth.token.locRole === 'administrativo' || auth.token.admin));
+  const TIPOS = ['pf', 'pj', 'locacao_fiador', 'proposta', 'fianca'];
+  let fichaDocs = [];
+  if (veTudo) {
+    const snaps = await Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).limit(200).get()));
+    fichaDocs = snaps.flatMap(s => s.docs);
+  } else {
+    const [minhas, comp] = await Promise.all([
+      Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).where('corretorUid', '==', uid).limit(200).get())),
+      Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).where('visivelPara', 'array-contains', uid).limit(200).get()))
+    ]);
+    const vistos = new Set();
+    for (const s of [...minhas, ...comp]) for (const dd of s.docs) if (!vistos.has(dd.id)) { vistos.add(dd.id); fichaDocs.push(dd); }
+  }
+  // Ligação ficha -> imóvel (a ficha é interessada de algum imóvel).
+  const imSnap = await (veTudo ? db.collection('imoveis') : db.collection('imoveis').where('corretorUid', '==', uid)).get();
+  const link = {};
+  imSnap.forEach(dc => {
+    const im = dc.data(); const e = im.endereco || {};
+    const resumo = [e.logradouro, e.numero].filter(Boolean).join(', ') || im.tipo || 'Imóvel';
+    (im.interessados || []).forEach(it => { if (it.fichaId && !link[it.fichaId]) link[it.fichaId] = { id: dc.id, resumo }; });
+  });
+  const clientes = fichaDocs.map(dc => {
+    const f = dc.data(); const dd = f.dados || {};
+    const documentos = Object.entries(f.documentos || {})
+      .filter(([, url]) => typeof url === 'string' && /^https?:/.test(url))
+      .map(([k, url]) => ({ nome: _docCliLabel(k), url }));
+    return {
+      fichaId: dc.id, tipo: f.tipo,
+      nome: _txt(dd.nome || dd.razaoSocial, 120) || 'Cliente',
+      imovel: link[dc.id] || null,
+      documentos
+    };
+  }).filter(c => c.documentos.length).sort((a, b) => a.nome.localeCompare(b.nome));
+  return { clientes };
+});
+
 // Tela 01 — Dashboard: tudo numa chamada só (broker vê geral; corretor só o dele).
 // Responde "o que precisa da minha atenção?": negócios parados, atividades, resumo.
 exports.dashboardDados = onCall(async (req) => {

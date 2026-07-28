@@ -33,6 +33,7 @@ const fnFichasInter = call('listarFichasInteressaveis'); // fichas do Cadastro p
 const fnGerarNeg    = call('negocioGerar');         // gerar negócio de um interessado aprovado (gestor)
 const fnAnexarDoc   = call('negocioAnexarDoc');     // gestor/adm sobe documento pra um negócio
 const fnRemoverDoc  = call('negocioRemoverDoc');    // gestor/adm remove documento do negócio
+const fnDocsClientes= call('documentosClientes');   // sanfona: clientes (fichas) + docs + imóvel vinculado
 const FTIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -1092,9 +1093,30 @@ RENDERERS.documentos = function(host){
     const lista=docs.filter(x=>x.categoria===cat); if(!lista.length) return;
     corpo += '<div class="card" style="padding:0;margin-bottom:16px;overflow:hidden"><div class="fx ac g2" style="padding:15px 20px"><span class="t500">'+icon(ico,18)+'</span><span class="up fz13 fw7 t800">'+label+'</span><span class="pill neutral nsh" style="margin-left:auto">'+lista.length+'</span></div>'+lista.map(x=>docRow(x,podeSubir)).join('')+'</div>';
   });
-  if(!docs.length) corpo = vazio('folder', podeSubir?'Nenhum documento ainda. Toque em “Enviar documento” para anexar o primeiro a um negócio.':'Nenhum documento nos seus negócios ainda. Os contratos e propostas anexados pelo gestor aparecem aqui.');
-  host.innerHTML = pageHead(hTitulo('Documentos'),'Contratos, propostas e documentos dos seus negócios.', btn) + corpo;
+  if(!docs.length) corpo = '<div class="card tcenter t500" style="padding:28px 16px"><div class="t400">'+icon('folder',24)+'</div><p class="fz13 fw5" style="margin-top:8px">'+(podeSubir?'Nenhum contrato/proposta anexado a um negócio ainda. Use “Enviar documento”.':'Nenhum contrato ou proposta nos seus negócios ainda.')+'</p></div>';
+  // Sanfona "Documentos dos clientes" — carrega async (fichas dos clientes + anexos).
+  const secCli = '<div class="fx ac g2" style="margin:26px 0 12px"><span class="t500">'+icon('users',18)+'</span><span class="up fz13 fw7 t800">Documentos dos clientes</span></div><div id="docsClientes"><div class="card tcenter t500" style="padding:24px"><span class="fz13">Carregando clientes…</span></div></div>';
+  host.innerHTML = pageHead(hTitulo('Documentos'),'Contratos, propostas e documentos dos seus negócios.', btn) + corpo + secCli;
+  carregarDocsClientes();
 };
+async function carregarDocsClientes(){
+  const box = document.getElementById('docsClientes'); if(!box) return;
+  try {
+    const r = await fnDocsClientes({});
+    const clientes = (r && r.data && r.data.clientes) || [];
+    box.innerHTML = renderDocsClientes(clientes);
+    refreshIcons();
+  } catch(e){ box.innerHTML = '<div class="card" style="padding:16px"><div class="fz13" style="color:#dc2626">'+esc(e.message||'Erro ao carregar clientes')+'</div></div>'; }
+}
+function renderDocsClientes(clientes){
+  if(!clientes.length) return '<div class="card tcenter t500" style="padding:24px"><p class="fz13 fw5">Nenhum cliente com documentos ainda. Os anexos das fichas (RG/CPF, comprovantes…) aparecem aqui por cliente.</p></div>';
+  return '<div class="card" style="padding:0;overflow:hidden">'+clientes.map(c=>{
+    const vinc = c.imovel ? ('Imóvel: '+esc(c.imovel.resumo||'—')) : 'Não vinculado a imóvel';
+    const n = c.documentos.length;
+    const rows = c.documentos.map(d=>'<div class="fx ac g3" style="padding:11px 20px 11px 56px;border-top:1px solid var(--ink100)">'+icon('file-text',15,'t400')+'<span class="grow trunc fz13 t700">'+esc(d.nome)+'</span><a class="btn btn-outline sm nsh" href="'+esc(d.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',15)+'Baixar</a></div>').join('');
+    return '<details style="border-top:1px solid var(--ink100)"><summary class="fx ac g3" style="cursor:pointer;padding:13px 20px;list-style:none">'+avatar(c.nome,36,'var(--ink800)')+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(c.nome)+'</div><div class="fz12 t500 trunc">'+vinc+' · '+n+' doc'+(n>1?'s':'')+'</div></div><span class="nsh t400">'+icon('chevron-down',18)+'</span></summary>'+rows+'</details>';
+  }).join('')+'</div>';
+}
 function openDocUpload(){
   const deals = DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado');
   if(!deals.length){ toast('Não há negócio ativo para anexar documento','alert-triangle','var(--danger)'); return; }
