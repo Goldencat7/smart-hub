@@ -1750,7 +1750,10 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   const categoria = NEGOCIO_DOC_CATEGORIAS.includes(d.categoria) ? d.categoria : 'outro';
   const nome = _txt(d.nome, 160) || 'documento';
   const mime = _txt(d.mime, 100);
-  if (mime !== 'application/pdf' && !/^image\//.test(mime)) throw new HttpsError('invalid-argument', 'Só PDF ou imagem.');
+  // PDF ou imagem raster. SVG fica de fora de propósito: é XML e pode carregar script
+  // que rodaria ao abrir a URL do arquivo (a URL tem token público, como as fichas).
+  const ehImagem = /^image\//.test(mime) && mime !== 'image/svg+xml';
+  if (mime !== 'application/pdf' && !ehImagem) throw new HttpsError('invalid-argument', 'Só PDF ou imagem (JPG, PNG, WEBP…).');
   const b64 = typeof d.base64 === 'string' ? d.base64 : '';
   const buf = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
   if (!buf.length) throw new HttpsError('invalid-argument', 'Arquivo vazio ou inválido.');
@@ -1768,15 +1771,22 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   const porNome = await _nomeDoUid(auth.uid);
   const entrada = { id: docId, nome, categoria, url, path, tamanho: buf.length, mime, porUid: auth.uid, porNome, em: admin.firestore.Timestamp.now() };
 
-  await db.runTransaction(async (tx) => {
-    const s = await tx.get(ref);
-    const lista = Array.isArray(s.data().documentos) ? [...s.data().documentos] : [];
-    if (lista.length >= 100) throw new HttpsError('resource-exhausted', 'Limite de documentos do negócio atingido.');
-    lista.push(entrada);
-    const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
-    tl.push({ texto: `Documento anexado: ${nome}`, porNome, em: admin.firestore.Timestamp.now() });
-    tx.set(ref, { documentos: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-  });
+  try {
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      const lista = Array.isArray(s.data().documentos) ? [...s.data().documentos] : [];
+      if (lista.length >= 100) throw new HttpsError('resource-exhausted', 'Limite de documentos do negócio atingido.');
+      lista.push(entrada);
+      const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
+      tl.push({ texto: `Documento anexado: ${nome}`, porNome, em: admin.firestore.Timestamp.now() });
+      tx.set(ref, { documentos: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+  } catch (e) {
+    // Se a transação falhou (cap atingido, contenção), apaga o arquivo já gravado no
+    // Storage pra não deixar órfão sem referência em documentos[].
+    try { await admin.storage().bucket(FICHA_BUCKET).file(path).delete(); } catch (_) { /* nada a limpar */ }
+    throw e;
+  }
   await registrarAudit(auth, 'negocio_doc_anexar', { tipo: 'negocio', id: ref.id }, { nome, categoria });
   return { ok: true, documento: { ...entrada, em: entrada.em.toDate().toISOString() } };
 });
@@ -1834,12 +1844,12 @@ exports.documentosClientes = onCall(async (req) => {
   const TIPOS = ['pf', 'pj', 'locacao_fiador', 'proposta', 'fianca'];
   let fichaDocs = [];
   if (veTudo) {
-    const snaps = await Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).limit(200).get()));
+    const snaps = await Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).limit(500).get()));
     fichaDocs = snaps.flatMap(s => s.docs);
   } else {
     const [minhas, comp] = await Promise.all([
-      Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).where('corretorUid', '==', uid).limit(200).get())),
-      Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).where('visivelPara', 'array-contains', uid).limit(200).get()))
+      Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).where('corretorUid', '==', uid).limit(500).get())),
+      Promise.all(TIPOS.map(t => db.collection('fichas').where('tipo', '==', t).where('visivelPara', 'array-contains', uid).limit(500).get()))
     ]);
     const vistos = new Set();
     for (const s of [...minhas, ...comp]) for (const dd of s.docs) if (!vistos.has(dd.id)) { vistos.add(dd.id); fichaDocs.push(dd); }
