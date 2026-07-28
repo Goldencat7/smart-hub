@@ -580,15 +580,23 @@ async function interessadoAcao(imovelId, index, status, okMsg){
 // Seletor "Adicionar interessado do Cadastro": lista as fichas de locatário/comprador
 // do corretor e, ao escolher, cria o interessado já vinculado à ficha (com "Ver ficha").
 async function openInteressadoPicker(imovelId){
-  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Adicionar interessado</div><div class="fz12 t500" style="margin-bottom:14px">Escolha uma ficha do Cadastro (locatário ou comprador). Ela entra como “Em análise”.</div><div id="intPickList" class="fz13 t500" style="max-height:52vh;overflow:auto">Carregando fichas…</div><div class="fx" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Fechar</button></div></div>');
+  // Filtra os tipos de ficha pela finalidade do imóvel (igual aos botões "Enviar ficha"):
+  // venda ⇒ só comprador (proposta); locação ⇒ só locatário (pf/pj/fiador/fiança);
+  // venda+locação/legado ⇒ ambos. E marca as fichas que já são interessadas deste imóvel.
+  const im = (typeof prop==='function' ? prop(imovelId) : null) || {};
+  const fin = im.finalidadeRaw || 'locacao';
+  const TIPOS_LOCA=['pf','pj','locacao_fiador','fianca'], TIPOS_VEN=['proposta'];
+  const permitidos = fin==='venda' ? TIPOS_VEN : (fin==='locacao' ? TIPOS_LOCA : TIPOS_VEN.concat(TIPOS_LOCA));
+  const jaAdicionadas = new Set((im.interessados||[]).map(it=>it.fichaId).filter(Boolean));
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Adicionar interessado</div><div class="fz12 t500" style="margin-bottom:14px">Escolha uma ficha do Cadastro'+(fin==='venda'?' (comprador)':fin==='locacao'?' (locatário)':' (locatário ou comprador)')+'. Ela entra como “Em análise”.</div><div id="intPickList" class="fz13 t500" style="max-height:52vh;overflow:auto">Carregando fichas…</div><div class="fx" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Fechar</button></div></div>');
   try {
     const r = await fnFichasInter({});
-    const list = (r && r.data) || [];
+    const list = ((r && r.data) || []).filter(f=>permitidos.includes(f.tipo));
     const box = document.getElementById('intPickList'); if(!box) return;
     _intPickCache = {};
-    if(!list.length){ box.innerHTML='<div class="tcenter t500" style="padding:20px">Nenhuma ficha de locatário/comprador no Cadastro ainda.</div>'; return; }
+    if(!list.length){ box.innerHTML='<div class="tcenter t500" style="padding:20px">Nenhuma ficha '+(fin==='venda'?'de comprador':fin==='locacao'?'de locatário':'de locatário/comprador')+' no Cadastro ainda.</div>'; return; }
     list.forEach(f=>{ _intPickCache[f.id]=f; });
-    box.innerHTML = list.map(f=>{ const tl=FTIPO_LABEL[f.tipo]||f.tipo; const sub=[f.telefone,f.email,f.cpf?('CPF '+f.cpf):''].filter(Boolean).join(' · '); return '<div class="fx ac g3" style="padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+avatar(f.nome,32,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(f.nome||'(sem nome)')+'</div><div class="fz11 t500 trunc">'+esc(tl+(sub?' · '+sub:''))+'</div></div><button class="btn btn-primary sm nsh" data-action="int-add-pick" data-imovel="'+esc(imovelId)+'" data-ficha="'+esc(f.id)+'">'+icon('plus',14)+'Adicionar</button></div>'; }).join('');
+    box.innerHTML = list.map(f=>{ const tl=FTIPO_LABEL[f.tipo]||f.tipo; const sub=[f.telefone,f.email,f.cpf?('CPF '+f.cpf):''].filter(Boolean).join(' · '); const ja=jaAdicionadas.has(f.id); const acao=ja?'<span class="pill nsh" style="background:var(--ink100);color:var(--ink500)">Adicionado</span>':'<button class="btn btn-primary sm nsh" data-action="int-add-pick" data-imovel="'+esc(imovelId)+'" data-ficha="'+esc(f.id)+'">'+icon('plus',14)+'Adicionar</button>'; return '<div class="fx ac g3" style="padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px'+(ja?';opacity:.6':'')+'">'+avatar(f.nome,32,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(f.nome||'(sem nome)')+'</div><div class="fz11 t500 trunc">'+esc(tl+(sub?' · '+sub:''))+'</div></div>'+acao+'</div>'; }).join('');
     refreshIcons();
   } catch(e){ const box=document.getElementById('intPickList'); if(box) box.innerHTML='<div class="fz13" style="color:#dc2626">'+esc(e.message||'Erro ao carregar fichas')+'</div>'; }
 }

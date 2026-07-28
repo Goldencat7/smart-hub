@@ -646,6 +646,17 @@ exports.imovelParaFicha = onCall(async (req) => {
   };
 });
 
+// Stringify estável: ordena as chaves recursivamente antes de serializar. Serve pra
+// comparar `dados`/`documentos` de duas versões da ficha sem falso-positivo por ordem
+// de chaves diferente (o cliente reconstrói o objeto e a ordem pode variar). Sem isto,
+// um re-save que não mudou nada poderia re-materializar o imóvel e reverter edições que
+// o corretor fez na Carteira.
+function _jsonEstavel(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(_jsonEstavel).join(',') + ']';
+  return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + _jsonEstavel(v[k])).join(',') + '}';
+}
+
 // Contador transacional de protocolo interno dos imóveis (números sequenciais).
 async function proximoNumeroProtocolo() {
   const ref = db.collection('counters').doc('imoveis');
@@ -703,8 +714,8 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
     // sempre materializa (cobre criação nova, fichas antigas paradas e reenvio com dados novos).
     const imovelRef = db.collection('imoveis').doc(fichaId);
     const existente = await imovelRef.get();
-    const mudou = JSON.stringify(before?.dados || {}) !== JSON.stringify(dados)
-      || JSON.stringify(before?.documentos || {}) !== JSON.stringify(after.documentos || {});
+    const mudou = _jsonEstavel(before?.dados || {}) !== _jsonEstavel(dados)
+      || _jsonEstavel(before?.documentos || {}) !== _jsonEstavel(after.documentos || {});
     if (existente.exists && !mudou) return;
     // Pessoas (locadores) — ids determinísticos p/ idempotência
     const locadorIds = [];
@@ -773,8 +784,8 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
     const existente = await imovelRef.get();
     // Idempotência que preserva edições do corretor: só reescreve se o imóvel ainda não
     // existe (criação/retroativo) ou se os dados/anexos da ficha mudaram (reenvio).
-    const mudou = JSON.stringify(before?.dados || {}) !== JSON.stringify(dados)
-      || JSON.stringify(before?.documentos || {}) !== JSON.stringify(after.documentos || {});
+    const mudou = _jsonEstavel(before?.dados || {}) !== _jsonEstavel(dados)
+      || _jsonEstavel(before?.documentos || {}) !== _jsonEstavel(after.documentos || {});
     if (existente.exists && !mudou) return;
     const base = {
       ...loc_montarImovel(dados),
@@ -1250,6 +1261,11 @@ exports.carteiraInteressado = onCall(async (req) => {
       // guarda fichaId + contatos pra o "Ver ficha" funcionar igual aos interessados automáticos.
       const extra = {};
       const _fid = _txt(req.data.fichaId, 200);   if (_fid) extra.fichaId = _fid;
+      // Dedupe: a mesma ficha do Cadastro não entra duas vezes como interessada
+      // (reabrir o seletor e clicar de novo criaria uma pessoa repetida).
+      if (_fid && lista.some(it => it.fichaId === _fid)) {
+        throw new HttpsError('failed-precondition', 'Esta ficha já é interessada deste imóvel.');
+      }
       const _ftp = _txt(req.data.fichaTipo, 30);  if (_ftp) extra.fichaTipo = _ftp;
       const _eml = _txt(req.data.email, 160);      if (_eml) extra.email = _eml;
       const _cpf = _txt(req.data.cpf, 40);         if (_cpf) extra.cpf = _cpf;
