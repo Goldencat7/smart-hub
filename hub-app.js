@@ -56,7 +56,6 @@ const locListarAlertas = httpsCallable(fns, 'locListarAlertas');
 const locTratarAlerta = httpsCallable(fns, 'locTratarAlerta');
 const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
 const locSolicitarVistoriaCheckVisto = httpsCallable(fns, 'locSolicitarVistoriaCheckVisto');
-const locMeuPerfil = httpsCallable(fns, 'locMeuPerfil');
 const locDashboard = httpsCallable(fns, 'locDashboard');
 const locRelatorios = httpsCallable(fns, 'locRelatorios');
 const criarEvento = httpsCallable(fns, 'criarEvento');
@@ -1493,7 +1492,6 @@ onAuthStateChanged(auth, async (user) => {
   // Tudo dispara em PARALELO: eram 4 esperas em sequência (2 delas Cloud
   // Functions, que com cold start levam segundos cada) e as abas por
   // permissão (Locação/ClickSign/Suporte) demoravam a aparecer na sidebar.
-  const _perfilP = locMeuPerfil().catch(() => null);
   const _extrasP = Promise.all([carregarStatusApps(), carregarBanner()]).catch(() => {});
   try {
     const perm = await getMinhasPermissoes();
@@ -1513,8 +1511,13 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   btnAdmin.hidden = !(isAdmin || temPermTI);
-  const mp = await _perfilP;
-  locRoleAtual = mp?.data?.role || 'corretor';
+  // Papel na Gestão de Locações: vem SÓ da claim `locRole` (mesma lógica do servidor
+  // em ehGestorAuth/locMeuPerfil — bootstrap admin conta como gestor). Lê direto do
+  // token (já buscado com getIdTokenResult acima), sem depender de uma Cloud Function:
+  // um cold start / blip na locMeuPerfil rebaixava gestor/administrativo pra visão de
+  // corretor (só dados próprios) até relogar. A claim já está no token, não falha.
+  locRoleAtual = (tokenResult.claims.locRole === 'gestor' || BOOTSTRAP_ADMIN_UIDS.includes(user.uid)) ? 'gestor'
+               : (tokenResult.claims.locRole === 'administrativo' ? 'administrativo' : 'corretor');
   renderSidebar(); // re-render JÁ: com isAdmin/permissões, itens restritos (Locação/ClickSign) aparecem
   await _extrasP; // status dos apps + banner (afetam só o centro, não a sidebar)
   renderCentro();
@@ -1525,7 +1528,11 @@ onAuthStateChanged(auth, async (user) => {
   window.__statusTimer = setInterval(async () => {
     const antes = JSON.stringify(statusApps);
     await carregarStatusApps();
-    if (JSON.stringify(statusApps) !== antes) renderCentro();
+    // Não re-renderiza o centro enquanto o Broker embutido está aberto: o aviso de
+    // status vive no grid de apps (invisível dentro do Broker), e um renderCentro aqui
+    // re-navegaria o Broker (window.Broker.navigate), descartando estado transitório —
+    // ex.: um comentário sendo digitado. Ao sair da aba, renderCentro pega o status novo.
+    if (JSON.stringify(statusApps) !== antes && !(categoriaAtiva === 'locacoes' && brokerMontado)) renderCentro();
   }, 180000);
 
   // Atualiza banners a cada 3 min (para pegar banners novos sem relogar)

@@ -1233,6 +1233,21 @@ exports.carteiraSituacao = onCall(async (req) => {
   return { ok: true, situacao };
 });
 
+// Revalida que o interessado no índice `i` ainda é o que o cliente viu na tela.
+// O índice vem do cliente e ENVELHECE se um interessado anterior foi removido entre
+// o render e o clique (splice desloca todo mundo pra baixo) — sem esta guarda, uma
+// ação (aprovar/reprovar/remover/gerar negócio) acertaria a pessoa ERRADA em silêncio.
+// Confere fichaId (único) quando disponível e sempre o nome. Cliente antigo que não
+// manda as dicas (esperaFichaId/esperaNome) passa como antes — aditivo, sem quebrar.
+function _interessadoConfere(alvo, d) {
+  if (!alvo) return false;
+  const efid = _txt(d && d.esperaFichaId, 200);
+  if (efid && (alvo.fichaId || '') !== efid) return false;
+  const enome = _txt(d && d.esperaNome, 120);
+  if (enome && (alvo.nome || '') !== enome) return false;
+  return true;
+}
+
 // Interessados: vários por imóvel (spec). MVP: array no doc (cap 50), add/remover por índice.
 // Transacional: o trigger onFichaInteressadoRecebida escreve o MESMO array — sem
 // transação, um clique simultâneo à chegada de uma ficha perderia um dos dois.
@@ -1282,6 +1297,7 @@ exports.carteiraInteressado = onCall(async (req) => {
     } else if (acao === 'remover') {
       const i = Number(req.data.index);
       if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+      if (!_interessadoConfere(lista[i], req.data)) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
       if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Este interessado tem um negócio gerado — cancele o negócio antes de removê-lo.');
       if (INTERESSADO_SO_BROKER.includes(lista[i].status) && !ehGestor) throw new HttpsError('permission-denied', 'Remover um interessado já avaliado é decisão do broker.');
       evento = `Interessado ${lista[i].nome} removido`;
@@ -1290,6 +1306,7 @@ exports.carteiraInteressado = onCall(async (req) => {
       // Tela 03: muda o status do interessado. Aprovar/Reprovar = só broker (Manual de Regras).
       const i = Number(req.data.index);
       if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
+      if (!_interessadoConfere(lista[i], req.data)) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
       const status = req.data.status;
       if (!INTERESSADO_STATUS.includes(status) || status === 'negocio_gerado') throw new HttpsError('invalid-argument', 'Status inválido.');
       if (INTERESSADO_SO_BROKER.includes(status) && !ehGestor) {
@@ -1437,11 +1454,16 @@ exports.negocioGerar = onCall(async (req) => {
   const { imovelId, interessadoIndex } = req.data || {};
   const { ref, snap } = await _carteiraImovelComPosse(imovelId, auth);
   const im = snap.data();
+  // Defesa em profundidade: não gera negócio ativo pra imóvel arquivado (ficaria órfão
+  // na lista de negócios apontando pra um imóvel invisível na Carteira). A UI já filtra
+  // arquivados, então isto só barra chamada crua/estado de borda.
+  if (im.arquivado) throw new HttpsError('failed-precondition', 'Imóvel arquivado — restaure antes de gerar negócio.');
 
   const lista = Array.isArray(im.interessados) ? [...im.interessados] : [];
   const i = Number(interessadoIndex);
   if (!Number.isInteger(i) || i < 0 || i >= lista.length) throw new HttpsError('invalid-argument', 'Interessado não encontrado.');
   const interessado = lista[i];
+  if (!_interessadoConfere(interessado, req.data)) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
   if (interessado.status !== 'aprovado') throw new HttpsError('failed-precondition', 'Somente um interessado APROVADO pode gerar negócio.');
 
   const finalidade = im.finalidade || 'locacao';
@@ -1479,10 +1501,13 @@ exports.negocioGerar = onCall(async (req) => {
     if (ativo) throw new HttpsError('failed-precondition', `Este imóvel já tem um negócio ativo (${ativo.data().codigo}).`);
     const s2 = await tx.get(ref);
     const im2 = s2.data() || {};
+    if (im2.arquivado) throw new HttpsError('failed-precondition', 'Imóvel arquivado — restaure antes de gerar negócio.');
     const lista2 = Array.isArray(im2.interessados) ? [...im2.interessados] : [];
     const it = lista2[i];
     // Revalida dentro da transação: a lista pode ter mudado entre o clique e agora.
-    if (!it || it.nome !== interessado.nome) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
+    // Confere identidade (fichaId único quando houver + nome) — não só o nome, senão
+    // dois interessados de mesmo nome com o índice deslocado atacariam o registro errado.
+    if (!_interessadoConfere(it, req.data) || (it && it.nome !== interessado.nome)) throw new HttpsError('failed-precondition', 'A lista de interessados mudou — recarregue a tela e tente de novo.');
     if (it.status !== 'aprovado') throw new HttpsError('failed-precondition', 'Somente um interessado APROVADO pode gerar negócio.');
 
     const e = im2.endereco || {};
