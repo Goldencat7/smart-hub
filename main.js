@@ -398,12 +398,17 @@ ipcMain.on('abrir-template', async (_e, payload) => {
   }
   try {
     if (ehUrlHttps || ehUrlHttp) {
-      // Só permite hostnames do Firebase Storage (defesa contra abrir qualquer site)
+      // Allowlist EXATA (não sufixo): `endsWith('.web.app')` liberava qualquer
+      // attacker.web.app, e o preload do template semeia o prefill do corretor
+      // (nome/telefone/foto) no localStorage da página aberta. Só Storage + os hosts
+      // do nosso projeto (prod/staging).
       const u = new URL(raw);
-      const hostOk = u.hostname === 'firebasestorage.googleapis.com'
-        || u.hostname.endsWith('.firebaseapp.com')
-        || u.hostname.endsWith('.web.app');
-      if (!hostOk) throw new Error('Host não permitido: ' + u.hostname);
+      const HOSTS_TEMPLATE_OK = new Set([
+        'firebasestorage.googleapis.com',
+        'remax-smart-hub.web.app', 'remax-smart-hub.firebaseapp.com',
+        'remax-smart-hub-staging.web.app', 'remax-smart-hub-staging.firebaseapp.com'
+      ]);
+      if (!HOSTS_TEMPLATE_OK.has(u.hostname)) throw new Error('Host não permitido: ' + u.hostname);
       await w.loadURL(raw);
     } else {
       const { url } = await iniciarServidorMarketing();

@@ -3101,7 +3101,10 @@ exports.listUsers = onCall(async (req) => {
 // Registra o último app que o usuário abriu (chamado pelo Hub ao abrir um app)
 exports.registrarAcesso = onCall(async (req) => {
   const auth = exigirAutenticado(req);
-  const { siteKey, titulo } = req.data || {};
+  // siteKey/titulo são texto livre do cliente e vão parar na tabela de Usuários do
+  // Admin. O render lá ESCAPA (fix do XSS), mas aqui limitamos o tamanho por higiene.
+  const siteKey = _txt(req.data && req.data.siteKey, 80);
+  const titulo = _txt(req.data && req.data.titulo, 120);
   if (!siteKey) throw new HttpsError('invalid-argument', 'siteKey é obrigatório.');
   await db.collection('user_activity').doc(auth.uid).set({
     lastApp: siteKey,
@@ -4907,7 +4910,12 @@ exports.criarContaComCodigo = onCall(async (req) => {
       });
     });
   } catch (e) {
-    await admin.auth().deleteUser(user.uid).catch(() => {}); // rollback da conta
+    // Rollback da conta. Se o delete TAMBÉM falhar, sobra uma conta autenticada que não
+    // consumiu código — e o getCredentials confia em qualquer autenticado. Não engolir:
+    // loga (dispara o alerta de monitoramento) pra um admin apagar a órfã na mão.
+    await admin.auth().deleteUser(user.uid).catch(delErr =>
+      logErro('criarContaComCodigo_rollback', delErr, { uid: user.uid, email }).catch(() => {})
+    );
     throw e;
   }
 
@@ -5112,8 +5120,11 @@ exports.salvarFichaPublica = onCall(async (req) => {
   }
 
   // ── Criação ──
-  if (typeof corretorUid !== 'string' || !corretorUid) {
-    throw new HttpsError('invalid-argument', 'corretorUid obrigatório.');
+  // Valida o FORMATO do uid antes de usá-lo como doc id (em _limitarCriacaoFicha) —
+  // um uid com nº ímpar de segmentos "/" faz o .doc() estourar e vira um 500 opaco
+  // em vez de um erro limpo. UID do Firebase é alfanumérico.
+  if (typeof corretorUid !== 'string' || !/^[A-Za-z0-9]{1,128}$/.test(corretorUid)) {
+    throw new HttpsError('invalid-argument', 'corretorUid inválido.');
   }
   // Limite anti-abuso: no máximo LIMITE_FICHAS_HORA fichas NOVAS por corretor por
   // hora. A ficha é anônima (sem login), então sem isto um script poderia despejar

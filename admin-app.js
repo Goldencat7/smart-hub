@@ -1317,7 +1317,7 @@ async function carregarCredenciais() {
       const status = dado?.temSenha
         ? `<span class="badge ok">✓ Cadastrada</span>`
         : `<span class="badge falta">! Não cadastrada</span>`;
-      const login = dado?.login ? `<code>${dado.login}</code>` : '<em class="muted">—</em>';
+      const login = dado?.login ? `<code>${escHtml(dado.login)}</code>` : '<em class="muted">—</em>';
 
       const card = document.createElement('div');
       card.className = 'admin-card';
@@ -1431,16 +1431,16 @@ async function carregarUsuarios() {
         <tbody>
           ${usuarios.map(u => `
             <tr>
-              <td><span class="presence-dot ${presenceMap[u.uid] ? 'online' : 'offline'}" data-uid="${u.uid}" title="${presenceMap[u.uid] ? 'Online' : 'Offline'}"></span> ${u.email || '<em>sem email</em>'}</td>
+              <td><span class="presence-dot ${presenceMap[u.uid] ? 'online' : 'offline'}" data-uid="${u.uid}" title="${presenceMap[u.uid] ? 'Online' : 'Offline'}"></span> ${u.email ? escHtml(u.email) : '<em>sem email</em>'}</td>
               <td>
                 <input type="checkbox" ${u.isAdmin ? 'checked' : ''} data-uid="${u.uid}" class="toggle-admin">
               </td>
               <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString('pt-BR') : '—'}</td>
               <td>${u.lastAppAt ? fmtDataHora(u.lastAppAt) : (u.lastSignIn ? new Date(u.lastSignIn).toLocaleDateString('pt-BR') : 'nunca')}</td>
-              <td>${u.lastApp ? `${u.lastApp} · ${fmtDataHora(u.lastAppAt)}` : '<span class="muted">—</span>'}</td>
+              <td>${u.lastApp ? `${escHtml(u.lastApp)} · ${fmtDataHora(u.lastAppAt)}` : '<span class="muted">—</span>'}</td>
               <td class="acoes-user">
-                <button class="topbar-btn" data-perm="${u.uid}" data-email="${u.email || ''}">Permissões</button>
-                <button class="topbar-btn perigo" data-uid="${u.uid}" data-email="${u.email}">Excluir</button>
+                <button class="topbar-btn" data-perm="${u.uid}" data-email="${escHtml(u.email || '')}">Permissões</button>
+                <button class="topbar-btn perigo" data-uid="${u.uid}" data-email="${escHtml(u.email || '')}">Excluir</button>
               </td>
             </tr>
           `).join('')}

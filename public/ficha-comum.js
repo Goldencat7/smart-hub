@@ -293,7 +293,17 @@ function wireEventos(){
     if(el.matches('[data-doc-ni]')){ const k=el.dataset.docNi; if(el.checked){ naoExiste.add(k); pendentes.delete(k); delete arquivos[k]; } else naoExiste.delete(k); renderDocs(); atualizarProgresso(); return; }
     if(el.matches('[data-doc]')){ if(el.files[0]){ arquivos[el.dataset.doc]=el.files[0]; renderDocs(); atualizarProgresso(); } return; }
     // select que afeta estrutura (estado civil → cônjuge)
-    if(el.dataset.key!=null){ valores[el.dataset.key]=el.value; if(el.hasAttribute('data-rerender')||/civil$/.test(el.dataset.key)) rerender(); }
+    if(el.dataset.key!=null){
+      valores[el.dataset.key]=el.value;
+      // Ao SAIR de casado/união estável, apaga os dados do cônjuge (prefixo+conj_*) —
+      // senão a PII do ex-cônjuge ia no envio e um CPF/e-mail residual travava o submit
+      // sem campo visível pra destacar (o bloco some). Espelha o que a ficha-pf já faz.
+      if(/civil$/.test(el.dataset.key) && !COM_CONJUGE.includes(el.value)){
+        const p=el.dataset.key.replace(/civil$/,'');
+        Object.keys(valores).forEach(k=>{ if(k.startsWith(p+'conj_')) delete valores[k]; });
+      }
+      if(el.hasAttribute('data-rerender')||/civil$/.test(el.dataset.key)) rerender();
+    }
   });
 
   form.addEventListener('focusout', e=>{ const el=e.target; if(el.dataset&&el.hasAttribute('data-cep')) lookupCEP(el); });
