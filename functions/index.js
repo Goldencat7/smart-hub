@@ -1371,10 +1371,12 @@ const CHECKLIST_NEGOCIO = {
   venda: [
     ['doc_pasta', 'Documentação salva na pasta', true],
     ['ficha', 'Ficha cadastral preenchida', true],
-    ['proposta', 'Proposta ajustada', true],
-    ['compromisso_emitido', 'Compromisso emitido', true],
+    // Due diligence do imóvel ANTES da proposta/compromisso: conferir certidões e
+    // matrícula cedo evita tocar o negócio adiante num imóvel com pendência.
     ['certidoes', 'Certidões', true],
     ['matricula_atualizada', 'Matrícula atualizada', true],
+    ['proposta', 'Proposta ajustada', true],
+    ['compromisso_emitido', 'Compromisso emitido', true],
     ['compromisso_aprovado', 'Compromisso aprovado', true],
     ['compromisso_assinado', 'Compromisso assinado', true],
     ['comissao1', '1ª parcela comissão', false],
