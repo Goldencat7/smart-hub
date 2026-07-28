@@ -100,6 +100,42 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
     - **Picker "Adicionar interessado do Cadastro"** (`broker-app.js`): filtra as fichas pela **finalidade** do imóvel
       (venda⇒comprador, locação⇒locatário) e marca "Adicionado"; `carteiraInteressado` (add) **recusa `fichaId`
       duplicado** no mesmo imóvel.
+  - **Invariantes da caça-bugs 2026-07-28 (parte 2) — v1.0.117** (não reintroduzir):
+    - **XSS armazenado nas fichas = SEMPRE escapar dado do cliente antes de `innerHTML`.** O **nome** vai cru nos
+      **cabeçalhos de documentos** das fichas (`d.heading`) e o **textarea** (ficha-proposta/obs) usava `esc()` — que
+      só escapa aspas, insuficiente pra conteúdo de elemento. Corrigido com `escHtml` em `ficha-comum.js` (`renderDocs`
+      heading + `campoTextarea`), `ficha-pf.html` (`_docCard`) e `ficha-locador.html` (`_docCardLoc`) — cobre as 7
+      fichas (pj/fiador/proposta/fiança renderizam pelo `renderDocs` do comum). No Hub, `hub-app.js` escapa o
+      `corretorNome` no KPI "Fichas de …" do Cadastro (o `nome=` do link é do cliente). ⚠️ `esc()` (só `"`) serve só
+      pra **atributo** `value="…"`; conteúdo de elemento (textarea, heading, `<div>…`) exige `escHtml`.
+    - **Upload de doc do negócio: NORMALIZAR o mime antes de barrar SVG** (`negocioAnexarDoc`). O tipo vem declarado
+      pelo cliente; comparar string crua deixava passar `image/SVG+XML` e `image/svg+xml;charset=utf-8`. Faz
+      `.toLowerCase().split(';')[0].trim()` e barra qualquer `image/*` que **contenha "svg"** (é XML, pode carregar
+      script na URL pública com token). ⚠️ **NÃO** trocar por allowlist curta (pdf/jpeg/png/…): recusa bmp/tiff/avif/heic
+      legítimos de celular — a normalização já fecha o furo, aceitar "qualquer imagem menos svg" é o certo. Cliente
+      valida o tipo antes de ler os ~15MB (mesma regra), mas a decisão final é do servidor.
+    - **Contrato de venda usa SÓ `imovel.fichaId`** (`gerarContratoVenda`), a ficha vinculada pelo trigger. **Removido
+      o fallback** `where('imovelId','==',…).where('tipo','==','vendedor')`: a `salvarFichaPublica` é anônima e aceita
+      `imovelId` arbitrário, então qualquer um criava uma ficha de vendedor apontando pro imóvel e envenenava
+      nome/CPF/RG do contrato. Imóvel só é escrito por Cloud Function ⇒ ninguém injeta `fichaId` num imóvel manual.
+      Efeito colateral aceito: imóvel de venda manual sai como `semFicha` (já era o comportamento documentado).
+    - **`documentosClientes`: admin do Hub NÃO herda visão total** (`veTudo = ehGestorAuth || locRole==='administrativo'`,
+      sem `auth.token.admin`) — alinha com "permissão granular, admin não herda" (só o bootstrap admin conta como gestor).
+    - **Interessado com `negocio_gerado` é removível se o negócio NÃO está mais ativo** (`carteiraInteressado` remover):
+      lê o negócio dentro da transação (antes do write) e só bloqueia se `status` ∉ {concluido,cancelado}. Negócio
+      concluído é só-leitura e não pode ser cancelado — sem essa saída o interessado ficava preso e o erro pedia
+      uma ação impossível.
+    - **Docs de negócio CANCELADO seguem acessíveis na tela Documentos** (`broker-app.js`): `todosDocs()` varre a lista
+      paralela `DEALS_DOCS` (todos os negócios, inclui cancelados; `DEALS` continua sem cancelado pro resto da UI) e
+      marca "⚠ Negócio cancelado". Sem isso o anexo (com PII) ficava órfão, sem baixar/remover pela UI.
+    - **Ficha enviada/finalizada: menu vira "👁 Ver ficha" (modo=corretor, leitura), não "✏ Editar"** (`hub-app.js`
+      `cadAbrirMenu`, gate `podeMexer`). Editar já falhava no Salvar (servidor recusa status não-editável) e o corretor
+      perdia o que digitou.
+    - **Limpeza do ex-cônjuge inclui os ANEXOS** (`docsExistentes`), não só campos/arquivos, ao sair de casado/união
+      (ficha-pf/locador/comum). ⚠️ Só limpa no cliente; o anexo **já persistido** no Storage NÃO é apagado (merge do
+      servidor é aditivo de propósito) — purga definitiva fica junto do **LGPD adiado**.
+    - Defensivos menores: `s.exists` nas transações de anexar/remover doc; `esc(ini(nome))` no avatar; `relData(null)→"—"`
+      (era "Hoje"); anti duplo-clique em Reprovar/Gerar interessado.
   - **T-06 — Admin → "SMART HUB — configs"** (2026-07-16, **só no staging**): CRUD de **Tipos de Imóvel** e **Cidades** (chips + adicionar/remover) e **Checklists de Locação/Venda editáveis** (nome, flag obrigatória, reordenar ↑↓); Finalidades são fixas (informativo). Coleção `smarthub_config` (read logado, write só via `configSalvar`, admin + audit). `negocioGerar` usa o checklist configurado (fallback = padrão do código; negócio já criado não muda). No Hub, os campos Tipo/Cidade do modal Novo Imóvel ganham datalist da config (sem config = texto livre). Selo "padrão do sistema — ainda não salvo" enquanto o doc não existe.
   - **Tela 05 — Relatórios** (2026-07-16, **só no staging**): sub-app **Relatórios** na aba Locação — período (hoje/7d/30d/mês/tudo/personalizado), filtros tipo/status/corretor, 6 indicadores, pipeline por status (chips+barras), produção por corretor, negócios que precisam de atenção (Abrir → 04B). **Exports** em cima do filtro ativo: CSV (BOM + `;`), Excel (.xls = tabela HTML), PDF (iframe imprimível → diálogo do sistema, funciona no .exe e no navegador). **Sem backend novo** — agrega `negocioListar` + `locListarImoveis` no cliente; a posse continua no servidor.
   - **VISÃO NOVA DO BROKER** (2026-07-24, **só no staging**; pedido do Nathan, mockup `Broker (1).html` do Downloads): reskin completo da aba **"Meus Negócios"** (era "Locação" — a categoria `locacoes` foi **renomeada** pra "Meus Negócios") num **SPA dark de tela cheia** (sidebar própria + topbar), fiel ao HTML enviado.
