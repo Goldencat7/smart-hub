@@ -1558,6 +1558,7 @@ exports.negocioListar = onCall(async (req) => {
       atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
       timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
       checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
+      documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
       comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })) : null,
     };
   }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
@@ -1584,6 +1585,7 @@ function _negocioSerializar(id, n, podeComentar) {
     comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })) : null,
     timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
     checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
+    documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
     criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
     atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
   };
@@ -1731,6 +1733,77 @@ exports.negocioAtualizar = onCall(async (req) => {
   }
   const novo = await ref.get();
   return { negocio: _negocioSerializar(ref.id, novo.data(), ehGestor || ehResponsavel), ehGestor, ehResponsavel, podeComentar: ehGestor || ehResponsavel };
+});
+
+// ─── Documentos do negócio (Tela Documentos) ─────────────────────────────────
+// Anexa um documento a UM negócio. Quem envia é o GESTOR ou o ADMINISTRATIVO
+// (o corretor responsável vê e baixa, mas não sobe — pedido do Nathan). O arquivo
+// chega em base64 e é gravado no Storage pela Admin SDK (mesma regra de ouro das
+// fichas: escrita de Locação SÓ via Cloud Function), com token de download próprio.
+const NEGOCIO_DOC_CATEGORIAS = ['contrato', 'proposta', 'cliente', 'outro'];
+exports.negocioAnexarDoc = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref, snap, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
+  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Enviar documentos é do gestor ou do administrativo.');
+  if (['concluido', 'cancelado'].includes(snap.data().status)) throw new HttpsError('failed-precondition', 'Negócio encerrado — não aceita novos documentos.');
+  const categoria = NEGOCIO_DOC_CATEGORIAS.includes(d.categoria) ? d.categoria : 'outro';
+  const nome = _txt(d.nome, 160) || 'documento';
+  const mime = _txt(d.mime, 100);
+  if (mime !== 'application/pdf' && !/^image\//.test(mime)) throw new HttpsError('invalid-argument', 'Só PDF ou imagem.');
+  const b64 = typeof d.base64 === 'string' ? d.base64 : '';
+  const buf = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
+  if (!buf.length) throw new HttpsError('invalid-argument', 'Arquivo vazio ou inválido.');
+  if (buf.length > 20 * 1024 * 1024) throw new HttpsError('invalid-argument', 'Arquivo acima de 20MB.');
+
+  const docId = crypto.randomUUID();
+  const safe = nome.replace(/[^\w.-]+/g, '_').slice(0, 120) || 'arquivo';
+  const path = `negocios/${ref.id}/${docId}_${safe}`;
+  const token = crypto.randomUUID();
+  await admin.storage().bucket(FICHA_BUCKET).file(path).save(buf, {
+    resumable: false,
+    metadata: { contentType: mime, metadata: { firebaseStorageDownloadTokens: token } }
+  });
+  const url = `https://firebasestorage.googleapis.com/v0/b/${FICHA_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+  const porNome = await _nomeDoUid(auth.uid);
+  const entrada = { id: docId, nome, categoria, url, path, tamanho: buf.length, mime, porUid: auth.uid, porNome, em: admin.firestore.Timestamp.now() };
+
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    const lista = Array.isArray(s.data().documentos) ? [...s.data().documentos] : [];
+    if (lista.length >= 100) throw new HttpsError('resource-exhausted', 'Limite de documentos do negócio atingido.');
+    lista.push(entrada);
+    const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
+    tl.push({ texto: `Documento anexado: ${nome}`, porNome, em: admin.firestore.Timestamp.now() });
+    tx.set(ref, { documentos: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  await registrarAudit(auth, 'negocio_doc_anexar', { tipo: 'negocio', id: ref.id }, { nome, categoria });
+  return { ok: true, documento: { ...entrada, em: entrada.em.toDate().toISOString() } };
+});
+
+// Remove um documento do negócio (gestor/administrativo) — apaga do array e do Storage.
+exports.negocioRemoverDoc = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
+  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Remover documentos é do gestor ou do administrativo.');
+  const docId = _txt(d.docId, 80);
+  const porNome = await _nomeDoUid(auth.uid);
+  let removido = null;
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    const lista = Array.isArray(s.data().documentos) ? [...s.data().documentos] : [];
+    const idx = lista.findIndex(x => x && x.id === docId);
+    if (idx < 0) throw new HttpsError('not-found', 'Documento não encontrado.');
+    removido = lista[idx];
+    lista.splice(idx, 1);
+    const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
+    tl.push({ texto: `Documento removido: ${removido.nome}`, porNome, em: admin.firestore.Timestamp.now() });
+    tx.set(ref, { documentos: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  if (removido && removido.path) { try { await admin.storage().bucket(FICHA_BUCKET).file(removido.path).delete(); } catch (_) { /* arquivo já sumiu */ } }
+  await registrarAudit(auth, 'negocio_doc_remover', { tipo: 'negocio', id: ref.id }, { nome: removido && removido.nome });
+  return { ok: true };
 });
 
 // Tela 01 — Dashboard: tudo numa chamada só (broker vê geral; corretor só o dele).

@@ -31,6 +31,8 @@ const fnFichaPdf    = call('gerarFichaPdf');        // gera o PDF de uma ficha p
 const fnInteressado = call('carteiraInteressado'); // add/remover/aprovar/reprovar interessado
 const fnFichasInter = call('listarFichasInteressaveis'); // fichas do Cadastro p/ o seletor "Adicionar interessado"
 const fnGerarNeg    = call('negocioGerar');         // gerar negócio de um interessado aprovado (gestor)
+const fnAnexarDoc   = call('negocioAnexarDoc');     // gestor/adm sobe documento pra um negócio
+const fnRemoverDoc  = call('negocioRemoverDoc');    // gestor/adm remove documento do negócio
 const FTIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -274,7 +276,7 @@ async function carregarPessoas(){
 /* ============================ UI INFRA ============================ */
 const RENDERERS = {};
 // Configurações e "sair da conta" ficam SÓ no Hub (pedido do Nathan) — não entram aqui.
-const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'} ];
+const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'} ];
 const CRUMB = { dashboard:['SMART HUB','Dashboard'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], configuracoes:['SMART HUB','Configurações'] };
 
 function renderNav(target){ if(!target) return; target.innerHTML = NAVITEMS.map(n=>'<button class="navitem'+(state.view===n.id?' active':'')+'" data-nav="'+n.id+'">'+icon(n.ico,18)+n.label+'</button>').join(''); }
@@ -1067,11 +1069,44 @@ function emBreveTela(host,titulo,desc,ico,txt,acoes){
   + '<div class="card" style="padding:48px 24px;text-align:center">'+iconChip(ico,'brand',52)+'<div class="fz16 fw7 t900" style="margin-top:14px">'+titulo+' — em breve</div><p class="fz14 t500" style="max-width:560px;margin:10px auto 0;line-height:1.55">'+txt+'</p></div>';
 }
 
-/* ---- Documentos (corretor + administrativo) — sem integração ainda ---- */
+/* ---- Documentos: contratos/propostas/docs dos negócios (dado REAL) ----
+   Fonte: o array `documentos[]` de cada negócio (subido pelo gestor/adm via
+   negocioAnexarDoc). Corretor vê/baixa os dos seus negócios; gestor/adm sobem e
+   removem. Agrupado nas 4 seções do mockup (Contratos, Propostas, Doc. do cliente,
+   Outros). Sem dado falso: vazio mostra estado honesto até alguém anexar. */
+const DOC_SECOES = [['contrato','Contratos','file-text'],['proposta','Propostas','file-signature'],['cliente','Documentação do cliente','id-card'],['outro','Outros','file']];
+function docFmtTam(b){ b=+b||0; if(b<1024) return b+' B'; if(b<1048576) return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function todosDocs(){ const out=[]; DEALS.forEach(d=>{ ((d.raw&&d.raw.documentos)||[]).forEach(x=>{ out.push({...x, dealId:d.id, dealCode:d.code, cliente:d.clienteNome}); }); }); return out; }
+function docRow(x,podeSubir){
+  const meta=[x.dealCode, x.cliente, docFmtTam(x.tamanho), relData(x.em)].filter(Boolean).join(' · ');
+  const baixar='<a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',16)+'</a>';
+  const rem = podeSubir ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(x.dealId)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',16)+'</button>' : '';
+  return '<div class="fx ac g3" style="padding:13px 20px;border-top:1px solid var(--ink100)">'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',38)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500 trunc">'+esc(meta)+'</div></div><div class="fx ac g1 nsh">'+baixar+rem+'</div></div>';
+}
 RENDERERS.documentos = function(host){
-  if(state.role==='administrativo') return emBreveTela(host,'Documentos','Central documental — categorias, versões e histórico.','folder','A central de documentos vai reunir aqui os anexos das fichas e os contratos de cada negócio. Hoje eles vivem dentro de cada negócio (aba Negócios) e no Google Drive.');
-  return emBreveTela(host,'Documentos','Contratos, propostas e documentos dos seus negócios.','folder','Aqui vão ficar os contratos, propostas e documentos dos seus negócios. Por enquanto, os anexos ficam dentro de cada negócio (aba Meus Negócios).');
+  const podeSubir = (state.role==='broker'||state.role==='administrativo');
+  const docs = todosDocs();
+  const btn = podeSubir ? '<button class="btn btn-primary" data-action="doc-upload-open">'+icon('upload',16)+'Enviar documento</button>' : '';
+  let corpo='';
+  DOC_SECOES.forEach(([cat,label,ico])=>{
+    const lista=docs.filter(x=>x.categoria===cat); if(!lista.length) return;
+    corpo += '<div class="card" style="padding:0;margin-bottom:16px;overflow:hidden"><div class="fx ac g2" style="padding:15px 20px"><span class="t500">'+icon(ico,18)+'</span><span class="up fz13 fw7 t800">'+label+'</span><span class="pill neutral nsh" style="margin-left:auto">'+lista.length+'</span></div>'+lista.map(x=>docRow(x,podeSubir)).join('')+'</div>';
+  });
+  if(!docs.length) corpo = vazio('folder', podeSubir?'Nenhum documento ainda. Toque em “Enviar documento” para anexar o primeiro a um negócio.':'Nenhum documento nos seus negócios ainda. Os contratos e propostas anexados pelo gestor aparecem aqui.');
+  host.innerHTML = pageHead(hTitulo('Documentos'),'Contratos, propostas e documentos dos seus negócios.', btn) + corpo;
 };
+function openDocUpload(){
+  const deals = DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado');
+  if(!deals.length){ toast('Não há negócio ativo para anexar documento','alert-triangle','var(--danger)'); return; }
+  const opts = deals.map(d=>'<option value="'+esc(d.id)+'">'+esc((d.code||'—')+' · '+(d.clienteNome||''))+'</option>').join('');
+  const cats = [['contrato','Contrato'],['proposta','Proposta'],['cliente','Documentação do cliente'],['outro','Outro']].map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Enviar documento</div>'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Negócio</div><select id="docDeal" class="input" style="margin-bottom:12px">'+opts+'</select>'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Categoria</div><select id="docCat" class="input" style="margin-bottom:12px">'+cats+'</select>'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF ou imagem, até 20MB)</span></div><input id="docFile" type="file" accept="application/pdf,image/*" class="input" style="margin-bottom:6px">'
+    +'<div id="docErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
+    +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="doc-upload-send">'+icon('upload',15)+'Enviar</button></div></div>');
+}
 
 /* ---- Clicksign (administrativo) — status vem do checklist REAL dos negócios ---- */
 RENDERERS.clicksign = function(host){
@@ -1176,6 +1211,25 @@ handleAction = function(a, el){
   if(a==='int-aprovar'){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='int-reprovar'){ if(confirm('Reprovar este interessado?')) interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'reprovado', 'Interessado reprovado', {nome:el.dataset.nome, fid:el.dataset.fid}); return; }
   if(a==='int-gerar'){ if(confirm('Gerar o negócio deste interessado? O imóvel entra em negociação.')) gerarNegocioUI(el.dataset.imovel, +el.dataset.idx, {nome:el.dataset.nome, fid:el.dataset.fid}); return; }
+  // Documentos do negócio (gestor/adm sobe; corretor só baixa)
+  if(a==='doc-upload-open'){ openDocUpload(); return; }
+  if(a==='doc-upload-send'){
+    const dealId=($('#docDeal')||{}).value, cat=($('#docCat')||{}).value, errEl=$('#docErr');
+    const f=($('#docFile')||{}).files && $('#docFile').files[0];
+    if(!f){ if(errEl) errEl.textContent='Escolha um arquivo.'; return; }
+    if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
+    el.disabled=true; if(errEl) errEl.textContent='Enviando…';
+    const rd=new FileReader();
+    rd.onload=async()=>{ try{
+        const b64=String(rd.result||'').split(',')[1]||'';
+        await fnAnexarDoc({negocioId:dealId, categoria:cat, nome:f.name, mime:f.type||'application/octet-stream', base64:b64});
+        toast('Documento enviado','check'); closeModal(); await carregarDados(); if(state.view==='documentos') navigate('documentos');
+      }catch(e){ if(errEl) errEl.textContent=e.message||'Erro ao enviar'; try{el.disabled=false;}catch(_e){} } };
+    rd.onerror=()=>{ if(errEl) errEl.textContent='Falha ao ler o arquivo.'; try{el.disabled=false;}catch(_e){} };
+    rd.readAsDataURL(f);
+    return;
+  }
+  if(a==='doc-remover'){ if(!confirm('Remover o documento “'+(el.dataset.nome||'')+'”?'))return; el.disabled=true; fnRemoverDoc({negocioId:el.dataset.deal, docId:el.dataset.doc}).then(async()=>{ toast('Documento removido','trash-2'); await carregarDados(); if(state.view==='documentos') navigate('documentos'); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   // Negócio (gestor): entregar / concluir / cancelar
   if(a==='neg-entregar'){ if(confirm('Entregar este negócio para a gestão? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'entregar'}, 'Entregue para a gestão'); return; }
   if(a==='neg-concluir'){ if(confirm('Concluir este negócio? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'concluir'}, 'Negócio concluído'); return; }
