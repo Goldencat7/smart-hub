@@ -440,7 +440,9 @@ function mostrarErro(msg){ const el=document.getElementById('erroFinal'); el.tex
 
 form.addEventListener('submit', async e=>{
   e.preventDefault();
-  if(!corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  // Corretor só é exigido na CRIAÇÃO; na edição (idFicha presente) o Hub abre sem
+  // corretor de propósito e a function faz UPDATE ignorando corretorUid (imutável).
+  if(!idFicha && !corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
   const rigidos = [['nome','nome'],['whatsapp','WhatsApp'],['email','e-mail']];
   const falta = rigidos.filter(([k])=> !(valores[k]&&(''+valores[k]).trim()));
   if(falta.length){ mostrarErro('Preencha pelo menos nome, WhatsApp e e-mail do cliente principal.'); return; }

@@ -325,7 +325,11 @@ function aplicarValores(dados){
 
 async function enviar(e){
   e.preventDefault();
-  if(!CFG._corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  // Corretor só é exigido na CRIAÇÃO (link do cliente traz ?corretor=). Na edição
+  // (idFicha presente) o Hub abre sem corretor de propósito — a function faz UPDATE e
+  // ignora corretorUid (imutável). Sem esta ressalva, salvar a edição pelo Hub falhava
+  // com "Solicite um novo link".
+  if(!CFG._idFicha && !CFG._corretorUid){ mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
   if(CFG.validar){ const err=CFG.validar(); if(err){ mostrarErro(err); return; } }
   const rig = CFG.rigidos || ['nome','whatsapp','email'];
   const falta = rig.filter(k=>!(valores[k]&&(''+valores[k]).trim()));

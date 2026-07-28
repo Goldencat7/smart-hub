@@ -697,7 +697,9 @@ function somenteLeituraOn() {
 // ── Envio ────────────────────────────────────────────────────────────
 document.getElementById('formFicha').addEventListener('submit', async function(e) {
   e.preventDefault();
-  if (!corretorUid) { mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
+  // Corretor só é exigido na CRIAÇÃO; na edição (idFicha presente) o Hub abre sem
+  // corretor de propósito e a function faz UPDATE ignorando corretorUid (imutável).
+  if (!idFicha && !corretorUid) { mostrarErro('Link inválido. Solicite um novo link ao seu corretor.'); return; }
   const rigidos = ['nome','dataNasc','estadoCivil','email','whatsapp','im_tipo','im_cep','im_endereco'];
   const falta = rigidos.filter(c => { const el = document.querySelector(`[name="${c}"]`); return el && !el.value.trim(); });
   if (falta.length) { mostrarErro('Preencha os campos obrigatórios: nome, data de nascimento, estado civil, contato, imóvel.'); document.querySelector(`[name="${falta[0]}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}); return; }
