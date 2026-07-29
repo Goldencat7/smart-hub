@@ -847,16 +847,27 @@ function renderCentro() {
 // ─── Banner principal ──────────────────────────────────────────────────────
 const bannerEl = document.getElementById('bannerPrincipal');
 
+let bannerAssinatura = '';   // id:rev dos banners carregados — o timer compara isso via chamada LEVE
+function _bannerAss(lista) { return (lista || []).map(b => b.id + ':' + (b.rev || 0)).join('|'); }
 async function carregarBanner() {
   try {
     const r = await listarBanners();
     bannerImagens = (r.data.banners || []).filter(b => b.imagem || b.mediaUrl);
+    bannerAssinatura = _bannerAss(r.data.banners);
   } catch (e) {
     console.warn('Banner:', e);
     bannerImagens = [];
   }
   bannerIdx = 0;
   iniciarRotacaoBanner();
+}
+// Checagem barata do timer: pede só id+rev ({leve:true}) e só rebaixa o payload
+// completo (base64 de até 600KB por banner) quando a assinatura mudou de fato.
+async function bannerMudou() {
+  try {
+    const r = await listarBanners({ leve: true });
+    return _bannerAss(r.data.banners) !== bannerAssinatura;
+  } catch (_) { return false; }
 }
 
 // Tabs que NÃO mostram o banner
@@ -1470,11 +1481,14 @@ onAuthStateChanged(auth, async (user) => {
   usuarioInfo.textContent = formatarNome(user.displayName) || user.email;
   atualizar2faUi();
 
-  // Marca presença online + heartbeat a cada 2 min
+  // Marca presença online + heartbeat a cada 2 min.
+  // (Todos os timers de rede abaixo pausam com a janela minimizada/oculta —
+  // `document.hidden` — pra não gastar invocação/leitura com ninguém olhando.
+  // O handler de foco no fim deste bloco já atualiza tudo quando a pessoa volta.)
   const marcarOnline = () => setDoc(doc(db, 'user_presence', user.uid), { online: true, updatedAt: fsTs() }, { merge: true }).catch(() => {});
   marcarOnline();
   clearInterval(window.__presenceTimer);
-  window.__presenceTimer = setInterval(marcarOnline, 120000);
+  window.__presenceTimer = setInterval(() => { if (!document.hidden) marcarOnline(); }, 120000);
 
   const tokenResult = await user.getIdTokenResult(true); // force refresh pra pegar claims atualizadas (ex: nova promoção a admin)
   isAdmin = !!tokenResult.claims.admin;
@@ -1526,6 +1540,7 @@ onAuthStateChanged(auth, async (user) => {
   // Atualiza os avisos de instabilidade a cada 3 min (sem precisar relogar)
   clearInterval(window.__statusTimer);
   window.__statusTimer = setInterval(async () => {
+    if (document.hidden) return;
     const antes = JSON.stringify(statusApps);
     await carregarStatusApps();
     // Não re-renderiza o centro enquanto o Broker embutido está aberto: o aviso de
@@ -1535,12 +1550,12 @@ onAuthStateChanged(auth, async (user) => {
     if (JSON.stringify(statusApps) !== antes && !(categoriaAtiva === 'locacoes' && brokerMontado)) renderCentro();
   }, 180000);
 
-  // Atualiza banners a cada 3 min (para pegar banners novos sem relogar)
+  // Atualiza banners a cada 3 min (para pegar banners novos sem relogar).
+  // Checagem LEVE (id+rev) primeiro — o base64 completo só desce se algo mudou.
   clearInterval(window.__bannerTimer2);
   window.__bannerTimer2 = setInterval(async () => {
-    const antesLen = bannerImagens.length;
-    await carregarBanner();
-    if (bannerImagens.length !== antesLen) atualizarBanner();
+    if (document.hidden) return;
+    if (await bannerMudou()) { await carregarBanner(); atualizarBanner(); }
   }, 180000);
 
   // fix 2: busca status Google antes de carregar eventos para incluir eventos do Google no mini calendário desde o início
@@ -1557,17 +1572,18 @@ onAuthStateChanged(auth, async (user) => {
   btnAviso.hidden = !isAdmin;
   verificarNotificacoes();
   clearInterval(window.__notifTimer);
-  window.__notifTimer = setInterval(verificarNotificacoes, 180000);
+  window.__notifTimer = setInterval(() => { if (!document.hidden) verificarNotificacoes(); }, 180000);
 
-  // Sininho de fichas: carrega ao entrar e atualiza a cada 60s
+  // Sininho de fichas: carrega ao entrar e atualiza a cada 5 min (era 60s — a
+  // maior fonte de leituras do Firestore; o handler de foco cobre o "cheguei agora").
   atualizarNotifFichas();
   clearInterval(window.__notifFichasTimer);
-  window.__notifFichasTimer = setInterval(atualizarNotifFichas, 60000);
+  window.__notifFichasTimer = setInterval(() => { if (!document.hidden) atualizarNotifFichas(); }, 300000);
 
   // Badge de chamados abertos (TI / admin)
   atualizarBadgeChamados();
   clearInterval(window.__chamadosTimer);
-  window.__chamadosTimer = setInterval(atualizarBadgeChamados, 120000);
+  window.__chamadosTimer = setInterval(() => { if (!document.hidden) atualizarBadgeChamados(); }, 120000);
 
   // Atualiza na hora quando a pessoa volta pro app (foco / aba visível),
   // pra não esperar o timer quando a ficha acabou de chegar. Wire uma vez só.

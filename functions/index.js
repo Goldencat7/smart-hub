@@ -1907,6 +1907,9 @@ exports.carteiraRemoverDoc = onCall(async (req) => {
     tx.set(ref, { documentosExtra: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   });
   if (removido && removido.path) { try { await admin.storage().bucket(FICHA_BUCKET).file(removido.path).delete(); } catch (_) { /* arquivo já sumiu */ } }
+  // Timeline espelha o "Documento anexado" — sem isto o Histórico do imóvel mostrava
+  // um anexo que "sumiu" sem rastro (o par do negócio já registrava a remoção).
+  try { await _imovelTimeline(ref, `Documento removido: ${(removido && removido.nome) || 'documento'}`, await _nomeDoUid(auth.uid)); } catch (_) { /* timeline é best-effort */ }
   await registrarAudit(auth, 'imovel_doc_remover', { tipo: 'imovel', id: ref.id }, { nome: removido && removido.nome });
   return { ok: true };
 });
@@ -3520,9 +3523,18 @@ exports.setTreinamentoLink = onCall(async (req) => {
 exports.listarBanners = onCall(async (req) => {
   exigirAutenticado(req);
   const snap = await db.collection('banners').orderBy('ordem').get();
+  // Modo LEVE ({leve:true}): só id+rev — o timer de 3 min do Hub usa isso pra saber
+  // se algo mudou SEM baixar o base64 (até 600KB por banner) toda vez. O payload
+  // completo só trafega quando a assinatura muda. (Corta ~GB/mês de egress.)
+  if (req.data && req.data.leve) {
+    return { banners: snap.docs.map(d => {
+      const x = d.data();
+      return { id: d.id, tipo: x.tipo || 'imagem', rev: x.updatedAt?.toMillis?.() || 0 };
+    })};
+  }
   return { banners: snap.docs.map(d => {
     const x = d.data();
-    return { id: d.id, tipo: x.tipo || 'imagem', imagem: x.imagem || '', mediaUrl: x.mediaUrl || '', duracao: x.duracao || null };
+    return { id: d.id, tipo: x.tipo || 'imagem', rev: x.updatedAt?.toMillis?.() || 0, imagem: x.imagem || '', mediaUrl: x.mediaUrl || '', duracao: x.duracao || null };
   })};
 });
 
@@ -4340,13 +4352,19 @@ async function _driveTriggerFicha(event, col) {
   if (!after) return;
   const temDocs = after.documentos && Object.values(after.documentos).some(u => typeof u === 'string' && /^https?:/.test(u));
   if (!temDocs || !after.corretorUid) return;
+  // Só segue se os DOCUMENTOS mudaram neste write (o trigger dispara em todo write da
+  // ficha — mudança de status, aprovação etc. relia google_tokens à toa em cada um).
+  const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+  if (before && _jsonEstavel(before.documentos || {}) === _jsonEstavel(after.documentos || {})) return;
   const tok = await db.collection('google_tokens').doc(after.corretorUid).get();
   if (!tok.exists || !tok.data().refreshToken || !tok.data().drive) return; // corretor não concedeu o Drive
   try { await _driveSyncFicha(after.corretorUid, event.params.fichaId, col); }
   catch (e) { console.error('driveTriggerFicha', (e && e.message) || e); }
 }
-exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '512MiB' }, (event) => _driveTriggerFicha(event, 'fichas'));
-exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '512MiB' }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
+// 256MiB: a maioria das execuções é early-return (sem docs novos / sem token do Drive);
+// o upload em si é streaming de arquivos de ficha (≤20MB) — 256MiB dá conta.
+exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas'));
+exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
 
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".

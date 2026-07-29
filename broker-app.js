@@ -117,10 +117,24 @@ function baixarTexto(texto, filename, mime){
   }catch(e){ toast('Não foi possível baixar o arquivo','alert-triangle','var(--danger)'); }
 }
 // CSV pt-BR: BOM (Excel abre com acento) + separador ';' + escape de aspas.
-function _csvCel(v){ const s=String(v==null?'':v).replace(/"/g,'""'); return /[";\r\n]/.test(s)?'"'+s+'"':s; }
+// Anti-injeção de fórmula: célula começando com = + - @ (ou tab/CR) ganha um
+// apóstrofo — o texto vem de FICHA PREENCHIDA POR CLIENTE ANÔNIMO (nome, endereço),
+// e sem isso o Excel do gestor executaria "=HYPERLINK(...)" ao abrir o export.
+function _csvCel(v){ let s=String(v==null?'':v); if(/^[=+\-@\t\r]/.test(s)) s="'"+s; s=s.replace(/"/g,'""'); return /[";\r\n]/.test(s)?'"'+s+'"':s; }
 function montarCSV(linhas){ return '﻿'+linhas.map(l=>l.map(_csvCel).join(';')).join('\r\n'); }
 function icon(n,sz=18,cls=''){ return '<i data-lucide="'+n+'" class="'+cls+'" style="width:'+sz+'px;height:'+sz+'px"></i>'; }
-function refreshIcons(){ if(window.lucide){ try{ window.lucide.createIcons(); }catch(e){} } }
+// Converte SÓ os ícones ainda não convertidos e SÓ dentro do #bkRoot. A versão
+// global (createIcons() sem root) varria o documento inteiro e RECONSTRUÍA todos
+// os <svg data-lucide> já prontos (o lucide mantém o atributo) a cada toast/drawer/
+// render — O(todos-os-ícones) por clique, e a UI ia "lagando" com o uso (causa do
+// travamento reportado em 2026-07-29). O guard de <i data-lucide> torna a chamada
+// no-op quando não há nada novo a converter.
+function refreshIcons(){
+  if(!window.lucide) return;
+  const root = ROOT(); if(!root) return;
+  if(!root.querySelector('i[data-lucide]')) return;   // tudo já convertido — nada a fazer
+  try{ window.lucide.createIcons({ root }); }catch(e){}
+}
 const STATUS = {
   // rótulos amigáveis (venda/locação) + status reais de negócio
   'Disponível':'success','Em negociação':'info',
@@ -313,9 +327,9 @@ function navigate(view){
   const sc=$('#scroller'); if(sc) sc.scrollTop=0; refreshIcons();
 }
 function openDrawer(html){ $('#drawerBody').innerHTML=html; const o=$('#overlay'); o.classList.remove('hide'); requestAnimationFrame(()=>{o.classList.add('show');$('#drawer').classList.add('show');}); refreshIcons(); }
-function closeDrawer(){ const d=$('#drawer'); if(d) d.classList.remove('show'); maybeHideOverlay(); }
+function closeDrawer(){ const d=$('#drawer'); if(d) d.classList.remove('show'); maybeHideOverlay(); setTimeout(()=>{ const dd=$('#drawer'); if(dd&&!dd.classList.contains('show')){ const b=$('#drawerBody'); if(b) b.innerHTML=''; } },240); }
 function openModal(html){ $('#modal').innerHTML=html; const o=$('#overlay'); o.classList.remove('hide'); requestAnimationFrame(()=>{o.classList.add('show');$('#modal').classList.add('show');}); refreshIcons(); }
-function closeModal(){ const m=$('#modal'); if(m) m.classList.remove('show'); maybeHideOverlay(); }
+function closeModal(){ const m=$('#modal'); if(m) m.classList.remove('show'); maybeHideOverlay(); setTimeout(()=>{ const mm=$('#modal'); if(mm&&!mm.classList.contains('show')) mm.innerHTML=''; },240); }
 function openMobileNav(){ $('#mobilenav').classList.add('show'); const o=$('#overlay'); o.classList.remove('hide'); requestAnimationFrame(()=>o.classList.add('show')); }
 function closeMobileNav(){ const m=$('#mobilenav'); if(m) m.classList.remove('show'); maybeHideOverlay(); }
 function maybeHideOverlay(){ const has=id=>{const el=$(id);return el&&el.classList.contains('show');}; const open=has('#drawer')||has('#modal')||has('#mobilenav'); if(!open){ const o=$('#overlay'); if(o){ o.classList.remove('show'); setTimeout(()=>{ if(!has('#drawer')&&!has('#modal')&&!has('#mobilenav')) o.classList.add('hide'); },220); } } }
@@ -732,13 +746,14 @@ RENDERERS.relatorios=function(host){
   const funil=[['Negócios ativos',KPI.ativos,'#2563EB'],['Em andamento',DEALS.filter(d=>['em_andamento','aguardando_corretor','aguardando_broker','aguardando_administrativo','negocio_criado'].includes(d.statusRaw)).length,'#7C3AED'],['Entregues',DEALS.filter(d=>d.statusRaw==='entregue_gestao').length,'#F59E0B'],['Concluídos',KPI.concluidos,'#16A34A']];
   const maxF=Math.max(1,...funil.map(f=>f[1]));
   function relKpi(label,val,sub,cor){ return '<div class="card" style="padding:18px"><div class="fz13 fw5 t500">'+label+'</div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:'+(cor||'var(--ink900)')+'">'+val+'</div><div class="fz12 t500" style="margin-top:4px">'+sub+'</div></div>'; }
-  const nomes=['Todos'].concat(perc.map(p=>p.nome));
-  const sel=(id,opts,val)=>'<select class="input" data-action="'+id+'" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option'+(o===val?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select>';
+  // Filtro por UID (o value), não por nome — dois corretores homônimos não se misturam.
+  const nomes=[['Todos','Todos']].concat(perc.map(p=>[p.uid,p.nome]));
+  const sel=(id,opts,val)=>'<select class="input" data-action="'+id+'" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option value="'+esc(o[0])+'"'+(o[0]===val?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
   host.innerHTML=pageHead(hTitulo('Relatórios'),'Visão executiva da operação — comissões, produção e funil.', sel('relcorr',nomes,corr)+'<button class="btn btn-outline" data-action="export-rel">'+icon('download',16)+'Exportar</button>')
   + '<div class="grid4" style="margin-bottom:16px">'+relKpi('Comissão prevista',brl(KPI.comissaoPrevista),'Pipeline total','var(--ink900)')+relKpi('Comissão recebida',brl(KPI.comissaoRecebida),'Concluídos','var(--successtx)')+relKpi('Comissão pendente',brl(KPI.comissaoPendente),'A receber','var(--warningtx)')+relKpi('Negócios encerrados',KPI.encerradosMes,'No período','var(--ink900)')+'</div>'
   + '<div class="card" style="padding:20px;margin-bottom:16px"><div class="fz13 fw5 t500">Repasse aos corretores (50%) <span class="pill neutral" style="font-size:10px">estimado</span></div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.pagoCorretores+KPI.pendenteCorretores)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+((KPI.pagoCorretores+KPI.pendenteCorretores)?Math.round(KPI.pagoCorretores/(KPI.pagoCorretores+KPI.pendenteCorretores)*100):0)+'%;background:var(--success)"></div><div class="grow" style="background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Concluídos '+brl(KPI.pagoCorretores)+'</span><span class="c-war fw6">A receber '+brl(KPI.pendenteCorretores)+'</span></div><div class="fz11 t400" style="margin-top:8px">Valores estimados (50% da comissão) — não é controle de pagamento.</div></div>'
   + '<div class="split" style="margin-bottom:16px">'
-    + '<div class="card" style="overflow:hidden">'+cardHead('Produção por corretor')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">'+(perc.length?perc.filter(p=>corr==='Todos'||p.nome===corr).map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow"><div class="fz14 fw6 t900">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem negócios no período.</div>')+'</div></div>'
+    + '<div class="card" style="overflow:hidden">'+cardHead('Produção por corretor')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">'+(perc.length?perc.filter(p=>corr==='Todos'||p.uid===corr).map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow"><div class="fz14 fw6 t900">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem negócios no período.</div>')+'</div></div>'
     + '<div class="card" style="overflow:hidden">'+cardHead('Funil operacional')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px">'+funil.map(f=>'<div><div class="fx jb fz12" style="margin-bottom:5px"><span class="t600 fw5">'+f[0]+'</span><span class="fw7 t900">'+f[1]+'</span></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(f[1]/maxF*100)+'%;background:'+f[2]+'"></div></div></div>').join('')+'</div></div>'
   + '</div>'
   + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:620px"><thead><tr><th>Corretor</th><th class="tright">Vendas</th><th class="tright">Locações</th><th class="tright">VGV</th><th class="tright">Comissão</th></tr></thead><tbody>'+(perc.length?perc.map(p=>'<tr style="cursor:default"><td><div class="fx ac g2">'+avatar(p.nome,26,'var(--ink800)',p.foto)+'<span class="fw6 t900">'+esc(p.nome)+'</span></div></td><td class="tright fw6">'+p.vendas+'</td><td class="tright fw6">'+p.loc+'</td><td class="tright mono t700">'+brl(p.vgv)+'</td><td class="tright mono fw7 t900">'+brlFull(p.com)+'</td></tr>').join('')+'<tr style="cursor:default;background:var(--ink50)"><td class="fw7 t900">Total</td><td class="tright fw7">'+perc.reduce((s,p)=>s+p.vendas,0)+'</td><td class="tright fw7">'+perc.reduce((s,p)=>s+p.loc,0)+'</td><td class="tright mono fw7">'+brl(perc.reduce((s,p)=>s+p.vgv,0))+'</td><td class="tright mono fw7 t900">'+brlFull(perc.reduce((s,p)=>s+p.com,0))+'</td></tr>':'<tr><td colspan="5" class="tcenter t500" style="padding:24px">Sem dados no período.</td></tr>')+'</tbody></table></div></div>';
@@ -830,7 +845,7 @@ function handleAction(a,el){
   }
   else if(a==='export-rel'){
     let ds=DEALS.slice(); const corr=state.relCorretor;
-    if(corr && corr!=='Todos') ds=ds.filter(d=>corrNome(d.corretor)===corr);
+    if(corr && corr!=='Todos') ds=ds.filter(d=>d.corretor===corr);   // filtro por uid (value do select)
     if(!ds.length){ toast('Sem negócios para exportar','alert-triangle','var(--warning)'); return; }
     const head=['Código','Tipo','Cliente','Imóvel','Bairro/Cidade','Corretor','Status','Valor','Comissão','Progresso %','Dias parado','Próxima ação'];
     const linhas=[head].concat(ds.map(d=>{ const im=propDoDeal(d)||{}; return [d.code,d.tipo,d.clienteNome,im.rua||'',im.bairro||d.cidade||'',corrNome(d.corretor),d.status,d.valor||0,d.comValor||0,d.progresso||0,d.diasParado||0,d.prox||'']; }));
@@ -1302,8 +1317,8 @@ handleAction = function(a, el){
     const f=($('#imDocFile')||{}).files && $('#imDocFile').files[0];
     if(!f){ if(errEl) errEl.textContent='Escolha um arquivo.'; return; }
     if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
-    const _tp=(f.type||'').toLowerCase();
-    if(!(_tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp!=='image/svg+xml'))){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
+    const _tp=(f.type||'').toLowerCase().split(';')[0].trim();   // normaliza igual ao servidor
+    if(!(_tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp.indexOf('svg')<0))){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
     el.disabled=true; if(errEl) errEl.textContent='Enviando…';
     const rd=new FileReader();
     rd.onload=async()=>{ try{
@@ -1343,8 +1358,8 @@ handleAction = function(a, el){
     if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
     // Valida o tipo AQUI (antes de ler os ~15MB): SVG e tipos fora da lista são
     // recusados pelo servidor de qualquer jeito — pegar cedo evita o upload inútil.
-    const _tp=(f.type||'').toLowerCase();
-    const _tpOk = _tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp!=='image/svg+xml');
+    const _tp=(f.type||'').toLowerCase().split(';')[0].trim();   // normaliza igual ao servidor
+    const _tpOk = _tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp.indexOf('svg')<0);
     if(!_tpOk){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
     el.disabled=true; if(errEl) errEl.textContent='Enviando…';
     const rd=new FileReader();
