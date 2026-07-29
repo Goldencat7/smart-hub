@@ -277,14 +277,14 @@
             <!-- Card: Meus indicadores (zerado; serão calculados dos negócios) -->
             <div class="config-card">
               <h3 class="config-card-titulo">Meus indicadores</h3>
-              <p class="muted config-dica" style="margin-top:-4px">Serão calculados a partir dos seus negócios.</p>
+              <p class="muted config-dica" style="margin-top:-4px">Calculados a partir dos seus negócios.</p>
               <div class="cfg-ind-grid">
-                <div class="cfg-ind"><span class="cfg-ind-l">Conversão</span><span class="cfg-ind-v">0%</span></div>
-                <div class="cfg-ind"><span class="cfg-ind-l">Ticket médio</span><span class="cfg-ind-v">R$ 0</span></div>
-                <div class="cfg-ind"><span class="cfg-ind-l">T. resposta</span><span class="cfg-ind-v">—</span></div>
-                <div class="cfg-ind"><span class="cfg-ind-l">Negócios ativos</span><span class="cfg-ind-v">0</span></div>
-                <div class="cfg-ind"><span class="cfg-ind-l">Vendas</span><span class="cfg-ind-v">0</span></div>
-                <div class="cfg-ind"><span class="cfg-ind-l">Locações</span><span class="cfg-ind-v">0</span></div>
+                <div class="cfg-ind"><span class="cfg-ind-l">Conversão</span><span class="cfg-ind-v" id="cfgIndConv">0%</span></div>
+                <div class="cfg-ind"><span class="cfg-ind-l">Ticket médio</span><span class="cfg-ind-v" id="cfgIndTicket">R$ 0</span></div>
+                <div class="cfg-ind"><span class="cfg-ind-l">T. resposta</span><span class="cfg-ind-v" title="Ainda não medimos tempo de resposta">—</span></div>
+                <div class="cfg-ind"><span class="cfg-ind-l">Negócios ativos</span><span class="cfg-ind-v" id="cfgIndAtivos">0</span></div>
+                <div class="cfg-ind"><span class="cfg-ind-l">Vendas</span><span class="cfg-ind-v" id="cfgIndVendas">0</span></div>
+                <div class="cfg-ind"><span class="cfg-ind-l">Locações</span><span class="cfg-ind-v" id="cfgIndLoc">0</span></div>
               </div>
             </div>
 
@@ -301,8 +301,8 @@
               <div class="cfg-chips" id="cfgEspecialidades"></div>
             </div>
 
-            <!-- Card: Preferências (ajustes; não persistidos por enquanto) -->
-            <div class="config-card">
+            <!-- Card: Preferências — escondido: os toggles não têm backend (e-mail/notificação) ainda. Reexibir quando forem construídos de verdade. -->
+            <div class="config-card" style="display:none">
               <h3 class="config-card-titulo">Preferências</h3>
               <label class="cfg-pref"><span>Notificações de novos leads</span><span class="cfg-switch"><input type="checkbox"><span class="cfg-switch-track"></span></span></label>
               <label class="cfg-pref"><span>Resumo diário por e-mail</span><span class="cfg-switch"><input type="checkbox"><span class="cfg-switch-track"></span></span></label>

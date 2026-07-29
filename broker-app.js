@@ -101,6 +101,18 @@ function ini(nome){ const p=(nome||'').trim().split(/\s+/); return (((p[0]||'')[
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 // Busca sem acento/caixa ("jose" acha "José") — aplicar na query E no texto pesquisado.
 function semAcento(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
+// ─── Repasse do corretor (% da comissão da imobiliária que fica com o corretor) ───
+// Regra definida pelo chefe: 45% para a lista abaixo, 40% para os demais. Casa pelo
+// PRIMEIRO nome, sem acento/caixa (ex.: "rafa" pega "Rafael"). É só editar esta lista
+// se a regra mudar; quem não estiver aqui recebe 40%.
+const REPASSE_45 = ['adriana','aline','alexandre','leandro','karina','rafa','kelvin','lynderson','mauricio','fernanda'];
+function repassePctPorNome(nome){
+  const primeiro = semAcento(nome).trim().split(/\s+/)[0] || '';
+  if(!primeiro) return 0.40;
+  const bate = REPASSE_45.some(t => primeiro===t || primeiro.startsWith(t) || t.startsWith(primeiro));
+  return bate ? 0.45 : 0.40;
+}
+function repassePct(uid){ return repassePctPorNome(corrNome(uid)); }
 // Baixa um PDF a partir de base64 (funciona no .exe e no navegador).
 function baixarPdfBase64(b64, filename){
   try{ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
@@ -266,8 +278,8 @@ function kpiDe(ds){
     ativos: ds.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='entregue_gestao').length,
     tempoMedioDias: 0,
   };
-  k.pagoCorretores = Math.round(k.comissaoRecebida*0.5);
-  k.pendenteCorretores = Math.round(k.comissaoPendente*0.5);
+  k.pagoCorretores = Math.round(ds.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+(d.comValor||0)*repassePct(d.corretor),0));
+  k.pendenteCorretores = Math.round(ds.filter(d=>d.statusRaw!=='concluido').reduce((s,d)=>s+(d.comValor||0)*repassePct(d.corretor),0));
   return k;
 }
 function atividadesDe(ds){
@@ -523,7 +535,7 @@ function corrNome(uid){ return CORRETORES[uid]?CORRETORES[uid].nome:'—'; }
 function corrFoto(uid){ return CORRETORES[uid]?CORRETORES[uid].foto:''; }
 function negRows(){
   const list=filteredDeals();
-  const meu=state.role==='corretor';   // corretor: sem coluna Corretor, comissão = repasse 50% (mockup)
+  const meu=state.role==='corretor';   // corretor: sem coluna Corretor, comissão = repasse por corretor (45%/40%)
   if(!list.length) return '<tr><td colspan="'+(meu?6:7)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
   return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div></td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
@@ -586,7 +598,7 @@ function openDeal(id){
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+'</div>'
-      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor (50%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
+      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor ('+Math.round(repassePct(d.corretor)*100)+'%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
     + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
@@ -767,7 +779,7 @@ RENDERERS.relatorios=function(host){
   const sel=(id,opts,val)=>'<select class="input" data-action="'+id+'" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option value="'+esc(o[0])+'"'+(o[0]===val?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
   host.innerHTML=pageHead(hTitulo('Relatórios'),'Visão executiva da operação — comissões, produção e funil.', sel('relcorr',nomes,corr)+'<button class="btn btn-outline" data-action="export-rel">'+icon('download',16)+'Exportar</button>')
   + '<div class="grid4" style="margin-bottom:16px">'+relKpi('Comissão prevista',brl(KPI.comissaoPrevista),'Pipeline total','var(--ink900)')+relKpi('Comissão recebida',brl(KPI.comissaoRecebida),'Concluídos','var(--successtx)')+relKpi('Comissão pendente',brl(KPI.comissaoPendente),'A receber','var(--warningtx)')+relKpi('Negócios encerrados',KPI.encerradosMes,'No período','var(--ink900)')+'</div>'
-  + '<div class="card" style="padding:20px;margin-bottom:16px"><div class="fz13 fw5 t500">Repasse aos corretores (50%) <span class="pill neutral" style="font-size:10px">estimado</span></div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.pagoCorretores+KPI.pendenteCorretores)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+((KPI.pagoCorretores+KPI.pendenteCorretores)?Math.round(KPI.pagoCorretores/(KPI.pagoCorretores+KPI.pendenteCorretores)*100):0)+'%;background:var(--success)"></div><div class="grow" style="background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Concluídos '+brl(KPI.pagoCorretores)+'</span><span class="c-war fw6">A receber '+brl(KPI.pendenteCorretores)+'</span></div><div class="fz11 t400" style="margin-top:8px">Valores estimados (50% da comissão) — não é controle de pagamento.</div></div>'
+  + '<div class="card" style="padding:20px;margin-bottom:16px"><div class="fz13 fw5 t500">Repasse aos corretores <span class="pill neutral" style="font-size:10px">estimado</span></div><div class="mono" style="margin-top:8px;font-size:24px;font-weight:700;color:var(--ink900)">'+brlFull(KPI.pagoCorretores+KPI.pendenteCorretores)+'</div><div class="fx" style="margin-top:12px;height:8px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="width:'+((KPI.pagoCorretores+KPI.pendenteCorretores)?Math.round(KPI.pagoCorretores/(KPI.pagoCorretores+KPI.pendenteCorretores)*100):0)+'%;background:var(--success)"></div><div class="grow" style="background:rgba(245,158,11,.7)"></div></div><div class="fx jb" style="margin-top:8px;font-size:12px"><span class="c-suc fw6">Concluídos '+brl(KPI.pagoCorretores)+'</span><span class="c-war fw6">A receber '+brl(KPI.pendenteCorretores)+'</span></div><div class="fz11 t400" style="margin-top:8px">Valores estimados (45%/40% da comissão) — não é controle de pagamento.</div></div>'
   + '<div class="split" style="margin-bottom:16px">'
     + '<div class="card" style="overflow:hidden">'+cardHead('Produção por corretor')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">'+(perc.length?perc.filter(p=>corr==='Todos'||p.uid===corr).map(p=>'<div><div class="fx ac g3" style="margin-bottom:8px">'+avatar(p.nome,34,'var(--ink800)',p.foto)+'<div class="grow"><div class="fz14 fw6 t900">'+esc(p.nome)+'</div><div class="fz12 t500">'+p.vendas+' vendas · '+p.loc+' locações · VGV '+brl(p.vgv)+'</div></div><div class="mono fw7 t900">'+brlFull(p.com)+'</div></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(p.com/maxCom*100)+'%;background:'+p.cor+'"></div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem negócios no período.</div>')+'</div></div>'
     + '<div class="card" style="overflow:hidden">'+cardHead('Funil operacional')+'<div style="padding:18px 20px;display:flex;flex-direction:column;gap:12px">'+funil.map(f=>'<div><div class="fx jb fz12" style="margin-bottom:5px"><span class="t600 fw5">'+f[0]+'</span><span class="fw7 t900">'+f[1]+'</span></div><div style="height:10px;border-radius:999px;background:var(--ink100);overflow:hidden"><div style="height:100%;border-radius:999px;width:'+Math.round(f[1]/maxF*100)+'%;background:'+f[2]+'"></div></div></div>').join('')+'</div></div>'
@@ -782,7 +794,7 @@ function cfgPanel(k){
   if(k==='usuarios'){ const us=Object.values(CORRETORES); return box('Usuários do sistema', (us.length?us.map(u=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+avatar(u.nome,38,u.cor,u.foto)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+esc(u.nome)+'</div><div class="fz12 t500">REMAX SMART</div></div></div>').join(''):'<div class="fz13 t500" style="padding:12px">Carregando corretores…</div>')+'<div style="padding:12px"><div class="fz12 t500">Gerenciar usuários e permissões continua no Admin do Hub.</div></div>'); }
   if(k==='permissoes'){ const rows=[['Ver todos os negócios','Broker'],['Criar e editar negócios','Broker + Corretor'],['Aprovar comprador / locatário','Broker'],['Ver relatórios financeiros','Broker'],['Gerenciar usuários','Admin']]; return box('Matriz de permissões (resumo)', rows.map(r=>'<div class="fx ac jb" style="padding:11px 12px;border-bottom:1px solid var(--ink100)"><span class="fz13 fw5 t800">'+r[0]+'</span>'+pill(r[1],'neutral')+'</div>').join('')+'<div style="padding:12px" class="fz12 t500">As permissões granulares por pessoa são concedidas no Admin do Hub.</div>'); }
   if(k==='status'){ const st=allStatusReais(); return box('Status dos negócios','<div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px">'+(st.length?st.map(s=>statusPill(s)).join(''):'<span class="fz13 t500">Sem negócios ainda.</span>')+'</div>'); }
-  if(k==='comissao'){ return box('Tipos de comissão',[['Venda','6% sobre o valor da venda','percent','info'],['Locação','100% do primeiro aluguel','key-round','ai'],['Repasse corretor','50% da comissão da imobiliária','users','success']].map(r=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+iconChip(r[2],r[3],38)+'<div class="grow"><div class="fz14 fw6 t900">'+r[0]+'</div><div class="fz12 t500">'+r[1]+'</div></div></div>').join('')); }
+  if(k==='comissao'){ return box('Tipos de comissão',[['Venda','6% sobre o valor da venda','percent','info'],['Locação','100% do primeiro aluguel','key-round','ai'],['Repasse corretor','45% ou 40% da comissão, conforme o corretor','users','success']].map(r=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+iconChip(r[2],r[3],38)+'<div class="grow"><div class="fz14 fw6 t900">'+r[0]+'</div><div class="fz12 t500">'+r[1]+'</div></div></div>').join('')); }
   if(k==='categorias'){ const cats=[...new Set(PROPERTIES.map(p=>p.tipo).filter(Boolean))]; return box('Tipos de imóvel na carteira','<div style="padding:12px;display:flex;flex-wrap:wrap;gap:8px">'+(cats.length?cats.map(c=>'<span class="chip" style="cursor:default">'+esc(c)+'</span>').join(''):'<span class="fz13 t500">Nenhum tipo cadastrado.</span>')+'</div><div style="padding:0 12px 12px" class="fz12 t500">Tipos e cidades são configurados em Admin → SMART HUB configs.</div>'); }
   if(k==='templates'){ return box('Modelos de contrato',[['Contrato de representação (venda)','Venda · PDF'],['Contrato de locação','Locação · PDF']].map(t=>'<div class="fx ac g3" style="padding:12px;border-bottom:1px solid var(--ink100)">'+iconChip('file-text','danger',38)+'<div class="grow"><div class="fz14 fw6 t900">'+t[0]+'</div><div class="fz12 t500">'+t[1]+'</div></div></div>').join('')+'<div style="padding:12px" class="fz12 t500">O contrato de representação é gerado na tela do imóvel de venda.</div>'); }
   return '';
@@ -1000,7 +1012,7 @@ function fichaLink(arquivo){ const uid=(auth.currentUser&&auth.currentUser.uid)|
 function fichaLinkImovel(arquivo, imovelId){ const p=prop(imovelId); const uid=(p&&p.corretor)||(auth.currentUser&&auth.currentUser.uid)||''; const nome=(p&&p.corretorNome)||state.meuNome||''; return FICHA_HOST+'/'+arquivo+'?corretor='+encodeURIComponent(uid)+'&nome='+encodeURIComponent(nome)+'&imovelId='+encodeURIComponent(imovelId); }
 
 function saudacao(){ const h=new Date().getHours(); return h<12?'Bom dia':h<18?'Boa tarde':'Boa noite'; }
-const repasse = d => Math.round((d.comValor||0)*0.5);
+const repasse = d => Math.round((d.comValor||0)*repassePct(d.corretor));
 function renderDashCorretor(host){
   const primeiro=(state.meuNome||'Corretor').split(' ')[0];
   const DEALS=dealsView(), PROPERTIES=propsView();   // escopo do mês selecionado
@@ -1028,7 +1040,7 @@ function renderDashCorretor(host){
     + kcard('house','brand','Captações',captacoes,['Imóveis na carteira','c-suc'],'imoveis')
     + kcard('users','ai','Meus clientes',PEOPLE.length,['Vinculados a você','c-ai'],'clientes')
     + kcard('file-signature','warning','Propostas em andamento',props,['Em negociação','c-war'],'negocios')
-    + kcard('wallet','success','Comissão prevista',brl(MYCOM.prevista),['Repasse estimado (50%)','c-suc'],'comissoes')
+    + kcard('wallet','success','Comissão prevista',brl(MYCOM.prevista),['Repasse estimado ('+Math.round(repassePctPorNome(state.meuNome)*100)+'%)','c-suc'],'comissoes')
     + kcard('badge-dollar-sign','success','Comissão recebida',brl(MYCOM.recebida),['Negócios concluídos','c-suc'],'comissoes')
   + '</div>'
   + '<div class="card" style="padding:12px;margin-top:16px"><div class="fx wrap g2">'+atalhos.map(x=>'<button class="btn btn-outline sm" data-action="'+x[0]+'">'+icon(x[1],15)+x[2]+'</button>').join('')+'</div></div>'
@@ -1108,7 +1120,7 @@ function updateFila(){ const b=$('#filaBoard'); if(b){ b.innerHTML=filaBoardHtml
 
 /* ---------------- MINHAS COMISSÕES (corretor) ---------------- */
 RENDERERS.comissoes = function(host){
-  const rep=d=>Math.round((d.comValor||0)*0.5);
+  const rep=d=>Math.round((d.comValor||0)*repassePct(d.corretor));
   const prevista=DEALS.reduce((s,d)=>s+rep(d),0);
   const recebida=DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+rep(d),0);
   const pendente=prevista-recebida;
@@ -1121,11 +1133,11 @@ RENDERERS.comissoes = function(host){
   DEALS.filter(d=>d.statusRaw==='concluido').forEach(d=>{ const iso=(d.raw&&(d.raw.atualizadoEm||d.raw.criadoEm))||''; const dt=new Date(iso); if(isNaN(dt)) return; const hit=meses.find(x=>x.y===dt.getFullYear()&&x.m===dt.getMonth()); if(hit) hit.total+=rep(d); });
   const mxMes=Math.max.apply(null,meses.map(x=>x.total))||1;
   const chart='<div class="fx g1" style="height:120px;align-items:flex-end">'+meses.map((x,i)=>'<div class="grow" style="text-align:center"><div title="'+x.label+': '+brlFull(x.total)+'" style="height:'+(x.total?Math.max(Math.round(x.total/mxMes*96),4):2)+'px;border-radius:4px 4px 0 0;background:'+(i===11?'var(--brand)':'#C9D2E3')+'"></div><div class="fz11" style="margin-top:4px;color:'+(i===11?'var(--ink900)':'var(--ink400)')+';font-weight:'+(i===11?'700':'400')+'">'+x.label+'</div></div>').join('')+'</div>';
-  host.innerHTML=pageHead('Minhas Comissões','Sua comissão (repasse estimado de 50%) por negócio. Valores estimados até a baixa financeira.','')
+  host.innerHTML=pageHead('Minhas Comissões','Sua comissão (repasse estimado de '+Math.round(repassePctPorNome(state.meuNome)*100)+'%) por negócio. Valores estimados até a baixa financeira.','')
   + '<div class="grid3" style="margin-bottom:16px">'+card('Prevista',prevista,'wallet','info')+card('Recebida',recebida,'badge-dollar-sign','success','var(--successtx)')+card('Pendente',pendente,'hand-coins','warning','var(--warningtx)')+'</div>'
   + '<div class="card" style="padding:18px 20px;margin-bottom:16px"><div class="fz12 up fw7 t500" style="margin-bottom:12px">Evolução mensal (recebido)</div>'+chart+'</div>'
   + '<div class="card" style="overflow:hidden">'+cardHead('Comissões por negócio')+'<div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:520px"><thead><tr><th>Negócio</th><th>Cliente</th><th>Status</th><th class="tright">Repasse</th></tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr style="cursor:default"><td class="mono fz13 fw6 t900">'+esc(r.code)+'</td><td class="t700">'+esc(r.cli)+'</td><td>'+pill(r.st,r.st==='Recebida'?'success':'info')+'</td><td class="tright mono fw6 t900">'+brlFull(r.val)+'</td></tr>').join(''):'<tr><td colspan="4" class="tcenter t500" style="padding:24px">Sem negócios ainda.</td></tr>')+'</tbody></table></div></div>'
-  + '<div class="card" style="padding:14px 16px;margin-top:16px;background:var(--ink50);border-color:var(--ink200)"><div class="fx g2"><span class="nsh">'+icon('info',16,'t500')+'</span><div class="fz12 t500" style="line-height:1.5"><strong class="t700">Aviso:</strong> os valores desta tela são uma <strong>estimativa</strong> (repasse de 50% sobre a comissão prevista) e servem só para acompanhamento. <strong>Não</strong> são um extrato de pagamento e <strong>podem não corresponder</strong> ao valor efetivamente devido — o valor real depende do fechamento do negócio, descontos, impostos, parcerias e da baixa financeira da imobiliária. Em caso de divergência, vale sempre o acerto oficial. <button class="lnk" data-action="abrir-termos" style="background:none;border:none;padding:0;color:var(--brand);font:inherit;cursor:pointer;text-decoration:underline">Ver Termos de Uso</button>.</div></div></div>';
+  + '<div class="fz11 t400" style="margin-top:12px;line-height:1.5">'+icon('info',13,'t400')+' Valor estimado — pode divergir do efetivamente devido (fechamento, descontos, impostos, parcerias e baixa financeira). Não é extrato de pagamento; vale o acerto oficial. <button class="lnk" data-action="abrir-termos" style="background:none;border:none;padding:0;color:var(--brand);font:inherit;cursor:pointer;text-decoration:underline">Termos</button></div>';
 };
 
 /* ---------------- MEU PERFIL (real — getMeuPerfil/salvarMeuPerfil) ---------------- */

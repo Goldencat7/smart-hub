@@ -619,6 +619,7 @@ function renderCentro() {
     inputBusca.placeholder = '';
     carregarPerfil();
     atualizarStatusGoogle(); // pinta o botão "Conectar Google" (Agenda + Drive) em Meu Perfil
+    carregarIndicadoresPerfil(); // números reais em "Meus indicadores"
     return;
   }
 
@@ -1089,6 +1090,52 @@ function setFoto(dataURL) {
   else { topAvatar.hidden = true; }
 }
 
+// Indicadores reais do "Meu Perfil" — puxam os números dos negócios do próprio
+// usuário (mesma fonte da visão Meus Negócios). "T. resposta" fica "—" (ainda não
+// medimos tempo de resposta). Silencioso em erro: mantém os zeros.
+function indParseMoney(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  if (v == null) return 0;
+  let s = String(v).replace(/[^\d.,]/g, '');
+  if (!s) return 0;
+  if (s.includes(',') && s.includes('.')) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) s = s.replace(/\./g, '').replace(',', '.');
+    else s = s.replace(/,/g, '');
+  } else if (s.includes(',')) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else {
+    const parts = s.split('.');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) s = s.replace(/\./g, '');
+  }
+  const n = Number(s);
+  return isFinite(n) ? n : 0;
+}
+async function carregarIndicadoresPerfil() {
+  const elConv = document.getElementById('cfgIndConv');
+  if (!elConv) return;   // tela não montada
+  const elTicket = document.getElementById('cfgIndTicket'),
+        elAtivos = document.getElementById('cfgIndAtivos'),
+        elVendas = document.getElementById('cfgIndVendas'),
+        elLoc    = document.getElementById('cfgIndLoc');
+  try {
+    const [nRes, iRes] = await Promise.all([negocioListarFn({}), locListarImoveis({})]);
+    const negocios = (nRes.data?.negocios || []).filter(n => n.corretorUid === currentUid);
+    const imById = new Map((iRes.data?.imoveis || []).map(im => [im.id, im]));
+    const precoDe = im => indParseMoney(im ? (im.valorAnuncio || im.valorProposta || im.valorFechamento || 0) : 0);
+    const total = negocios.length;
+    const concluidos = negocios.filter(n => n.status === 'concluido').length;
+    const ativos = negocios.filter(n => !['concluido', 'cancelado'].includes(n.status)).length;
+    const vendas = negocios.filter(n => n.tipo === 'venda').length;
+    const locacoes = negocios.filter(n => n.tipo === 'locacao').length;
+    const valores = negocios.map(n => precoDe(imById.get(n.imovelId))).filter(v => v > 0);
+    const ticket = valores.length ? Math.round(valores.reduce((s, v) => s + v, 0) / valores.length) : 0;
+    elConv.textContent = (total ? Math.round(concluidos / total * 100) : 0) + '%';
+    if (elTicket) elTicket.textContent = 'R$ ' + ticket.toLocaleString('pt-BR');
+    if (elAtivos) elAtivos.textContent = String(ativos);
+    if (elVendas) elVendas.textContent = String(vendas);
+    if (elLoc) elLoc.textContent = String(locacoes);
+  } catch (_) { /* mantém os zeros — indicadores não são críticos */ }
+}
 async function carregarPerfil() {
   fotoPendente = null;
   cfgNome.value = '';
