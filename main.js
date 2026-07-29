@@ -308,8 +308,25 @@ ipcMain.handle('get-app-version', () => app.getVersion());
 ipcMain.handle('get-iniciar-windows', () => iniciarComWindowsAtivo());
 ipcMain.handle('set-iniciar-windows', (_e, ligar) => { definirIniciarComWindows(ligar); return { ok: true }; });
 
+// Fichas só ABREM / viram PDF a partir do NOSSO Hosting (ou localhost em dev).
+// Bloqueia file:// e host arbitrário que um renderer eventualmente comprometido
+// tentasse passar por IPC (as URLs reais vêm sempre de BASE_HOSTING).
+const HOSTS_FICHA_OK = new Set([
+  'remax-smart-hub.web.app', 'remax-smart-hub.firebaseapp.com',
+  'remax-smart-hub-staging.web.app', 'remax-smart-hub-staging.firebaseapp.com'
+]);
+function urlDeFichaPermitida(u) {
+  try {
+    const p = new URL(u);
+    if (p.protocol === 'https:') return HOSTS_FICHA_OK.has(p.host.toLowerCase());
+    if (p.protocol === 'http:')  return p.hostname === 'localhost' || p.hostname === '127.0.0.1';
+    return false;
+  } catch (_) { return false; }
+}
+
 // ─── Baixar ficha como PDF ───────────────────────────────────────────────────
 ipcMain.handle('baixar-ficha-pdf', async (_e, { url, filename }) => {
+  if (!urlDeFichaPermitida(url)) { console.warn('baixar-ficha-pdf: URL recusada:', url); return { ok: false, erro: 'URL não permitida.' }; }
   const result = await dialog.showSaveDialog({
     defaultPath: filename || 'ficha.pdf',
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
@@ -423,6 +440,7 @@ ipcMain.on('abrir-template', async (_e, payload) => {
 // ─── Abrir ficha em janela dedicada ──────────────────────────────────────────
 ipcMain.on('abrir-ficha', (_e, payload) => {
   const { url, titulo } = payload || {};   // guarda: mensagem sem payload não derruba o main
+  if (!urlDeFichaPermitida(url)) { console.warn('abrir-ficha: URL recusada:', url); return; }
   const win = new BrowserWindow({
     width: 900, height: 860, autoHideMenuBar: true,
     title: titulo || 'Ficha',
@@ -731,7 +749,12 @@ function abrirCheckVisto(url) {
   // Popup de login do Google (OAuth do Drive) abre como janela filha; qualquer
   // outro link externo vai pro navegador padrão em vez de abrir dentro do app.
   win.webContents.setWindowOpenHandler(({ url: u }) => {
-    if (/^https:\/\/(accounts\.google\.com|checkvisto-app\.(web\.app|firebaseapp\.com))/i.test(u)) {
+    // Só o login do Google e o próprio CheckVisto abrem como JANELA FILHA (herdam
+    // GPS/notif/cert desta partição). Host EXATO — não prefixo: senão
+    // "checkvisto-app.web.app.evil.com" ou "accounts.google.com.evil.com" passariam.
+    let host = '';
+    try { const p = new URL(u); if (p.protocol === 'https:') host = p.host.toLowerCase(); } catch (_) { host = ''; }
+    if (host === 'accounts.google.com' || host === 'checkvisto-app.web.app' || host === 'checkvisto-app.firebaseapp.com') {
       return { action: 'allow' };
     }
     // Só entrega ao SO links http(s) (igual aos outros openExternal do arquivo);

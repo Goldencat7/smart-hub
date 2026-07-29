@@ -31,9 +31,13 @@ service firebase.storage {
              && ehHtmlOuImagem();
       allow delete: if podeMarketing();
     }
+    // PDF ou imagem RASTER. SVG fica de fora (é XML, pode carregar script servido
+    // pela URL pública do bucket) — mesma decisão do negocioAnexarDoc. Normaliza
+    // com lower() pra "image/SVG+XML" não furar o bloqueio.
     function ehImagemOuPdf() {
-      return request.resource.contentType.matches('image/.*')
-             || request.resource.contentType == 'application/pdf';
+      return request.resource.contentType.lower() == 'application/pdf'
+             || (request.resource.contentType.lower().matches('image/.*')
+                 && !request.resource.contentType.lower().matches('image/svg.*'));
     }
     function ehHtmlOuImagem() {
       return request.resource.contentType.matches('image/.*')
