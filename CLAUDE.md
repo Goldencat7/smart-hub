@@ -498,6 +498,30 @@ O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável
     `updateMask=siteKey` — mandar `updateMask=siteSecret` (campo que não existe aqui) retorna 200
     e **não grava a chave**; o cliente então leva `400 App not registered`. Conferir sempre com um
     `GET` depois. A config também leva alguns minutos pra propagar.
+- **⏳ PENDÊNCIA — upload anônimo ao Storage sem rate-limit (atacar junto do App Check).** As regras
+  `fichas-locador/{fichaId}/{arquivo}` e `fichas/{tipo}/{fichaId}/{arquivo}` (`storage.rules`) permitem
+  `create` **sem `request.auth`** (o cliente da ficha é anônimo), com **path arbitrário** e até 20MB por
+  objeto. O limite anti-despejo (`_limitarCriacaoFicha`, 60/hora) vive só no `salvarFichaPublica`
+  (Firestore) e **NÃO cobre o upload bruto ao Storage** — um script pode encher o bucket com arquivos de
+  20MB (custo/DoS de armazenamento) e criar objetos sob qualquer `fichaId`. **Atenuante:** anexo órfão
+  (que a `salvarFichaPublica` não referencie) **não ganha download token público**, então não fica
+  exposto — o risco real é só custo de storage, não vazamento. **Não dá pra fechar só na regra de
+  Storage**; as duas saídas (ambas mudança de arquitetura, por isso adiado):
+  (1) **App Check no Storage** — mas o App Check no cliente está revertido (ver acima); reabrir com cuidado; ou
+  (2) **mover o upload pra Cloud Function** (cliente manda base64 → a function grava, igual ao
+  `negocioAnexarDoc`), aí o `_limitarCriacaoFicha` passa a cobrir o anexo também. A (2) é a mais alinhada
+  com o resto do sistema (todo write sensível já passa por function).
+- **Invariantes do hardening 2026-07-29 (v1.0.119) — não reintroduzir:**
+  - **Allowlist de janela = HOST EXATO, nunca prefixo de regex.** O `setWindowOpenHandler` do CheckVisto
+    (`main.js`) compara `new URL(u).host` contra hosts exatos (`accounts.google.com`,
+    `checkvisto-app.web.app/.firebaseapp.com`) + exige `https:`. ⚠️ Não voltar pra
+    `/^https:\/\/checkvisto-app\.web\.app/` — `checkvisto-app.web.app.evil.com` furava e abria como janela
+    filha herdando GPS/notif/cert da partição `persist:checkvisto`. Mesmo padrão do `HOSTS_TEMPLATE_OK`.
+  - **IPC `abrir-ficha`/`baixar-ficha-pdf` validam a URL** (`urlDeFichaPermitida`, `main.js`) contra
+    `HOSTS_FICHA_OK` (hosts do nosso Hosting) + localhost em dev, antes de `loadURL`/`printToPDF` — bloqueia
+    `file://` e host arbitrário vindo do renderer. As URLs reais sempre vêm de `BASE_HOSTING`.
+  - **`storage.rules` `ehImagemOuPdf()` barra `image/svg*`** (normalizado com `.lower()`) — SVG é XML e
+    poderia carregar script servido pela URL pública do bucket. Mesma decisão do `negocioAnexarDoc`.
 
 #### Como testar o restore do backup (validado em 2026-07-10)
 Restaura num **2º banco do mesmo projeto**, nunca em produção. ⚠️ `gcloud firestore import` **sem**
