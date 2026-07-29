@@ -214,10 +214,6 @@
         <div class="field"><div class="field-header"><label>Início do contrato <span class="badge-obrig">Obrigatório</span></label></div><input type="date" name="im_inicio"></div>
         <div class="field"></div>
       </div>
-      <div class="row-2">
-        <div class="field"><div class="field-header"><label>Valor do anúncio <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_anuncio" data-money placeholder="R$ 0,00"></div>
-        <div class="field"><div class="field-header"><label>Valor da proposta <span class="badge-obrig">Obrigatório</span></label></div><input type="text" name="im_proposta" data-money placeholder="R$ 0,00"></div>
-      </div>
     </div>
 
     <!-- ══ 3. Financeiro ════════════════════════════════════════════ -->
@@ -577,7 +573,7 @@ function docsExtraList(){
 function renderDocsExtra(){ const cont=document.getElementById('docs-extra'); if(!cont) return; cont.innerHTML=docsExtraList().map(_docCardLoc).join(''); }
 
 // ── Progresso ───────────────────────────────────────────────────────
-const CAMPOS_PROG = ['nome','rg','cpf','dataNasc','estadoCivil','cep','endereco','numero','bairro','cidade','estado','profissao','email','whatsapp','im_tipo','im_cep','im_endereco','im_numero','im_bairro','im_cidade','im_estado','im_inicio','im_anuncio','im_proposta','fin1_banco','fin1_agencia','fin1_conta','fin1_favorecido','adm_resp','repasse','rgcpf','energia'];
+const CAMPOS_PROG = ['nome','rg','cpf','dataNasc','estadoCivil','cep','endereco','numero','bairro','cidade','estado','profissao','email','whatsapp','im_tipo','im_cep','im_endereco','im_numero','im_bairro','im_cidade','im_estado','im_inicio','fin1_banco','fin1_agencia','fin1_conta','fin1_favorecido','adm_resp','repasse','rgcpf','energia'];
 function atualizarProgresso() {
   let total = CAMPOS_PROG.length, ok = 0;
   CAMPOS_PROG.forEach(c => {
