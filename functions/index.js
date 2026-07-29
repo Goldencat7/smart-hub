@@ -231,7 +231,10 @@ function ehBootstrapAdmin(uid) {
 }
 
 // Apps "restritos": só aparecem/funcionam pra quem o admin liberar (ou pra admins).
-const RESTRICTED_APPS = ['clicksign'];
+// ClickSign foi LIBERADO pra geral (2026-07-29) — a lista ficou vazia. A conta é
+// compartilhada e a getCredentials entrega pra qualquer autenticado. Se um dia
+// precisar voltar a restringir algum app, é só reincluir a key aqui.
+const RESTRICTED_APPS = [];
 // Apps concedíveis por pessoa no painel de Admin (não só os de credencial). Sem
 // isso o setUserAccess descartava silenciosamente `analise_locador` (filtrava só
 // por RESTRICTED_APPS), e a permissão nunca chegava a ninguém.

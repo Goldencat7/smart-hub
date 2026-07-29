@@ -174,7 +174,7 @@ const APPS = [
   {
     key: 'clicksign', categoria: '_',
     titulo: 'ClickSign', icone: 'CS', desc: 'Assinatura digital',
-    url: 'https://app.clicksign.com/', autologin: true, restrito: true
+    url: 'https://app.clicksign.com/', autologin: true
   },
   {
     key: 'motiva', categoria: 'performance',
@@ -293,7 +293,7 @@ const CATEGORIAS = [
   { id: 'performance', nome: 'Performance', icone: ICN.performance, webOculto: true },
   { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true, webOculto: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true, webOculto: true },
-  { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', restrito: true, webOculto: true },
+  { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', webOculto: true },
   { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
   { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
   // "Meus Negócios" agora aparece pra TODOS os papéis de locação (gestor→Broker,

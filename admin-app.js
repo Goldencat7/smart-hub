@@ -102,7 +102,7 @@ const TREINAMENTO_CATS = [
 
 // Apps restritos (aparecem só pra quem o admin liberar)
 const APPS_RESTRITOS = [
-  { key: 'clicksign',      nome: 'ClickSign' },
+  // ClickSign saiu daqui (liberado pra geral em 2026-07-29) — não é mais concedível por pessoa.
   { key: 'analise_locador', nome: 'Análise de Fichas do Locador' }
 ];
 
