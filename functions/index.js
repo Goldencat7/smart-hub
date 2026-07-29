@@ -1840,6 +1840,77 @@ exports.negocioRemoverDoc = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Documentos avulsos do IMÓVEL (aba Documentos do imóvel) ──────────────────
+// Anexa um documento a um imóvel (contrato, laudo, foto extra…). Dono do imóvel OU
+// gestor/administrativo (mesma posse de `_carteiraImovelComPosse`). Base64 → Storage
+// (Admin SDK) com token próprio, gravado em `imoveis.documentosExtra[]` — array
+// SEPARADO do `documentos{}` que vem das fichas, pra não misturar nem sobrescrever.
+// Mesma validação de tipo/tamanho do negocioAnexarDoc (PDF ou imagem raster, sem SVG).
+exports.carteiraAnexarDoc = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref } = await _carteiraImovelComPosse(d.imovelId, auth);
+  const nome = _txt(d.nome, 160) || 'documento';
+  const mime = _txt(d.mime, 100).toLowerCase().split(';')[0].trim();
+  const ehImagem = /^image\//.test(mime) && !mime.includes('svg');
+  if (mime !== 'application/pdf' && !ehImagem) throw new HttpsError('invalid-argument', 'Só PDF ou imagem (SVG não é aceito).');
+  const b64 = typeof d.base64 === 'string' ? d.base64 : '';
+  const buf = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
+  if (!buf.length) throw new HttpsError('invalid-argument', 'Arquivo vazio ou inválido.');
+  if (buf.length > 20 * 1024 * 1024) throw new HttpsError('invalid-argument', 'Arquivo acima de 20MB.');
+
+  const docId = crypto.randomUUID();
+  const safe = nome.replace(/[^\w.-]+/g, '_').slice(0, 120) || 'arquivo';
+  const path = `imoveis/${ref.id}/${docId}_${safe}`;
+  const token = crypto.randomUUID();
+  await admin.storage().bucket(FICHA_BUCKET).file(path).save(buf, {
+    resumable: false,
+    metadata: { contentType: mime, metadata: { firebaseStorageDownloadTokens: token } }
+  });
+  const url = `https://firebasestorage.googleapis.com/v0/b/${FICHA_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
+  const porNome = await _nomeDoUid(auth.uid);
+  const entrada = { id: docId, nome, url, path, tamanho: buf.length, mime, porUid: auth.uid, porNome, em: admin.firestore.Timestamp.now() };
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+      const lista = Array.isArray(s.data().documentosExtra) ? [...s.data().documentosExtra] : [];
+      if (lista.length >= 100) throw new HttpsError('resource-exhausted', 'Limite de documentos do imóvel atingido.');
+      lista.push(entrada);
+      tx.set(ref, { documentosExtra: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+  } catch (e) {
+    try { await admin.storage().bucket(FICHA_BUCKET).file(path).delete(); } catch (_) { /* nada a limpar */ }
+    throw e;
+  }
+  try { await _imovelTimeline(ref, `Documento anexado: ${nome}`, porNome); } catch (_) { /* timeline é best-effort */ }
+  await registrarAudit(auth, 'imovel_doc_anexar', { tipo: 'imovel', id: ref.id }, { nome });
+  return { ok: true, documento: { id: docId, nome, url, porNome } };
+});
+
+// Remove um documento avulso do imóvel (dono/gestor/adm) — do array e do Storage.
+exports.carteiraRemoverDoc = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref } = await _carteiraImovelComPosse(d.imovelId, auth);
+  const docId = _txt(d.docId, 80);
+  let removido = null;
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+    const lista = Array.isArray(s.data().documentosExtra) ? [...s.data().documentosExtra] : [];
+    const idx = lista.findIndex(x => x && x.id === docId);
+    if (idx < 0) throw new HttpsError('not-found', 'Documento não encontrado.');
+    removido = lista[idx];
+    lista.splice(idx, 1);
+    tx.set(ref, { documentosExtra: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  if (removido && removido.path) { try { await admin.storage().bucket(FICHA_BUCKET).file(removido.path).delete(); } catch (_) { /* arquivo já sumiu */ } }
+  await registrarAudit(auth, 'imovel_doc_remover', { tipo: 'imovel', id: ref.id }, { nome: removido && removido.nome });
+  return { ok: true };
+});
+
 // Nome amigável pra chave de documento de ficha (tira prefixo de proponente/sócio/
 // cônjuge e traduz os stems conhecidos; senão humaniza a chave).
 const _DOC_CLI_LABEL = {

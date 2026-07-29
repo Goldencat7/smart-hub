@@ -34,6 +34,8 @@ const fnGerarNeg    = call('negocioGerar');         // gerar negócio de um inte
 const fnAnexarDoc   = call('negocioAnexarDoc');     // gestor/adm sobe documento pra um negócio
 const fnRemoverDoc  = call('negocioRemoverDoc');    // gestor/adm remove documento do negócio
 const fnDocsClientes= call('documentosClientes');   // sanfona: clientes (fichas) + docs + imóvel vinculado
+const fnImovelDoc   = call('carteiraAnexarDoc');    // dono/gestor/adm sobe documento avulso a um imóvel
+const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const FTIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -107,6 +109,16 @@ function baixarPdfBase64(b64, filename){
     setTimeout(()=>URL.revokeObjectURL(url),4000);
   }catch(e){ toast('Não foi possível baixar o PDF','alert-triangle','var(--danger)'); }
 }
+// Baixa um texto (CSV etc.) como arquivo — mesmo truque do PDF (Blob + <a download>).
+function baixarTexto(texto, filename, mime){
+  try{ const url=URL.createObjectURL(new Blob([texto],{type:(mime||'text/plain')+';charset=utf-8'}));
+    const a=document.createElement('a'); a.href=url; a.download=filename||'arquivo.txt'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+  }catch(e){ toast('Não foi possível baixar o arquivo','alert-triangle','var(--danger)'); }
+}
+// CSV pt-BR: BOM (Excel abre com acento) + separador ';' + escape de aspas.
+function _csvCel(v){ const s=String(v==null?'':v).replace(/"/g,'""'); return /[";\r\n]/.test(s)?'"'+s+'"':s; }
+function montarCSV(linhas){ return '﻿'+linhas.map(l=>l.map(_csvCel).join(';')).join('\r\n'); }
 function icon(n,sz=18,cls=''){ return '<i data-lucide="'+n+'" class="'+cls+'" style="width:'+sz+'px;height:'+sz+'px"></i>'; }
 function refreshIcons(){ if(window.lucide){ try{ window.lucide.createIcons(); }catch(e){} } }
 const STATUS = {
@@ -538,7 +550,7 @@ function openDeal(id){
   const host=$('#root'); host.style.animation='none'; void host.offsetWidth; host.style.animation='';
   host.innerHTML =
     '<button class="btn-dark-ghost" style="margin-bottom:16px" data-nav="negocios">'+icon('arrow-left',15)+'Voltar aos Negócios</button>'
-  + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'<button class="btn btn-outline sm" data-action="sem-drive">'+icon('folder-open',15)+'Sem Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
+  + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a><button class="btn btn-outline sm" data-action="drive-set" data-cur="'+esc(d.driveUrl)+'">'+icon('pencil',15)+'Editar</button>':'<button class="btn btn-outline sm" data-action="drive-set" data-cur="">'+icon('folder-plus',15)+'Adicionar Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + '<div class="split-r">'
@@ -689,6 +701,7 @@ function propDrawer(id){
   else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Locatário PF']);fichaOpts.push(['ficha-pj.html','Locatário PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':'')+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>'); }
   else if(tab==='docs'){
     const raw=(p.raw&&p.raw.documentos)||{};
+    const extra=(p.raw&&p.raw.documentosExtra)||[];
     const anexos=Object.entries(raw).filter(([,url])=>typeof url==='string' && /^https?:/i.test(url));
     const ehVenda=p.finalidadeRaw==='venda'||p.finalidadeRaw==='venda_locacao';
     const fichasEnv=[];
@@ -699,6 +712,7 @@ function propDrawer(id){
       + fichasHtml
       + '<div class="fz12 up fw7 t500" style="margin-bottom:10px">Anexos da ficha</div>'
       + (anexos.length?anexos.map(([k,url])=>'<a class="fx ac g3 hoverbg" href="'+esc(url)+'" target="_blank" rel="noopener" style="text-decoration:none;padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+iconChip('file-text','info',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(docLabel(k))+'</div><div class="fz11 t500">Anexo do imóvel</div></div>'+icon('download',15,'t400')+'</a>').join(''):'<div class="fz13 t500" style="margin-bottom:12px">Nenhum anexo enviado ainda.</div>')
+      + (extra.length?('<div style="height:16px"></div><div class="fz12 up fw7 t500" style="margin-bottom:10px">Outros documentos</div>'+extra.map(x=>'<div class="fx ac g3" style="padding:10px 12px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px">'+iconChip('file-text','info',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz11 t500 trunc">'+esc(x.porNome||'anexado')+'</div></div><a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" title="Baixar">'+icon('download',14)+'</a><button class="btn btn-ghost sm nsh" data-action="imovel-doc-remover" data-imovel="'+esc(p.id)+'" data-doc="'+esc(x.id||'')+'" data-nome="'+esc(x.nome||'')+'" style="color:#dc2626" title="Remover">'+icon('trash-2',14)+'</button></div>').join('')):'')
       + '<button class="btn btn-outline sm" data-action="add-doc" style="width:100%;margin-top:6px">'+icon('plus',15)+'Adicionar documento</button>';
   }
   else { body=negs.length?negs.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px">'+iconChip('handshake',d.tipo==='Venda'?'info':'ai',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 mono">'+esc(d.code)+'</div><div class="fz11 t500 trunc">'+esc(d.clienteNome)+'</div></div>'+statusPill(d.status)+'</button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum negócio vinculado.</div>'; }
@@ -808,8 +822,47 @@ function handleAction(a,el){
   else if(a.indexOf('cfgtab-')===0){ state.cfgTab=a.slice(7); RENDERERS.configuracoes($('#root')); refreshIcons(); }
   else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'comentario', texto:txt}, 'Comentário adicionado').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
   else if(a==='abrir-termos'){ const url=FICHA_HOST+'/termos.html'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Termos de Uso'); } else { window.open(url,'_blank'); } }
-  else if(a==='sem-drive') toast('Este negócio ainda não tem pasta do Drive vinculada','folder-open','var(--warning)');
-  else if(a==='export-rel') toast('Exportação de relatório — em breve nesta tela','download','var(--brand)');
+  else if(a==='sem-drive'||a==='drive-set'){ openDriveModal(el.dataset.cur||''); }
+  else if(a==='drive-save'){
+    const u=(($('#drvUrl')||{}).value||'').trim(); const errEl=$('#drvErr');
+    if(u && !/^https:\/\//i.test(u)){ if(errEl) errEl.textContent='Cole um link válido (começa com https://).'; return; }
+    closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'drive', url:u}, u?'Link do Drive salvo':'Link do Drive removido');
+  }
+  else if(a==='export-rel'){
+    let ds=DEALS.slice(); const corr=state.relCorretor;
+    if(corr && corr!=='Todos') ds=ds.filter(d=>corrNome(d.corretor)===corr);
+    if(!ds.length){ toast('Sem negócios para exportar','alert-triangle','var(--warning)'); return; }
+    const head=['Código','Tipo','Cliente','Imóvel','Bairro/Cidade','Corretor','Status','Valor','Comissão','Progresso %','Dias parado','Próxima ação'];
+    const linhas=[head].concat(ds.map(d=>{ const im=propDoDeal(d)||{}; return [d.code,d.tipo,d.clienteNome,im.rua||'',im.bairro||d.cidade||'',corrNome(d.corretor),d.status,d.valor||0,d.comValor||0,d.progresso||0,d.diasParado||0,d.prox||'']; }));
+    baixarTexto(montarCSV(linhas),'relatorio-negocios-'+new Date().toISOString().slice(0,10)+'.csv','text/csv');
+    toast('Relatório exportado (CSV)','download','var(--success)');
+  }
+}
+// Modal pra vincular/editar o link da pasta do Google Drive do negócio (ação `drive`).
+function openDriveModal(cur){
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:6px">Link da pasta do Drive</div><div class="fz12 t500" style="margin-bottom:12px">Cole o link da pasta do Google Drive deste negócio (deixe em branco para remover).</div>'
+    +'<input id="drvUrl" class="input" placeholder="https://drive.google.com/…" value="'+esc(cur||'')+'" style="margin-bottom:6px">'
+    +'<div id="drvErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
+    +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="drive-save">'+icon('check',15)+'Salvar</button></div></div>');
+}
+// Menu "+ Novo" do corretor — abre os atalhos (que já existem como ações).
+function openNovoMenu(){
+  const item=(act,ico,tit,sub)=>'<button class="fx ac g3 hoverbg" data-action="'+act+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:12px;cursor:pointer;margin-bottom:8px">'+iconChip(ico,'brand',38)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+tit+'</div><div class="fz12 t500">'+sub+'</div></div></button>';
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Criar novo</div>'
+    +item('novo-cliente','user-plus','Novo Cliente','Envie uma ficha — o cliente nasce dela')
+    +item('novo-imovel','building-2','Novo Imóvel','Ficha de vendedor/locador vira imóvel')
+    +item('enviar-ficha','clipboard-list','Enviar Ficha','Escolha o tipo na seção Fichas digitais')
+    +item('agendar-visita','calendar','Agendar Visita','Abre a Agenda do Hub')
+    +'<button class="btn btn-outline sm" data-action="close-modal" style="width:100%;margin-top:2px">Fechar</button></div>');
+}
+// Modal de upload de documento avulso pra um imóvel (função carteiraAnexarDoc).
+function openImovelDocUpload(imovelId){
+  if(!imovelId){ toast('Abra um imóvel primeiro','alert-triangle','var(--warning)'); return; }
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Adicionar documento ao imóvel</div>'
+    +'<input type="hidden" id="imDocId" value="'+esc(imovelId)+'">'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF ou imagem, até 20MB)</span></div><input id="imDocFile" type="file" accept="application/pdf,image/*" class="input" style="margin-bottom:6px">'
+    +'<div id="imDocErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
+    +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="imovel-doc-send">'+icon('upload',15)+'Enviar</button></div></div>');
 }
 
 /* Rerender pessoas carrega a lista sob demanda ao entrar na aba */
@@ -1148,10 +1201,29 @@ RENDERERS.drive = function(host){
   emBreveTela(host,'Google Drive','Estrutura de pastas dos negócios.','hard-drive','A integração com o Google Drive (pastas por negócio, sincronização de anexos) depende de uma service account e ainda não está ligada. Cada negócio pode guardar um link do Drive na aba Negócios.');
 };
 
-/* ---- Agenda (corretor + administrativo) — sem fonte de eventos ainda ---- */
+/* ---- Agenda (corretor + administrativo) — eventos REAIS (listarEventos do Hub) ---- */
 RENDERERS.agenda = function(host){
-  emBreveTela(host,'Agenda','Visitas, vistorias, assinaturas e reuniões.','calendar','A visão de calendário desta tela ainda está por vir. A agenda da equipe (com seus eventos reais) já funciona no Hub — abra por aqui.','<button class="btn btn-primary sm" data-action="hub-agenda"><i data-lucide="calendar" style="width:16px;height:16px"></i>Abrir agenda do Hub</button>');
+  host.innerHTML=pageHead('Agenda','Seus próximos eventos (visitas, vistorias, reuniões) — sincronizados com a Agenda do Hub.','<button class="btn btn-primary sm" data-action="hub-agenda">'+icon('calendar',16)+'Abrir agenda do Hub</button>')
+    +'<div class="card" id="bkAgendaLista" style="padding:0;overflow:hidden"><div class="tcenter t500 fz13" style="padding:28px">Carregando agenda…</div></div>';
+  carregarAgendaLista();
 };
+async function carregarAgendaLista(){
+  const box=$('#bkAgendaLista'); if(!box) return;
+  try{
+    const h=new Date(); const ini=new Date(h.getFullYear(),h.getMonth(),h.getDate(),0,0,0);
+    const fim=new Date(ini.getTime()+30*86400000);
+    const r=await fnEventos({ de:ini.toISOString(), ate:fim.toISOString() });
+    const evs=((r&&r.data)||[]).filter(e=>e.meuRsvp!=='recusado').sort((a,b)=>(a.inicio||'').localeCompare(b.inicio||''));
+    const b2=$('#bkAgendaLista'); if(!b2) return;   // navegou pra outra tela
+    if(!evs.length){ b2.innerHTML='<div class="tcenter t500 fz13" style="padding:28px">Nenhum evento nos próximos 30 dias. Crie um na Agenda do Hub.</div>'; return; }
+    let cur='',html='';
+    evs.forEach(e=>{ const dt=new Date(e.inicio); const dia=isNaN(dt)?'—':dt.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'short'}); const hh=isNaN(dt)?'--:--':dt.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      if(dia!==cur){ cur=dia; html+='<div class="up fz12 fw7 t500" style="padding:12px 20px 6px;background:var(--ink50)">'+esc(dia)+'</div>'; }
+      html+='<div class="fx ac g3" style="padding:12px 20px;border-top:1px solid var(--ink100)"><span class="fz13 fw7 t900 mono nsh" style="width:46px">'+hh+'</span>'+iconChip('calendar','info',32)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(e.titulo||'Evento')+'</div>'+(e.descricao?'<div class="fz12 t500 trunc">'+esc(e.descricao)+'</div>':'')+'</div></div>';
+    });
+    b2.innerHTML=html; refreshIcons();
+  }catch(e){ const b=$('#bkAgendaLista'); if(b) b.innerHTML='<div class="tcenter t500 fz13" style="padding:28px">Não consegui carregar a agenda. <button class="btn btn-outline sm" data-action="hub-agenda" style="margin-left:8px">Abrir no Hub</button></div>'; refreshIcons(); }
+}
 
 /* ---- Relatórios Operacionais (administrativo) — REAL, sem financeiro ---- */
 function relatoriosAdmin(host){
@@ -1188,24 +1260,27 @@ handleAction = function(a, el){
   if(a==='agview'){ state.agView=el.dataset.v; RENDERERS.agenda($('#root')); refreshIcons(); return; }
   if(a==='drivetipo'){ state.driveTipo=el.dataset.v; RENDERERS.drive($('#root')); refreshIcons(); return; }
   // Atalhos do corretor
-  if(a==='novo-menu'){ toast('Use os atalhos do painel para começar','plus','var(--brand)'); return; }
+  if(a==='novo-menu'){ openNovoMenu(); return; }
   if(a==='novo-cliente'||a==='novo-imovel'){
+    closeModal();
     // Cliente e imóvel nascem de uma FICHA — leva pro Cadastro do Hub (todas as fichas).
     if(!(window.hubAbrirCategoria && window.hubAbrirCategoria('documentos'))){ navigate('dashboard'); toast('Envie a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); }
     return;
   }
   if(a==='novo-negocio'){
+    closeModal();
     // O negócio é GERADO a partir de um interessado aprovado no imóvel (decisão do gestor).
     navigate('imoveis');
     toast('O negócio nasce de um interessado aprovado no imóvel — abra o imóvel para gerar','handshake','var(--brand)');
     return;
   }
   if(a==='agendar-visita'||a==='hub-agenda'){
+    closeModal();
     // Agenda de verdade é a do HUB (a interna saiu do menu). Fallback: tela interna.
     if(!(window.hubAbrirCategoria && window.hubAbrirCategoria('agenda'))) navigate('agenda');
     return;
   }
-  if(a==='enviar-ficha'){ navigate('dashboard'); toast('Escolha a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); return; }
+  if(a==='enviar-ficha'){ closeModal(); navigate('dashboard'); toast('Escolha a ficha na seção "Fichas digitais"','clipboard-list','var(--brand)'); return; }
   if(a==='whatsapp-quick'){ window.open('https://web.whatsapp.com/','_blank'); return; }
   if(a==='abrir-drive'){ window.open('https://drive.google.com','_blank'); return; }
   if(a==='clicksign'){
@@ -1221,7 +1296,27 @@ handleAction = function(a, el){
     window.hubGerarContratoVenda(el.dataset.imovel).then(r=>{ toast((r&&r.msg)||'Pronto', (r&&r.ok)?'file-text':'alert-triangle', (r&&r.ok)?'var(--success)':'var(--danger)'); });
     return;
   }
-  if(a==='add-doc'){ emBreve('Upload de documento por aqui em breve — por ora, os anexos vêm das fichas.'); return; }
+  if(a==='add-doc'){ openImovelDocUpload(state.currentProp); return; }
+  if(a==='imovel-doc-send'){
+    const imovelId=($('#imDocId')||{}).value, errEl=$('#imDocErr');
+    const f=($('#imDocFile')||{}).files && $('#imDocFile').files[0];
+    if(!f){ if(errEl) errEl.textContent='Escolha um arquivo.'; return; }
+    if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
+    const _tp=(f.type||'').toLowerCase();
+    if(!(_tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp!=='image/svg+xml'))){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
+    el.disabled=true; if(errEl) errEl.textContent='Enviando…';
+    const rd=new FileReader();
+    rd.onload=async()=>{ try{
+        const b64=String(rd.result||'').split(',')[1]||'';
+        await fnImovelDoc({imovelId, nome:f.name, mime:f.type||'application/octet-stream', base64:b64});
+        toast('Documento enviado','check'); closeModal(); await carregarDados();
+        const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId);
+      }catch(e){ if(errEl) errEl.textContent=e.message||'Erro ao enviar'; try{el.disabled=false;}catch(_e){} } };
+    rd.onerror=()=>{ if(errEl) errEl.textContent='Falha ao ler o arquivo.'; try{el.disabled=false;}catch(_e){} };
+    rd.readAsDataURL(f);
+    return;
+  }
+  if(a==='imovel-doc-remover'){ if(!confirm('Remover o documento “'+(el.dataset.nome||'')+'”?'))return; const imovelId=el.dataset.imovel; el.disabled=true; fnImovelDocRm({imovelId, docId:el.dataset.doc}).then(async()=>{ toast('Documento removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='concluir-proxima'){
     const d=DEALS.find(x=>x.id===state.currentDeal); if(!d) return;
     const nx=(d.checklist||[]).find(x=>!x.feito);
@@ -1232,7 +1327,7 @@ handleAction = function(a, el){
   // Interessados (gestor): aprovar / reprovar / gerar negócio
   if(a==='baixar-ficha-pdf'){ const b=el; if(b.dataset.busy)return; b.dataset.busy='1'; const oh=b.innerHTML; b.disabled=true; b.innerHTML='Gerando…'; fnFichaPdf({fichaId:b.dataset.ficha, colecao:b.dataset.col||''}).then(r=>{ const d=(r&&r.data)||r; baixarPdfBase64(d.base64,d.filename); toast('PDF gerado','download'); }).catch(e=>toast(e.message||'Erro ao gerar PDF','alert-triangle','var(--danger)')).finally(()=>{ try{ b.disabled=false; b.innerHTML=oh; delete b.dataset.busy; refreshIcons(); }catch(_e){} }); return; }
   if(a==='int-ficha-copy'){ const l=fichaLinkImovel(el.dataset.arq, el.dataset.imovel); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha copiado — mande ao interessado','copy'); return; }
-  if(a==='int-ver-ficha'){ const map={proposta:'ficha-proposta.html',pf:'ficha-pf.html',pj:'ficha-pj.html'}; const arq=map[el.dataset.tipo]||'ficha-proposta.html'; const url=FICHA_HOST+'/'+arq+'?modo=corretor&idFicha='+encodeURIComponent(el.dataset.ficha||'')+'&origem=hub'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Ficha do interessado'); } else { window.open(url,'_blank'); } return; }
+  if(a==='int-ver-ficha'){ const map={proposta:'ficha-proposta.html',pf:'ficha-pf.html',pj:'ficha-pj.html',locacao_fiador:'ficha-locacao-fiador.html',fianca:'ficha-fianca.html',vendedor:'ficha-vendedor.html',locador:'ficha-locador.html'}; const arq=map[el.dataset.tipo]||'ficha-proposta.html'; const url=FICHA_HOST+'/'+arq+'?modo=corretor&idFicha='+encodeURIComponent(el.dataset.ficha||'')+'&origem=hub'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Ficha do interessado'); } else { window.open(url,'_blank'); } return; }
   if(a==='int-add-open'){ openInteressadoPicker(el.dataset.imovel); return; }
   if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const tipo=(f.tipo==='proposta')?'comprador':'locatario'; el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-remover'){ if(!confirm('Remover este interessado do imóvel?'))return; const imovelId=el.dataset.imovel, idx=+el.dataset.idx; el.disabled=true; fnInteressado({imovelId, acao:'remover', index:idx, esperaNome:el.dataset.nome||'', esperaFichaId:el.dataset.fid||''}).then(async()=>{ toast('Interessado removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
