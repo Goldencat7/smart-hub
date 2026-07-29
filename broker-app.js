@@ -49,7 +49,7 @@ const fnEventos   = call('listarEventos');    // agenda real do Hub ({de,ate} ->
 const state = {
   view:'dashboard',
   pessoasView:'tabela', pessoasFiltro:'Todos', pessoasBusca:'',
-  imoveisView:'cards', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente',
+  imoveisView:'cards', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente', mesFiltro:'todos',
   negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'',
   relCorretor:'Todos', cfgTab:'usuarios',
   currentDeal:null, dealTab:'timeline', currentPerson:null, pessoaTab:'dados',
@@ -213,7 +213,7 @@ function mapNegocio(n){
     imovelId: n.imovelId, imovelResumo: n.imovelResumo||'', cidade: n.cidade||'',
     clienteNome: n.clienteNome||'—', clienteContato: n.clienteContato||'',
     valor: preco, comPct: tipo==='Venda'?6:100, comValor, comStatus:'Prevista',
-    criado: (n.criadoEm||'').slice(0,10).split('-').reverse().join('/'),
+    criado: (n.criadoEm||'').slice(0,10).split('-').reverse().join('/'), criadoEm: n.criadoEm||'',
     prox: n.proximaAcao || 'Sem próxima ação definida',
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
@@ -252,26 +252,40 @@ async function carregarDados(){
 // KPIs + atividades derivados de DEALS. Fora do carregarDados pra poder recalcular
 // depois de escritas locais (concluir/cancelar) sem refazer as chamadas de rede —
 // senão o funil/comissões mostravam número velho até remontar a aba.
-function recalcKPI(){
-  const soma = DEALS.reduce((s,d)=>s+(d.comValor||0),0);
-  KPI = {
-    comissaoPrevista: soma,
-    comissaoRecebida: DEALS.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+(d.comValor||0),0),
-    comissaoPendente: DEALS.filter(d=>d.statusRaw!=='concluido').reduce((s,d)=>s+(d.comValor||0),0),
+// KPI sobre UMA lista de negócios (recebe a lista) — assim os dashboards recalculam
+// sobre o subconjunto filtrado por mês sem tocar no DEALS global.
+function kpiDe(ds){
+  const k = {
+    comissaoPrevista: ds.reduce((s,d)=>s+(d.comValor||0),0),
+    comissaoRecebida: ds.filter(d=>d.statusRaw==='concluido').reduce((s,d)=>s+(d.comValor||0),0),
+    comissaoPendente: ds.filter(d=>d.statusRaw!=='concluido').reduce((s,d)=>s+(d.comValor||0),0),
     pagoCorretores: 0, pendenteCorretores: 0,
-    encerradosMes: DEALS.filter(d=>d.statusRaw==='concluido'||d.statusRaw==='entregue_gestao').length,
-    concluidos: DEALS.filter(d=>d.statusRaw==='concluido').length,
+    encerradosMes: ds.filter(d=>d.statusRaw==='concluido'||d.statusRaw==='entregue_gestao').length,
+    concluidos: ds.filter(d=>d.statusRaw==='concluido').length,
     // "ativos" = em andamento de verdade (exclui concluído/entregue; cancelado já saiu de DEALS)
-    ativos: DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='entregue_gestao').length,
+    ativos: ds.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='entregue_gestao').length,
     tempoMedioDias: 0,
   };
-  KPI.pagoCorretores = Math.round(KPI.comissaoRecebida*0.5);
-  KPI.pendenteCorretores = Math.round(KPI.comissaoPendente*0.5);
-
-  // Atividades reais (timelines dos negócios), mais recentes primeiro.
-  ACTIVITY = DEALS.flatMap(d=>(d.timeline||[]).map(t=>({ico:'circle-dot',cor:'info',txt:t.texto||'Atualização',sub:d.code+' · '+(d.corretorNome||''),quando:relData(t.em),_em:t.em})))
+  k.pagoCorretores = Math.round(k.comissaoRecebida*0.5);
+  k.pendenteCorretores = Math.round(k.comissaoPendente*0.5);
+  return k;
+}
+function atividadesDe(ds){
+  return ds.flatMap(d=>(d.timeline||[]).map(t=>({ico:'circle-dot',cor:'info',txt:t.texto||'Atualização',sub:d.code+' · '+(d.corretorNome||''),quando:relData(t.em),_em:t.em})))
     .sort((a,b)=>(b._em||'').localeCompare(a._em||'')).slice(0,6);
 }
+function recalcKPI(){ KPI = kpiDe(DEALS); ACTIVITY = atividadesDe(DEALS); }
+
+// ── Filtro por MÊS (dashboards / Negócios / Imóveis) ──
+// Filtra por `criadoEm` (quando o negócio/imóvel nasceu). Vazio/"todos" = tudo.
+const _MES_NOMES=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+function mesLabel(ym){ const p=String(ym).split('-'); return (_MES_NOMES[(+p[1])-1]||'?')+'/'+p[0]; }
+function noMes(iso){ return !state.mesFiltro || state.mesFiltro==='todos' || String(iso||'').slice(0,7)===state.mesFiltro; }
+function dealsView(){ return DEALS.filter(d=>noMes(d.criadoEm)); }
+function propsView(){ return PROPERTIES.filter(p=>noMes(p.criadoEm)); }
+function mesesDisponiveis(){ const s=new Set(); DEALS.forEach(d=>{ const m=String(d.criadoEm||'').slice(0,7); if(m) s.add(m); }); PROPERTIES.forEach(p=>{ const m=String(p.criadoEm||'').slice(0,7); if(m) s.add(m); }); return [...s].sort().reverse(); }
+function mesSelect(){ const opts=[['todos','Todos os meses']].concat(mesesDisponiveis().map(m=>[m,mesLabel(m)])); return '<select class="input" data-action="mesfiltro" title="Filtrar por mês" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff">'+opts.map(o=>'<option value="'+esc(o[0])+'"'+(o[0]===(state.mesFiltro||'todos')?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>'; }
+function rerenderMes(){ const v=state.view; if((v==='dashboard'||v==='negocios'||v==='imoveis') && RENDERERS[v]){ RENDERERS[v]($('#root')); refreshIcons(); } }
 
 async function carregarPessoas(){
   // Real: coleção `pessoas` (locadores/locatários com PII) + interessados dos imóveis.
@@ -386,7 +400,7 @@ async function mount(opts){
   state.embedded = !!opts.embedded;   // embutido na área central do Hub (sanfona)
   state.view = opts.view || 'dashboard';
   // Reabrir a Locação começa limpo: sem filtros/seleções/pessoas da sessão anterior.
-  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline', cliFiltro:'Todos', cliBusca:'', agView:'mes', driveTipo:'Venda' });
+  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente', mesFiltro:'todos', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline', cliFiltro:'Todos', cliBusca:'', agView:'mes', driveTipo:'Venda' });
   PEOPLE = [];
   const root = ROOT();
   if(!root){ console.warn('[broker] #bkRoot ausente'); return; }
@@ -440,6 +454,7 @@ window.Broker = { mount, unmount };
 function blockH(t,sub,badge){ return '<div style="margin:28px 0 14px"><div class="fx ac g2"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff;letter-spacing:-.01em">'+t+'</h2>'+(badge||'')+'</div>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>'; }
 
 RENDERERS.dashboard = function(host){
+  const DEALS=dealsView(), PROPERTIES=propsView(), KPI=kpiDe(DEALS);   // escopo do mês selecionado
   const cnt=raw=>DEALS.filter(d=>d.statusRaw===raw).length;
   const analise=cnt('negocio_criado');
   const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
@@ -469,7 +484,7 @@ RENDERERS.dashboard = function(host){
   const primeiroNome=(state.meuNome||'Broker').split(' ')[0];
 
   host.innerHTML =
-    '<div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da REMAX SMART — veja onde concentrar sua atenção hoje.</p></div>'
+    '<div class="fx as jb wrap g3"><div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da REMAX SMART — veja onde concentrar sua atenção hoje.</p></div><div class="nsh">'+mesSelect()+'</div></div>'
   + blockH('Centro de operações','O que precisa da sua atenção agora')
   + '<div class="grid4">'
     + ops('search-check','info','Aguardando análise',analise,'Média','Negócio criado')
@@ -502,7 +517,7 @@ RENDERERS.dashboard = function(host){
 };
 
 /* ---------------- NEGÓCIOS ---------------- */
-function filteredDeals(){ const q=semAcento(state.negBusca).trim(); return DEALS.filter(d=>{ if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(state.negFiltroStatus!=='Todos'&&d.status!==state.negFiltroStatus)return false; if(q){ const im=propDoDeal(d); const s=semAcento(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)); if(s.indexOf(q)<0)return false; } return true; }); }
+function filteredDeals(){ const q=semAcento(state.negBusca).trim(); return DEALS.filter(d=>{ if(!noMes(d.criadoEm))return false; if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(state.negFiltroStatus!=='Todos'&&d.status!==state.negFiltroStatus)return false; if(q){ const im=propDoDeal(d); const s=semAcento(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)); if(s.indexOf(q)<0)return false; } return true; }); }
 function allStatusReais(){ return [...new Set(DEALS.map(d=>d.status))]; }
 function corrNome(uid){ return CORRETORES[uid]?CORRETORES[uid].nome:'—'; }
 function corrFoto(uid){ return CORRETORES[uid]?CORRETORES[uid].foto:''; }
@@ -520,6 +535,7 @@ RENDERERS.negocios = function(host){
     + '<div class="fx ac g2 wrap">'+tipos.map(t=>'<button class="chip'+(state.negFiltroTipo===t?' active':'')+'" data-action="negtipo" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
     + '<div class="fx ac g2">'
       + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(300px,60vw)">'+icon('search',16,'tmut')+'<input data-input="negBusca" value="'+esc(state.negBusca||'')+'" placeholder="Buscar negócio, imóvel, cliente…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>'
+      + mesSelect()
       + '<select class="input" data-action="negstatus" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff"><option'+(state.negFiltroStatus==='Todos'?' selected':'')+'>Todos</option>'+ALL_STATUS.map(s=>'<option'+(state.negFiltroStatus===s?' selected':'')+'>'+s+'</option>').join('')+'</select>'
     + '</div>'
   + '</div>'
@@ -688,7 +704,7 @@ function personDrawer(id){
 /* ---------------- IMÓVEIS ---------------- */
 const GRAD=['linear-gradient(135deg,#1e3a8a,#3b82f6)','linear-gradient(135deg,#0f766e,#14b8a6)','linear-gradient(135deg,#6d28d9,#a855f7)','linear-gradient(135deg,#9a3412,#f59e0b)','linear-gradient(135deg,#9f1239,#f43f5e)','linear-gradient(135deg,#334155,#64748b)'];
 function imFinalMatch(p){ if(state.imoveisFiltro==='Todos') return true; if(state.imoveisFiltro==='Venda') return p.finalidadeRaw==='venda'||p.finalidadeRaw==='venda_locacao'; if(state.imoveisFiltro==='Locação') return p.finalidadeRaw==='locacao'||p.finalidadeRaw==='venda_locacao'; return true; }
-function filteredProps(){ const q=semAcento(state.imoveisBusca).trim(); const arr=PROPERTIES.filter(p=>{ if(!imFinalMatch(p))return false; if(q&&semAcento(p.rua+' '+p.bairro+' '+p.code+' '+p.tipo).indexOf(q)<0)return false; return true; }); const asc=state.imoveisSort==='antigo'; arr.sort((a,b)=>{ const ta=a.criadoEm||'', tb=b.criadoEm||''; if(ta===tb) return 0; return asc ? (ta<tb?-1:1) : (ta<tb?1:-1); }); return arr; }
+function filteredProps(){ const q=semAcento(state.imoveisBusca).trim(); const arr=PROPERTIES.filter(p=>{ if(!noMes(p.criadoEm))return false; if(!imFinalMatch(p))return false; if(q&&semAcento(p.rua+' '+p.bairro+' '+p.code+' '+p.tipo).indexOf(q)<0)return false; return true; }); const asc=state.imoveisSort==='antigo'; arr.sort((a,b)=>{ const ta=a.criadoEm||'', tb=b.criadoEm||''; if(ta===tb) return 0; return asc ? (ta<tb?-1:1) : (ta<tb?1:-1); }); return arr; }
 function imoveisList(){
   const list=filteredProps();
   if(!list.length) return vazio('building','Nenhum imóvel encontrado.');
@@ -701,7 +717,7 @@ function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imove
 RENDERERS.imoveis=function(host){
   const fs=['Todos','Venda','Locação'];
   host.innerHTML=pageHead(hTitulo('Imóveis'),'Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','')
-  + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+fs.map(t=>'<button class="chip'+(state.imoveisFiltro===t?' active':'')+'" data-action="imotipo" data-v="'+t+'">'+t+'</button>').join('')+'</div><div class="fx ac g2"><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,55vw)">'+icon('search',16,'tmut')+'<input data-input="imoveisBusca" value="'+esc(state.imoveisBusca||'')+'" placeholder="Buscar imóvel…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div><button data-action="imosort" title="Ordenar por data de cadastro" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap">'+icon(state.imoveisSort==='antigo'?'arrow-up':'arrow-down',15)+(state.imoveisSort==='antigo'?'Mais antigos':'Mais novos')+'</button><div class="fx" style="background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:3px"><button class="seg'+(state.imoveisView==='cards'?" active":"")+'" data-action="imoview" data-v="cards" style="color:'+(state.imoveisView==='cards'?'':'var(--ondarkmuted)')+'">'+icon('layout-grid',15)+'</button><button class="seg'+(state.imoveisView==='tabela'?" active":"")+'" data-action="imoview" data-v="tabela" style="color:'+(state.imoveisView==='tabela'?'':'var(--ondarkmuted)')+'">'+icon('list',15)+'</button></div></div></div>'
+  + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+fs.map(t=>'<button class="chip'+(state.imoveisFiltro===t?' active':'')+'" data-action="imotipo" data-v="'+t+'">'+t+'</button>').join('')+'</div><div class="fx ac g2"><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,55vw)">'+icon('search',16,'tmut')+'<input data-input="imoveisBusca" value="'+esc(state.imoveisBusca||'')+'" placeholder="Buscar imóvel…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div><button data-action="imosort" title="Ordenar por data de cadastro" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap">'+icon(state.imoveisSort==='antigo'?'arrow-up':'arrow-down',15)+(state.imoveisSort==='antigo'?'Mais antigos':'Mais novos')+'</button>'+mesSelect()+'<div class="fx" style="background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:3px"><button class="seg'+(state.imoveisView==='cards'?" active":"")+'" data-action="imoview" data-v="cards" style="color:'+(state.imoveisView==='cards'?'':'var(--ondarkmuted)')+'">'+icon('layout-grid',15)+'</button><button class="seg'+(state.imoveisView==='tabela'?" active":"")+'" data-action="imoview" data-v="tabela" style="color:'+(state.imoveisView==='tabela'?'':'var(--ondarkmuted)')+'">'+icon('list',15)+'</button></div></div></div>'
   + '<div id="imoveisList">'+imoveisList()+'</div>';
 };
 function openProp(id){ state.currentProp=id; if(!state.imovelTab)state.imovelTab='dados'; openDrawer(propDrawer(id)); }
@@ -816,7 +832,7 @@ function wireEvents(root){
     else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); }
     else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); }
   });
-  root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } });
+  root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } });
 }
 function handleAction(a,el){
@@ -987,6 +1003,7 @@ function saudacao(){ const h=new Date().getHours(); return h<12?'Bom dia':h<18?'
 const repasse = d => Math.round((d.comValor||0)*0.5);
 function renderDashCorretor(host){
   const primeiro=(state.meuNome||'Corretor').split(' ')[0];
+  const DEALS=dealsView(), PROPERTIES=propsView();   // escopo do mês selecionado
   // Dados REAIS (o backend já devolve só os negócios/imóveis do corretor).
   const ativos=DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='entregue_gestao').length;
   const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
@@ -1005,7 +1022,7 @@ function renderDashCorretor(host){
   const recs=DEALS.slice().sort((a,b)=>repasse(b)-repasse(a)).slice(0,5);
   const blockH=(t,sub,right)=>'<div class="fx ac jb g3" style="margin:26px 0 14px"><div class="fx ac g2"><div><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div></div>'+(right||'')+'</div>';
   host.innerHTML=
-    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Seu centro de trabalho — ações do dia e ferramentas sempre à mão.</p></div>'
+    '<div class="fx as jb wrap g3"><div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Seu centro de trabalho — ações do dia e ferramentas sempre à mão.</p></div><div class="nsh">'+mesSelect()+'</div></div>'
   + '<div class="grid3" style="margin-top:20px">'
     + kcard('handshake','info','Negócios ativos',ativos,['Em andamento','c-inf'],'negocios')
     + kcard('house','brand','Captações',captacoes,['Imóveis na carteira','c-suc'],'imoveis')
@@ -1053,6 +1070,7 @@ async function carregarAgendaDia(){
 
 function renderDashAdmin(host){
   const primeiro=(state.meuNome||'Administrativo').split(' ')[0];
+  const DEALS=dealsView(), PROPERTIES=propsView(), KPI=kpiDe(DEALS), ACTIVITY=atividadesDe(DEALS);   // escopo do mês
   const cnt=raw=>DEALS.filter(d=>d.statusRaw===raw).length;
   const docsPend=DEALS.filter(d=>(d.checklist||[]).some(x=>x.obrigatoria&&!x.feito)).length;
   const assin=DEALS.filter(d=>d.clicksign==='Enviado').length;
@@ -1064,7 +1082,7 @@ function renderDashAdmin(host){
   const crit=stale.slice().sort((a,b)=>b.diasParado-a.diasParado).slice(0,6);
   const blockH=(t,sub)=>'<div style="margin:26px 0 14px"><h2 style="margin:0;font-size:17px;font-weight:700;color:#fff">'+t+'</h2>'+(sub?'<p style="margin:3px 0 0;font-size:13px;color:var(--ondarkmuted)">'+sub+'</p>':'')+'</div>';
   host.innerHTML=
-    '<div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Centro de operações — mantenha todos os processos em andamento.</p></div>'
+    '<div class="fx as jb wrap g3"><div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Centro de operações — mantenha todos os processos em andamento.</p></div><div class="nsh">'+mesSelect()+'</div></div>'
   + '<div class="grid3" style="margin-top:20px">'+cards.map(kc).join('')+'</div>'
   + blockH('Resumo da fila','Distribuição dos negócios por etapa')
   + '<div class="card" style="padding:16px"><div class="fx wrap g2">'+RESUMO.map(c=>'<button class="fx ac g2 hoverbg" data-nav="fila" style="flex:1;min-width:150px;background:var(--ink50);border:none;border-radius:10px;padding:12px;cursor:pointer;text-align:left"><span style="width:10px;height:10px;border-radius:50%;background:'+c[2]+'"></span><div><div class="fz18 fw7 t900">'+c[1]+'</div><div class="fz12 t500">'+c[0]+'</div></div></button>').join('')+'</div></div>'
