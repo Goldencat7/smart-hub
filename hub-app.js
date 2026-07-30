@@ -1567,7 +1567,9 @@ cfgVerificarUpdate.addEventListener('click', async () => {
 // ─── Auth + topbar ───────────────────────────────────────────────────────
 btnAdmin.addEventListener('click', () => window.hubApi.abrirAdmin());
 btnSair.addEventListener('click', async () => {
-  if (currentUid) await setDoc(doc(db, 'user_presence', currentUid), { online: false, updatedAt: fsTs() }, { merge: true }).catch(() => {});
+  // Fire-and-forget: offline o setDoc fica pendente pra sempre (não rejeita) e travava
+  // o botão Sair. O logout não pode depender de conseguir gravar a presença.
+  if (currentUid) setDoc(doc(db, 'user_presence', currentUid), { online: false, updatedAt: fsTs() }, { merge: true }).catch(() => {});
   await signOut(auth);
 });
 
@@ -1753,6 +1755,19 @@ function atualizarRelogio(){
 }
 
 function chaveEvento(e){ return e.origem === 'google' ? ('g:' + e.googleId) : e.id; }
+function eventoPelaChave(chave){ return eventos.find(x => chaveEvento(x) === chave); }
+// Clique num evento (pílula/lista/semana): só abre "Editar" pra quem realmente pode
+// editar (dono ou admin, e nunca evento do Google). Pra convite de outra pessoa,
+// abre o detalhe do dia — é lá que fica o Aceitar/Recusar. Antes abria "Editar" pra
+// qualquer um e o Salvar sempre falhava no servidor (trabalho perdido).
+function abrirEventoDoClique(dia, ev) {
+  if (dia) diaSelecionado = dia;
+  if (ev && (ev.souDono || isAdmin) && ev.origem !== 'google') {
+    abrirModalEvento(diaSelecionado, ev);
+  } else {
+    renderCalendarioCompleto(); // mostra o detalhe do dia com o RSVP
+  }
+}
 
 async function carregarEventos(de, ate){
   try {
@@ -1839,7 +1854,7 @@ function montarGradeMes(ano, mes, mini=false){
         : (e.meuRsvp === 'pendente' && !e.souDono ? 'tipo-pendente'
         : ({ cliente:'tipo-cliente', visita:'tipo-visita', pessoal:'tipo-pessoal' }[e.tipo] || ''));
       const hora = e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      return `<span class="cal-ev-pill ${cls}" data-ev-id="${e.id}" title="${escapeHtml(hora + ' ' + e.titulo)}">
+      return `<span class="cal-ev-pill ${cls}" data-ev-id="${chaveEvento(e)}" title="${escapeHtml(hora + ' ' + e.titulo)}">
         <span class="cal-ev-hora">${hora}</span>
         <span class="cal-ev-tit-wrap"><span class="cal-ev-tit">${escapeHtml(e.titulo)}</span></span>
       </span>`;
@@ -1874,7 +1889,7 @@ function montarListaMes(ano, mes){
     const eh = chave === hojeChave;
     return `<div class="cal-lista-grupo">
       <div class="cal-lista-dia ${eh ? 'cal-lista-hoje' : ''}">${d.toLocaleDateString('pt-BR',{weekday:'long', day:'2-digit', month:'long'})}${eh ? ' · Hoje' : ''}</div>
-      ${lista.map(e => `<div class="cal-lista-ev" data-ev-id="${e.id}" data-dia="${chave}">
+      ${lista.map(e => `<div class="cal-lista-ev" data-ev-id="${chaveEvento(e)}" data-dia="${chave}">
         <span class="cal-lista-hora">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span>
         <span class="cal-lista-titulo">${iconeTipo(e.tipo)} ${escapeHtml(e.titulo)}</span>
         ${e.origem === 'google' ? '<span class="cal-lista-tag ev-tag-google">Google</span>' : ''}
@@ -1914,7 +1929,7 @@ function montarSemana(dataRef){
         const cor = e.origem === 'google' ? '#4285F4'
           : (e.meuRsvp === 'pendente' && !e.souDono ? '#DC1C2E'
           : ({ cliente:'#16a34a', visita:'#b45309', pessoal:'#6366f1' }[e.tipo] || 'var(--blue)'));
-        return `<span class="cal-semana-ev" data-ev-id="${e.id}" style="background:${cor}" title="${escapeHtml(e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ' + e.titulo)}">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} ${escapeHtml(e.titulo)}</span>`;
+        return `<span class="cal-semana-ev" data-ev-id="${chaveEvento(e)}" style="background:${cor}" title="${escapeHtml(e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) + ' ' + e.titulo)}">${e.inicio.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})} ${escapeHtml(e.titulo)}</span>`;
       }).join('');
       html += `<div class="cal-semana-cel" data-dia="${chave}" data-hora="${h}">${cel}</div>`;
     }
@@ -1960,9 +1975,7 @@ async function renderCalendarioCompleto(){
     calGrade.innerHTML = montarListaMes(calAno, calMes);
     calGrade.querySelectorAll('.cal-lista-ev').forEach(el => {
       el.addEventListener('click', () => {
-        diaSelecionado = el.dataset.dia;
-        const ev = eventos.find(x => x.id === el.dataset.evId);
-        if (ev) abrirModalEvento(diaSelecionado, ev);
+        abrirEventoDoClique(el.dataset.dia, eventoPelaChave(el.dataset.evId));
       });
     });
   } else if (calVisao === 'semana') {
@@ -1970,8 +1983,8 @@ async function renderCalendarioCompleto(){
     calGrade.querySelectorAll('.cal-semana-ev').forEach(el => {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
-        const ev = eventos.find(x => x.id === el.dataset.evId);
-        if (ev) { diaSelecionado = chaveDia(ev.inicio); abrirModalEvento(diaSelecionado, ev); }
+        const ev = eventoPelaChave(el.dataset.evId);
+        if (ev) abrirEventoDoClique(chaveDia(ev.inicio), ev);
       });
     });
     calGrade.querySelectorAll('.cal-semana-cel').forEach(el => {
@@ -2002,8 +2015,8 @@ async function renderCalendarioCompleto(){
         const pill = e.target.closest('.cal-ev-pill');
         if (pill) {
           e.stopPropagation();
-          const ev = eventos.find(x => x.id === pill.dataset.evId);
-          if (ev) { diaSelecionado = b.dataset.dia; abrirModalEvento(diaSelecionado, ev); return; }
+          const ev = eventoPelaChave(pill.dataset.evId);
+          if (ev) { abrirEventoDoClique(b.dataset.dia, ev); return; }
         }
         diaSelecionado = b.dataset.dia;
         renderCalendarioCompleto();
@@ -5914,6 +5927,11 @@ const cadCor = n => CAD_CORES[[...(n||'x')].reduce((a,c)=>a+c.charCodeAt(0),0) %
 
 let cadFichas = [];   // cache normalizado de todas as fichas
 let cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+// Filtro que o sininho pede ao abrir o Cadastro. carregarDocumentos reseta o cadFiltro
+// (30 dias), então sem isto o clique na notificação perdia o tipo E o período — ficha
+// com mais de 30 dias nem aparecia. carregarDocumentos consome e zera este pendente.
+let cadFiltroPendente = null;
+let cadErroCarga = false;   // true quando TODAS as chamadas de ficha falharam (≠ vazio)
 let cadVisao  = '';   // admin: uid de um corretor pra enxergar a aba como ele ('' = visão geral)
 let cadFotos  = {};   // uid -> foto de perfil (base64); quem não tem cai nas iniciais
 
@@ -5942,7 +5960,8 @@ function cadStatusInfo(f) {
 
 async function carregarDocumentos(grupo) {
   const nomeCorretor = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
-  cadFiltro = { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+  cadFiltro = cadFiltroPendente || { tab:'todas', busca:'', tipo:'', status:'', periodo:'30', corretor:'' };
+  cadFiltroPendente = null;
   cadVisao = '';
 
   const painelEnviar = FICHAS_CONFIG.map(f => {
@@ -6066,11 +6085,16 @@ async function cadCarregarFichas() {
     visivelPara: f.visivelPara || []   // compartilhamento (admin → "Quem pode ver")
   });
   // Cada tipo protegido com .catch pra que uma falha isolada não derrube a tabela.
+  // Mas se TODAS falharem (offline, backend fora), a tabela mostrava "nenhuma ficha"
+  // como se estivesse vazia — enganoso. Contamos as falhas pra distinguir vazio de erro.
+  let cadFalhas = 0;
+  const comCatch = (p) => p.catch(() => { cadFalhas++; return []; });
   const pedidos = [
-    listarFichasLocador({}).then(r => (r.data||[]).map(f => norm(f,'locador'))).catch(() => []),
-    ...TIPOS.map(t => listarFichasTipo({ tipo:t }).then(r => (r.data||[]).map(f => norm(f,t))).catch(() => []))
+    comCatch(listarFichasLocador({}).then(r => (r.data||[]).map(f => norm(f,'locador')))),
+    ...TIPOS.map(t => comCatch(listarFichasTipo({ tipo:t }).then(r => (r.data||[]).map(f => norm(f,t)))))
   ];
   const partes = await Promise.all(pedidos);
+  cadErroCarga = (cadFalhas === pedidos.length); // tudo falhou → estado de erro, não "vazio"
   cadFichas = partes.flat().sort((a,b) => (b.criadoEm?.getTime()||0) - (a.criadoEm?.getTime()||0));
 
   // Fotos dos corretores da tabela (quem tem). Falha aqui não pode travar a
@@ -6174,7 +6198,10 @@ function cadRenderTabela() {
   const colSpan = isAdmin ? 7 : 6;
 
   if (!lista.length) {
-    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="cad-vazio">Nenhuma ficha encontrada com esses filtros.</td></tr>`;
+    const msg = cadErroCarga
+      ? '⚠ Não foi possível carregar as fichas. Verifique a conexão e tente recarregar.'
+      : 'Nenhuma ficha encontrada com esses filtros.';
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="cad-vazio">${msg}</td></tr>`;
     const foot0 = document.getElementById('cadFoot'); if (foot0) foot0.textContent = '';
     return;
   }
@@ -6190,12 +6217,12 @@ function cadRenderTabela() {
     const fotoCorretor = cadFotos[f.corretorUid];
     const avtCorretor = fotoCorretor
       ? `<img class="cad-avt" style="width:26px;height:26px" src="${escapeHtml(fotoCorretor)}" alt="">`
-      : `<span class="cad-avt" style="width:26px;height:26px;font-size:10px;background:${cadCor(f.corretorNome)}">${cadIniciais(f.corretorNome)}</span>`;
+      : `<span class="cad-avt" style="width:26px;height:26px;font-size:10px;background:${cadCor(f.corretorNome)}">${escapeHtml(cadIniciais(f.corretorNome))}</span>`;
     const corretorCel = isAdmin
       ? `<td><div class="cad-corretor">${avtCorretor}<div class="cad-cr-nm">${escapeHtml(f.corretorNome||'—')}</div></div></td>`
       : '';
     return `<tr>
-      <td><div class="cad-cli"><span class="cad-avt" style="background:${cadCor(f.nome)}">${cadIniciais(f.nome)}</span>
+      <td><div class="cad-cli"><span class="cad-avt" style="background:${cadCor(f.nome)}">${escapeHtml(cadIniciais(f.nome))}</span>
         <div><div class="cad-nm">${escapeHtml(f.nome)}</div><div class="cad-cpf">${escapeHtml(f.doc||'')}</div></div></div></td>
       <td><span class="cad-tipo"><span class="cad-ti">${CAD_TIPO_ICO[f.key]||'📄'}</span>${f.tipoLabel}</span></td>
       ${corretorCel}
@@ -6520,7 +6547,8 @@ function renderNotifPanel() {
       // A tela nova do Cadastro é uma TABELA (não mais sanfonas). O antigo
       // .docs-acc-head não existe mais — em vez de clicar num elemento inexistente,
       // já abre o Cadastro filtrado pelo tipo da ficha (mostra todo o período).
-      cadFiltro = { tab:'todas', busca:'', tipo: secKey || '', status:'', periodo:'', corretor:'' };
+      // Vai como PENDENTE porque o carregarDocumentos reseta o cadFiltro logo em seguida.
+      cadFiltroPendente = { tab:'todas', busca:'', tipo: secKey || '', status:'', periodo:'', corretor:'' };
       renderSidebar();
       renderCentro();
     });

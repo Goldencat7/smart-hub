@@ -64,8 +64,11 @@ function traduzErroFirebase(code) {
   const map = {
     'auth/invalid-credential': 'Email ou senha incorretos.',
     'auth/invalid-email': 'Email inválido.',
-    'auth/user-not-found': 'Usuário não encontrado.',
-    'auth/wrong-password': 'Senha incorreta.',
+    // Mesma mensagem de invalid-credential de propósito: distinguir "não existe" de
+    // "senha errada" revela quais emails têm conta (e logado = acesso ao getCredentials).
+    'auth/user-not-found': 'Email ou senha incorretos.',
+    'auth/wrong-password': 'Email ou senha incorretos.',
+    'auth/user-disabled': 'Conta desativada. Fale com o administrador.',
     'auth/too-many-requests': 'Muitas tentativas. Aguarde um pouco.',
     'auth/popup-closed-by-user': 'Login com Google cancelado.',
     'auth/network-request-failed': 'Sem conexão com a internet.',
@@ -95,12 +98,21 @@ formEsqueceu.addEventListener('submit', async (e) => {
   esconder(msgErroReset); esconder(msgOkReset);
   travarReset(true);
   const email = document.getElementById('resetEmail').value.trim();
+  // Mensagem SEMPRE genérica no sucesso e no "email não existe" — não revela se o
+  // email tem conta. Só erros que não vazam existência (formato, rede, rate-limit)
+  // viram erro de verdade.
+  const generico = 'Se esse email tiver conta, enviamos o link. Verifique a caixa de entrada (e o spam).';
   try {
     await sendPasswordResetEmail(auth, email);
-    mostrar(msgOkReset, 'Link enviado! Verifique sua caixa de entrada (e o spam).');
+    mostrar(msgOkReset, generico);
     formEsqueceu.reset();
   } catch (err) {
-    mostrar(msgErroReset, traduzErroFirebase(err.code));
+    if (['auth/invalid-email', 'auth/too-many-requests', 'auth/network-request-failed'].includes(err.code)) {
+      mostrar(msgErroReset, traduzErroFirebase(err.code));
+    } else {
+      mostrar(msgOkReset, generico);
+      formEsqueceu.reset();
+    }
   } finally {
     travarReset(false);
   }

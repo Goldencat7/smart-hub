@@ -209,6 +209,17 @@ function criarJanelaPrincipal() {
     return { action: 'deny' };
   });
 
+  // Trava de navegação: a janela principal expõe hubApi/hubAuth via preload. Sem isto,
+  // uma injeção no renderer (location.href='https://…') carregaria o preload numa origem
+  // remota, entregando a ponte do Hub pra ela. Só nossas telas locais (file://) navegam
+  // aqui — o app abre sistemas em janelas separadas, nunca navegando a própria. Link
+  // externo vai pro navegador do SO. (loadFile do main não passa por will-navigate.)
+  janelaPrincipal.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('file://')) return;
+    e.preventDefault();
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
+  });
+
   janelaPrincipal.loadFile('login.html');
 }
 
@@ -698,6 +709,21 @@ function filhaDoProprioApp(win, urlFilha) {
   } catch (_) { return true; }
 }
 
+// Sites de TERCEIROS abertos pelo Hub não recebem permissões sensíveis sem prompt —
+// o padrão do Electron é CONCEDER tudo. Nega microfone/câmera, GPS, LEITURA da área de
+// transferência (onde passam links de ficha e senhas copiadas) e dispositivos. Deixa
+// notificações passar (o WhatsApp Web usa) — mostrar aviso não é risco de segurança.
+// O CheckVisto tem o seu próprio handler (libera GPS/notif de propósito) e não usa este.
+const PERMS_TERCEIROS_NEGADAS = new Set([
+  'media', 'geolocation', 'clipboard-read', 'hid', 'serial', 'usb', 'idle-detection'
+]);
+function travarPermissoesDeTerceiros(sess) {
+  if (!sess || sess.__hubPermLock) return; // uma vez por sessão
+  sess.__hubPermLock = true;
+  sess.setPermissionRequestHandler((_wc, permission, callback) => callback(!PERMS_TERCEIROS_NEGADAS.has(permission)));
+  sess.setPermissionCheckHandler((_wc, permission) => !PERMS_TERCEIROS_NEGADAS.has(permission));
+}
+
 function ligarAberturaNovaJanela(win, partition) {
   win.webContents.setWindowOpenHandler(({ url: u }) => {
     if (!/^https?:\/\//i.test(u)) {
@@ -727,6 +753,7 @@ function ligarAberturaNovaJanela(win, partition) {
       child.on('closed', () => contentsComCertLiberado.delete(cid));
     }
     child.webContents.setMaxListeners(50);
+    travarPermissoesDeTerceiros(child.webContents.session);
     ligarAberturaNovaJanela(child, partition); // a janela nova também abre as suas em nova janela
   });
 }
@@ -744,6 +771,7 @@ function abrirJanelaSimples(url) {
   const cidSimples = win.webContents.id;
   contentsComCertLiberado.add(cidSimples);
   win.on('closed', () => contentsComCertLiberado.delete(cidSimples));
+  travarPermissoesDeTerceiros(win.webContents.session);
   ligarAberturaNovaJanela(win, 'persist:apps');
   win.loadURL(url).catch(err => console.error(`Erro ao carregar ${url}:`, err));
 }
@@ -833,6 +861,7 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
   pwaWindow.webContents.setMaxListeners(50);
 
   // Ctrl+clique / botão-do-meio / target=_blank → nova janela na mesma sessão logada.
+  travarPermissoesDeTerceiros(pwaWindow.webContents.session);
   ligarAberturaNovaJanela(pwaWindow, partition);
 
   pwaWindow.webContents.on('did-fail-load', (_e, errCode, errDesc, failedUrl, isMainFrame) => {

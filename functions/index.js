@@ -1202,18 +1202,21 @@ exports.carteiraArquivar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const { imovelId, arquivar } = req.data || {};
   const { ref } = await _carteiraImovelComPosse(imovelId, auth);
-  if (arquivar) {
-    // Imóvel com negócio ativo não pode sumir da Carteira — o NG ficaria órfão
-    // na Tela 04A apontando pra um imóvel invisível.
-    const negs = await db.collection('negocios').where('imovelId', '==', imovelId).get();
-    const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
-    if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}) — conclua ou cancele o negócio antes de arquivar.`);
-  }
-  await ref.set({
-    arquivado: !!arquivar,
-    ...(arquivar ? { arquivadoEm: admin.firestore.FieldValue.serverTimestamp() } : { arquivadoEm: null }),
-    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+  // Checagem + escrita na MESMA transação: senão um negócio criado entre o "ler" e o
+  // "gravar" (negocioGerar concorrente) escapava e o imóvel arquivava com NG ativo,
+  // órfão na Tela 04A. Ler a query dentro da tx trava a faixa até o commit.
+  await db.runTransaction(async (tx) => {
+    if (arquivar) {
+      const negs = await tx.get(db.collection('negocios').where('imovelId', '==', imovelId));
+      const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+      if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}) — conclua ou cancele o negócio antes de arquivar.`);
+    }
+    tx.set(ref, {
+      arquivado: !!arquivar,
+      ...(arquivar ? { arquivadoEm: admin.firestore.FieldValue.serverTimestamp() } : { arquivadoEm: null }),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
   await _imovelTimeline(ref, arquivar ? 'Imóvel arquivado' : 'Imóvel restaurado do arquivo', await _nomeDoUid(auth.uid));
   return { ok: true, arquivado: !!arquivar };
 });
@@ -1226,12 +1229,15 @@ exports.carteiraSituacao = onCall(async (req) => {
   const { ref } = await _carteiraImovelComPosse(imovelId, auth);
   // Não deixa voltar pra "Disponível" com negócio ativo: a UI mostraria Disponível
   // enquanto o NG segue vivo apontando pro imóvel (só concluir/cancelar libera).
-  if (situacao === 'disponivel') {
-    const negs = await db.collection('negocios').where('imovelId', '==', imovelId).get();
-    const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
-    if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}) — conclua ou cancele o negócio antes de marcar como Disponível.`);
-  }
-  await ref.set({ situacao, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  // Mesma corrida do arquivar — checagem + escrita na mesma transação.
+  await db.runTransaction(async (tx) => {
+    if (situacao === 'disponivel') {
+      const negs = await tx.get(db.collection('negocios').where('imovelId', '==', imovelId));
+      const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+      if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}) — conclua ou cancele o negócio antes de marcar como Disponível.`);
+    }
+    tx.set(ref, { situacao, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
   await _imovelTimeline(ref, `Situação alterada para ${situacao === 'disponivel' ? 'Disponível' : 'Em Negociação'}`, await _nomeDoUid(auth.uid));
   return { ok: true, situacao };
 });
@@ -3100,7 +3106,7 @@ exports.listCredentials = onCall(async (req) => {
 
 // Lê uma credencial específica (admin only) — pra preencher form de edição
 exports.getCredentialAdmin = onCall(async (req) => {
-  await exigirAdmin(req);
+  const auth = await exigirAdmin(req);
   const { siteKey } = req.data || {};
   if (!siteKey) throw new HttpsError('invalid-argument', 'siteKey é obrigatório.');
 
@@ -3114,6 +3120,9 @@ exports.getCredentialAdmin = onCall(async (req) => {
   } else if (d.password) {
     password = d.password;
   }
+  // Admin vendo a senha em CLARO é o evento que a auditoria diz cobrir — o autologin
+  // (getCredentials) loga 'viu_credencial', mas o modal Editar não logava nada.
+  if (password) await registrarAudit(auth, 'viu_credencial', { tipo: 'credencial', id: siteKey }, { via: 'admin_editar' });
   return { login: d.login || '', password };
 });
 
@@ -5466,6 +5475,9 @@ exports.excluirFichaLocador = onCall(async (req) => {
   const isAdm = req.auth.token.admin;
   if (!isAdm && fichaSnap.data().corretorUid !== uid) throw new HttpsError('permission-denied', 'Sem permissão.');
 
+  // Apaga também os anexos do Storage — senão o arquivo (RG/CPF/renda) fica no bucket
+  // com o download token vivo depois da ficha "excluída", acessível por URL.
+  await _apagarAnexosDaFicha(fichaSnap.data().documentos).catch(() => {});
   await fichaRef.delete();
   return { ok: true };
 });
@@ -5600,6 +5612,8 @@ exports.excluirFichaTipo = onCall(async (req) => {
     snap = q.docs[0]; alvoRef = q.docs[0].ref;
   }
   await assertDono(snap, req.auth.uid, req.auth.token.admin); // checa posse nos DOIS caminhos
+  // Apaga os anexos do Storage junto (senão sobram no bucket com token vivo).
+  await _apagarAnexosDaFicha(snap.data().documentos).catch(() => {});
   await alvoRef.delete();
   return { ok: true };
 });
