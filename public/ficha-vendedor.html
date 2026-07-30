@@ -41,7 +41,7 @@ function render(){
     FE.row(FE.campo({label:'Valor IPTU',key:'im_iptu',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'}), FE.campo({label:'Valor condomínio',key:'im_valorcond',money:true,badge:'opc',ni:true,nta:true,ph:'R$ 0,00'})) +
     FE.row(FE.campo({label:'Instalação ENEL',key:'im_enel',badge:'opc',ni:true,nta:true}), FE.campo({label:'Instalação Sabesp',key:'im_sabesp',badge:'opc',ni:true,nta:true})) +
     FE.row(FE.campo({label:'Instalação Comgás',key:'im_comgas',badge:'opc',ni:true,nta:true}), FE.campo({label:'Contribuinte IPTU',key:'im_contribuinte',badge:'opc',ni:true,nta:true})) +
-    FE.row(FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'}), FE.campo({label:'Valor da proposta',key:'im_proposta',money:true,ph:'R$ 0,00'}))
+    FE.campo({label:'Valor do anúncio',key:'im_anuncio',money:true,ph:'R$ 0,00'})
   );
 
   // 3. Informações financeiras (1-4 titulares)

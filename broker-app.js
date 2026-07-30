@@ -36,6 +36,7 @@ const fnRemoverDoc  = call('negocioRemoverDoc');    // gestor/adm remove documen
 const fnDocsClientes= call('documentosClientes');   // sanfona: clientes (fichas) + docs + imóvel vinculado
 const fnImovelDoc   = call('carteiraAnexarDoc');    // dono/gestor/adm sobe documento avulso a um imóvel
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
+const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
 const FTIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -633,6 +634,41 @@ async function negAtualizar(payload, okMsg){
 }
 
 // Aprovar/reprovar um interessado (gestor). Recarrega os dados e reabre o imóvel.
+// Modal simples pra alterar o "Valor do anúncio" do imóvel. Chama carteiraSalvarImovel
+// (que valida posse: dono ou gestor). Aceita "1.500.000", "1500000", "R$ 1.500,00" —
+// a function do backend só grava o texto; o parse pra número acontece no cliente.
+function openAlterarValor(imovelId){
+  const p = (typeof prop==='function' ? prop(imovelId) : null) || {};
+  const atual = p.preco ? brlFull(p.preco) : '';
+  openModal('<div style="padding:20px;min-width:320px">'
+    + '<div class="fz15 fw7 t900" style="margin-bottom:4px">Alterar valor do imóvel</div>'
+    + '<div class="fz12 t500" style="margin-bottom:14px">'+esc(p.rua||'—')+(p.finalidadeRaw==='locacao'?' — valor mensal':'')+'</div>'
+    + '<label class="fz12 fw6 t700" style="display:block;margin-bottom:6px">Novo valor (R$)</label>'
+    + '<input id="alterarValorInput" type="text" class="input" value="'+esc(atual)+'" placeholder="R$ 0,00" style="width:100%;padding:10px 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:14px;font-family:var(--mono)">'
+    + '<div class="fx g2" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="alterar-valor-save" data-imovel="'+esc(imovelId)+'">'+icon('check',15)+'Salvar</button></div>'
+    + '</div>');
+  setTimeout(()=>{ const i=document.getElementById('alterarValorInput'); if(i){ i.focus(); i.select(); } }, 50);
+}
+async function salvarNovoValor(imovelId){
+  const inp = document.getElementById('alterarValorInput'); if(!inp) return;
+  const bruto = (inp.value||'').trim();
+  // Aceita R$/pontos/vírgulas; extrai só dígitos e vírgula → normaliza pra "1234567.89"
+  const soNumero = bruto.replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
+  const n = parseFloat(soNumero);
+  if(!isFinite(n) || n < 0){ toast('Valor inválido', 'alert-triangle', 'var(--danger)'); return; }
+  const btn = document.querySelector('[data-action="alterar-valor-save"]'); if(btn) btn.disabled=true;
+  try {
+    await fnCartSalvar({ imovelId, valorAnuncio: String(n) });
+    toast('Valor atualizado', 'check');
+    closeModal();
+    await carregarDados();
+    const dr=$('#drawer');
+    if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId);
+  } catch(e){
+    if(btn) btn.disabled=false;
+    toast(e.message||'Erro ao salvar', 'alert-triangle', 'var(--danger)');
+  }
+}
 async function interessadoAcao(imovelId, index, status, okMsg, id){
   try {
     await fnInteressado({ imovelId, acao:'status', index, status, esperaNome:(id&&id.nome)||'', esperaFichaId:(id&&id.fid)||'' });
@@ -743,7 +779,7 @@ function propDrawer(id){
   const p=prop(id); const tab=state.imovelTab||'dados'; const negs=DEALS.filter(d=>d.imovelId===id); const gi=PROPERTIES.indexOf(PROPERTIES.find(x=>x.id===id));
   const tabs=[['dados','Dados'],['interessados','Interessados'],['docs','Documentos'],['vinc','Negócios']];
   let body='';
-  if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>')+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+kv('Cadastrado em',esc(p.dataFmt||'—'))+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+'</div>'+(p.pendentes.length?'<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><div class="fx ac g2 fz12 fw7" style="margin-bottom:8px;color:#f59e0b">'+icon('alert-triangle',14)+'Pendências da ficha ('+p.pendentes.length+')</div><div class="fx wrap g2">'+p.pendentes.map(k=>'<span style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600">'+esc(pendLabel(k))+'</span>').join('')+'</div><div class="fz11 t500" style="margin-top:8px">Itens que o cliente marcou como “não tenho agora” ao preencher a ficha.</div></div>':''); }
+  if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span> <button class="btn btn-ghost sm" data-action="alterar-valor" data-imovel="'+esc(p.id)+'" title="Alterar valor" style="margin-left:6px;padding:2px 8px;font-size:11px">'+icon('pencil',12)+'Alterar</button>')+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+kv('Cadastrado em',esc(p.dataFmt||'—'))+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+'</div>'+(p.pendentes.length?'<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><div class="fx ac g2 fz12 fw7" style="margin-bottom:8px;color:#f59e0b">'+icon('alert-triangle',14)+'Pendências da ficha ('+p.pendentes.length+')</div><div class="fx wrap g2">'+p.pendentes.map(k=>'<span style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600">'+esc(pendLabel(k))+'</span>').join('')+'</div><div class="fz11 t500" style="margin-top:8px">Itens que o cliente marcou como “não tenho agora” ao preencher a ficha.</div></div>':''); }
   else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Locatário PF']);fichaOpts.push(['ficha-pj.html','Locatário PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':'')+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>'); }
   else if(tab==='docs'){
     const raw=(p.raw&&p.raw.documentos)||{};
@@ -1377,6 +1413,8 @@ handleAction = function(a, el){
   if(a==='baixar-ficha-pdf'){ const b=el; if(b.dataset.busy)return; b.dataset.busy='1'; const oh=b.innerHTML; b.disabled=true; b.innerHTML='Gerando…'; fnFichaPdf({fichaId:b.dataset.ficha, colecao:b.dataset.col||''}).then(r=>{ const d=(r&&r.data)||r; baixarPdfBase64(d.base64,d.filename); toast('PDF gerado','download'); }).catch(e=>toast(e.message||'Erro ao gerar PDF','alert-triangle','var(--danger)')).finally(()=>{ try{ b.disabled=false; b.innerHTML=oh; delete b.dataset.busy; refreshIcons(); }catch(_e){} }); return; }
   if(a==='int-ficha-copy'){ const l=fichaLinkImovel(el.dataset.arq, el.dataset.imovel); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha copiado — mande ao interessado','copy'); return; }
   if(a==='int-ver-ficha'){ const map={proposta:'ficha-proposta.html',pf:'ficha-pf.html',pj:'ficha-pj.html',locacao_fiador:'ficha-locacao-fiador.html',fianca:'ficha-fianca.html',vendedor:'ficha-vendedor.html',locador:'ficha-locador.html'}; const arq=map[el.dataset.tipo]||'ficha-proposta.html'; const url=FICHA_HOST+'/'+arq+'?modo=corretor&idFicha='+encodeURIComponent(el.dataset.ficha||'')+'&origem=hub'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Ficha do interessado'); } else { window.open(url,'_blank'); } return; }
+  if(a==='alterar-valor'){ openAlterarValor(el.dataset.imovel); return; }
+  if(a==='alterar-valor-save'){ salvarNovoValor(el.dataset.imovel); return; }
   if(a==='int-add-open'){ openInteressadoPicker(el.dataset.imovel); return; }
   if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const tipo=(f.tipo==='proposta')?'comprador':'locatario'; el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-remover'){ if(!confirm('Remover este interessado do imóvel?'))return; const imovelId=el.dataset.imovel, idx=+el.dataset.idx; el.disabled=true; fnInteressado({imovelId, acao:'remover', index:idx, esperaNome:el.dataset.nome||'', esperaFichaId:el.dataset.fid||''}).then(async()=>{ toast('Interessado removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
