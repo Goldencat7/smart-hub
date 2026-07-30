@@ -578,10 +578,10 @@ exports.locListarPessoasPerfis = onCall(async (req) => {
 });
 
 // ─── Gestão de Locações · Captação ──────────────────────────────────────────
-// Quando o corretor aprova a ficha do locador e envia ao admin (status -> enviado_admin),
-// materializamos o IMÓVEL na esteira + as PESSOAS (locadores). Idempotente: o id do
-// imóvel = id da ficha (1 ficha do locador = 1 imóvel), então reenvio ATUALIZA em vez
-// de duplicar e nunca reseta o status da esteira que o admin já avançou.
+// Ao RECEBER a ficha do locador (status aguardando_corretor, sem esperar o corretor
+// aprovar/enviar), materializamos o IMÓVEL na esteira + as PESSOAS (locadores).
+// Idempotente: o id do imóvel = id da ficha (1 ficha do locador = 1 imóvel), então
+// reenvio ATUALIZA em vez de duplicar e nunca reseta o status da esteira já avançado.
 
 // Nomes de campo do locador na ficha são irregulares (loc1 usa chaves planas com
 // `dataNasc`/`whatsapp`; loc2 usa prefixo `loc2_` com `nasc`/`celular`), então mapeamos
@@ -699,7 +699,8 @@ async function _uidsDosAdmins() {
   return r.users.filter(u => u.customClaims && u.customClaims.admin).map(u => u.uid);
 }
 
-// Trigger de ingestão: ficha do locador -> imóvel + pessoas (na transição p/ enviado_admin).
+// Trigger de ingestão: ficha do locador -> imóvel + pessoas. Materializa já no
+// RECEBIMENTO da ficha (aguardando_corretor), sem esperar o corretor enviar ao admin.
 exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, async (event) => {
   const after  = event.data.after?.data();
   const before = event.data.before?.data();
@@ -766,7 +767,8 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
   }
 });
 
-// Trigger de ingestão da VENDA: ficha do vendedor -> imóvel (na transição p/ enviado_admin).
+// Trigger de ingestão da VENDA: ficha do vendedor -> imóvel, já no RECEBIMENTO da ficha
+// (aguardando_corretor), sem esperar o corretor enviar ao admin.
 // Espelha o onFichaLocadorEnviadaAdmin: a ficha do vendedor usa as MESMAS chaves im_* de
 // endereço, então o loc_montarImovel serve pros dois (os campos de repasse/adm que a ficha
 // de venda não tem viram '' e não atrapalham). Venda não entra na esteira de locação
