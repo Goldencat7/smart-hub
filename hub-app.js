@@ -990,6 +990,65 @@ function avisoStatusApp(app, status) {
   });
 }
 
+// prompt() NÃO existe em janela do Electron — ele LANÇA exceção, então usar prompt()
+// mata a ação inteira no .exe (funcionava só na web). Este é o substituto: devolve o
+// texto digitado, ou null se cancelar — mesmo contrato do prompt(), com <dialog>.
+function pedirTextoModal({ titulo, descricao = '', placeholder = '', okLabel = 'Confirmar', multilinha = true }) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'modal';
+    dlg.innerHTML = `
+      <div class="modal-conteudo" style="max-width:460px">
+        <h3 style="margin:0 0 6px">${escapeHtml(titulo)}</h3>
+        ${descricao ? `<p class="muted" style="margin:0 0 12px;font-size:13px">${escapeHtml(descricao)}</p>` : ''}
+        ${multilinha
+          ? `<textarea id="ptmCampo" rows="3" placeholder="${escapeHtml(placeholder)}" style="width:100%;box-sizing:border-box"></textarea>`
+          : `<input id="ptmCampo" type="text" placeholder="${escapeHtml(placeholder)}" style="width:100%;box-sizing:border-box">`}
+        <div class="modal-actions" style="margin-top:14px">
+          <button type="button" class="topbar-btn" data-acao="cancelar">Cancelar</button>
+          <button type="button" class="topbar-btn primario" data-acao="ok">${escapeHtml(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(dlg);
+    const campo = dlg.querySelector('#ptmCampo');
+    const fim = (valor) => { dlg.close(); dlg.remove(); resolve(valor); };
+    dlg.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-acao]');
+      if (!b) return;
+      fim(b.dataset.acao === 'ok' ? (campo.value || '') : null);
+    });
+    // ESC fecha o <dialog> nativo sem passar pelos botões — sem isto a Promise
+    // nunca resolvia e a ação ficava pendurada pra sempre.
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); fim(null); });
+    dlg.showModal();
+    campo.focus();
+  });
+}
+
+// Quando a cópia automática falha, mostra o link num campo selecionável pra pessoa
+// copiar na mão (o prompt() que fazia esse papel não roda no Electron).
+function mostrarLinkModal(link) {
+  return new Promise((resolve) => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'modal';
+    dlg.innerHTML = `
+      <div class="modal-conteudo" style="max-width:520px">
+        <h3 style="margin:0 0 6px">Copie o link</h3>
+        <p class="muted" style="margin:0 0 12px;font-size:13px">Não foi possível copiar automaticamente. Selecione o link e copie (Ctrl+C).</p>
+        <input id="mlmCampo" type="text" readonly value="${escapeHtml(link)}" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:12px">
+        <div class="modal-actions" style="margin-top:14px">
+          <button type="button" class="topbar-btn primario" data-acao="fechar">Fechar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(dlg);
+    const fim = () => { dlg.close(); dlg.remove(); resolve(); };
+    dlg.addEventListener('click', (e) => { if (e.target.closest('button[data-acao]')) fim(); });
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); fim(); });
+    dlg.showModal();
+    const c = dlg.querySelector('#mlmCampo'); c.focus(); c.select();
+  });
+}
+
 // ─── Abrir app (com ou sem autologin) ────────────────────────────────────
 // Ponte pro Broker embutido: troca a categoria ativa do Hub (ex.: Agenda).
 // Sai do "Meus Negócios" — o renderCentro desmonta o Broker e restaura o layout.
@@ -5949,10 +6008,16 @@ async function carregarDocumentos(grupo) {
 
   // Painel "Enviar Fichas": copiar link / preencher (ficha interna)
   secaoDocs.querySelectorAll('.cad-copiar').forEach(btn => {
-    btn.addEventListener('click', () => {
-      navigator.clipboard.writeText(btn.dataset.link).catch(() => prompt('Copie o link:', btn.dataset.link));
-      const t = btn.textContent; btn.textContent = '✓ Copiado!';
-      setTimeout(() => { btn.textContent = t; }, 2000);
+    btn.addEventListener('click', async () => {
+      // O "✓ Copiado!" só aparece se copiou de verdade — a promise do clipboard
+      // rejeitada não era pega, e o botão mentia. Falhou? mostra o link pra copiar.
+      try {
+        await navigator.clipboard.writeText(btn.dataset.link);
+        const t = btn.textContent; btn.textContent = '✓ Copiado!';
+        setTimeout(() => { btn.textContent = t; }, 2000);
+      } catch (_) {
+        await mostrarLinkModal(btn.dataset.link);
+      }
     });
   });
   secaoDocs.querySelectorAll('.cad-preencher').forEach(btn => {
@@ -6124,7 +6189,7 @@ function cadRenderTabela() {
       : '<span class="cad-pend-ok">✓ Sem pendências</span>';
     const fotoCorretor = cadFotos[f.corretorUid];
     const avtCorretor = fotoCorretor
-      ? `<img class="cad-avt" style="width:26px;height:26px" src="${fotoCorretor}" alt="">`
+      ? `<img class="cad-avt" style="width:26px;height:26px" src="${escapeHtml(fotoCorretor)}" alt="">`
       : `<span class="cad-avt" style="width:26px;height:26px;font-size:10px;background:${cadCor(f.corretorNome)}">${cadIniciais(f.corretorNome)}</span>`;
     const corretorCel = isAdmin
       ? `<td><div class="cad-corretor">${avtCorretor}<div class="cad-cr-nm">${escapeHtml(f.corretorNome||'—')}</div></div></td>`
@@ -6232,12 +6297,19 @@ function cadAbrirMenu(anchor, f) {
       return;
     }
     if (acao === 'reenviar') {
-      const obs = prompt('Observação para o cliente (opcional):');
+      const obs = await pedirTextoModal({
+        titulo: 'Reenviar ao cliente',
+        descricao: 'A ficha volta para o cliente editar. A observação abaixo aparece para ele (opcional).',
+        placeholder: 'Ex.: falta o comprovante de renda legível',
+        okLabel: 'Reenviar'
+      });
       if (obs === null) return;
       try {
         const rr = await fnReenviar({ fichaId: f.id, observacao: obs });
-        await navigator.clipboard.writeText(rr.data.link).catch(() => prompt('Copie o link:', rr.data.link));
-        alert('Link copiado! Envie ao cliente pelo WhatsApp.');
+        let copiou = true;
+        try { await navigator.clipboard.writeText(rr.data.link); } catch (_) { copiou = false; }
+        if (!copiou) await mostrarLinkModal(rr.data.link);
+        else alert('Link copiado! Envie ao cliente pelo WhatsApp.');
         await cadCarregarFichas();
       } catch(err) { alert('Erro: ' + err.message); }
       return;

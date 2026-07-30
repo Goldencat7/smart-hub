@@ -399,7 +399,7 @@ function _docCard(d){
   const badge = has?'<span class="badge-preen">Preenchido</span>':(d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>');
   let status;
   if(has) status='✓ '+has.name;
-  else if(ex) status=(modo==='corretor')?`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir</a>`:`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+  else if(ex) status=(modo==='corretor')?`<a href="${escHtml(ex)}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir</a>`:`<a href="${escHtml(ex)}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
   else if(pend) status='Marcado como pendente';
   else status='Toque para selecionar';
   const areaCls='doc-area'+((has||ex)?' tem-arquivo':(pend?' pendente-doc':''));
@@ -554,9 +554,9 @@ function aplicarFicha(ficha){
     const area = document.getElementById('area-'+k);
     if (st) {
       if (modo === 'corretor') {
-        st.innerHTML = `<a href="${url}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`;
+        st.innerHTML = `<a href="${escHtml(url)}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir ${escHtml(nomesDoc[k]||k)}</a>`;
       } else {
-        st.innerHTML = `<a href="${url}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+        st.innerHTML = `<a href="${escHtml(url)}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
       }
     }
     if (area) area.classList.add('tem-arquivo');
@@ -610,7 +610,7 @@ async function init(){
       document.querySelectorAll('#formFicha input,#formFicha select,#formFicha textarea').forEach(el=>{ el.disabled=true; });
       document.querySelectorAll('.nao-tenho').forEach(el=>{ el.style.pointerEvents='none'; el.style.opacity='.6'; });
       window.__fichaId=idFicha;
-      if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={rgcpf:'RG / CPF / CNH',compEndereco:'Comprovante de endereço',compRenda:'Comprovante de renda',compEstadoCivil:'Comprovante de estado civil'}; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>{const m=p.match(/^p(\d+)_(.+)$/); if(m){const i=m[1],c=m[2]; return `<li>Proponente ${i} — ${c==='profissao'?'Profissão':c==='renda'?'Renda mensal':c}</li>`;} return `<li>${_nomesPend[p]||p}</li>`;}).join(''); }
+      if((ficha.pendentes||[]).length){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={rgcpf:'RG / CPF / CNH',compEndereco:'Comprovante de endereço',compRenda:'Comprovante de renda',compEstadoCivil:'Comprovante de estado civil'}; document.getElementById('listaPendencias').innerHTML=ficha.pendentes.map(p=>{const m=String(p).match(/^p(\d+)_(.+)$/); if(m){const i=m[1],c=m[2]; return `<li>Proponente ${escHtml(i)} — ${c==='profissao'?'Profissão':c==='renda'?'Renda mensal':escHtml(c)}</li>`;} return `<li>${escHtml(_nomesPend[p]||p)}</li>`;}).join(''); }
     }catch(e){ mostrarErro('Erro: '+e.message); }
   } else if(modo==='edicao' && idFicha){
     const badge=document.getElementById('badgeModo'); badge.style.display='inline'; badge.textContent='Edição';

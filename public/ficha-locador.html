@@ -557,7 +557,7 @@ function _docCardLoc(d){
   const badge = has?'<span class="badge-preen">Preenchido</span>':(d.badge==='opc'?'<span class="badge-opc">opcional</span>':'<span class="badge-obrig">Obrigatório</span>');
   let status;
   if(has) status='✓ '+has.name;
-  else if(ex) status=(modo==='corretor')?`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir</a>`:`<a href="${ex}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+  else if(ex) status=(modo==='corretor')?`<a href="${escHtml(ex)}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir</a>`:`<a href="${escHtml(ex)}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
   else if(pend) status='Marcado como pendente';
   else status='Toque para selecionar';
   const areaCls='doc-area'+((has||ex)?' tem-arquivo':(pend?' pendente-doc':''));
@@ -621,9 +621,9 @@ function preencherFicha(ficha) {
     const area = document.getElementById(`area-${k}`);
     if (st) {
       if (modo === 'corretor') {
-        st.innerHTML = `<a href="${url}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir ${nomesDoc[k]||k}</a>`;
+        st.innerHTML = `<a href="${escHtml(url)}" target="_blank" onclick="event.stopPropagation()" style="color:#002749;font-weight:600">↗ Abrir ${escHtml(nomesDoc[k]||k)}</a>`;
       } else {
-        st.innerHTML = `<a href="${url}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
+        st.innerHTML = `<a href="${escHtml(url)}" target="_blank" onclick="event.stopPropagation()" style="color:#1a7f37;font-weight:600">✓ Enviado</a> <span style="color:#888;font-size:11px">(toque para trocar)</span>`;
       }
     }
     if (area) area.classList.add('tem-arquivo');

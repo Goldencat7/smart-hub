@@ -3299,6 +3299,15 @@ exports.salvarMeuPerfil = onCall(async (req) => {
     if (photo.length > 400000) {
       throw new HttpsError('invalid-argument', 'Foto muito grande. Tente uma imagem menor.');
     }
+    // O FORMATO é obrigatório: esta string é renderizada em src="..." por OUTROS
+    // usuários (listarFotosPerfil → Cadastro do admin, Pessoas/Produção do Broker).
+    // Sem esta trava, texto arbitrário aqui vira XSS armazenado na sessão de quem
+    // abre a tela — inclusive o admin, que alcança getCredentials. Só data URL de
+    // imagem raster, base64, nada de svg (é XML e carrega script). String vazia
+    // limpa a foto (mesmo padrão aditivo dos outros campos).
+    if (photo !== '' && !/^data:image\/(png|jpe?g|webp|gif|bmp|avif|heic|heif);base64,[A-Za-z0-9+/=]+$/i.test(photo)) {
+      throw new HttpsError('invalid-argument', 'Formato de foto inválido. Envie uma imagem (PNG, JPG ou WEBP).');
+    }
     upd.photo = photo;
   }
   await db.collection('user_profiles').doc(auth.uid).set(upd, { merge: true });
@@ -3901,10 +3910,15 @@ exports.enviarSuporte = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) =>
     throw new HttpsError('internal', 'Não foi possível enviar o chamado. Tente de novo.');
   }
 
+  // O doc do Firestore tem teto de ~1MB. Print acima disso fazia o add() estourar
+  // DEPOIS do e-mail já ter saído: o TI recebia o e-mail e o chamado nunca aparecia
+  // na lista. Anexo grande passa a ir só por e-mail; o chamado entra sempre.
+  const anexoCabeNoDoc = attachments.length && typeof imagem === 'string' && imagem.length <= 700000;
   await db.collection('chamados').add({
     mensagem: texto,
-    imagemUrl: (attachments.length && typeof imagem === 'string') ? imagem : null,
+    imagemUrl: anexoCabeNoDoc ? imagem : null,
     imagemNome: imagemNome || null,
+    imagemSoPorEmail: !!(attachments.length && !anexoCabeNoDoc),
     status: 'aberto',
     criadoPor: auth.uid,
     criadoPorNome: nome,
@@ -4278,6 +4292,10 @@ async function _driveUploadBuffer(token, nome, parentId, buf, contentType) {
 }
 // Baixa de uma URL (Storage) e sobe pro Drive.
 async function _driveUpload(token, nome, parentId, url) {
+  // SSRF: mesma allowlist do fetchBuffer. Fichas antigas (anteriores ao fechamento
+  // das regras na v1.0.100) podem ter URL arbitrária em `documentos`; sem isto, a
+  // function buscava o alvo e subia a resposta pro Drive do corretor.
+  if (!urlStoragePermitida(url)) throw new HttpsError('invalid-argument', 'URL de anexo não permitida.');
   const r = await fetch(url);
   if (!r.ok) throw new HttpsError('internal', 'Falha ao baixar anexo (' + r.status + ')');
   return _driveUploadBuffer(token, nome, parentId, Buffer.from(await r.arrayBuffer()), r.headers.get('content-type') || 'application/octet-stream');
@@ -4341,7 +4359,17 @@ exports.driveSincronizarFicha = onCall({ secrets: [GOOGLE_CLIENT_SECRET], timeou
   const auth = exigirAutenticado(req);
   const { fichaId, colecao } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId é obrigatório.');
-  return _driveSyncFicha(auth.uid, fichaId, colecao === 'fichas_locador' ? 'fichas_locador' : 'fichas');
+  const col = colecao === 'fichas_locador' ? 'fichas_locador' : 'fichas';
+  // POSSE (mesma regra do gerarFichaPdf): esta function copia TODOS os anexos + um
+  // PDF com CPF/RG/renda pro Drive de QUEM CHAMA. Sem conferir o dono, qualquer
+  // autenticado exfiltrava ficha alheia pra conta Google pessoal dele.
+  const snap = await db.collection(col).doc(String(fichaId)).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && snap.data().corretorUid !== auth.uid) {
+    throw new HttpsError('permission-denied', 'Sem acesso a esta ficha.');
+  }
+  return _driveSyncFicha(auth.uid, fichaId, col);
 });
 
 // Gatilho: ficha COM documentos gravada → sincroniza pro Drive do corretor DONO
@@ -5061,11 +5089,18 @@ const FICHA_TIPOS = ['pf', 'pj', 'vendedor', 'proposta', 'fianca', 'locacao_fiad
 // locador usa `fichas-locador/...` (com hífen). O path vem urlencoded (`%2F`).
 const FICHA_DOC_BASE =
   `https://firebasestorage.googleapis.com/v0/b/${PROJECT_BUCKET}/o/`;
-const FICHA_DOC_PASTAS = ['fichas%2F', 'fichas-locador%2F'];
+// (as pastas permitidas viraram parte da RE_ANEXO_FICHA, abaixo)
+// ⚠️ Valida a URL INTEIRA, não só o começo. Só conferir o prefixo deixava o resto
+// da string livre — e essa URL é interpolada em href="..."/src="..." nas fichas, então
+// uma aspa no meio fechava o atributo e injetava handler na revisão do corretor.
+// Formato que o servidor gera (único legítimo): <base><pasta>%2F<segmentos>?alt=media&token=<uuid>
+// (o path vem de encodeURIComponent, o token de crypto.randomUUID — sem aspas, sem < >).
+const RE_ANEXO_FICHA = /^(?:fichas-locador|fichas)(?:%2F[A-Za-z0-9%._-]+)+\?alt=media&token=[A-Za-z0-9_-]{20,60}$/;
 const ehUrlDeAnexoDaFicha = (url) =>
   typeof url === 'string' &&
+  url.length <= 700 &&
   url.startsWith(FICHA_DOC_BASE) &&
-  FICHA_DOC_PASTAS.some(pasta => url.slice(FICHA_DOC_BASE.length).startsWith(pasta));
+  RE_ANEXO_FICHA.test(url.slice(FICHA_DOC_BASE.length));
 // Depois de enviada ao admin (ou finalizada) a ficha não aceita mais escrita do cliente.
 const FICHA_STATUS_EDITAVEL = ['aguardando_corretor', 'aguardando_edicao_cliente', 'correcao_solicitada'];
 

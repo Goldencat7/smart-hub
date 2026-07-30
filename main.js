@@ -574,6 +574,13 @@ ipcMain.handle('conectar-google', async () => {
 ipcMain.on('abrir-app', (_evt, payload) => {
   const { siteKey, url, credenciais } = payload || {};
   if (!url) return;
+  // A URL vem do renderer. Sem validar o esquema, um renderer comprometido (o projeto
+  // já teve XSS armazenado) abria `file://` ou host arbitrário numa janela de app —
+  // que roda com contextIsolation off e cert leniente. Só http/https passam.
+  try {
+    const esq = new URL(url).protocol;
+    if (esq !== 'https:' && esq !== 'http:') { console.error('abrir-app: esquema recusado', esq); return; }
+  } catch (_) { console.error('abrir-app: URL inválida'); return; }
 
   // Configuração específica por site
   const configs = {
@@ -619,7 +626,10 @@ ipcMain.on('abrir-app', (_evt, payload) => {
     // permissões de dispositivo (GPS/notificações/microfone), popup de OAuth do Drive
     // e — importante — SEM o disfarce de Chrome, pra que a detecção de Electron do
     // próprio CheckVisto funcione (senão ele recarrega o messaging e reintroduz bugs).
-    if (/checkvisto-app\./i.test(url)) {
+    // Host EXATO (mesmo invariante das allowlists de janela): o teste antigo por
+    // substring casava com `checkvisto-app.web.app.evil.com` e jogava a página na
+    // partição `persist:checkvisto`, compartilhando cookies com o app real.
+    if (_origemEhCheckVisto(url)) {
       abrirCheckVisto(url);
       return;
     }
@@ -674,22 +684,42 @@ function disfarcarComoChrome(win) {
 // nova na MESMA partição (login compartilhado), em vez de o Electron bloquear.
 // Assim dá pra abrir um item (ex.: um imóvel num portal de captação) sem perder a
 // página de filtros/busca anterior. Vale pra qualquer app aberto pelo Hub.
+// A filha é "do mesmo site" que a mãe? (host exato ou subdomínio — nunca prefixo,
+// pelo mesmo motivo das allowlists de janela: `site.com.evil.com` não pode casar.)
+function mesmoHostQueAMae(win, urlFilha) {
+  try {
+    const hMae = new URL(win.webContents.getURL()).host.toLowerCase();
+    const hFilha = new URL(urlFilha).host.toLowerCase();
+    return hFilha === hMae || hFilha.endsWith('.' + hMae) || hMae.endsWith('.' + hFilha);
+  } catch (_) { return false; }
+}
+
 function ligarAberturaNovaJanela(win, partition) {
   win.webContents.setWindowOpenHandler(({ url: u }) => {
     if (!/^https?:\/\//i.test(u)) {
       if (/^(mailto:|tel:)/i.test(u)) shell.openExternal(u).catch(() => {}); // e-mail/telefone vão pro SO
       return { action: 'deny' };
     }
+    // ⚠️ NÃO repassar `webSecurity:false`/`allowRunningInsecureContent` pra filha.
+    // A janela-mãe do autologin precisa disso pra injetar; a filha é só um link que a
+    // pessoa clicou. Com a proteção entre sites desligada NA MESMA sessão logada, um
+    // link malicioso (recebido no WhatsApp Web, por exemplo) conseguia ler o conteúdo
+    // autenticado dos outros apps daquela partição.
     return { action: 'allow', overrideBrowserWindowOptions: {
       width: 1200, height: 800, autoHideMenuBar: true,
-      webPreferences: { webSecurity: false, allowRunningInsecureContent: true, partition, devTools: DEVTOOLS_HABILITADO }
+      webPreferences: { partition, devTools: DEVTOOLS_HABILITADO }
     }};
   });
-  win.webContents.on('did-create-window', (child) => {
+  win.webContents.on('did-create-window', (child, detalhes) => {
     disfarcarComoChrome(child);
     const cid = child.webContents.id;
-    contentsComCertLiberado.add(cid);
-    child.on('closed', () => contentsComCertLiberado.delete(cid));
+    // Leniência de certificado só se a filha ficar no MESMO host da mãe (os sites
+    // legados com cert ruim abrem detalhe em nova janela no próprio domínio). Link
+    // pra domínio de terceiro abre com TLS estrito, como qualquer navegador.
+    if (mesmoHostQueAMae(win, detalhes && detalhes.url)) {
+      contentsComCertLiberado.add(cid);
+      child.on('closed', () => contentsComCertLiberado.delete(cid));
+    }
     child.webContents.setMaxListeners(50);
     ligarAberturaNovaJanela(child, partition); // a janela nova também abre as suas em nova janela
   });
@@ -818,8 +848,37 @@ function abrirPwaComAutologin(url, seletorUser, seletorPass, seletorBtn, usuario
     ).catch(() => {});
   });
 
+  // Origem do app que pediu o autologin. A senha SÓ pode ser injetada aqui.
+  const hostDoApp = (() => { try { return new URL(url).host.toLowerCase(); } catch (_) { return ''; } })();
+
   // Injeta no dom-ready (cedo, e uma vez por carregamento — não por frame)
   pwaWindow.webContents.on('dom-ready', () => {
+    // ⚠️ O dom-ready dispara em TODA navegação desta janela, e os guards do script
+    // (window.__hubAutologinAtivo / sessionStorage) são por-documento/por-origem —
+    // não seguram depois de um redirect. Sem esta checagem, se o site mandasse pro
+    // SSO/IdP de outro domínio, o loop achava o campo de senha LÁ e digitava a senha
+    // compartilhada da REMAX no domínio de terceiro.
+    const hostAtual = (() => { try { return new URL(pwaWindow.webContents.getURL()).host.toLowerCase(); } catch (_) { return ''; } })();
+    // Host do app + os hosts de login que aquele app declarar (ex.: prefeitura que
+    // manda pro SSO em outro domínio). Host EXATO ou subdomínio, nunca prefixo.
+    const hostsOk = [hostDoApp].concat(opcoes.hostsLogin || []).filter(Boolean).map(h => h.toLowerCase());
+    const casa = h => hostsOk.some(ok => h === ok || h.endsWith('.' + ok) || ok.endsWith('.' + h));
+    if (!hostAtual || !casa(hostAtual)) {
+      console.error(`autologin: navegação saiu de ${hostDoApp} para ${hostAtual} — senha NÃO injetada.`);
+      // Degradação explicável: tira o overlay e avisa pra pessoa entrar na mão, em vez
+      // de deixar a janela travada num spinner sem explicação.
+      pwaWindow.webContents.executeJavaScript(`(function(){
+        var o=document.getElementById('__hub-overlay'); if(o) o.remove();
+        if(document.getElementById('__hub-aviso-origem')) return;
+        var b=document.createElement('div'); b.id='__hub-aviso-origem';
+        b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:2147483647;background:#002749;color:#fff;'
+          +'font:600 13px system-ui,sans-serif;padding:10px 14px;text-align:center';
+        b.textContent='Este site abriu o login em outro endereço (' + location.host + '). '
+          + 'Por segurança o Hub não preenche a senha fora do site do app — entre manualmente nesta tela.';
+        document.body.appendChild(b);
+      })();`).catch(() => {});
+      return;
+    }
     const payload = { seletorUser, seletorPass, seletorBtn, usuario, senha, naoEnviar: !!opcoes.naoEnviar, textosAvancar: opcoes.textosAvancar || null };
 
     const scriptLoop = `
