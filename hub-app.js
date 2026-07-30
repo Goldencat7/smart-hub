@@ -442,11 +442,10 @@ function renderSidebar() {
     (!c.webOculto || !ehPwaCelular()) &&
     (!c.soGestor || locRoleAtual === 'gestor') &&
     (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
-    (!c.soTI || temPermTI || isAdmin) &&
-    // "Meus Negócios" volta a ser dark launch: só quem tem "Acesso de teste"
-    // (loc_beta) OU depois que o admin publicar esta versão pra todos (painel
-    // de Lançamento → locacoesPublicadaEm === versão atual). NÃO herda de admin.
-    (!c.locacoes || betaLocacoes || locacoesPublicado)
+    (!c.soTI || temPermTI || isAdmin)
+    // "Meus Negócios" liberada pra TODOS (2026-07-30, pedido do Nathan após
+    // a apresentação). O dark launch foi removido; papel dentro da aba continua
+    // vindo da claim locRole (gestor/administrativo/corretor).
   );
 
   navCategorias.innerHTML = visiveis.map(c => {
