@@ -649,6 +649,71 @@ function openAlterarValor(imovelId){
     + '</div>');
   setTimeout(()=>{ const i=document.getElementById('alterarValorInput'); if(i){ i.focus(); i.select(); } }, 50);
 }
+// Modal pra CADASTRAR imóvel que veio "de fora" (fora do fluxo de ficha).
+// Chama carteiraSalvarImovel SEM imovelId — o backend cria novo, marca origem:'manual',
+// atribui numeroProtocolo e situacao:'disponivel'. Obrigatórios (spec): proprietário,
+// finalidade e endereço (logradouro + cidade). Sem ficha, sem interessados.
+function openNovoImovelManual(){
+  const UF=['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+  const linha = (l,r)=>'<div class="fx g2 wrap" style="margin-bottom:10px"><div style="flex:1;min-width:180px">'+l+'</div><div style="flex:1;min-width:180px">'+r+'</div></div>';
+  const inp = (id,ph,val)=>'<input id="'+id+'" type="text" class="input" placeholder="'+esc(ph)+'"'+(val?' value="'+esc(val)+'"':'')+' style="width:100%;padding:9px 11px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;font-family:var(--sans)">';
+  const lbl = (t)=>'<label class="fz11 fw6 t700" style="display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em">'+esc(t)+'</label>';
+  const campo = (id,t,ph,val)=>lbl(t)+inp(id,ph,val);
+  const selUF = '<select id="niEstado" class="input" style="width:100%;padding:9px 11px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;font-family:var(--sans)"><option value="">UF</option>'+UF.map(u=>'<option value="'+u+'">'+u+'</option>').join('')+'</select>';
+  const fin = ['locacao','venda','venda_locacao'].map((v,i)=>'<label style="display:flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--bd);border-radius:8px;cursor:pointer;background:var(--raised);flex:1;justify-content:center;font-size:13px"><input type="radio" name="niFin" value="'+v+'"'+(i===0?' checked':'')+' style="margin:0">'+(v==='locacao'?'Locação':v==='venda'?'Venda':'Venda + Locação')+'</label>').join('');
+  openModal('<div style="padding:20px;max-width:560px;max-height:80vh;overflow-y:auto">'
+    + '<div class="fz15 fw7 t900" style="margin-bottom:4px">Novo imóvel (cadastro manual)</div>'
+    + '<div class="fz12 t500" style="margin-bottom:16px">Use quando o imóvel vem de fora — sem passar pela ficha do proprietário. Você pode enviar a ficha depois se quiser.</div>'
+    + '<div style="margin-bottom:14px"><div class="fz11 fw6 t700" style="margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em">Finalidade *</div><div class="fx g2 wrap">'+fin+'</div></div>'
+    + linha(campo('niProp','Proprietário *','Nome completo'), campo('niContato','Contato do proprietário','Telefone ou e-mail'))
+    + linha(campo('niTipo','Tipo','Apartamento, Casa, Sala…'), campo('niValor','Valor (R$)','R$ 0,00'))
+    + linha(campo('niLog','Logradouro *','Rua, Avenida…'), campo('niNum','Número','123'))
+    + linha(campo('niCompl','Complemento','Apto, bloco…'), campo('niBairro','Bairro','Nome do bairro'))
+    + linha(campo('niCidade','Cidade *','Nome da cidade'), lbl('Estado')+selUF)
+    + '<div style="margin-bottom:4px">'+campo('niCep','CEP','00000-000')+'</div>'
+    + '<div class="fz11 t500" style="margin:6px 0 14px">* obrigatórios</div>'
+    + '<div class="fx g2"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="novo-imovel-save">'+icon('check',15)+'Cadastrar imóvel</button></div>'
+    + '</div>');
+  setTimeout(()=>{ const i=document.getElementById('niProp'); if(i) i.focus(); }, 50);
+}
+async function salvarNovoImovel(){
+  const g=(id)=>((document.getElementById(id)||{}).value||'').trim();
+  const finRadio = document.querySelector('input[name="niFin"]:checked');
+  const finalidade = finRadio ? finRadio.value : 'locacao';
+  const proprietarioNome = g('niProp');
+  const logradouro = g('niLog');
+  const cidade = g('niCidade');
+  if(!proprietarioNome){ toast('Informe o proprietário','alert-triangle','var(--danger)'); return; }
+  if(!logradouro){ toast('Informe o logradouro','alert-triangle','var(--danger)'); return; }
+  if(!cidade){ toast('Informe a cidade','alert-triangle','var(--danger)'); return; }
+  const bruto = g('niValor');
+  let valorAnuncio = '';
+  if(bruto){
+    const soNumero = bruto.replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',','.');
+    const n = parseFloat(soNumero);
+    if(!isFinite(n) || n < 0){ toast('Valor inválido','alert-triangle','var(--danger)'); return; }
+    valorAnuncio = String(n);
+  }
+  const btn = document.querySelector('[data-action="novo-imovel-save"]'); if(btn) btn.disabled=true;
+  try {
+    const r = await fnCartSalvar({
+      finalidade, proprietarioNome,
+      proprietarioContato: g('niContato'),
+      tipo: g('niTipo'), valorAnuncio,
+      endereco: { cep:g('niCep'), logradouro, numero:g('niNum'), complemento:g('niCompl'), bairro:g('niBairro'), cidade, estado:g('niEstado') }
+    });
+    toast('Imóvel cadastrado','check');
+    closeModal();
+    await carregarDados();
+    if(state.view==='imoveis') navigate('imoveis');
+    // Abre o drawer do imóvel novo pra continuar preenchendo
+    const novoId = r && r.data && r.data.imovelId;
+    if(novoId) setTimeout(()=>openProp(novoId), 200);
+  } catch(e){
+    if(btn) btn.disabled=false;
+    toast(e.message||'Erro ao cadastrar','alert-triangle','var(--danger)');
+  }
+}
 async function salvarNovoValor(imovelId){
   const inp = document.getElementById('alterarValorInput'); if(!inp) return;
   const bruto = (inp.value||'').trim();
@@ -768,7 +833,7 @@ function imoveisList(){
 function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imoveisList(); refreshIcons(); } }
 RENDERERS.imoveis=function(host){
   const fs=['Todos','Venda','Locação'];
-  host.innerHTML=pageHead(hTitulo('Imóveis'),'Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','')
+  host.innerHTML=pageHead(hTitulo('Imóveis'),'Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','<button class="btn btn-primary sm" data-action="novo-imovel-manual" title="Cadastrar imóvel que veio de fora (sem ficha)">'+icon('plus',15)+'Novo imóvel</button>')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+fs.map(t=>'<button class="chip'+(state.imoveisFiltro===t?' active':'')+'" data-action="imotipo" data-v="'+t+'">'+t+'</button>').join('')+'</div><div class="fx ac g2"><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,55vw)">'+icon('search',16,'tmut')+'<input data-input="imoveisBusca" value="'+esc(state.imoveisBusca||'')+'" placeholder="Buscar imóvel…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div><button data-action="imosort" title="Ordenar por data de cadastro" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap">'+icon(state.imoveisSort==='antigo'?'arrow-up':'arrow-down',15)+(state.imoveisSort==='antigo'?'Mais antigos':'Mais novos')+'</button>'+mesSelect()+'<div class="fx" style="background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:3px"><button class="seg'+(state.imoveisView==='cards'?" active":"")+'" data-action="imoview" data-v="cards" style="color:'+(state.imoveisView==='cards'?'':'var(--ondarkmuted)')+'">'+icon('layout-grid',15)+'</button><button class="seg'+(state.imoveisView==='tabela'?" active":"")+'" data-action="imoview" data-v="tabela" style="color:'+(state.imoveisView==='tabela'?'':'var(--ondarkmuted)')+'">'+icon('list',15)+'</button></div></div></div>'
   + '<div id="imoveisList">'+imoveisList()+'</div>';
 };
@@ -890,6 +955,8 @@ function wireEvents(root){
 function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
   else if(a==='refresh'){ if(el) el.disabled=true; carregarDados().then(()=>{ toast('Atualizado','check-circle-2','var(--success)'); navigate(state.view); }).catch(()=>{ toast('Erro ao atualizar','alert-triangle','var(--warning)'); if(el) el.disabled=false; }); }
+  else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
+  else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
   else if(a==='mobilenav') openMobileNav();
   else if(a==='mobilenav-close') closeMobileNav();
   else if(a==='close-drawer') closeDrawer();
