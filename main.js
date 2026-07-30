@@ -684,14 +684,18 @@ function disfarcarComoChrome(win) {
 // nova na MESMA partição (login compartilhado), em vez de o Electron bloquear.
 // Assim dá pra abrir um item (ex.: um imóvel num portal de captação) sem perder a
 // página de filtros/busca anterior. Vale pra qualquer app aberto pelo Hub.
-// A filha é "do mesmo site" que a mãe? (host exato ou subdomínio — nunca prefixo,
-// pelo mesmo motivo das allowlists de janela: `site.com.evil.com` não pode casar.)
-function mesmoHostQueAMae(win, urlFilha) {
+// A janela-filha faz parte do PRÓPRIO app? (mesmo host, subdomínio — nunca prefixo,
+// pra `site.com.evil.com` não casar — ou URL sem host, tipo about:blank que a própria
+// página preenche via opener). Só um host DIFERENTE e válido (ex.: link pra outro site
+// recebido no WhatsApp) fica de fora e perde a leniência. Na dúvida, NÃO trava — mantém
+// o comportamento antigo, pra não quebrar janela legítima de app.
+function filhaDoProprioApp(win, urlFilha) {
   try {
-    const hMae = new URL(win.webContents.getURL()).host.toLowerCase();
     const hFilha = new URL(urlFilha).host.toLowerCase();
+    if (!hFilha) return true; // about:blank / data: — controlada pela própria página
+    const hMae = new URL(win.webContents.getURL()).host.toLowerCase();
     return hFilha === hMae || hFilha.endsWith('.' + hMae) || hMae.endsWith('.' + hFilha);
-  } catch (_) { return false; }
+  } catch (_) { return true; }
 }
 
 function ligarAberturaNovaJanela(win, partition) {
@@ -700,23 +704,25 @@ function ligarAberturaNovaJanela(win, partition) {
       if (/^(mailto:|tel:)/i.test(u)) shell.openExternal(u).catch(() => {}); // e-mail/telefone vão pro SO
       return { action: 'deny' };
     }
-    // ⚠️ NÃO repassar `webSecurity:false`/`allowRunningInsecureContent` pra filha.
-    // A janela-mãe do autologin precisa disso pra injetar; a filha é só um link que a
-    // pessoa clicou. Com a proteção entre sites desligada NA MESMA sessão logada, um
-    // link malicioso (recebido no WhatsApp Web, por exemplo) conseguia ler o conteúdo
-    // autenticado dos outros apps daquela partição.
+    // Janela-filha do MESMO site do app (ex.: imovelp abrindo "Ver dados do
+    // proprietário") faz parte do app e herda o `webSecurity:false` que esses sites
+    // precisam pra funcionar. Link pra OUTRO host (ex.: um link recebido no WhatsApp
+    // Web) NÃO herda — senão abriria com a proteção entre sites desligada na mesma
+    // sessão logada e conseguiria ler o conteúdo autenticado dos outros apps.
+    const doProprioApp = filhaDoProprioApp(win, u);
+    const webPreferences = { partition, devTools: DEVTOOLS_HABILITADO };
+    if (doProprioApp) { webPreferences.webSecurity = false; webPreferences.allowRunningInsecureContent = true; }
     return { action: 'allow', overrideBrowserWindowOptions: {
-      width: 1200, height: 800, autoHideMenuBar: true,
-      webPreferences: { partition, devTools: DEVTOOLS_HABILITADO }
+      width: 1200, height: 800, autoHideMenuBar: true, webPreferences
     }};
   });
   win.webContents.on('did-create-window', (child, detalhes) => {
     disfarcarComoChrome(child);
     const cid = child.webContents.id;
-    // Leniência de certificado só se a filha ficar no MESMO host da mãe (os sites
-    // legados com cert ruim abrem detalhe em nova janela no próprio domínio). Link
-    // pra domínio de terceiro abre com TLS estrito, como qualquer navegador.
-    if (mesmoHostQueAMae(win, detalhes && detalhes.url)) {
+    // Leniência de certificado só pras janelas do próprio app (os sites legados com
+    // cert ruim abrem detalhe em nova janela no próprio domínio). Link pra domínio de
+    // terceiro abre com TLS estrito, como qualquer navegador.
+    if (filhaDoProprioApp(win, detalhes && detalhes.url)) {
       contentsComCertLiberado.add(cid);
       child.on('closed', () => contentsComCertLiberado.delete(cid));
     }
