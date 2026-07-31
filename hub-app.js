@@ -797,7 +797,7 @@ function renderCentro() {
           // sincroniza o destaque da sanfona aqui.
           onNavigate: (v) => {
             locBrokerView = v;
-            navCategorias.querySelectorAll('.nav-subitem').forEach(x => x.classList.toggle('ativo', x.dataset.locview === v));
+            navCategorias.querySelectorAll('[data-locview]').forEach(x => x.classList.toggle('ativo', x.dataset.locview === v));
           }
         });
         brokerMontado = true;

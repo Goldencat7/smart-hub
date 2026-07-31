@@ -537,8 +537,17 @@ RENDERERS.dashboard = function(host){
 /* ---------------- NEGÓCIOS ---------------- */
 // Base da tela Negócios SEM o filtro de status — serve pros contadores das abas
 // (cada aba conta quantos negócios têm aquele status dentro do escopo tipo+mês+busca).
-function dealsBaseSemStatus(){ const q=semAcento(state.negBusca).trim(); const verArq=!!state.negVerArquivados; return DEALS.filter(d=>{ if(!!d.arquivado!==verArq)return false; if(!noMes(d.criadoEm))return false; if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(q){ const im=propDoDeal(d); const s=semAcento(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)); if(s.indexOf(q)<0)return false; } return true; }); }
+function dealsBaseSemStatus(){
+  const q=semAcento(state.negBusca).trim();
+  // Fonte: view "Cancelados" puxa do DEALS_DOCS (cancelados não estão em DEALS);
+  // senão, DEALS filtrando arquivados on/off.
+  let arr;
+  if(state.negVerCancelados){ arr=(DEALS_DOCS||[]).filter(d=>d.statusRaw==='cancelado'); }
+  else { const verArq=!!state.negVerArquivados; arr=DEALS.filter(d=>!!d.arquivado===verArq); }
+  return arr.filter(d=>{ if(!noMes(d.criadoEm))return false; if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(q){ const im=propDoDeal(d); const s=semAcento(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)); if(s.indexOf(q)<0)return false; } return true; });
+}
 function nArquivados(){ return DEALS.filter(d=>d.arquivado).length; }
+function nCancelados(){ return (DEALS_DOCS||[]).filter(d=>d.statusRaw==='cancelado').length; }
 function filteredDeals(){ return dealsBaseSemStatus().filter(d=>state.negFiltroStatus==='Todos'||d.status===state.negFiltroStatus); }
 function allStatusReais(){ return [...new Set(DEALS.map(d=>d.status))]; }
 // Abas com contador (estilo Pipe Imob): Todos + cada status presente, com o total.
@@ -553,6 +562,10 @@ function negStatusChips(){
   const nArq=nArquivados();
   if(nArq>0 || state.negVerArquivados){
     html+='<button class="chip'+(state.negVerArquivados?' active':'')+'" data-action="negverarquivados" style="margin-left:6px" title="Negócios encerrados que foram arquivados">'+icon('archive',13)+'Arquivados<span style="margin-left:6px;opacity:.65;font-weight:700">'+nArq+'</span></button>';
+  }
+  const nCanc=nCancelados();
+  if(nCanc>0 || state.negVerCancelados){
+    html+='<button class="chip'+(state.negVerCancelados?' active':'')+'" data-action="negvercancelados" style="margin-left:6px" title="Negócios cancelados — com o motivo da perda">'+icon('x-circle',13)+'Cancelados<span style="margin-left:6px;opacity:.65;font-weight:700">'+nCanc+'</span></button>';
   }
   return html;
 }
@@ -605,7 +618,9 @@ function renderStepper(d){
 }
 
 function openDeal(id){
-  const d=DEALS.find(x=>x.id===id); if(!d) return; state.currentDeal=id; const tab=state.dealTab||'timeline';
+  // DEALS não tem cancelados (filtrados no load); cai no DEALS_DOCS pra poder abrir
+  // um cancelado (ver motivo da perda / arquivar).
+  const d=DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id); if(!d) return; state.currentDeal=id; const tab=state.dealTab||'timeline';
   // Vindo de um drawer (pessoa/imóvel), fecha ele — senão o detalhe renderiza atrás.
   closeDrawer(); closeModal();
   // O detalhe é logicamente a tela Negócios (sanfona destaca certo + ESC/voltar coerentes).
@@ -634,7 +649,7 @@ function openDeal(id){
   + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a><button class="btn btn-outline sm" data-action="drive-set" data-cur="'+esc(d.driveUrl)+'">'+icon('pencil',15)+'Editar</button>':'<button class="btn btn-outline sm" data-action="drive-set" data-cur="">'+icon('folder-plus',15)+'Adicionar Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
-  + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+'<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div></div>' : '')
+  + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+'</div>'
@@ -1005,7 +1020,8 @@ function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
   else if(a==='refresh'){ if(el) el.disabled=true; carregarDados().then(()=>{ toast('Atualizado','check-circle-2','var(--success)'); navigate(state.view); }).catch(()=>{ toast('Erro ao atualizar','alert-triangle','var(--warning)'); if(el) el.disabled=false; }); }
   else if(a==='negstatuschip'){ state.negFiltroStatus=el.dataset.v; RENDERERS.negocios($('#root')); refreshIcons(); }
-  else if(a==='negverarquivados'){ state.negVerArquivados=!state.negVerArquivados; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
+  else if(a==='negverarquivados'){ state.negVerArquivados=!state.negVerArquivados; if(state.negVerArquivados) state.negVerCancelados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
+  else if(a==='negvercancelados'){ state.negVerCancelados=!state.negVerCancelados; if(state.negVerCancelados) state.negVerArquivados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
   else if(a==='mobilenav') openMobileNav();
