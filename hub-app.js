@@ -234,7 +234,9 @@ const ICN = {
   locadmin:     svgIcone('<path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/><path d="M9 12l2 2 4-4"/>'),
   painel:       svgIcone('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'),
   config:      svgIcone('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'),
-  perfil:      svgIcone('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>')
+  perfil:      svgIcone('<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>'),
+  home:        svgIcone('<path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/>'),
+  ferramentas: svgIcone('<path d="M14.7 6.3a4 4 0 0 0-5.2 5.2L3 18l3 3 6.5-6.5a4 4 0 0 0 5.2-5.2l-2.7 2.7-2.3-2.3z"/>')
 };
 
 // ─── Estrutura fixa dos treinamentos ─────────────────────────────────────────
@@ -286,30 +288,49 @@ const LOC_APPS = [
 // não fazem sentido no celular). No PWA sobram só as ferramentas que funcionam como
 // link web (ITBI Smart, Smart Vistorias) + as telas internas (Meus Negócios, Cadastro,
 // Agenda, Calculadoras, Notas, Meu Perfil). Marketing sai do PWA a pedido do Nathan.
+// Catálogo de TELAS (cada item carrega flags/permissões e é a fonte de verdade do que abre).
+// A ORDEM e o AGRUPAMENTO da sidebar vivem em SIDEBAR_LAYOUT (abaixo) — aqui é só o catálogo.
 const CATEGORIAS = [
-  { id: 'captacao',    nome: 'Captação',    icone: ICN.captacao },
+  { id: 'home',        nome: 'Dashboard',   icone: ICN.home, home: true },
+  { id: 'captacao',    nome: 'Captações',   icone: ICN.captacao },
   { id: 'crm',         nome: 'CRM',         icone: ICN.crm, webOculto: true },
-  { id: 'vistoria',    nome: 'Vistoria',    icone: ICN.vistoria },
+  { id: 'vistoria',    nome: 'Vistorias',   icone: ICN.vistoria },
   { id: 'performance', nome: 'Performance', icone: ICN.performance, webOculto: true },
-  { id: 'treinamento', nome: 'Treinamento', icone: ICN.treinamento, treinamento: true, webOculto: true },
+  { id: 'treinamento', nome: 'Treinamentos', icone: ICN.treinamento, treinamento: true, webOculto: true },
   { id: 'marketing',   nome: 'Marketing',   icone: ICN.marketing, marketing: true, webOculto: true },
-  { id: 'clicksign',   nome: 'ClickSign',   icone: ICN.clicksign, appDireto: 'clicksign', webOculto: true },
-  { id: 'agenda',      nome: 'Agenda',      icone: ICN.agenda, agenda: true },
-  { id: 'documentos',  nome: 'Cadastro',  icone: ICN.documentos, placeholder: true },
-  // "Meus Negócios" agora aparece pra TODOS os papéis de locação (gestor→Broker,
+  { id: 'clicksign',   nome: 'Clicksign',   icone: ICN.clicksign, appDireto: 'clicksign', webOculto: true },
+  { id: 'agenda',      nome: 'Minha Agenda', icone: ICN.agenda, agenda: true },
+  { id: 'documentos',  nome: 'Fichas Digitais', icone: ICN.documentos, placeholder: true },
+  // "Meus Negócios" aparece pra TODOS os papéis de locação (gestor→Broker,
   // administrativo→Admin, corretor→Corretor). A visão é roteada por papel no
-  // branch cat.locacoes. ⚠️ Gating amplo de propósito (staging); pra produção,
-  // decidir quem vê (hoje: qualquer usuário logado).
+  // branch cat.locacoes.
   { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true, webOculto: true },
-  { id: 'reuniao',      nome: 'Reunião',        icone: ICN.reuniao, reuniao: true, webOculto: true },
-  { id: 'sala_reuniao', nome: 'Sala de Reunião', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
-  { id: 'ia',           nome: 'IA',              icone: ICN.ia, ia: true, webOculto: true },
+  { id: 'reuniao',      nome: 'Reuniões',        icone: ICN.reuniao, reuniao: true, webOculto: true },
+  { id: 'sala_reuniao', nome: 'Reserva de Sala', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
+  { id: 'ia',           nome: 'SMART IA',        icone: ICN.ia, ia: true, webOculto: true },
   { id: 'calculadoras', nome: 'Calculadoras',    icone: ICN.calculadoras, calculadoras: true },
   { id: 'notas',        nome: 'Bloco de Notas',  icone: ICN.notas, notas: true },
   { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp', webOculto: true },
   { id: 'ti',          nome: 'Suporte / TI',  icone: ICN.ti, ti: true, soTI: true },
   { id: 'config',      nome: 'Meu Perfil', icone: ICN.perfil, config: true }
+];
+
+// Organização da sidebar (2026-07-30, pedido do Nathan): itens soltos + grupos-sanfona.
+// { item } = tela solta (usa as flags da CATEGORIAS). { grupo, filhos } = cabeçalho que
+// abre/fecha mostrando os filhos (cada filho é um id de CATEGORIAS). Grupo sem filho
+// visível (permissão) não aparece.
+const SIDEBAR_LAYOUT = [
+  { item: 'home' },
+  { item: 'locacoes' },
+  { grupo: 'g_pessoas',        nome: 'Pessoas',        icone: ICN.crm,         filhos: ['crm', 'documentos'] },
+  { grupo: 'g_imoveis',        nome: 'Imóveis',        icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia'] },
+  { grupo: 'g_agenda',         nome: 'Agenda',         icone: ICN.agenda,      filhos: ['agenda', 'reuniao', 'sala_reuniao'] },
+  { item: 'ia' },
+  { grupo: 'g_ferramentas',    nome: 'Ferramentas',    icone: ICN.ferramentas, filhos: ['whatsapp', 'calculadoras', 'notas', 'clicksign'] },
+  { grupo: 'g_desenvolvimento', nome: 'Desenvolvimento', icone: ICN.performance, filhos: ['treinamento', 'marketing', 'performance'] },
+  { item: 'ti' },
+  { item: 'config' },
 ];
 
 // Web/PWA? O shim web zera o autologin (`hubApi.autologin === false`, `plataforma:'web'`).
@@ -328,7 +349,8 @@ const AVATAR_PADRAO = 'data:image/svg+xml;utf8,' + encodeURIComponent(
   '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="#1d222d"/><circle cx="60" cy="46" r="22" fill="#6b7280"/><rect x="24" y="74" width="72" height="48" rx="24" fill="#6b7280"/></svg>'
 );
 
-let categoriaAtiva = 'captacao';
+let categoriaAtiva = 'home';
+const gruposAbertos = new Set();   // ids dos grupos-sanfona da sidebar que estão expandidos
 let locSub = null;              // sub-app aberto dentro da aba Locação (null = grade de cards)
 let locSanfonaAberta = false;   // "Meus Negócios" expandido na sidebar (sanfona)
 let locBrokerView = 'dashboard';// tela ativa do Broker embutido (sub-item da sanfona)
@@ -360,6 +382,7 @@ const inputBusca     = document.getElementById('inputBusca');
 const searchWrap     = document.querySelector('.search-wrap');
 const appsGrid       = document.getElementById('appsGrid');
 const estadoVazio    = document.getElementById('estadoVazio');
+const secaoHome      = document.getElementById('secaoHome');
 const secaoMarketing      = document.getElementById('secaoMarketing');
 const secaoDocs           = document.getElementById('secaoDocumentos');
 const secaoFotografia     = document.getElementById('secaoFotografia');
@@ -437,27 +460,22 @@ let pessoasCacheAt = 0;           // timestamp da última carga do cache (TTL: 5
 
 // ─── Render sidebar ──────────────────────────────────────────────────────
 function renderSidebar() {
-  const visiveis = CATEGORIAS.filter(c =>
-    !c.oculto &&
-    (!c.webOculto || !ehPwaCelular()) &&
-    (!c.soGestor || locRoleAtual === 'gestor') &&
-    (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto))) &&
-    (!c.soTI || temPermTI || isAdmin)
-    // "Meus Negócios" liberada pra TODOS (2026-07-30, pedido do Nathan após
-    // a apresentação). O dark launch foi removido; papel dentro da aba continua
-    // vindo da claim locRole (gestor/administrativo/corretor).
-  );
+  // Permissão/visibilidade de uma TELA (mesma regra de antes).
+  const podeVer = c => !!c && !c.oculto
+    && (!c.webOculto || !ehPwaCelular())
+    && (!c.soGestor || locRoleAtual === 'gestor')
+    && (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
+    && (!c.soTI || temPermTI || isAdmin);
+  const catDe = id => CATEGORIAS.find(c => c.id === id);
 
-  navCategorias.innerHTML = visiveis.map(c => {
+  // HTML de um item solto (inclui a sanfona própria do "Meus Negócios").
+  const itemHtml = c => {
     const btn = `
     <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''} ${c.config ? 'nav-item-fim' : ''}" data-cat="${c.id}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
       ${c.locacoes ? `<span class="nav-caret">${locSanfonaAberta ? '▾' : '▸'}</span>` : ''}
     </button>`;
-    // Sanfona "Meus Negócios": sub-itens do Broker abaixo do item (menos "Agenda" e
-    // "Meu Perfil", que já existem no Hub). Sem o módulo do Broker (fallback pra
-    // grade antiga), a lista vem vazia — aí não renderiza sanfona nenhuma.
     if (c.locacoes && locSanfonaAberta) {
       const itens = locSubItens();
       if (itens.length) {
@@ -469,61 +487,95 @@ function renderSidebar() {
       }
     }
     return btn;
-  }).join('');
+  };
 
-  navCategorias.querySelectorAll('.nav-item').forEach(b => {
-    const cat = CATEGORIAS.find(c => c.id === b.dataset.cat);
+  // Monta a sidebar seguindo SIDEBAR_LAYOUT: itens soltos + grupos-sanfona.
+  let html = '';
+  for (const entry of SIDEBAR_LAYOUT) {
+    if (entry.item) {
+      const c = catDe(entry.item);
+      if (podeVer(c)) html += itemHtml(c);
+    } else if (entry.grupo) {
+      const filhos = entry.filhos.map(catDe).filter(podeVer);
+      if (!filhos.length) continue;   // grupo sem filho visível não aparece
+      // Grupo expandido se o usuário abriu OU se contém a tela ativa (mostra onde está).
+      const aberto = gruposAbertos.has(entry.grupo) || filhos.some(f => f.id === categoriaAtiva);
+      html += `
+      <button class="nav-item nav-group" data-grupo="${entry.grupo}">
+        <span class="nav-icone">${entry.icone}</span>
+        <span class="nav-label">${entry.nome}</span>
+        <span class="nav-caret">${aberto ? '▾' : '▸'}</span>
+      </button>`;
+      if (aberto) {
+        html += `<div class="nav-subwrap">` + filhos.map(f => `
+        <button class="nav-subitem ${f.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${f.id}">
+          <span class="nav-sub-dot"></span><span>${f.nome}</span>
+        </button>`).join('') + `</div>`;
+      }
+    }
+  }
+  navCategorias.innerHTML = html;
+
+  // Grupos: abrir/fechar a sanfona.
+  navCategorias.querySelectorAll('[data-grupo]').forEach(b => {
     b.addEventListener('click', () => {
-      if (cat && cat.appDireto) {
-        abrirApp(cat.appDireto);
-        return;
-      }
-      if (cat && cat.locacoes) {
-        // Sanfona: se já está aberta e ativa, clicar de novo FECHA (recolhe + sai do Broker).
-        if (locSanfonaAberta && categoriaAtiva === 'locacoes') {
-          locSanfonaAberta = false;
-          const alt = CATEGORIAS.find(c =>
-            c.id !== 'locacoes' && !c.oculto && !c.soGestor &&
-            !c.restrito && !c.soTI && !c.appDireto) || CATEGORIAS[0];
-          categoriaAtiva = alt ? alt.id : 'captacao';
-          locSub = null;
-          renderSidebar();
-          renderCentro();   // desmonta o Broker e restaura o layout do Hub
-          return;
-        }
-        // Abre/ativa "Meus Negócios" como sanfona embutida (sem janela/tela nova).
-        categoriaAtiva = 'locacoes';
-        locSanfonaAberta = true;
-        if (!locBrokerView) locBrokerView = 'dashboard';
-        termoBusca = ''; inputBusca.value = '';
-        renderSidebar();
-        renderCentro();
-        registrarAcesso({ siteKey: 'locacoes', titulo: 'Meus Negócios' }).catch(() => {});
-        return;
-      }
-      categoriaAtiva = b.dataset.cat;
-      locSub = null;
-      locSanfonaAberta = false;   // sai da sanfona ao trocar de categoria
-      termoBusca = '';
-      inputBusca.value = '';
+      const g = b.dataset.grupo;
+      if (gruposAbertos.has(g)) gruposAbertos.delete(g); else gruposAbertos.add(g);
       renderSidebar();
-      renderCentro();
-      const _grid = ['captacao','crm','vistoria','performance'];
-      if (cat && !cat.appDireto && cat.id !== 'config' && !_grid.includes(cat.id)) {
-        registrarAcesso({ siteKey: cat.id, titulo: cat.nome }).catch(() => {});
-      }
     });
   });
 
-  // Sub-itens da sanfona: trocam a tela do Broker embutido sem remontar.
-  navCategorias.querySelectorAll('.nav-subitem').forEach(b => {
+  // Itens soltos + filhos de grupo (ambos têm data-cat) → ativa a tela.
+  navCategorias.querySelectorAll('[data-cat]').forEach(b => {
+    b.addEventListener('click', () => ativarCategoria(b.dataset.cat));
+  });
+
+  // Sub-itens do Broker embutido (Meus Negócios): trocam a tela sem remontar.
+  navCategorias.querySelectorAll('[data-locview]').forEach(b => {
     b.addEventListener('click', () => {
       locBrokerView = b.dataset.locview;
       if (window.Broker && window.Broker.navigate) window.Broker.navigate(locBrokerView);
-      // re-render só pra atualizar o destaque do sub-item ativo
-      navCategorias.querySelectorAll('.nav-subitem').forEach(x => x.classList.toggle('ativo', x.dataset.locview === locBrokerView));
+      navCategorias.querySelectorAll('[data-locview]').forEach(x => x.classList.toggle('ativo', x.dataset.locview === locBrokerView));
     });
   });
+}
+
+// Ativa uma tela. appDireto abre app; locacoes é a sanfona embutida do Broker;
+// o resto troca a tela central. Reusado pelos itens soltos e pelos filhos de grupo.
+function ativarCategoria(id) {
+  const cat = CATEGORIAS.find(c => c.id === id);
+  if (!cat) return;
+  if (cat.appDireto) { abrirApp(cat.appDireto); return; }
+  if (cat.locacoes) {
+    // Sanfona: se já está aberta e ativa, clicar de novo FECHA (recolhe + sai do Broker).
+    if (locSanfonaAberta && categoriaAtiva === 'locacoes') {
+      locSanfonaAberta = false;
+      categoriaAtiva = 'home';
+      locSub = null;
+      renderSidebar();
+      renderCentro();   // desmonta o Broker e restaura o layout do Hub
+      return;
+    }
+    categoriaAtiva = 'locacoes';
+    locSanfonaAberta = true;
+    if (!locBrokerView) locBrokerView = 'dashboard';
+    termoBusca = ''; inputBusca.value = '';
+    renderSidebar();
+    renderCentro();
+    registrarAcesso({ siteKey: 'locacoes', titulo: 'Meus Negócios' }).catch(() => {});
+    return;
+  }
+  categoriaAtiva = id;
+  locSub = null;
+  locSanfonaAberta = false;   // sai da sanfona do Broker ao trocar de tela
+  termoBusca = '';
+  inputBusca.value = '';
+  renderSidebar();
+  renderCentro();
+  const _grid = ['captacao', 'crm', 'vistoria', 'performance'];
+  if (!cat.appDireto && cat.id !== 'config' && !_grid.includes(cat.id)) {
+    registrarAcesso({ siteKey: cat.id, titulo: cat.nome }).catch(() => {});
+  }
 }
 
 // Papel na Gestão de Locações → Broker/Corretor/Administrativo. Fonte ÚNICA: a
@@ -571,11 +623,23 @@ function renderCentro() {
   secaoRelatorios.hidden = true;
   secaoTreinamento.hidden = true;
   secaoTI.hidden = true;
+  if (secaoHome) secaoHome.hidden = true;
   searchWrap.hidden = true;
   atualizarBanner();
   // Painel direito é redundante na própria aba Agenda → esconde lá (e some os botões de minimizar)
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
   btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
+
+  // Dashboard (tela inicial) — placeholder "em breve" por enquanto.
+  if (cat.home) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    if (secaoHome) secaoHome.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    return;
+  }
 
   // Aba Suporte / TI (chamados)
   if (cat.ti) {
