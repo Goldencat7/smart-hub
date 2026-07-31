@@ -498,8 +498,10 @@ function renderSidebar() {
     } else if (entry.grupo) {
       const filhos = entry.filhos.map(catDe).filter(podeVer);
       if (!filhos.length) continue;   // grupo sem filho visível não aparece
-      // Grupo expandido se o usuário abriu OU se contém a tela ativa (mostra onde está).
-      const aberto = gruposAbertos.has(entry.grupo) || filhos.some(f => f.id === categoriaAtiva);
+      // Aberto = SÓ o que está em gruposAbertos. Ao navegar pra uma tela de dentro,
+      // `abrirGrupoDe` adiciona o grupo ao set — então ele abre sozinho, mas o clique
+      // no cabeçalho consegue FECHAR de verdade (antes o "contém a tela ativa" reabria).
+      const aberto = gruposAbertos.has(entry.grupo);
       html += `
       <button class="nav-item nav-group" data-grupo="${entry.grupo}">
         <span class="nav-icone">${entry.icone}</span>
@@ -540,6 +542,13 @@ function renderSidebar() {
   });
 }
 
+// Abre (no set) o grupo-sanfona que contém uma tela — pra ela aparecer destacada
+// quando a navegação vem de fora do sidebar (bridge do Broker, alerta, etc.).
+function abrirGrupoDe(id) {
+  const g = SIDEBAR_LAYOUT.find(e => e.grupo && e.filhos.includes(id));
+  if (g) gruposAbertos.add(g.grupo);
+}
+
 // Ativa uma tela. appDireto abre app; locacoes é a sanfona embutida do Broker;
 // o resto troca a tela central. Reusado pelos itens soltos e pelos filhos de grupo.
 function ativarCategoria(id) {
@@ -570,6 +579,7 @@ function ativarCategoria(id) {
   locSanfonaAberta = false;   // sai da sanfona do Broker ao trocar de tela
   termoBusca = '';
   inputBusca.value = '';
+  abrirGrupoDe(id);           // mantém aberto o grupo da tela que abriu
   renderSidebar();
   renderCentro();
   const _grid = ['captacao', 'crm', 'vistoria', 'performance'];
@@ -1120,6 +1130,7 @@ window.hubAbrirCategoria = (id) => {
   const cat = CATEGORIAS.find(c => c.id === id);
   if (!cat) return false;
   categoriaAtiva = id; locSub = null; locSanfonaAberta = false;
+  abrirGrupoDe(id);
   renderSidebar(); renderCentro();
   return true;
 };
@@ -2126,7 +2137,7 @@ function renderPainelAgenda(){
       diaSelecionado = b.dataset.dia;
       const d = new Date(b.dataset.dia + 'T00:00:00');
       calAno = d.getFullYear(); calMes = d.getMonth();
-      categoriaAtiva = 'agenda'; renderSidebar(); renderCentro();
+      categoriaAtiva = 'agenda'; abrirGrupoDe('agenda'); renderSidebar(); renderCentro();
     });
   });
   const prox = eventos.filter(e => e.inicio >= new Date(Date.now()-3600000)).slice(0,8);
@@ -6743,8 +6754,9 @@ function renderNotifPanel() {
     item.addEventListener('click', () => {
       notifPanel.hidden = true;
       const secKey = item.dataset.tipo;
-      // Todas as fichas (locação e venda) vivem no Cadastro.
+      // Todas as fichas (locação e venda) vivem no Cadastro (Fichas Digitais).
       categoriaAtiva = 'documentos';
+      abrirGrupoDe('documentos');
       locSub = null;
       // A tela nova do Cadastro é uma TABELA (não mais sanfonas). O antigo
       // .docs-acc-head não existe mais — em vez de clicar num elemento inexistente,
