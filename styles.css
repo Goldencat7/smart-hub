@@ -255,8 +255,14 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .nav-subitem:hover { background: rgba(255,255,255,0.07); color: #DDE4EC; }
 .nav-subitem.ativo { color: #fff; background: rgba(255,255,255,0.10); border-left-color: var(--blue); font-weight: 600; }
 .nav-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: .55; }
-/* Cabeçalho de grupo (sanfona) da sidebar — o caret indica aberto/fechado. */
+/* Itens de TOPO da sidebar (grupos-sanfona + itens soltos) em azul + negrito; os
+   sub-itens (com bolinha, indentados) ficam no tom normal. O item ATIVO mantém o
+   texto branco sobre o fundo azul. Azul claro pra ler no fundo navy. */
 .nav-group .nav-caret { transition: none; }
+.nav-item .nav-label { font-weight: 700; }
+.nav-item:not(.ativo) .nav-label,
+.nav-item:not(.ativo) .nav-icone,
+.nav-item:not(.ativo) .nav-caret { color: #5b9bf0; }
 
 /* Dashboard (tela inicial) — placeholder "em breve". */
 .home-placeholder {
