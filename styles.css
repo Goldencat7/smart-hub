@@ -1194,6 +1194,17 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-card); padding: 16px; margin-bottom: 14px;
 }
+/* Card do guia de preparo (PDF pra baixar) na aba Fotografia. */
+.foto-guia {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); padding: 14px 16px; margin-bottom: 14px;
+}
+.foto-guia-ico { font-size: 30px; line-height: 1; flex-shrink: 0; }
+.foto-guia-txt { flex: 1; min-width: 0; }
+.foto-guia-txt h3 { margin: 0 0 2px; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.foto-guia-txt p { margin: 0; font-size: 12px; line-height: 1.45; }
+.foto-guia-btn { flex-shrink: 0; white-space: nowrap; }
 .foto-agendar-titulo {
   margin: 0; font-size: 14px; font-weight: 700; color: var(--text-primary);
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;

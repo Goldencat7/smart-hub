@@ -630,7 +630,7 @@ function renderCentro() {
   hubLayout.classList.toggle('na-agenda', !!cat.agenda);
   btnExpandAgenda.hidden = cat.agenda ? true : !hubLayout.classList.contains('agenda-oculta');
 
-  // Dashboard (tela inicial) — placeholder "em breve" por enquanto.
+  // Dashboard (tela inicial) — resumo real da operação.
   if (cat.home) {
     appsGrid.hidden = true;
     estadoVazio.hidden = true;
@@ -638,6 +638,7 @@ function renderCentro() {
     if (secaoHome) secaoHome.hidden = false;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
+    carregarHome();
     return;
   }
 
@@ -1257,6 +1258,122 @@ async function carregarIndicadoresPerfil() {
     if (elVendas) elVendas.textContent = String(vendas);
     if (elLoc) elLoc.textContent = String(locacoes);
   } catch (_) { /* mantém os zeros — indicadores não são críticos */ }
+}
+
+// ─── Dashboard (tela inicial) ────────────────────────────────────────────────
+// Dado REAL, role-scoped pelas próprias functions (corretor vê o seu; gestor vê a
+// imobiliária). Reusa negocioListar + locListarImoveis (KPIs/comissão/negócios) +
+// listarEventos (agenda de hoje) + CARTEIRA_FICHAS (links de ficha).
+async function carregarHome() {
+  if (!secaoHome) return;
+  const esc = escapeHtml;
+  const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
+  const hh = new Date().getHours();
+  const saud = hh < 12 ? 'Bom dia' : hh < 18 ? 'Boa tarde' : 'Boa noite';
+  const nome = (document.getElementById('usuarioInfo')?.textContent?.trim() || '').split(' ')[0] || '';
+  const dataExtenso = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  secaoHome.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:48px 0;font-size:13px">Carregando…</p>';
+
+  const de = new Date(); de.setHours(0, 0, 0, 0);
+  const ate = new Date(); ate.setHours(23, 59, 59, 999);
+  let negocios = [], imoveis = [], eventosHoje = [];
+  try {
+    const [nR, iR, eR] = await Promise.all([
+      negocioListarFn({}).catch(() => ({ data: { negocios: [] } })),
+      locListarImoveis({}).catch(() => ({ data: { imoveis: [] } })),
+      listarEventos({ de: de.toISOString(), ate: ate.toISOString() }).catch(() => ({ data: { eventos: [] } })),
+    ]);
+    negocios = nR.data?.negocios || [];
+    imoveis = iR.data?.imoveis || [];
+    eventosHoje = eR.data?.eventos || [];
+  } catch (_) { /* segue com o que tiver */ }
+  if (categoriaAtiva !== 'home') return;   // usuário já saiu da tela enquanto carregava
+
+  const imById = new Map(imoveis.map(im => [im.id, im]));
+  const precoDe = im => indParseMoney(im ? (im.valorAnuncio || im.valorProposta || im.valorFechamento || 0) : 0);
+  const ruaDe = im => { if (!im) return 'Imóvel'; const e = im.endereco || {}; return [e.logradouro, e.numero].filter(Boolean).join(', ') || im.referencia || im.proprietarioNome || 'Imóvel'; };
+  const chkPct = cl => (cl && cl.length) ? Math.round(cl.filter(x => x.feito).length / cl.length * 100) : 0;
+  const diasDe = iso => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : 0;
+
+  const ativos = negocios.filter(n => !['concluido', 'cancelado'].includes(n.status));
+  const comissao = ativos.reduce((s, n) => { const p = precoDe(imById.get(n.imovelId)); return s + (n.tipo === 'venda' ? p * 0.06 : p); }, 0);
+  const pendencias = imoveis.filter(im => (im.pendentes || []).length > 0 && !im.arquivado).length;
+  const ativosOrd = ativos.map(n => ({
+    rua: ruaDe(imById.get(n.imovelId)), prog: chkPct(n.checklist),
+    prox: n.proximaAcao || 'Sem próxima ação definida', dias: diasDe(n.atualizadoEm || n.criadoEm),
+  })).sort((a, b) => b.dias - a.dias);
+
+  // Estilos base (tema claro do Hub)
+  const cardSt = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)';
+  const kpi = (ico, num, label, cor) => `<div style="${cardSt};padding:14px 16px;flex:1;min-width:140px">
+    <div style="font-size:12px;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:6px">${ico} ${esc(label)}</div>
+    <div style="font-size:26px;font-weight:700;margin-top:6px;color:${cor || 'var(--text-primary)'}">${num}</div></div>`;
+  const secTit = (t, extra) => `<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 10px"><span style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${t}</span>${extra || ''}</div>`;
+
+  // KPIs
+  const kpis = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+    ${kpi('📁', ativos.length, 'Negócios em andamento')}
+    ${kpi('📅', eventosHoje.length, 'Compromissos hoje')}
+    ${kpi('🔴', pendencias, 'Pendências', pendencias ? '#DC1C2E' : undefined)}
+    ${kpi('💰', brl(comissao), 'Comissão prevista', '#16a34a')}
+  </div>`;
+
+  // Próximas ações (dos negócios ativos mais parados)
+  const proxItems = ativosOrd.slice(0, 6).map(a => `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+    <span style="color:var(--blue)">○</span><span style="flex:1;min-width:0">${esc(a.prox)}</span>
+    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${esc(a.rua)}</span></div>`).join('') ||
+    '<p style="font-size:13px;color:var(--text-muted);padding:12px 0">Nenhuma ação pendente. 🎉</p>';
+  const colProx = `<div style="${cardSt};padding:16px;flex:1;min-width:280px">${secTit('📋 Próximas ações')}${proxItems}</div>`;
+
+  // Agenda de hoje
+  const evOrd = eventosHoje.slice().sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
+  const evItems = evOrd.slice(0, 6).map(ev => {
+    const t = new Date(ev.inicio); const hhmm = isNaN(t) ? '' : t.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span style="font-weight:700;color:var(--blue);white-space:nowrap">${hhmm}</span><span style="flex:1;min-width:0">${esc(ev.titulo || 'Compromisso')}</span></div>`;
+  }).join('') || '<p style="font-size:13px;color:var(--text-muted);padding:12px 0">Nada agendado para hoje.</p>';
+  const colAgenda = `<div style="${cardSt};padding:16px;flex:1;min-width:280px">${secTit('📅 Agenda de hoje', '<button class="topbar-btn" data-home="agenda" style="font-size:11px;padding:3px 10px">Abrir Agenda</button>')}${evItems}</div>`;
+
+  // Negócios em andamento (com barra de progresso)
+  const negItems = ativosOrd.slice(0, 6).map(a => `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.rua)}</div><div style="font-size:11px;color:var(--text-muted)">${esc(a.prox)}</div></div>
+    <div style="width:120px;height:7px;background:var(--border);border-radius:99px;overflow:hidden;flex-shrink:0"><div style="width:${a.prog}%;height:100%;background:var(--blue)"></div></div>
+    <span style="font-size:12px;font-weight:700;color:var(--text-primary);width:38px;text-align:right;flex-shrink:0">${a.prog}%</span></div>`).join('') ||
+    '<p style="font-size:13px;color:var(--text-muted);padding:12px 0">Nenhum negócio em andamento.</p>';
+  const blocoNeg = `<div style="${cardSt};padding:16px;margin-bottom:18px">${secTit('📁 Negócios em andamento', '<button class="topbar-btn" data-home="negocios" style="font-size:11px;padding:3px 10px">Ver todos</button>')}${negItems}</div>`;
+
+  // Fichas digitais (links reais do corretor)
+  const fichaRows = CARTEIRA_FICHAS.map(f => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+    <span style="flex:1;min-width:0;font-weight:600;color:var(--text-primary)">${esc(f.label)}</span>
+    <button class="topbar-btn" data-home="ficha-copiar" data-arq="${esc(f.arquivo)}" style="font-size:11px;padding:3px 9px">📋 Copiar</button>
+    <button class="topbar-btn" data-home="ficha-wpp" data-arq="${esc(f.arquivo)}" style="font-size:11px;padding:3px 9px">💬 WhatsApp</button>
+    <button class="topbar-btn" data-home="ficha-abrir" data-arq="${esc(f.arquivo)}" style="font-size:11px;padding:3px 9px">👁 Abrir</button></div>`).join('');
+  const blocoFichas = `<div style="${cardSt};padding:16px">${secTit('🗂️ Fichas digitais', '<button class="topbar-btn" data-home="fichas" style="font-size:11px;padding:3px 10px">Ver todas</button>')}${fichaRows}</div>`;
+
+  const header = `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+    <div><div style="font-size:20px;font-weight:700;color:var(--text-primary)">${saud}${nome ? ', ' + esc(nome) : ''} 👋</div></div>
+    <div style="text-align:right"><div style="font-size:13px;color:var(--text-muted);text-transform:capitalize">${esc(dataExtenso)}</div>
+    ${pendencias ? `<button class="topbar-btn" data-home="negocios" style="font-size:12px;padding:3px 10px;margin-top:6px">🔔 ${pendencias} pendência${pendencias > 1 ? 's' : ''}</button>` : ''}</div>
+  </div>`;
+
+  secaoHome.innerHTML = header + kpis
+    + `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">${colProx}${colAgenda}</div>`
+    + blocoNeg + blocoFichas;
+
+  // Wiring (delegação num container recém-criado)
+  secaoHome.querySelectorAll('[data-home]').forEach(b => {
+    b.addEventListener('click', () => {
+      const act = b.dataset.home, arq = b.dataset.arq;
+      if (act === 'agenda') return ativarCategoria('agenda');
+      if (act === 'negocios') return ativarCategoria('locacoes');
+      if (act === 'fichas') return ativarCategoria('documentos');
+      if (act === 'ficha-copiar') return cartCopiarLink(arq);
+      const nomeC = document.getElementById('usuarioInfo')?.textContent?.trim() || '';
+      const link = `${BASE_HOSTING}/${arq}?corretor=${currentUid}&nome=${encodeURIComponent(nomeC)}`;
+      if (act === 'ficha-wpp') return window.open('https://wa.me/?text=' + encodeURIComponent('Olá! Preencha sua ficha cadastral: ' + link), '_blank');
+      if (act === 'ficha-abrir') { if (window.hubApi && window.hubApi.abrirFicha) window.hubApi.abrirFicha(link, 'Ficha'); else window.open(link, '_blank'); }
+    });
+  });
 }
 async function carregarPerfil() {
   fotoPendente = null;
@@ -3150,19 +3267,39 @@ function cardAgendamentoFoto() {
     </div>`;
 }
 
+// Card de download do guia "Preparo do Imóvel para Fotos" (PDF servido pelo Hosting).
+// Aparece pra todos na aba Fotografia. BASE_HOSTING resolve prod/staging por hostname.
+function cardGuiaFotos() {
+  return `
+    <div class="foto-guia">
+      <div class="foto-guia-ico">📸</div>
+      <div class="foto-guia-txt">
+        <h3>Guia: Preparo do Imóvel para Fotos</h3>
+        <p class="muted">Checklist do que organizar em cada ambiente antes da sessão — iluminação, arrumação e detalhes. Use na visita ou envie ao proprietário.</p>
+      </div>
+      <button class="topbar-btn foto-guia-btn" id="btnBaixarGuiaFotos">⬇ Baixar PDF</button>
+    </div>`;
+}
+function ligarGuiaFotos() {
+  document.getElementById('btnBaixarGuiaFotos')?.addEventListener('click', () => {
+    window.open(`${BASE_HOSTING}/guia-preparo-fotos.pdf`, '_blank');
+  });
+}
+
 function renderFotoPessoal(driveLink, gestorPreview = false) {
   const topo = gestorPreview ? barraToggleFoto() : '';
   if (!driveLink) {
-    secaoFotografia.innerHTML = topo + cardAgendamentoFoto() + `
+    secaoFotografia.innerHTML = topo + cardAgendamentoFoto() + cardGuiaFotos() + `
       <div class="foto-vazio">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <p>Nenhuma pasta de fotos foi atribuída a você ainda.</p>
       </div>`;
+    ligarGuiaFotos();
     if (gestorPreview) ligarToggleFoto();
     return;
   }
   const embedUrl = linkParaEmbedDrive(driveLink);
-  secaoFotografia.innerHTML = topo + cardAgendamentoFoto() + `
+  secaoFotografia.innerHTML = topo + cardAgendamentoFoto() + cardGuiaFotos() + `
     <div class="docs-painel">
       <div class="docs-painel-head">
         <span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Minha pasta de fotos</span>
@@ -3175,6 +3312,7 @@ function renderFotoPessoal(driveLink, gestorPreview = false) {
         ? `<iframe id="fotoDriveFrame" class="drive-frame" src="${escapeHtml(embedUrl)}" title="Pasta de fotos"></iframe>`
         : `<div class="foto-vazio" style="border:none"><p>Link configurado. Clique em "Abrir no Drive" pra acessar.</p></div>`}
     </div>`;
+  ligarGuiaFotos();
   if (gestorPreview) ligarToggleFoto();
   document.getElementById('btnAbrirFotoDrive')?.addEventListener('click', () => window.open(driveLink, '_blank'));
   document.getElementById('btnAtualizarFoto')?.addEventListener('click', (e) => {
@@ -3188,7 +3326,7 @@ function renderFotoPessoal(driveLink, gestorPreview = false) {
 }
 
 function renderFotoGerenciar(pessoas) {
-  secaoFotografia.innerHTML = barraToggleFoto() + `
+  secaoFotografia.innerHTML = barraToggleFoto() + cardGuiaFotos() + `
     <div class="foto-gerenciar">
       <div class="docs-painel-head" style="border:1px solid var(--border);border-radius:var(--radius-card);margin-bottom:12px">
         <span><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>Gerenciar pastas de fotografia</span>
@@ -3207,6 +3345,7 @@ function renderFotoGerenciar(pessoas) {
       </table>
     </div>`;
 
+  ligarGuiaFotos();
   ligarToggleFoto();
   secaoFotografia.querySelectorAll('tr[data-uid]').forEach(row => {
     const uid = row.dataset.uid;
