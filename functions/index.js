@@ -1650,7 +1650,7 @@ exports.negocioAtualizar = onCall(async (req) => {
     const s = await tx.get(ref);
     if (!s.exists) throw new HttpsError('not-found', 'Negócio não encontrado.');
     const n = s.data();
-    if (['concluido', 'cancelado'].includes(n.status) && d.acao !== 'comentario') {
+    if (['concluido', 'cancelado'].includes(n.status) && !['comentario', 'arquivar', 'desarquivar'].includes(d.acao)) {
       throw new HttpsError('failed-precondition', 'Negócio encerrado não aceita mais alterações.');
     }
     const agora = admin.firestore.Timestamp.now();
@@ -1711,8 +1711,19 @@ exports.negocioAtualizar = onCall(async (req) => {
       if (!ehGestor) throw new HttpsError('permission-denied', 'Cancelar é decisão do broker.');
       up.status = 'cancelado';
       up.proximaAcao = 'Processo encerrado';
-      anota('Negócio cancelado' + (d.motivo ? ` — ${_txt(d.motivo, 200)}` : ''));
+      // Motivo da perda: além da timeline, guarda como campo estruturado pra virar relatório.
+      const motivo = _txt(d.motivo, 200);
+      up.motivoCancelamento = motivo;
+      up.canceladoEm = admin.firestore.FieldValue.serverTimestamp();
+      anota('Negócio cancelado' + (motivo ? ` — ${motivo}` : ''));
       efeito = 'cancelar';
+    } else if (d.acao === 'arquivar' || d.acao === 'desarquivar') {
+      // Arquivar = tirar da lista ativa de Negócios SEM perder histórico/relatório.
+      // Só vale pra negócio encerrado (concluído/cancelado); é reversível.
+      if (!ehGestor) throw new HttpsError('permission-denied', 'Arquivar é decisão do broker.');
+      if (!['concluido', 'cancelado'].includes(n.status)) throw new HttpsError('failed-precondition', 'Só negócios encerrados podem ser arquivados.');
+      up.arquivado = d.acao === 'arquivar';
+      anota(up.arquivado ? 'Negócio arquivado' : 'Negócio desarquivado');
     } else {
       throw new HttpsError('invalid-argument', 'Ação inválida.');
     }

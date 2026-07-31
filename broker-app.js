@@ -235,6 +235,7 @@ function mapNegocio(n){
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
+    arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
     // O servidor só devolve o array pra quem PODE comentar (broker + corretor do
     // negócio); ausente/null = sem permissão. `!==null` deixava `undefined` passar.
     podeComentar: Array.isArray(n.comentarios),
@@ -534,30 +535,63 @@ RENDERERS.dashboard = function(host){
 };
 
 /* ---------------- NEGÓCIOS ---------------- */
-function filteredDeals(){ const q=semAcento(state.negBusca).trim(); return DEALS.filter(d=>{ if(!noMes(d.criadoEm))return false; if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(state.negFiltroStatus!=='Todos'&&d.status!==state.negFiltroStatus)return false; if(q){ const im=propDoDeal(d); const s=semAcento(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)); if(s.indexOf(q)<0)return false; } return true; }); }
+// Base da tela Negócios SEM o filtro de status — serve pros contadores das abas
+// (cada aba conta quantos negócios têm aquele status dentro do escopo tipo+mês+busca).
+function dealsBaseSemStatus(){ const q=semAcento(state.negBusca).trim(); const verArq=!!state.negVerArquivados; return DEALS.filter(d=>{ if(!!d.arquivado!==verArq)return false; if(!noMes(d.criadoEm))return false; if(state.negFiltroTipo!=='Todos'&&d.tipo!==state.negFiltroTipo)return false; if(q){ const im=propDoDeal(d); const s=semAcento(d.code+' '+im.rua+' '+d.clienteNome+' '+corrNome(d.corretor)); if(s.indexOf(q)<0)return false; } return true; }); }
+function nArquivados(){ return DEALS.filter(d=>d.arquivado).length; }
+function filteredDeals(){ return dealsBaseSemStatus().filter(d=>state.negFiltroStatus==='Todos'||d.status===state.negFiltroStatus); }
 function allStatusReais(){ return [...new Set(DEALS.map(d=>d.status))]; }
+// Abas com contador (estilo Pipe Imob): Todos + cada status presente, com o total.
+// Reusa state.negFiltroStatus (mesmo filtro do drill-down do dashboard) — clicar filtra na hora.
+function negStatusChips(){
+  const base=dealsBaseSemStatus();
+  const counts={}; base.forEach(d=>{ counts[d.status]=(counts[d.status]||0)+1; });
+  const chip=(val,label,n,active)=>'<button class="chip'+(active?' active':'')+'" data-action="negstatuschip" data-v="'+esc(val)+'">'+esc(label)+'<span style="margin-left:6px;opacity:.65;font-weight:700">'+n+'</span></button>';
+  let html=chip('Todos','Todos',base.length,state.negFiltroStatus==='Todos');
+  allStatusReais().forEach(s=>{ html+=chip(s,s,counts[s]||0,state.negFiltroStatus===s); });
+  // Toggle "Arquivados" (só aparece se há algum arquivado, ou já está ligado) — separado à direita.
+  const nArq=nArquivados();
+  if(nArq>0 || state.negVerArquivados){
+    html+='<button class="chip'+(state.negVerArquivados?' active':'')+'" data-action="negverarquivados" style="margin-left:6px" title="Negócios encerrados que foram arquivados">'+icon('archive',13)+'Arquivados<span style="margin-left:6px;opacity:.65;font-weight:700">'+nArq+'</span></button>';
+  }
+  return html;
+}
 function corrNome(uid){ return CORRETORES[uid]?CORRETORES[uid].nome:'—'; }
 function corrFoto(uid){ return CORRETORES[uid]?CORRETORES[uid].foto:''; }
+// Semáforo de "dias parado" (verde ≤7, amarelo 8-14, vermelho >14) — coerente com as
+// regras stale(>7)/vencida(>14) do dashboard. Negócio encerrado (concluído/cancelado)
+// não envelhece → mostra "—".
+function agingBadge(d){
+  if(d.statusRaw==='concluido'||d.statusRaw==='cancelado') return '<span class="t400">—</span>';
+  const n=d.diasParado||0;
+  let bg,cor,bd;
+  if(n<=7){ bg='rgba(16,185,129,.15)'; cor='#10b981'; bd='rgba(16,185,129,.35)'; }
+  else if(n<=14){ bg='rgba(245,158,11,.15)'; cor='#f59e0b'; bd='rgba(245,158,11,.35)'; }
+  else { bg='rgba(239,68,68,.15)'; cor='#ef4444'; bd='rgba(239,68,68,.35)'; }
+  const txt=n===0?'hoje':(n===1?'1 dia':n+' dias');
+  return '<span title="Dias desde a última movimentação" style="background:'+bg+';color:'+cor+';border:1px solid '+bd+';border-radius:999px;padding:2px 9px;font-weight:700;font-size:12px;white-space:nowrap">'+txt+'</span>';
+}
 function negRows(){
   const list=filteredDeals();
   const meu=state.role==='corretor';   // corretor: sem coluna Corretor, comissão = repasse por corretor (45%/40%)
-  if(!list.length) return '<tr><td colspan="'+(meu?6:7)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
-  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div></td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
+  if(!list.length) return '<tr><td colspan="'+(meu?7:8)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
+  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div></td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter">'+agingBadge(d)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
-function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); refreshIcons(); } const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
+function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
 RENDERERS.negocios = function(host){
-  const tipos=['Todos','Venda','Locação']; const ALL_STATUS=allStatusReais();
+  const tipos=['Todos','Venda','Locação'];
   host.innerHTML = pageHead(hTitulo('Negócios'),'Em que etapa está cada negociação? Acompanhe todos os negócios da imobiliária.','')
-  + '<div class="fx ac jb wrap g3" style="margin-bottom:16px">'
+  + '<div class="fx ac jb wrap g3" style="margin-bottom:14px">'
     + '<div class="fx ac g2 wrap">'+tipos.map(t=>'<button class="chip'+(state.negFiltroTipo===t?' active':'')+'" data-action="negtipo" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
     + '<div class="fx ac g2">'
       + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(300px,60vw)">'+icon('search',16,'tmut')+'<input data-input="negBusca" value="'+esc(state.negBusca||'')+'" placeholder="Buscar negócio, imóvel, cliente…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>'
       + mesSelect()
-      + '<select class="input" data-action="negstatus" style="width:auto;background-color:var(--raised);border-color:var(--bd);color:#fff"><option'+(state.negFiltroStatus==='Todos'?' selected':'')+'>Todos</option>'+ALL_STATUS.map(s=>'<option'+(state.negFiltroStatus===s?' selected':'')+'>'+s+'</option>').join('')+'</select>'
     + '</div>'
   + '</div>'
+  + '<div class="fx ac g2 wrap" id="negChips" style="margin-bottom:14px">'+negStatusChips()+'</div>'
   + '<div class="fz13 tmut" style="margin-bottom:12px"><strong class="tw" id="negCount">'+filteredDeals().length+'</strong> negócios · '+(state.negFiltroTipo)+(state.negFiltroStatus!=='Todos'?' · '+state.negFiltroStatus:'')+'</div>'
-  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(state.role==='corretor'?'720':'820')+'px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Cliente</th>'+(state.role==='corretor'?'':'<th>Corretor</th>')+'<th>Status</th><th class="tright">'+(state.role==='corretor'?'Minha comissão':'Comissão')+'</th></tr></thead><tbody id="negTbody">'+negRows()+'</tbody></table></div></div>';
+  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(state.role==='corretor'?'800':'900')+'px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Cliente</th>'+(state.role==='corretor'?'':'<th>Corretor</th>')+'<th>Status</th><th class="tcenter" title="Dias desde a última movimentação">Parado</th><th class="tright">'+(state.role==='corretor'?'Minha comissão':'Comissão')+'</th></tr></thead><tbody id="negTbody">'+negRows()+'</tbody></table></div></div>'
+  + '<div class="fx ac g3 wrap fz12 t500" style="margin-top:12px"><span class="fw6 t700">Parado:</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"></span>até 7 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>8 a 14 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>mais de 14 dias</span></div>';
 };
 
 function renderStepper(d){
@@ -600,6 +634,7 @@ function openDeal(id){
   + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a><button class="btn btn-outline sm" data-action="drive-set" data-cur="'+esc(d.driveUrl)+'">'+icon('pencil',15)+'Editar</button>':'<button class="btn btn-outline sm" data-action="drive-set" data-cur="">'+icon('folder-plus',15)+'Adicionar Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
+  + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+'<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div></div>' : '')
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+'</div>'
@@ -633,6 +668,20 @@ async function negAtualizar(payload, okMsg){
   } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); }
 }
 
+// Modal de CANCELAR negócio com motivo da perda (gestor). O motivo vira campo
+// estruturado no negócio (motivoCancelamento) + entra na timeline. Pra virar relatório.
+const MOTIVOS_PERDA=['Cliente desistiu','Perdeu para concorrente','Preço / condições','Crédito / documentação reprovada','Imóvel indisponível','Sem retorno do cliente','Outro'];
+function openCancelarModal(){
+  openModal('<div style="padding:20px;max-width:440px">'
+    + '<div class="fz15 fw7 t900" style="margin-bottom:4px">Cancelar negócio</div>'
+    + '<div class="fz12 t500" style="margin-bottom:14px">O imóvel volta a <b>Disponível</b> e o interessado volta a <b>Aprovado</b>. Registre o motivo da perda.</div>'
+    + '<label class="fz11 fw6 t700" style="display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em">Motivo *</label>'
+    + '<select id="cancMotivo" class="input" style="width:100%;padding:9px 11px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;margin-bottom:12px">'+MOTIVOS_PERDA.map(m=>'<option value="'+esc(m)+'">'+esc(m)+'</option>').join('')+'</select>'
+    + '<label class="fz11 fw6 t700" style="display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em">Detalhe (opcional)</label>'
+    + '<textarea id="cancDetalhe" class="input" rows="2" placeholder="Ex.: comprou outro imóvel na região" style="width:100%;padding:9px 11px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;font-family:var(--sans);resize:vertical"></textarea>'
+    + '<div class="fx g2" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Voltar</button><button class="btn btn-danger sm grow" data-action="neg-cancelar-save">'+icon('x-circle',15)+'Confirmar cancelamento</button></div>'
+    + '</div>');
+}
 // Aprovar/reprovar um interessado (gestor). Recarrega os dados e reabre o imóvel.
 // Modal simples pra alterar o "Valor do anúncio" do imóvel. Chama carteiraSalvarImovel
 // (que valida posse: dono ou gestor). Aceita "1.500.000", "1500000", "R$ 1.500,00" —
@@ -955,6 +1004,8 @@ function wireEvents(root){
 function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
   else if(a==='refresh'){ if(el) el.disabled=true; carregarDados().then(()=>{ toast('Atualizado','check-circle-2','var(--success)'); navigate(state.view); }).catch(()=>{ toast('Erro ao atualizar','alert-triangle','var(--warning)'); if(el) el.disabled=false; }); }
+  else if(a==='negstatuschip'){ state.negFiltroStatus=el.dataset.v; RENDERERS.negocios($('#root')); refreshIcons(); }
+  else if(a==='negverarquivados'){ state.negVerArquivados=!state.negVerArquivados; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
   else if(a==='mobilenav') openMobileNav();
@@ -1516,7 +1567,10 @@ handleAction = function(a, el){
   // Negócio (gestor): entregar / concluir / cancelar
   if(a==='neg-entregar'){ if(confirm('Entregar este negócio para a gestão? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'entregar'}, 'Entregue para a gestão'); return; }
   if(a==='neg-concluir'){ if(confirm('Concluir este negócio? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'concluir'}, 'Negócio concluído'); return; }
-  if(a==='neg-cancelar'){ if(confirm('Cancelar este negócio? O imóvel volta a Disponível e o interessado volta a Aprovado.')) negAtualizar({negocioId:state.currentDeal, acao:'cancelar'}, 'Negócio cancelado'); return; }
+  if(a==='neg-cancelar'){ openCancelarModal(); return; }
+  if(a==='neg-cancelar-save'){ const sel=$('#cancMotivo'), det=$('#cancDetalhe'); const cat=sel?sel.value:''; const detalhe=det?det.value.trim():''; const motivo=detalhe?(cat+' — '+detalhe):cat; if(el) el.disabled=true; closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'cancelar', motivo}, 'Negócio cancelado'); return; }
+  if(a==='neg-arquivar'){ if(confirm('Arquivar este negócio? Ele sai da lista de Negócios, mas continua no histórico e nos relatórios.')) negAtualizar({negocioId:state.currentDeal, acao:'arquivar'}, 'Negócio arquivado'); return; }
+  if(a==='neg-desarquivar'){ negAtualizar({negocioId:state.currentDeal, acao:'desarquivar'}, 'Negócio desarquivado'); return; }
   // Ações operacionais de demonstração (administrativo)
   if(['upload-doc','preview-doc','download-doc','drive-sync','drive-new','clk-resend','reenviar-ficha','alterar-senha','maps','editar','notif'].indexOf(a)>=0){ emBreve('Ação de demonstração — integração em breve.'); return; }
   return _handleAction(a, el);
