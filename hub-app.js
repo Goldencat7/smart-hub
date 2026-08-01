@@ -14,7 +14,7 @@ import {
   getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
 import {
-  getFirestore, doc, getDoc, setDoc, serverTimestamp as fsTs
+  getFirestore, doc, getDoc, setDoc, serverTimestamp as fsTs, onSnapshot
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 // Config por ambiente (prod/staging/emulador, por hostname) — ver firebase-env.js
 import { firebaseConfig, conectarEmuladores } from "./firebase-env.js";
@@ -361,6 +361,10 @@ let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAu
 let betaLocacoes = false;       // acesso de teste ao módulo de Locações (feature flag) — gate das abas
 let locacoesPublicado = false;  // true quando a versão deste app foi publicada p/ todos (painel de Admin)
 let currentUid = null;
+// Tempo real (padrão "campainha"): escuta user_feed/{uid} pra "recebeu ficha" aparecer
+// na hora, e o Broker escuta imóveis/negócios. Vire false pra voltar 100% pro timing
+// (polling), sem tirar código. O broker-app.js tem a MESMA flag — manter as duas iguais.
+const REALTIME = true;
 let appsPermitidos = [];
 let temDrivesFotografia = false;
 let temPermTI = false;
@@ -1900,6 +1904,20 @@ onAuthStateChanged(auth, async (user) => {
     };
     window.addEventListener('focus', attAoVoltar);
     document.addEventListener('visibilitychange', attAoVoltar);
+  }
+
+  // Tempo real: escuta o sinal user_feed/{uid} (SEM PII — só contador/timestamp). Quando
+  // muda (chegou/reenviou ficha), atualiza o badge e o Cadastro na HORA, sem esperar o
+  // timer acima (que fica de fallback). REALTIME=false → só o timing. Padrão campainha:
+  // o sinal é público-pro-dono; a ficha (com CPF) continua vindo pela função segura.
+  if (REALTIME && currentUid) {
+    if (window.__feedUnsub) { try { window.__feedUnsub(); } catch (_) {} }
+    let feedPrimeiro = true;
+    window.__feedUnsub = onSnapshot(doc(db, 'user_feed', currentUid), (snap) => {
+      if (feedPrimeiro) { feedPrimeiro = false; return; } // ignora o estado inicial (não é "novo")
+      atualizarNotifFichas();
+      if (categoriaAtiva === 'documentos') carregarDocumentos('cadastro');
+    }, (e) => console.warn('feed onSnapshot:', e && e.message));
   }
 });
 

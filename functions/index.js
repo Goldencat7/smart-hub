@@ -816,6 +816,34 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
   }
 });
 
+// ── Sinal de tempo real "recebeu ficha" (padrão campainha) ───────────────────
+// Doc SEM PII por corretor em `user_feed/{uid}`. O cliente escuta esse doc (barato,
+// só o dono lê pela regra) e, quando o `seq` muda, busca as fichas pela função segura
+// de sempre — o CPF/PII NUNCA fica ao alcance do listener do cliente. Isso é o que dá
+// tempo real sem afrouxar as regras das fichas.
+async function _bumpUserFeed(uid, campo) {
+  if (!uid) return;
+  try {
+    await db.collection('user_feed').doc(uid).set({
+      seq: admin.firestore.FieldValue.increment(1),
+      [campo + 'Em']: admin.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (e) { console.warn('_bumpUserFeed', (e && e.message) || e); }
+}
+// Cutuca o sinal do corretor quando uma ficha CHEGA (status aguardando_corretor) — na
+// criação ou reenvio. Gatilhos dedicados e leves (early-return na maioria dos writes),
+// cobrem TODAS as fichas (pf/pj/vendedor/proposta/fiador/locador), não só as que viram imóvel.
+function _sinalFichaHandler(event) {
+  const after = event.data && event.data.after && event.data.after.exists ? event.data.after.data() : null;
+  if (!after || after.status !== 'aguardando_corretor') return null;
+  const before = event.data && event.data.before && event.data.before.exists ? event.data.before.data() : null;
+  if (before && before.status === 'aguardando_corretor') return null; // só na transição p/ recebida
+  return _bumpUserFeed(after.corretorUid, 'ficha');
+}
+exports.onFichaSinal        = onDocumentWritten({ document: 'fichas/{fichaId}' }, _sinalFichaHandler);
+exports.onFichaLocadorSinal = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, _sinalFichaHandler);
+
 // (autenticado) Lista imóveis: corretor vê só os seus; gestor/administrativo veem todos.
 exports.locListarImoveis = onCall(async (req) => {
   const auth = exigirAutenticado(req);

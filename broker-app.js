@@ -15,6 +15,7 @@
 import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
+import { getFirestore, collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-env.js";
 
 // hub-app.js já inicializou o app e (em localhost) ligou os emuladores nas MESMAS
@@ -22,6 +23,12 @@ import { firebaseConfig } from "./firebase-env.js";
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const fns  = getFunctions(app, 'southamerica-east1');
+const db   = getFirestore(app);
+
+// Tempo real (padrão campainha): escuta imóveis/negócios e re-busca pela função segura
+// quando algo muda. Vire false pra voltar 100% pro on-demand (mount + botão Atualizar).
+// ⚠️ Manter igual à flag REALTIME do hub-app.js.
+const REALTIME = true;
 
 const call = (name) => httpsCallable(fns, name);
 const fnImoveis   = call('locListarImoveis');
@@ -348,6 +355,7 @@ function renderBreadcrumb(){ const c=CRUMB[state.view]||['SMART HUB','—']; con
 
 function navigate(view){
   if(view) state.view=view;
+  state._viewingDeal = false;   // saiu do detalhe de um negócio (real-time pode re-renderizar)
   // Modo embutido: avisa o Hub pra sanfona destacar o sub-item certo mesmo quando
   // a navegação nasce DENTRO do Broker (KPI cards, "Voltar aos Negócios" etc.).
   if(state.embedded && typeof state.onNavigate==='function'){ try{ state.onNavigate(state.view); }catch(e){} }
@@ -437,12 +445,14 @@ async function mount(opts){
     await carregarDados();
     carregarRoster();            // nomes/fotos dos corretores (não bloqueia)
     navigate(state.view);
+    setupRealtime();             // liga o tempo real (imóveis/negócios ao vivo)
   } catch(e){
     if(host) host.innerHTML = '<div class="card" style="padding:24px;margin:24px"><div class="fz14 fw6 t900">Não consegui carregar a Locação</div><div class="fz13 t500" style="margin-top:6px">'+esc(e.message||e)+'</div></div>';
     refreshIcons();
   }
 }
 function unmount(){
+  teardownRealtime();            // desliga os listeners (sai do Meus Negócios)
   const root = ROOT();
   if(root){ root.hidden = true; }
   document.body.classList.remove('bk-open');
@@ -460,6 +470,50 @@ async function carregarRoster(){
     // roster só acrescenta fotos, que aparecem no próximo render natural.
     if(state.view==='dashboard'||state.view==='relatorios') navigate(state.view);
   } catch(e){ /* silencioso — nomes já vêm dos docs */ }
+}
+
+// ── Tempo real (padrão campainha) ────────────────────────────────────────────
+// Escuta imóveis/negócios e, ao mudar, RE-BUSCA pela função segura (mantém a
+// serialização/segurança) e re-renderiza a view atual — SEM atropelar drawer/modal
+// aberto nem um negócio sendo lido (o usuário pode estar digitando comentário).
+// Query casa com as regras: imóveis (gestor/adm=tudo, corretor=os seus); negócios
+// (gestor=tudo, corretor=os seus; administrativo NÃO lê negócio cru → sem listener).
+let _rtTimer = null;
+function _rtOnChange(){
+  clearTimeout(_rtTimer);
+  _rtTimer = setTimeout(async () => {
+    try {
+      await carregarDados();
+      if(!ROOT() || ROOT().hidden) return;
+      const overlay = ($('#drawer') && $('#drawer').classList.contains('show'))
+                   || ($('#modal') && $('#modal').classList.contains('show'));
+      if(overlay || state._viewingDeal) return;   // não re-renderiza por cima do que a pessoa faz
+      navigate(state.view);
+    } catch(_e){ /* silencioso */ }
+  }, 1500);
+}
+function setupRealtime(){
+  teardownRealtime();
+  if(!REALTIME) return;
+  const uid = auth.currentUser && auth.currentUser.uid;
+  if(!uid) return;
+  const subs = [];
+  try {
+    let qImv = collection(db, 'imoveis');
+    if(state.role === 'corretor') qImv = query(qImv, where('corretorUid', '==', uid));
+    subs.push(onSnapshot(qImv, () => _rtOnChange(), e => console.warn('rt imoveis:', e && e.message)));
+    if(state.role !== 'administrativo'){   // administrativo não tem read direto de negócios (regra)
+      let qNeg = collection(db, 'negocios');
+      if(state.role === 'corretor') qNeg = query(qNeg, where('corretorUid', '==', uid));
+      subs.push(onSnapshot(qNeg, () => _rtOnChange(), e => console.warn('rt negocios:', e && e.message)));
+    }
+  } catch(e){ console.warn('setupRealtime:', e && e.message); }
+  state._rtUnsubs = subs;
+}
+function teardownRealtime(){
+  clearTimeout(_rtTimer);
+  (state._rtUnsubs || []).forEach(u => { try { u(); } catch(_e){} });
+  state._rtUnsubs = [];
 }
 
 window.Broker = { mount, unmount };
@@ -620,7 +674,7 @@ function renderStepper(d){
 function openDeal(id){
   // DEALS não tem cancelados (filtrados no load); cai no DEALS_DOCS pra poder abrir
   // um cancelado (ver motivo da perda / arquivar).
-  const d=DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id); if(!d) return; state.currentDeal=id; const tab=state.dealTab||'timeline';
+  const d=DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id); if(!d) return; state.currentDeal=id; state._viewingDeal=true; const tab=state.dealTab||'timeline';
   // Vindo de um drawer (pessoa/imóvel), fecha ele — senão o detalhe renderiza atrás.
   closeDrawer(); closeModal();
   // O detalhe é logicamente a tela Negócios (sanfona destaca certo + ESC/voltar coerentes).

@@ -17,6 +17,13 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.token.admin == true;
     }
 
+    // Sinal de tempo real "recebeu ficha" (padrão campainha): só o dono LÊ (onSnapshot),
+    // sem PII no doc (só contador/timestamps). Escrita só via Cloud Function (_bumpUserFeed).
+    match /user_feed/{uid} {
+      allow read:  if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+
     // Bloco de notas pessoal: cada usuário lê/escreve só o próprio doc.
     match /user_notes/{uid} {
       allow read:  if request.auth != null && request.auth.uid == uid;
