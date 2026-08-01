@@ -8,6 +8,7 @@
   "hosting": {
     "public": "public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "redirects": [{ "source": "/", "destination": "/app/", "type": 302 }],
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
       {
