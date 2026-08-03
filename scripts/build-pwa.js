@@ -43,7 +43,7 @@ const COMPARTILHADOS = [
 const TELAS = ['index.html', 'login.html', 'admin.html'];
 
 // ─── Só da web (pasta pwa/) ──────────────────────────────────────────────────
-const SO_WEB = ['platform-web.js', 'mobile.css', 'manifest.webmanifest'];
+const SO_WEB = ['platform-web.js', 'mobile.css', 'manifest.webmanifest', 'google-callback.html'];
 
 function copiarPasta(origem, destino, filtro) {
   if (!fs.existsSync(origem)) return 0;

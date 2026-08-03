@@ -65,6 +65,17 @@ const excluirEvento = httpsCallable(fns, 'excluirEvento');
 const listarPessoas = httpsCallable(fns, 'listarPessoas');
 const conectarGoogleAgenda = httpsCallable(fns, 'conectarGoogleAgenda');
 const desconectarGoogleAgenda = httpsCallable(fns, 'desconectarGoogleAgenda');
+
+// Retorno do OAuth do Google no WEB: a página google-callback.html volta pra cá
+// com ?google=ok|erro. Guarda o resultado e limpa a URL agora; o aviso sai depois
+// do login (quando a auth e o botão já estão prontos). No .exe isso nunca dispara.
+try {
+  const _gp = new URLSearchParams(location.search);
+  if (_gp.has('google')) {
+    sessionStorage.setItem('__googleRetorno', _gp.get('google') + '|' + (_gp.get('msg') || ''));
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+} catch (_) { /* location/sessionStorage indisponível: ignora */ }
 const statusGoogleAgenda = httpsCallable(fns, 'statusGoogleAgenda');
 const listarGoogleAgenda = httpsCallable(fns, 'listarGoogleAgenda');
 const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
@@ -1876,6 +1887,16 @@ onAuthStateChanged(auth, async (user) => {
 
   // fix 2: busca status Google antes de carregar eventos para incluir eventos do Google no mini calendário desde o início
   await atualizarStatusGoogle();
+  // Avisa o resultado da conexão Google feita pelo fluxo web (o status já foi repintado acima).
+  try {
+    const gr = sessionStorage.getItem('__googleRetorno');
+    if (gr) {
+      sessionStorage.removeItem('__googleRetorno');
+      const [st, msg] = gr.split('|');
+      if (st === 'ok') alert('Conta Google conectada! ✅ A agenda sincroniza e os documentos das fichas vão pro seu Google Drive.');
+      else alert('Não deu pra conectar o Google' + (msg ? ': ' + decodeURIComponent(msg) : '.'));
+    }
+  } catch (_) { /* ignora */ }
   await carregarEventos(new Date(Date.now() - 86400000), new Date(Date.now() + 1000 * 60 * 60 * 24 * 90));
   renderPainelAgenda();
   if (categoriaAtiva === 'agenda') renderCalendarioCompleto();
@@ -2543,6 +2564,9 @@ btnGoogleAgenda.addEventListener('click', async ()=>{
   btnGoogleAgenda.textContent = 'Abrindo navegador...';
   try {
     const r = await window.hubApi.conectarGoogle();
+    // Web: o platform-web redireciona o navegador pro Google; quem finaliza é a
+    // página google-callback.html. Aqui não há code pra trocar — só sai.
+    if(r && r.redirecting) return;
     if(!r || !r.ok){ alert('Conexão cancelada' + (r && r.erro ? ': '+r.erro : '.')); return; }
     btnGoogleAgenda.textContent = 'Finalizando...';
     const res = await conectarGoogleAgenda({ code: r.code, codeVerifier: r.codeVerifier, redirectUri: r.redirectUri });

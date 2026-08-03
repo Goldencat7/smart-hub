@@ -142,14 +142,44 @@
       abrirAba(alvo);
     },
 
-    // ─── Google Agenda ──────────────────────────────────────────────────────
-    // O fluxo OAuth do desktop usa um servidor local de callback (loopback), que
-    // não existe no navegador. Fica só no computador por enquanto — o botão é
-    // escondido abaixo, e isto aqui é a rede de segurança.
-    conectarGoogle: () => Promise.resolve({
-      ok: false,
-      erro: 'conectar a Google Agenda só pelo Hub do computador (por enquanto)'
-    })
+    // ─── Google Agenda (fluxo web) ──────────────────────────────────────────
+    // O desktop usa um servidor loopback pra capturar o retorno; no navegador não
+    // dá — então redirecionamos o navegador pro Google e o retorno cai na página
+    // google-callback.html, que finaliza chamando a MESMA Cloud Function.
+    // PKCE (S256): guardamos verifier+state no sessionStorage antes de sair; a
+    // callback confere o state e usa o verifier. Devolve {redirecting:true} pro
+    // hub-app saber que NÃO deve finalizar aqui (a página navegou).
+    conectarGoogle: async () => {
+      try {
+        // ⚠️ Se o Google Cloud exigir um client OAuth do tipo "Web" separado, troque
+        //    este ID (e o secret no functions) — ver GOOGLE-OAUTH-WEB.md.
+        const CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
+        const SCOPES = 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/drive.file';
+        const redirectUri = location.origin + '/app/google-callback.html';
+
+        const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+          .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const aleatorio = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return b64url(a); };
+
+        const verifier  = aleatorio(32);
+        const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+        const state     = aleatorio(16);
+
+        sessionStorage.setItem('gcal_state', state);
+        sessionStorage.setItem('gcal_verifier', verifier);
+        sessionStorage.setItem('gcal_redirect', redirectUri);
+
+        const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+          client_id: CLIENT_ID, redirect_uri: redirectUri, response_type: 'code',
+          scope: SCOPES, access_type: 'offline', prompt: 'consent', state,
+          code_challenge: challenge, code_challenge_method: 'S256'
+        });
+        window.location.href = authUrl;
+        return { ok: true, redirecting: true };
+      } catch (e) {
+        return { ok: false, erro: (e && e.message) || 'não foi possível iniciar a conexão' };
+      }
+    }
 
     // getIniciarWindows / setIniciarWindows: NÃO existem aqui de propósito —
     // o hub-app.js já testa `if (!window.hubApi.getIniciarWindows) return;`.
@@ -183,12 +213,13 @@
   }
 
   function esconderSoDesktop() {
-    // "Iniciar com o Windows" e "Conectar Google" não têm equivalente no celular.
+    // "Iniciar com o Windows" não tem equivalente no celular.
     const linhaWindows = document.getElementById('cfgIniciarWindows')?.closest('label');
     if (linhaWindows) linhaWindows.hidden = true;
 
-    const btnGoogle = document.getElementById('btnGoogleAgenda');
-    if (btnGoogle) btnGoogle.hidden = true;
+    // "Conectar Google" AGORA funciona no web (redirect → google-callback.html),
+    // então o botão fica visível (antes era escondido aqui). O fluxo vive no
+    // conectarGoogle() acima.
 
     // "Verificar atualização" vira informação: o PWA se atualiza sozinho.
     const btnUpdate = document.getElementById('cfgVerificarUpdate');

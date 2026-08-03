@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conectando ao Google… — REMAX Smart</title>
+<!--
+  Página de retorno do OAuth do Google (só web/PWA — no .exe o fluxo usa loopback).
+  O Google manda o usuário pra cá com ?code=…&state=…; a gente confere o state,
+  pega o code_verifier que guardamos no sessionStorage e chama a MESMA Cloud Function
+  do desktop (conectarGoogleAgenda) pra finalizar. Depois volta pro Hub com ?google=ok.
+  Servida em /app/google-callback.html (o redirect_uri registrado no Google Cloud).
+-->
+<style>
+  body{font-family:system-ui,'Segoe UI',Arial,sans-serif;background:#0e1117;color:#e6e6e6;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+  .box{text-align:center;max-width:440px;padding:32px}
+  .spin{width:38px;height:38px;border:3px solid #2a3446;border-top-color:#2563eb;border-radius:50%;animation:g .8s linear infinite;margin:0 auto 18px}
+  @keyframes g{to{transform:rotate(360deg)}}
+  h2{margin:0 0 8px;font-size:19px;font-weight:700}
+  p{margin:0;color:#9aa4b2;font-size:14px;line-height:1.5}
+  a{color:#5b9bf0;font-weight:600}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spin" id="spin"></div>
+  <h2 id="titulo">Conectando sua conta Google…</h2>
+  <p id="msg">Só um instante — não feche esta aba.</p>
+</div>
+<script type="module">
+  import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+  import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
+  import { firebaseConfig } from "./firebase-env.js";
+
+  const app  = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const fns  = getFunctions(app, 'southamerica-east1');
+
+  const $ = id => document.getElementById(id);
+  function erro(texto){
+    $('spin').style.display = 'none';
+    $('titulo').textContent = 'Não deu pra conectar';
+    $('msg').innerHTML = texto + '<br><br><a href="index.html">Voltar ao Hub</a>';
+  }
+  function voltar(qs){ window.location.replace('index.html' + qs); }
+
+  const params   = new URLSearchParams(location.search);
+  const code     = params.get('code');
+  const state     = params.get('state');
+  const errParam = params.get('error');
+
+  // Guardados pelo platform-web.js ANTES de mandar pro Google. Uso único: apaga já.
+  const stSalvo     = sessionStorage.getItem('gcal_state');
+  const verifier    = sessionStorage.getItem('gcal_verifier');
+  const redirectUri = sessionStorage.getItem('gcal_redirect');
+  sessionStorage.removeItem('gcal_state');
+  sessionStorage.removeItem('gcal_verifier');
+  sessionStorage.removeItem('gcal_redirect');
+
+  if (errParam) {
+    voltar('?google=erro&msg=' + encodeURIComponent(errParam));           // usuário recusou / erro do Google
+  } else if (!code) {
+    erro('O Google não devolveu o código de autorização.');
+  } else if (!state || state !== stSalvo) {
+    erro('Verificação de segurança falhou (state). Tente conectar de novo pelo Hub.');
+  } else if (!verifier || !redirectUri) {
+    erro('A sessão de conexão expirou. Tente de novo pelo Hub.');
+  } else {
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) { erro('Faça login no Hub antes de conectar o Google.'); return; }
+      try {
+        await httpsCallable(fns, 'conectarGoogleAgenda')({ code, codeVerifier: verifier, redirectUri });
+        voltar('?google=ok');
+      } catch (e) {
+        voltar('?google=erro&msg=' + encodeURIComponent((e && e.message) || 'erro'));
+      }
+    });
+  }
+</script>
+</body>
+</html>
