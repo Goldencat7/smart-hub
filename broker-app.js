@@ -243,6 +243,7 @@ function mapNegocio(n){
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
     arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
+    tags: Array.isArray(n.tags) ? n.tags : [],
     // O servidor só devolve o array pra quem PODE comentar (broker + corretor do
     // negócio); ausente/null = sem permissão. `!==null` deixava `undefined` passar.
     podeComentar: Array.isArray(n.comentarios),
@@ -640,11 +641,38 @@ function agingBadge(d){
   const txt=n===0?'hoje':(n===1?'1 dia':n+' dias');
   return '<span title="Dias desde a última movimentação" style="background:'+bg+';color:'+cor+';border:1px solid '+bd+';border-radius:999px;padding:2px 9px;font-weight:700;font-size:12px;white-space:nowrap">'+txt+'</span>';
 }
+// ── Etiquetas (tags) do negócio ──────────────────────────────────────────────
+// Cor por matiz: palavras conhecidas ganham cor semântica (quente=vermelho,
+// frio=azul…); as demais derivam um matiz estável do texto. Alpha via hsl 4-valores.
+const TAG_HUE = { quente:0, morno:32, frio:214, urgente:0, prioridade:270, vip:270, alta:0, media:32, ['média']:32, baixa:150 };
+function tagHue(t){ const k=String(t||'').toLowerCase().trim(); if(k in TAG_HUE) return TAG_HUE[k]; let h=0; for(let i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))>>>0; return h%360; }
+function tagChipHTML(t, removable){
+  const H=tagHue(t), fg='hsl('+H+' 70% 64%)', bg='hsl('+H+' 70% 55% / .15)', bd='hsl('+H+' 70% 60% / .40)';
+  const x = removable ? '<span data-action="tag-remove" data-tag="'+esc(t)+'" title="Remover" style="margin-left:6px;cursor:pointer;font-weight:800;opacity:.85">×</span>' : '';
+  return '<span style="display:inline-flex;align-items:center;background:'+bg+';color:'+fg+';border:1px solid '+bd+';border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap">'+esc(t)+x+'</span>';
+}
+const TAG_PRESETS = ['Quente','Morno','Frio','Urgente'];
+// Card "Etiquetas" no detalhe: chips atuais (removíveis) + presets + campo livre.
+function dealTagsCardHTML(d){
+  const tags=d.tags||[];
+  const chips = tags.length ? tags.map(t=>tagChipHTML(t,true)).join(' ') : '<span class="fz13 t500">Sem etiquetas ainda.</span>';
+  const cheio = tags.length>=6;
+  const presets = TAG_PRESETS.filter(p=>!tags.some(t=>t.toLowerCase()===p.toLowerCase()))
+    .map(p=>'<button class="btn btn-ghost sm" data-action="tag-preset" data-tag="'+esc(p)+'" '+(cheio?'disabled':'')+'>'+tagChipHTML(p,false)+'</button>').join('');
+  const input = cheio ? '<div class="fz11 t500" style="margin-top:10px">Máximo de 6 etiquetas.</div>'
+    : '<div class="fx g2" style="margin-top:12px"><input id="bkTagInput" class="input" maxlength="24" placeholder="Nova etiqueta…" style="max-width:220px"><button class="btn btn-outline sm nsh" data-action="tag-add">'+icon('plus',15)+'Adicionar</button></div>';
+  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Etiquetas</div><div class="fx wrap g2" style="align-items:center">'+chips+'</div>'
+    + (presets?'<div class="fx wrap g1" style="margin-top:12px">'+presets+'</div>':'')
+    + input + '</div>';
+}
+function _curDealTags(){ const d=DEALS.find(x=>x.id===state.currentDeal)||(DEALS_DOCS||[]).find(x=>x.id===state.currentDeal); return d?(d.tags||[]).slice():[]; }
+function _saveTags(tags){ negAtualizar({negocioId:state.currentDeal, acao:'tags', tags}); }
+function _addTag(t){ t=String(t||'').trim().slice(0,24); if(!t) return; const cur=_curDealTags(); if(cur.some(x=>x.toLowerCase()===t.toLowerCase())){ toast('Etiqueta já existe','info'); return; } if(cur.length>=6){ toast('Máximo de 6 etiquetas','alert-triangle','var(--warning)'); return; } _saveTags(cur.concat([t])); }
 function negRows(){
   const list=filteredDeals();
   const meu=state.role==='corretor';   // corretor: sem coluna Corretor, comissão = repasse por corretor (45%/40%)
   if(!list.length) return '<tr><td colspan="'+(meu?7:8)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
-  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div></td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter">'+agingBadge(d)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
+  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div>'+(d.tags&&d.tags.length?'<div class="fx wrap g1" style="margin-top:5px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>':'')+'</td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter">'+agingBadge(d)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
 function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
 RENDERERS.negocios = function(host){
@@ -729,6 +757,7 @@ function openDeal(id){
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
+  + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? dealTagsCardHTML(d) : '')
   + dealDocsCardHTML(d, (state.role==='broker'||state.role==='administrativo'))
   + '<div class="split-r">'
     + '<div class="fx col g4">'
@@ -1119,7 +1148,7 @@ function wireEvents(root){
     else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); }
   });
   root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } });
-  document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } });
+  document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
 }
 function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
@@ -1144,6 +1173,9 @@ function handleAction(a,el){
   else if(a.indexOf('itab-')===0){ state.imovelTab=a.slice(5); openProp(state.currentProp); }
   else if(a.indexOf('cfgtab-')===0){ state.cfgTab=a.slice(7); RENDERERS.configuracoes($('#root')); refreshIcons(); }
   else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'comentario', texto:txt}, 'Comentário adicionado').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
+  else if(a==='tag-preset'){ _addTag(el.dataset.tag); }
+  else if(a==='tag-add'){ const inp=$('#bkTagInput'); _addTag(inp?inp.value:''); }
+  else if(a==='tag-remove'){ _saveTags(_curDealTags().filter(x=>x!==el.dataset.tag)); }
   else if(a==='abrir-termos'){ const url=FICHA_HOST+'/termos.html'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Termos de Uso'); } else { window.open(url,'_blank'); } }
   else if(a==='sem-drive'||a==='drive-set'){ openDriveModal(el.dataset.cur||''); }
   else if(a==='drive-save'){

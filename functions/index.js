@@ -1677,7 +1677,8 @@ exports.negocioAtualizar = onCall(async (req) => {
   const d = req.data || {};
   const { ref, snap, ehGestor, ehAdm, ehResponsavel } = await _negocioComPosse(d.negocioId, auth);
   const n0 = snap.data();
-  if (['concluido', 'cancelado'].includes(n0.status) && d.acao !== 'comentario') {
+  // Alinhado com a trava de dentro da transação (arquivar/desarquivar valem em encerrado).
+  if (['concluido', 'cancelado'].includes(n0.status) && !['comentario', 'arquivar', 'desarquivar'].includes(d.acao)) {
     throw new HttpsError('failed-precondition', 'Negócio encerrado não aceita mais alterações.');
   }
   const porNome = await _nomeDoUid(auth.uid);
@@ -1760,6 +1761,14 @@ exports.negocioAtualizar = onCall(async (req) => {
       up.canceladoEm = admin.firestore.FieldValue.serverTimestamp();
       anota('Negócio cancelado' + (motivo ? ` — ${motivo}` : ''));
       efeito = 'cancelar';
+    } else if (d.acao === 'tags') {
+      // Etiquetas livres (quente/morno/frio, prioridade…): gestor/adm/corretor responsável.
+      // Sanitiza, dedup, no máx. 6 tags de até 24 chars. Sem timeline (mudança leve).
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const arr = Array.isArray(d.tags) ? d.tags : [];
+      const tags = [];
+      for (const t of arr) { const s = _txt(t, 24); if (s && !tags.includes(s)) tags.push(s); if (tags.length >= 6) break; }
+      up.tags = tags;
     } else if (d.acao === 'arquivar' || d.acao === 'desarquivar') {
       // Arquivar = tirar da lista ativa de Negócios SEM perder histórico/relatório.
       // Só vale pra negócio encerrado (concluído/cancelado); é reversível.
