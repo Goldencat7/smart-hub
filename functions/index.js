@@ -87,6 +87,10 @@ async function registrarAudit(auth, acao, alvo, detalhes = {}) {
 // A chave secreta do cliente OAuth fica no cofre (Secret Manager), NUNCA no código.
 const { defineSecret } = require('firebase-functions/params');
 const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
+// Secret do cliente OAuth "Aplicativo da Web" (fluxo do navegador/PWA). O Desktop
+// e o Web são clientes DIFERENTES no Google Cloud; o refresh_token é amarrado ao
+// cliente que o emitiu, então guardamos por-usuário qual foi (campo `web`).
+const GOOGLE_CLIENT_SECRET_WEB = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET_WEB');
 // Senha de app (Google Workspace) da conta que envia/recebe os chamados de suporte.
 const SUPPORT_EMAIL_PASS = defineSecret('SUPPORT_EMAIL_PASS');
 // Fine-grained PAT (Contents+Pull requests: write) que dispara o Bug Fix Bot no GitHub Actions.
@@ -98,7 +102,8 @@ const HUB_CHECKVISTO_SECRET = defineSecret('HUB_CHECKVISTO_SECRET'); // integra�
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
-const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';       // "Hub Desktop" (loopback do .exe)
+const GOOGLE_CLIENT_ID_WEB = '474454438949-1t333dt83j46pph39uep7oqmv31i1t64.apps.googleusercontent.com'; // "Web client" (redirect https do navegador)
 const TZ = 'America/Sao_Paulo';
 
 async function googleTokenRequest(params) {
@@ -114,23 +119,34 @@ async function googleTokenRequest(params) {
   return data;
 }
 
-// Troca o "code" (vindo do fluxo no app) por tokens — o que importa é o refresh_token.
+// Escolhe o cliente OAuth certo: web (redirect https / token conectado pelo navegador)
+// vs desktop (loopback do .exe). O refresh_token só renova com o cliente que o emitiu.
+function _googleClient(ehWeb) {
+  return ehWeb
+    ? { id: GOOGLE_CLIENT_ID_WEB, secret: GOOGLE_CLIENT_SECRET_WEB.value() }
+    : { id: GOOGLE_CLIENT_ID,     secret: GOOGLE_CLIENT_SECRET.value() };
+}
+
+// Troca o "code" por tokens — o que importa é o refresh_token. redirect https ⇒ cliente web.
 async function trocarCodePorTokens(code, codeVerifier, redirectUri) {
+  const c = _googleClient(/^https:\/\//i.test(redirectUri || ''));
   return googleTokenRequest({
     code,
-    client_id: GOOGLE_CLIENT_ID,
-    client_secret: GOOGLE_CLIENT_SECRET.value(),
+    client_id: c.id,
+    client_secret: c.secret,
     redirect_uri: redirectUri,
     grant_type: 'authorization_code',
     code_verifier: codeVerifier
   });
 }
 
-// Gera um access_token novo a partir do refresh_token guardado.
-async function getAccessToken(refreshToken) {
+// Gera um access_token novo a partir do refresh_token guardado. `ehWeb` = campo
+// `web` do doc google_tokens (undefined nos tokens antigos do .exe ⇒ cliente desktop).
+async function getAccessToken(refreshToken, ehWeb) {
+  const c = _googleClient(!!ehWeb);
   const data = await googleTokenRequest({
-    client_id: GOOGLE_CLIENT_ID,
-    client_secret: GOOGLE_CLIENT_SECRET.value(),
+    client_id: c.id,
+    client_secret: c.secret,
     refresh_token: refreshToken,
     grant_type: 'refresh_token'
   });
@@ -208,7 +224,7 @@ async function sincronizarParaGoogle(uids, ev, tipo) {
     try {
       const tokSnap = await db.collection('google_tokens').doc(uid).get();
       if (!tokSnap.exists || !tokSnap.data().refreshToken) continue;
-      const accessToken = await getAccessToken(tokSnap.data().refreshToken);
+      const accessToken = await getAccessToken(tokSnap.data().refreshToken, tokSnap.data().web);
       ids[uid] = ehTarefa
         ? await inserirTarefaGoogle(accessToken, ev)
         : await inserirEventoGoogle(accessToken, ev);
@@ -3457,7 +3473,7 @@ function _contratoEndereco(o) {
 }
 
 // (autenticado, com posse) Gera o contrato de representação de um imóvel de VENDA.
-exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { imovelId } = req.data || {};
   if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
@@ -4281,7 +4297,7 @@ exports.listarAuditoria = onCall(async (req) => {
 // ─── Google Agenda: conectar / desconectar / status ──────────────────────────
 // O app abre o navegador, a pessoa autoriza, e manda o "code" pra cá. A troca
 // pela permissão de longo prazo (refresh_token) acontece aqui no servidor.
-exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { code, codeVerifier, redirectUri } = req.data || {};
   if (!code || !codeVerifier || !redirectUri) {
@@ -4306,6 +4322,9 @@ exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async
     // marca se este consentimento concedeu o escopo do Drive — o trigger de
     // sincronização só age em quem tem `drive:true` (evita 403 em quem só ligou a Agenda).
     drive: (tokens.scope || '').includes('/auth/drive.file'),
+    // qual cliente OAuth emitiu este refresh_token (web vs desktop) — o getAccessToken
+    // precisa renovar com o MESMO cliente. redirect https ⇒ web.
+    web: /^https:\/\//i.test(redirectUri || ''),
     connectedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   return { ok: true, email };
@@ -4352,7 +4371,7 @@ function _driveSanitizar(nome) { return String(nome || '').replace(/[\\/:*?"<>|\
 async function _driveToken(uid) {
   const snap = await db.collection('google_tokens').doc(uid).get();
   if (!snap.exists || !snap.data().refreshToken) throw new HttpsError('failed-precondition', 'Conta Google não conectada — conecte nas Configurações.');
-  return getAccessToken(snap.data().refreshToken);
+  return getAccessToken(snap.data().refreshToken, snap.data().web);
 }
 async function _driveApi(token, path, opts = {}) {
   const resp = await fetch('https://www.googleapis.com/drive/v3/' + path, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
@@ -4449,21 +4468,21 @@ async function _driveSyncFicha(uid, fichaId, col) {
   return { ok: true, pasta: nomePessoa, enviados: arquivos.length, arquivos, semDocumentos: campos.length === 0 };
 }
 
-exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.driveStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const tok = await db.collection('google_tokens').doc(auth.uid).get();
   const cfg = await db.collection('drive_config').doc(auth.uid).get();
   return { conectado: tok.exists && !!tok.data().refreshToken && !!tok.data().drive, email: tok.exists ? (tok.data().email || '') : '', estruturaCriada: cfg.exists && !!cfg.data().rootId };
 });
 // Cria/garante a raiz + as 4 pastas na conta conectada ("Preparar Drive").
-exports.drivePrepararEstrutura = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.drivePrepararEstrutura = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const token = await _driveToken(auth.uid);
   const rootId = await _driveRoot(token, auth.uid);
   return { ok: true, rootId, categorias: DRIVE_CATEGORIAS.map(p => p.nome) };
 });
 // Sincroniza os documentos de UMA ficha pro Drive (pasta da pessoa → categorias por tipo de doc).
-exports.driveSincronizarFicha = onCall({ secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 120 }, async (req) => {
+exports.driveSincronizarFicha = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 120 }, async (req) => {
   const auth = exigirAutenticado(req);
   const { fichaId, colecao } = req.data || {};
   if (!fichaId) throw new HttpsError('invalid-argument', 'fichaId é obrigatório.');
@@ -4499,12 +4518,12 @@ async function _driveTriggerFicha(event, col) {
 }
 // 256MiB: a maioria das execuções é early-return (sem docs novos / sem token do Drive);
 // o upload em si é streaming de arquivos de ficha (≤20MB) — 256MiB dá conta.
-exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas'));
-exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
+exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas'));
+exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
 
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".
-exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const ehAdmin = ehAdminAuth(auth);
   const { titulo, inicio, participantes, todos, descricao, tipo, dataLocal } = req.data || {};
@@ -4578,7 +4597,7 @@ exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =>
 
 // Edita um evento existente — só quem criou (ou admin). Não mexe em participantes/"todos"
 // (mudar isso exigiria resetar RSVP de quem já respondeu, fora do escopo aqui).
-exports.editarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.editarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { id, titulo, inicio, descricao, tipo, dataLocal } = req.data || {};
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
@@ -4615,7 +4634,7 @@ exports.editarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) =
         try {
           const tokSnap = await db.collection('google_tokens').doc(uid).get();
           if (!tokSnap.exists || !tokSnap.data().refreshToken) continue;
-          const accessToken = await getAccessToken(tokSnap.data().refreshToken);
+          const accessToken = await getAccessToken(tokSnap.data().refreshToken, tokSnap.data().web);
           if (ehTarefa) await removerTarefaGoogle(accessToken, gid);
           else await removerEventoGoogle(accessToken, gid);
         } catch (e) {
@@ -4687,14 +4706,14 @@ exports.listarEventos = onCall(async (req) => {
 
 // ─── Leitura reversa: itens criados DIRETO no Google (Agenda + Tarefas) ───────
 // Best-effort: se algo falhar, devolve o que conseguiu (não quebra a agenda do Hub).
-exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { de, ate } = req.data || {};
   const tokSnap = await db.collection('google_tokens').doc(auth.uid).get();
   if (!tokSnap.exists || !tokSnap.data().refreshToken) return { itens: [] };
 
   let accessToken;
-  try { accessToken = await getAccessToken(tokSnap.data().refreshToken); }
+  try { accessToken = await getAccessToken(tokSnap.data().refreshToken, tokSnap.data().web); }
   catch (e) { console.warn('listarGoogleAgenda token:', e.message); return { itens: [] }; }
 
   const timeMin = de ? new Date(de).toISOString() : new Date().toISOString();
@@ -4745,7 +4764,7 @@ exports.listarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (
   return { itens };
 });
 
-exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) => {
+exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
   const auth = exigirAutenticado(req);
   const { id } = req.data || {};
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
@@ -4764,7 +4783,7 @@ exports.excluirEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET] }, async (req) 
       try {
         const tokSnap = await db.collection('google_tokens').doc(uid).get();
         if (!tokSnap.exists || !tokSnap.data().refreshToken) continue;
-        const accessToken = await getAccessToken(tokSnap.data().refreshToken);
+        const accessToken = await getAccessToken(tokSnap.data().refreshToken, tokSnap.data().web);
         if (ehTarefa) await removerTarefaGoogle(accessToken, gid);
         else await removerEventoGoogle(accessToken, gid);
       } catch (e) {

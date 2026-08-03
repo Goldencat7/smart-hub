@@ -151,9 +151,9 @@
     // hub-app saber que NÃO deve finalizar aqui (a página navegou).
     conectarGoogle: async () => {
       try {
-        // ⚠️ Se o Google Cloud exigir um client OAuth do tipo "Web" separado, troque
-        //    este ID (e o secret no functions) — ver GOOGLE-OAUTH-WEB.md.
-        const CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';
+        // Cliente OAuth do tipo "Aplicativo da Web" (separado do "Hub Desktop" do .exe).
+        // O redirect https só funciona com ele. Ver GOOGLE-OAUTH-WEB.md.
+        const CLIENT_ID = '474454438949-1t333dt83j46pph39uep7oqmv31i1t64.apps.googleusercontent.com';
         const SCOPES = 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/drive.file';
         const redirectUri = location.origin + '/app/google-callback.html';
 
