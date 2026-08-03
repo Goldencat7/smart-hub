@@ -244,6 +244,7 @@ function mapNegocio(n){
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
     arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
     tags: Array.isArray(n.tags) ? n.tags : [],
+    tarefas: Array.isArray(n.tarefas) ? n.tarefas : [],
     // O servidor só devolve o array pra quem PODE comentar (broker + corretor do
     // negócio); ausente/null = sem permissão. `!==null` deixava `undefined` passar.
     podeComentar: Array.isArray(n.comentarios),
@@ -560,6 +561,7 @@ RENDERERS.dashboard = function(host){
 
   host.innerHTML =
     '<div class="fx as jb wrap g3"><div><h1 style="margin:0;font-size:28px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiroNome)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Central de comando da REMAX SMART — veja onde concentrar sua atenção hoje.</p></div><div class="nsh">'+mesSelect()+'</div></div>'
+  + tarefasWidgetHTML(DEALS)
   + blockH('Centro de operações','O que precisa da sua atenção agora')
   + '<div class="grid4">'
     + ops('search-check','info','Aguardando análise',analise,'Média','Negócio criado')
@@ -668,11 +670,34 @@ function dealTagsCardHTML(d){
 function _curDealTags(){ const d=DEALS.find(x=>x.id===state.currentDeal)||(DEALS_DOCS||[]).find(x=>x.id===state.currentDeal); return d?(d.tags||[]).slice():[]; }
 function _saveTags(tags){ negAtualizar({negocioId:state.currentDeal, acao:'tags', tags}); }
 function _addTag(t){ t=String(t||'').trim().slice(0,24); if(!t) return; const cur=_curDealTags(); if(cur.some(x=>x.toLowerCase()===t.toLowerCase())){ toast('Etiqueta já existe','info'); return; } if(cur.length>=6){ toast('Máximo de 6 etiquetas','alert-triangle','var(--warning)'); return; } _saveTags(cur.concat([t])); }
+// ── Tarefas do negócio (com prazo/lembrete) ──────────────────────────────────
+function hojeISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function prazoStatus(p){ if(!p) return ''; const h=hojeISO(); if(p<h) return 'atrasada'; if(p===h) return 'hoje'; return 'futura'; }
+function fmtPrazo(p){ if(!p) return ''; const a=p.split('-'); return a[2]+'/'+a[1]+'/'+a[0]; }
+function tarefaBadge(d){ // pílula "⏰ N" no card se houver tarefa aberta pra hoje/atrasada
+  const venc=(d.tarefas||[]).filter(t=>!t.feito && (prazoStatus(t.prazo)==='atrasada'||prazoStatus(t.prazo)==='hoje'));
+  if(!venc.length) return '';
+  const atrasada=venc.some(t=>prazoStatus(t.prazo)==='atrasada');
+  const cor=atrasada?'#ef4444':'#f59e0b';
+  return '<span title="Tarefas para hoje ou atrasadas" style="display:inline-flex;align-items:center;gap:3px;background:'+cor+'22;color:'+cor+';border:1px solid '+cor+'55;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:700;white-space:nowrap">⏰ '+venc.length+'</span>';
+}
+// Tarefas abertas pra hoje/atrasadas em TODOS os negócios (alerta do Dashboard).
+function tarefasDoDia(deals){
+  const out=[];
+  (deals||[]).forEach(d=>{ (d.tarefas||[]).forEach(t=>{ if(t.feito) return; const s=prazoStatus(t.prazo); if(s==='atrasada'||s==='hoje') out.push({texto:t.texto, prazo:t.prazo, s, dealId:d.id, code:d.code, rua:propDoDeal(d).rua}); }); });
+  out.sort((a,b)=>(a.prazo||'')<(b.prazo||'')?-1:1);
+  return out;
+}
+function tarefasWidgetHTML(deals){
+  const ts=tarefasDoDia(deals); if(!ts.length) return '';
+  const rows=ts.slice(0,8).map(t=>'<button class="fx ac g3 hoverbg" data-deal="'+t.dealId+'" style="width:100%;text-align:left;background:none;border:none;padding:11px 12px;border-radius:10px;cursor:pointer">'+iconChip('alarm-clock',t.s==='atrasada'?'danger':'warning',32)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(t.texto)+'</div><div class="fz12 t500 trunc">'+esc(t.code)+' · '+esc(t.rua)+'</div></div><span class="fz12 fw6 nsh" style="color:'+(t.s==='atrasada'?'#ef4444':'#f59e0b')+'">'+(t.s==='atrasada'?'Atrasada':'Hoje')+'</span></button>').join('');
+  return '<div class="card" style="overflow:hidden;margin:16px 0">'+cardHead('⏰ Tarefas para hoje / atrasadas','')+'<div style="padding:8px">'+rows+(ts.length>8?'<div class="fz12 t500 tcenter" style="padding:6px">+'+(ts.length-8)+' outras</div>':'')+'</div></div>';
+}
 function negRows(){
   const list=filteredDeals();
   const meu=state.role==='corretor';   // corretor: sem coluna Corretor, comissão = repasse por corretor (45%/40%)
   if(!list.length) return '<tr><td colspan="'+(meu?7:8)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
-  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div>'+(d.tags&&d.tags.length?'<div class="fx wrap g1" style="margin-top:5px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>':'')+'</td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter">'+agingBadge(d)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
+  return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div>'+(d.tags&&d.tags.length?'<div class="fx wrap g1" style="margin-top:5px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>':'')+'</td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter"><div class="fx ac jc g1 wrap">'+agingBadge(d)+tarefaBadge(d)+'</div></td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
 function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
 // ── Kanban (quadro por etapa) ────────────────────────────────────────────────
@@ -704,7 +729,7 @@ function kanbanCard(d, podeArrastar){
     + '<div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px">'+d.tipo+'</span></div>'
     + '<div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(im.rua)+'</div>'
     + '<div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div>'
-    + '<div class="fx ac jb g2" style="margin-top:8px"><span class="mono fw6 t900 fz13">'+brl(d.valor)+'</span>'+agingBadge(d)+'</div>'
+    + '<div class="fx ac jb g2" style="margin-top:8px"><span class="mono fw6 t900 fz13">'+brl(d.valor)+'</span><span class="fx ac g1">'+agingBadge(d)+tarefaBadge(d)+'</span></div>'
     + tags + '</div>';
 }
 function kanbanHTML(){
@@ -821,6 +846,7 @@ function openDeal(id){
   let tabContent='';
   if(tab==='timeline'){ tabContent='<div style="padding:20px">'+(tl.length?tl.map((e,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',32)+(i<tl.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:18px" class="grow"><div class="fz14 fw6 t900">'+esc(e.texto)+'</div><div class="fz12 t500">'+esc(e.porNome||'')+' · '+relData(e.em)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem histórico ainda.</div>')+'</div>'; }
   else if(tab==='comentarios'){ if(!d.podeComentar){ tabContent='<div class="tcenter t500 fz13" style="padding:24px">Comentários são exclusivos do broker e do corretor responsável.</div>'; } else { const cs=d.comentarios||[]; tabContent='<div style="padding:20px"><div class="fx g2" style="margin-bottom:16px">'+avatar(state.meuNome,34)+'<div class="grow"><textarea id="bkComent" class="input" rows="2" placeholder="Escreva um comentário para a equipe…"></textarea><div class="fx je" style="margin-top:8px"><button class="btn btn-primary sm" data-action="add-coment">Comentar</button></div></div></div><div id="bkComentList">'+(cs.length?cs.slice().reverse().map(comentBubbleHTML).join(''):'<div class="tcenter t500 fz13" data-coment-empty style="padding:20px">Nenhum comentário ainda.</div>')+'</div></div>'; } }
+  else if(tab==='tarefas'){ const ts=(d.tarefas||[]).slice().sort((a,b)=>{ if(a.feito!==b.feito) return a.feito?1:-1; return (a.prazo||'9999-99-99')<(b.prazo||'9999-99-99')?-1:1; }); const rows = ts.length? ts.map(t=>{ const st=prazoStatus(t.prazo); const cor=t.feito?'':(st==='atrasada'?'#ef4444':st==='hoje'?'#f59e0b':''); const prazoTxt = t.prazo? ('<span style="'+(cor?'color:'+cor+';font-weight:700':'')+'">'+(st==='atrasada'?'Atrasada · ':st==='hoje'?'Hoje · ':'')+fmtPrazo(t.prazo)+'</span>') : '<span class="t400">sem prazo</span>'; return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)"><button class="ifx ac jc nsh" data-action="tarefa-check" data-tid="'+esc(t.id)+'" data-feito="'+(t.feito?'0':'1')+'" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff;cursor:pointer">'+(t.feito?icon('check',14):'')+'</button><div class="grow mw0"><div class="fz13 fw6 t900" style="'+(t.feito?'text-decoration:line-through;opacity:.55':'')+'">'+esc(t.texto)+'</div><div class="fz12 t500">'+prazoTxt+'</div></div><button class="btn btn-ghost sm nsh" data-action="tarefa-rm" data-tid="'+esc(t.id)+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button></div>'; }).join('') : '<div class="tcenter t500 fz13" style="padding:20px">Nenhuma tarefa ainda.</div>'; tabContent='<div style="padding:20px"><div class="fx g2 wrap" style="margin-bottom:14px"><input id="bkTarefaTxt" class="input grow" maxlength="200" placeholder="Nova tarefa (ex.: ligar para o cliente)" style="min-width:180px"><input id="bkTarefaPrazo" type="date" class="input nsh" style="max-width:170px"><button class="btn btn-primary sm nsh" data-action="tarefa-add">'+icon('plus',15)+'Adicionar</button></div><div>'+rows+'</div></div>'; }
   else { tabContent='<div style="padding:16px 20px"><div class="fz13 fw6 t900" style="margin-bottom:10px">Checklist do negócio</div>'+(d.checklist||[]).map(x=>'<button class="fx ac g3 hoverbg" data-chk="'+esc(x.key)+'" data-feito="'+(x.feito?'0':'1')+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px"><span class="ifx ac jc nsh" style="width:24px;height:24px;border-radius:6px;background:'+(x.feito?'var(--success)':'#fff')+';border:'+(x.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(x.feito?icon('check',15):'')+'</span><div class="grow mw0"><div class="fz13 fw6 t900">'+esc(x.label)+(x.obrigatoria?' <span class="pill danger" style="font-size:10px;padding:1px 6px">obrigatória</span>':'')+'</div>'+(x.feito&&x.feitoPor?'<div class="fz11 t500">'+esc(x.feitoPor)+' · '+relData(x.feitoEm)+'</div>':'')+'</div></button>').join('')+'</div>'; }
 
   const host=$('#root'); host.style.animation='none'; void host.offsetWidth; host.style.animation='';
@@ -837,7 +863,7 @@ function openDeal(id){
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+'</div>'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor ('+Math.round(repassePct(d.corretor)*100)+'%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
-    + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
+    + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
   const sc=$('#scroller'); if(sc) sc.scrollTop=0; refreshIcons();
 
@@ -1256,6 +1282,9 @@ function handleAction(a,el){
   else if(a==='tag-preset'){ _addTag(el.dataset.tag); }
   else if(a==='tag-add'){ const inp=$('#bkTagInput'); _addTag(inp?inp.value:''); }
   else if(a==='tag-remove'){ _saveTags(_curDealTags().filter(x=>x!==el.dataset.tag)); }
+  else if(a==='tarefa-add'){ const tx=$('#bkTarefaTxt'), pz=$('#bkTarefaPrazo'); const texto=tx?tx.value.trim():''; if(!texto){ toast('Descreva a tarefa','alert-triangle','var(--warning)'); return; } negAtualizar({negocioId:state.currentDeal, acao:'tarefa', texto, prazo:pz?pz.value:''}, 'Tarefa adicionada'); }
+  else if(a==='tarefa-check'){ negAtualizar({negocioId:state.currentDeal, acao:'tarefa_check', tarefaId:el.dataset.tid, feito:el.dataset.feito==='1'}); }
+  else if(a==='tarefa-rm'){ if(!confirm('Remover esta tarefa?')) return; negAtualizar({negocioId:state.currentDeal, acao:'tarefa_rm', tarefaId:el.dataset.tid}); }
   else if(a==='abrir-termos'){ const url=FICHA_HOST+'/termos.html'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Termos de Uso'); } else { window.open(url,'_blank'); } }
   else if(a==='sem-drive'||a==='drive-set'){ openDriveModal(el.dataset.cur||''); }
   else if(a==='drive-save'){
@@ -1436,6 +1465,7 @@ function renderDashCorretor(host){
     + kcard('badge-dollar-sign','success','Comissão recebida',brl(MYCOM.recebida),['Negócios concluídos','c-suc'],'comissoes')
   + '</div>'
   + '<div class="card" style="padding:12px;margin-top:16px"><div class="fx wrap g2">'+atalhos.map(x=>'<button class="btn btn-outline sm" data-action="'+x[0]+'">'+icon(x[1],15)+x[2]+'</button>').join('')+'</div></div>'
+  + tarefasWidgetHTML(DEALS)
   + blockH('Fichas digitais','Envie a ficha cadastral e inicie o processo de locação ou venda')
   + '<div class="card" style="overflow:hidden"><div style="padding:8px">'+FICHAS_CORRETOR.map(f=>'<div class="fx ac g3 hoverbg" style="padding:11px 12px;border-radius:10px">'+iconChip(f[2],f[3],38)+'<div class="grow mw0"><div class="fz14 fw6 t900">'+f[1]+'</div><div class="fz12 t500">Ficha digital · link personalizado</div></div><div class="fx g1 nsh">'+[['ficha-copy','copy','Copiar link'],['ficha-whats','message-circle','WhatsApp'],['ficha-email','mail','E-mail'],['ficha-view','eye','Visualizar']].map(a=>'<button class="iconbtn" title="'+a[2]+'" style="background:var(--ink50);border-color:var(--ink200);color:var(--ink600);width:34px;height:34px" data-action="'+a[0]+'" data-arq="'+f[0]+'" data-nome="'+esc(f[1])+'">'+icon(a[1],15)+'</button>').join('')+'</div></div>').join('')+'</div></div>'
   + blockH('Meu dia','Suas tarefas e pendências')
@@ -1488,6 +1518,7 @@ function renderDashAdmin(host){
   host.innerHTML=
     '<div class="fx as jb wrap g3"><div><h1 style="margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em;color:#fff">'+saudacao()+', '+esc(primeiro)+'</h1><p style="margin:6px 0 0;font-size:15px;color:var(--ondarkmuted)">Centro de operações — mantenha todos os processos em andamento.</p></div><div class="nsh">'+mesSelect()+'</div></div>'
   + '<div class="grid3" style="margin-top:20px">'+cards.map(kc).join('')+'</div>'
+  + tarefasWidgetHTML(DEALS)
   + blockH('Resumo da fila','Distribuição dos negócios por etapa')
   + '<div class="card" style="padding:16px"><div class="fx wrap g2">'+RESUMO.map(c=>'<button class="fx ac g2 hoverbg" data-nav="fila" style="flex:1;min-width:150px;background:var(--ink50);border:none;border-radius:10px;padding:12px;cursor:pointer;text-align:left"><span style="width:10px;height:10px;border-radius:50%;background:'+c[2]+'"></span><div><div class="fz18 fw7 t900">'+c[1]+'</div><div class="fz12 t500">'+c[0]+'</div></div></button>').join('')+'</div></div>'
   + '<div class="split" style="margin-top:16px">'

@@ -1654,6 +1654,7 @@ function _negocioSerializar(id, n, podeComentar) {
     timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
     checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
     documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
+    tarefas: (n.tarefas || []).map(t => ({ ...t, criadoEm: t.criadoEm?.toDate?.()?.toISOString() || null, feitoEm: t.feitoEm?.toDate?.()?.toISOString() || null })),
     criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
     atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
   };
@@ -1761,6 +1762,31 @@ exports.negocioAtualizar = onCall(async (req) => {
       up.canceladoEm = admin.firestore.FieldValue.serverTimestamp();
       anota('Negócio cancelado' + (motivo ? ` — ${motivo}` : ''));
       efeito = 'cancelar';
+    } else if (d.acao === 'tarefa') {
+      // Nova tarefa com prazo opcional (gestor/adm/responsável). Máx. 50 por negócio.
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const texto = _txt(d.texto, 200);
+      if (!texto) throw new HttpsError('invalid-argument', 'Descreva a tarefa.');
+      const prazo = _txt(d.prazo, 10);
+      if (prazo && !/^\d{4}-\d{2}-\d{2}$/.test(prazo)) throw new HttpsError('invalid-argument', 'Data inválida.');
+      const arr = Array.isArray(n.tarefas) ? [...n.tarefas] : [];
+      if (arr.length >= 50) throw new HttpsError('resource-exhausted', 'Limite de tarefas atingido.');
+      const tid = agora.toMillis().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+      arr.push({ id: tid, texto, prazo: prazo || '', feito: false, criadoEm: agora, criadoPor: porNome });
+      up.tarefas = arr;
+      anota('Tarefa criada: ' + texto);
+    } else if (d.acao === 'tarefa_check') {
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const arr = (n.tarefas || []).map(t => ({ ...t }));
+      const t = arr.find(x => x.id === d.tarefaId);
+      if (!t) throw new HttpsError('not-found', 'Tarefa não encontrada.');
+      t.feito = !!d.feito;
+      t.feitoEm = t.feito ? agora : null;
+      t.feitoPor = t.feito ? porNome : '';
+      up.tarefas = arr;
+    } else if (d.acao === 'tarefa_rm') {
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      up.tarefas = (n.tarefas || []).filter(x => x.id !== d.tarefaId);
     } else if (d.acao === 'tags') {
       // Etiquetas livres (quente/morno/frio, prioridade…): gestor/adm/corretor responsável.
       // Sanitiza, dedup, no máx. 6 tags de até 24 chars. Sem timeline (mudança leve).
