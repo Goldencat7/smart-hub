@@ -24,6 +24,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Broadcast de tempo real (status de apps, banners, avisos): doc ÚNICO com contadores,
+    // SEM PII. Qualquer logado LÊ (onSnapshot); escrita só via Cloud Function (_bumpBroadcast).
+    // Casa só com config/broadcast — o resto de config/ (seguranca, release, banner) segue fechado.
+    match /config/broadcast {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
     // Bloco de notas pessoal: cada usuário lê/escreve só o próprio doc.
     match /user_notes/{uid} {
       allow read:  if request.auth != null && request.auth.uid == uid;

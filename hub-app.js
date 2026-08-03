@@ -1765,6 +1765,9 @@ btnSair.addEventListener('click', async () => {
   // Fire-and-forget: offline o setDoc fica pendente pra sempre (não rejeita) e travava
   // o botão Sair. O logout não pode depender de conseguir gravar a presença.
   if (currentUid) setDoc(doc(db, 'user_presence', currentUid), { online: false, updatedAt: fsTs() }, { merge: true }).catch(() => {});
+  // Encerra os listeners de tempo real antes do logout (senão disparam permission-denied sem auth).
+  if (window.__feedUnsub) { try { window.__feedUnsub(); } catch (_) {} window.__feedUnsub = null; }
+  if (window.__broadcastUnsub) { try { window.__broadcastUnsub(); } catch (_) {} window.__broadcastUnsub = null; }
   await signOut(auth);
 });
 
@@ -1918,6 +1921,33 @@ onAuthStateChanged(auth, async (user) => {
       atualizarNotifFichas();
       if (categoriaAtiva === 'documentos') carregarDocumentos('cadastro');
     }, (e) => console.warn('feed onSnapshot:', e && e.message));
+  }
+
+  // Tempo real p/ TODOS: escuta o doc de broadcast (SEM PII — só contadores). Quando o admin
+  // muda status de app, banner ou envia aviso, o contador correspondente sobe e recarregamos
+  // SÓ a peça que mudou, na HORA. Os timers de 3 min continuam de fallback (REALTIME=false → só eles).
+  if (REALTIME) {
+    if (window.__broadcastUnsub) { try { window.__broadcastUnsub(); } catch (_) {} }
+    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0;
+    window.__broadcastUnsub = onSnapshot(doc(db, 'config', 'broadcast'), async (snap) => {
+      const d = snap.exists() ? (snap.data() || {}) : {};
+      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0;
+      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; return; }
+      if (s !== bcStatus) {
+        bcStatus = s;
+        await carregarStatusApps();
+        // mesmo cuidado do timer: não re-renderiza o centro com o Broker embutido montado
+        if (!(categoriaAtiva === 'locacoes' && brokerMontado)) renderCentro();
+      }
+      if (b !== bcBanner) {
+        bcBanner = b;
+        await carregarBanner(); atualizarBanner();
+      }
+      if (a !== bcAviso) {
+        bcAviso = a;
+        verificarNotificacoes();
+      }
+    }, (e) => console.warn('broadcast onSnapshot:', e && e.message));
   }
 });
 

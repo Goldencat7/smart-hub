@@ -844,6 +844,21 @@ function _sinalFichaHandler(event) {
 exports.onFichaSinal        = onDocumentWritten({ document: 'fichas/{fichaId}' }, _sinalFichaHandler);
 exports.onFichaLocadorSinal = onDocumentWritten({ document: 'fichas_locador/{fichaId}' }, _sinalFichaHandler);
 
+// Broadcast (tempo real para TODOS): um doc único e minúsculo (config/broadcast) com
+// contadores por tipo. Quando o admin muda status de app, banner ou envia aviso, a
+// function "toca a campainha" incrementando o contador; todo cliente escuta esse doc
+// (via onSnapshot) e recarrega SÓ a peça que mudou, reusando as functions que já existem.
+// Sem PII no doc (só números/timestamp) e a leitura é liberada só pra ESTE doc — o resto
+// de config/ (seguranca, release, banner) continua fechado.
+async function _bumpBroadcast(campo) {
+  try {
+    await db.collection('config').doc('broadcast').set({
+      [campo]: admin.firestore.FieldValue.increment(1),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (e) { console.warn('_bumpBroadcast', (e && e.message) || e); }
+}
+
 // (autenticado) Lista imóveis: corretor vê só os seus; gestor/administrativo veem todos.
 exports.locListarImoveis = onCall(async (req) => {
   const auth = exigirAutenticado(req);
@@ -3288,6 +3303,7 @@ exports.setStatusApp = onCall(async (req) => {
   } else {
     await db.collection('app_status').doc(siteKey).delete();
   }
+  await _bumpBroadcast('statusSeq');
   return { ok: true };
 });
 
@@ -3611,6 +3627,7 @@ exports.adicionarBanner = onCall(async (req) => {
   if (mediaUrl) doc.mediaUrl = mediaUrl;
   if (duracao) doc.duracao = duracao;
   const ref = await db.collection('banners').add(doc);
+  await _bumpBroadcast('bannerSeq');
   return { ok: true, id: ref.id };
 });
 
@@ -3619,6 +3636,7 @@ exports.removerBanner = onCall(async (req) => {
   const { id } = req.data || {};
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
   await db.collection('banners').doc(id).delete();
+  await _bumpBroadcast('bannerSeq');
   return { ok: true };
 });
 
@@ -3633,6 +3651,7 @@ exports.reordenarBanners = onCall(async (req) => {
     batch.update(db.collection('banners').doc(id), { ordem: i });
   });
   await batch.commit();
+  await _bumpBroadcast('bannerSeq');
   return { ok: true };
 });
 
@@ -3656,6 +3675,7 @@ exports.setBanner = onCall(async (req) => {
   } else {
     await db.collection('config').doc('banner').delete();
   }
+  await _bumpBroadcast('bannerSeq');
   return { ok: true };
 });
 
@@ -4828,6 +4848,7 @@ exports.criarNotificacao = onCall(async (req) => {
     criadoEm: admin.firestore.FieldValue.serverTimestamp(),
     lidoPor: []
   });
+  await _bumpBroadcast('avisoSeq');
   return { ok: true, id: ref.id };
 });
 
