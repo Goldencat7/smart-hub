@@ -1166,19 +1166,19 @@ function atualizarBadgeNovidades() {
 function _novItemHTML(v, sel) {
   const ativo = sel && v.versao === sel.versao;
   const data = v.criadoEm ? new Date(v.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '';
-  return `<button class="nov-item" data-nov-ver="${escapeHtml(v.versao)}" style="display:block;width:100%;text-align:left;padding:9px 11px;border:none;border-radius:8px;cursor:pointer;background:${ativo ? '#e6f1fb' : 'transparent'};margin-bottom:2px">
-    <span style="font-size:13px;font-weight:600;color:${ativo ? '#185FA5' : 'var(--text-primary,#1a2233)'}">v${escapeHtml(v.versao)}</span>
-    <span style="display:block;font-size:11px;color:var(--text-muted,#8a94a6)">${data}</span></button>`;
+  return `<button class="nov-item" data-nov-ver="${escapeHtml(v.versao)}" style="display:block;width:100%;text-align:left;padding:9px 11px;border:none;border-radius:8px;cursor:pointer;background:${ativo ? 'var(--blue-light)' : 'transparent'};margin-bottom:2px">
+    <span style="font-size:13px;font-weight:600;color:${ativo ? '#5b9bf0' : 'var(--text-primary)'}">v${escapeHtml(v.versao)}</span>
+    <span style="display:block;font-size:11px;color:var(--text-muted)">${data}</span></button>`;
 }
 function _novDetalheHTML(n) {
-  if (!n) return '<p class="muted" style="padding:8px">Nenhuma novidade ainda.</p>';
+  if (!n) return '';
   const grupo = (t, cor, itens) => (itens && itens.length)
-    ? `<div style="font-size:12px;font-weight:600;color:${cor};margin:0 0 6px">${t}</div><ul style="margin:0 0 14px;padding-left:18px;font-size:13px;line-height:1.6;color:var(--text-secondary,#5b6472)">${itens.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '';
-  const data = n.criadoEm ? new Date(n.criadoEm).toLocaleDateString('pt-BR') : '';
-  const corpo = grupo('Novidades', '#16a34a', n.novo) + grupo('Melhorias', '#2563eb', n.melhorias) + grupo('Correções', '#d97706', n.correcoes);
-  return `<div style="font-size:15px;font-weight:600;margin-bottom:2px">v${escapeHtml(n.versao)} — o que chegou</div>
-    <div style="font-size:12px;color:var(--text-muted,#8a94a6);margin-bottom:14px">${data}</div>
-    ${corpo || '<p class="muted" style="font-size:13px">Sem detalhes nesta versão.</p>'}`;
+    ? `<div style="font-size:12px;font-weight:700;color:${cor};margin:0 0 6px;text-transform:uppercase;letter-spacing:.03em">${t}</div><ul style="margin:0 0 16px;padding-left:18px;font-size:13px;line-height:1.65;color:var(--text-primary)">${itens.map(i => `<li style="margin-bottom:3px">${escapeHtml(i)}</li>`).join('')}</ul>` : '';
+  const data = n.criadoEm ? new Date(n.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
+  const corpo = grupo('Novidades', '#4ade80', n.novo) + grupo('Melhorias', '#5b9bf0', n.melhorias) + grupo('Correções', '#fbbf24', n.correcoes);
+  return `<div style="font-size:16px;font-weight:600;margin-bottom:2px">Versão ${escapeHtml(n.versao)}</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">${data}</div>
+    ${corpo || '<p style="font-size:13px;color:var(--text-muted)">Sem detalhes nesta versão.</p>'}`;
 }
 async function abrirNovidades() {
   if (!novidadesCache) await carregarNovidadesBadge();
@@ -1186,23 +1186,25 @@ async function abrirNovidades() {
   let sel = lista[0] || null;
   const dlg = document.createElement('dialog');
   dlg.className = 'modal';
+  dlg.style.width = 'min(660px, 94vw)';   // .modal é 400px por padrão — largo o bastante p/ 2 colunas
+  dlg.style.maxWidth = 'none';
+  dlg.style.overflow = 'hidden';           // clipa os cantos arredondados
   const fim = () => { dlg.close(); dlg.remove(); };
   const render = () => {
-    dlg.innerHTML = `
-      <div class="modal-conteudo" style="max-width:640px;width:min(640px,92vw);padding:0;overflow:hidden">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb)">
-          <strong style="font-size:15px">Novidades</strong>
-          <button type="button" class="topbar-btn" data-acao="fechar" style="padding:4px 9px">✕</button>
-        </div>
-        <div style="display:grid;grid-template-columns:170px 1fr">
-          <div style="border-right:1px solid var(--border,#e5e7eb);padding:8px;overflow:auto;max-height:60vh">${lista.length ? lista.map(v => _novItemHTML(v, sel)).join('') : '<p class="muted" style="font-size:12px;padding:8px">—</p>'}</div>
-          <div style="padding:16px 18px;overflow:auto;max-height:60vh">${_novDetalheHTML(sel)}</div>
-        </div>
+    const cab = `<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)">
+        <strong style="font-size:15px">Novidades</strong>
+        <button type="button" data-acao="fechar" title="Fechar" style="background:none;border:none;color:var(--text-muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px">✕</button>
       </div>`;
+    const miolo = !lista.length
+      ? `<div style="padding:48px 24px;text-align:center;color:var(--text-muted);font-size:14px">Nenhuma novidade publicada ainda.</div>`
+      : `<div style="display:grid;grid-template-columns:180px 1fr">
+          <div style="border-right:1px solid var(--border);padding:8px;overflow:auto;max-height:60vh">${lista.map(v => _novItemHTML(v, sel)).join('')}</div>
+          <div style="padding:18px 20px;overflow:auto;max-height:60vh">${_novDetalheHTML(sel)}</div>
+        </div>`;
+    dlg.innerHTML = cab + miolo;
     dlg.querySelectorAll('[data-nov-ver]').forEach(b => b.addEventListener('click', () => { sel = lista.find(v => v.versao === b.dataset.novVer); render(); }));
     const bf = dlg.querySelector('[data-acao="fechar"]'); if (bf) bf.addEventListener('click', fim);
   };
-  dlg.addEventListener('click', (e) => { if (e.target === dlg) fim(); });   // clicar no fundo fecha
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); fim(); });      // ESC fecha
   document.body.appendChild(dlg);
   render();
