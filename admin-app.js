@@ -47,6 +47,9 @@ const listarBanners    = httpsCallable(fns, 'listarBanners');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const reordenarBanners = httpsCallable(fns, 'reordenarBanners');
+const listarNovidades  = httpsCallable(fns, 'listarNovidades');
+const salvarNovidade   = httpsCallable(fns, 'salvarNovidade');
+const excluirNovidade  = httpsCallable(fns, 'excluirNovidade');
 const listarChamados   = httpsCallable(fns, 'listarChamados');
 const responderChamado = httpsCallable(fns, 'responderChamado');
 const excluirChamado   = httpsCallable(fns, 'excluirChamado');
@@ -312,6 +315,7 @@ function ativarAba(aba) {
   if (aba === 'bugbot')    carregarBugBot();
   if (aba === 'smarthub')  carregarSmartHub();
   if (aba === 'lgpd')      carregarLgpd();
+  if (aba === 'novidades') carregarNovidades();
 }
 
 // ─── SMART HUB — configurações (T-06 Administração) ──────────────────────────
@@ -1039,6 +1043,70 @@ async function carregarLancamento() {
   } catch (e) {
     cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
   }
+}
+
+// ─── Novidades (patch notes) ──────────────────────────────────────────────────
+// Escreve a nota de cada versão (Novo/Melhorias/Correções, um item por linha). A
+// versão vem preenchida com a do app atual. O corretor vê no botão "Novidades".
+let novidadesCache = [];
+async function carregarNovidades() {
+  const cont = document.getElementById('novidadesPainel');
+  if (!cont) return;
+  cont.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const [versaoApp, res] = await Promise.all([window.hubApi.getAppVersion(), listarNovidades({})]);
+    novidadesCache = (res.data && res.data.novidades) || [];
+    renderNovidades(versaoApp);
+  } catch (e) {
+    cont.innerHTML = `<p class="erro">Erro: ${e.message}</p>`;
+  }
+}
+function renderNovidades(versaoApp, edit) {
+  const cont = document.getElementById('novidadesPainel');
+  const a = edit || { versao: versaoApp, novo: [], melhorias: [], correcoes: [] };
+  const lista = novidadesCache.map(n => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">
+      <div style="flex:1"><strong>v${escHtml(n.versao)}</strong><span style="color:var(--text-muted);font-size:12px"> · ${n.novo.length + n.melhorias.length + n.correcoes.length} itens</span></div>
+      <button class="topbar-btn" data-edit-nov="${escHtml(n.versao)}">Editar</button>
+      <button class="topbar-btn" data-del-nov="${escHtml(n.versao)}" style="color:#dc2626">Excluir</button>
+    </div>`).join('') || '<p class="muted">Nenhuma novidade ainda.</p>';
+  cont.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">${edit ? '✏️ Editar' : '➕ Nova'} novidade</div>
+      <label style="font-size:12px;color:var(--text-muted)">Versão</label>
+      <input id="novVersao" value="${escHtml(a.versao)}" style="width:130px;display:block;margin:4px 0 12px" />
+      <label style="font-size:12px;color:var(--text-muted)">✨ Novo <span style="opacity:.7">(um item por linha)</span></label>
+      <textarea id="novNovo" rows="3" style="width:100%;margin:4px 0 12px">${escHtml(a.novo.join('\n'))}</textarea>
+      <label style="font-size:12px;color:var(--text-muted)">🔧 Melhorias <span style="opacity:.7">(um por linha)</span></label>
+      <textarea id="novMelhorias" rows="3" style="width:100%;margin:4px 0 12px">${escHtml(a.melhorias.join('\n'))}</textarea>
+      <label style="font-size:12px;color:var(--text-muted)">🐛 Correções <span style="opacity:.7">(um por linha)</span></label>
+      <textarea id="novCorrecoes" rows="2" style="width:100%;margin:4px 0 12px">${escHtml(a.correcoes.join('\n'))}</textarea>
+      <button class="topbar-btn primario" id="btnSalvarNov">Salvar novidade</button>
+      ${edit ? '<button class="topbar-btn" id="btnCancelarNov" style="margin-left:8px">Cancelar</button>' : ''}
+    </div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">Publicadas</div>${lista}`;
+  document.getElementById('btnSalvarNov').addEventListener('click', salvarNovidadeUI);
+  const bc = document.getElementById('btnCancelarNov');
+  if (bc) bc.addEventListener('click', () => renderNovidades(versaoApp));
+  cont.querySelectorAll('[data-edit-nov]').forEach(b => b.addEventListener('click', () => {
+    const n = novidadesCache.find(x => x.versao === b.dataset.editNov);
+    if (n) renderNovidades(versaoApp, n);
+  }));
+  cont.querySelectorAll('[data-del-nov]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm(`Excluir a novidade da v${b.dataset.delNov}?`)) return;
+    try { await excluirNovidade({ versao: b.dataset.delNov }); carregarNovidades(); }
+    catch (e) { alert('Erro: ' + e.message); }
+  }));
+}
+async function salvarNovidadeUI() {
+  const versao = document.getElementById('novVersao').value.trim();
+  const linhas = id => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+  const btn = document.getElementById('btnSalvarNov');
+  btn.disabled = true;
+  try {
+    await salvarNovidade({ versao, novo: linhas('novNovo'), melhorias: linhas('novMelhorias'), correcoes: linhas('novCorrecoes') });
+    await carregarNovidades();
+  } catch (e) { alert('Erro: ' + e.message); btn.disabled = false; }
 }
 
 // ─── Segurança — Modo Cofre (anti-dump de credenciais) ────────────────────────

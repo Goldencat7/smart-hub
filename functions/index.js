@@ -3733,6 +3733,71 @@ exports.setBanner = onCall(async (req) => {
   return { ok: true };
 });
 
+// ─── Novidades (patch notes) ─────────────────────────────────────────────────
+// Coleção `novidades` (1 doc por versão, id = "1.0.135"). Sem PII: qualquer logado
+// LÊ (pra ver o "o que há de novo"); só admin ESCREVE (via salvarNovidade). O broadcast
+// (novidadeSeq) deixa a bolinha "não lida" acender em tempo real quando o admin publica.
+function _listaTexto(arr, maxItens, maxLen) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  for (const s of arr) { const t = _txt(s, maxLen); if (t) out.push(t); if (out.length >= maxItens) break; }
+  return out;
+}
+// Compara versões tipo "1.0.135" vs "1.0.9" numericamente (135 > 9), não como texto.
+function _cmpVersao(a, b) {
+  const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x - y; }
+  return 0;
+}
+
+exports.listarNovidades = onCall(async (req) => {
+  exigirAutenticado(req);
+  const snap = await db.collection('novidades').get();
+  const novidades = snap.docs.map(x => {
+    const n = x.data();
+    return {
+      versao: n.versao || x.id,
+      novo: n.novo || [], melhorias: n.melhorias || [], correcoes: n.correcoes || [],
+      criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
+      atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
+    };
+  });
+  novidades.sort((a, b) => _cmpVersao(b.versao, a.versao)); // mais nova primeiro
+  return { novidades };
+});
+
+exports.salvarNovidade = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const d = req.data || {};
+  const versao = _txt(d.versao, 20);
+  if (!versao || !/^[0-9]+(\.[0-9]+)*$/.test(versao)) throw new HttpsError('invalid-argument', 'Versão inválida (ex.: 1.0.135).');
+  const ref = db.collection('novidades').doc(versao);
+  const snap = await ref.get();
+  const up = {
+    versao,
+    novo: _listaTexto(d.novo, 30, 240),
+    melhorias: _listaTexto(d.melhorias, 30, 240),
+    correcoes: _listaTexto(d.correcoes, 30, 240),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    atualizadoPor: auth.uid,
+  };
+  if (!snap.exists) up.criadoEm = admin.firestore.FieldValue.serverTimestamp();
+  await ref.set(up, { merge: true });
+  await _bumpBroadcast('novidadeSeq');
+  await registrarAudit(auth, 'salvou_novidade', { tipo: 'novidade', id: versao }, {});
+  return { ok: true };
+});
+
+exports.excluirNovidade = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const versao = _txt((req.data || {}).versao, 20);
+  if (!versao) throw new HttpsError('invalid-argument', 'Versão obrigatória.');
+  await db.collection('novidades').doc(versao).delete();
+  await _bumpBroadcast('novidadeSeq');
+  await registrarAudit(auth, 'excluiu_novidade', { tipo: 'novidade', id: versao }, {});
+  return { ok: true };
+});
+
 // ─── Suporte (chamado por email com anexo opcional) ──────────────────────────
 function escaparHtml(s) {
   return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

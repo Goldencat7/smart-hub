@@ -24,6 +24,7 @@
         <button class="admin-nav-item" data-aba="avisos"><i class="ti ti-bell"></i>Avisos enviados</button>
         <button class="admin-nav-item" data-aba="chamados" id="navChamados" hidden><i class="ti ti-headset"></i>Chamados</button>
         <button class="admin-nav-item" data-aba="statusApps"><i class="ti ti-activity"></i>Status dos apps</button>
+        <button class="admin-nav-item" data-aba="novidades"><i class="ti ti-speakerphone"></i>Novidades</button>
 
         <div class="admin-nav-grupo">Usuários & acesso</div>
         <button class="admin-nav-item" data-aba="usuarios"><i class="ti ti-users"></i>Usuários</button>
@@ -168,6 +169,16 @@
             </div>
           </div>
           <div id="listaStatusApps" class="admin-table"></div>
+        </section>
+
+        <section class="admin-section" data-aba="novidades" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Novidades (o que há de novo)</h2>
+              <p class="admin-sub">Escreva o que mudou em cada versão. Aparece pro corretor no botão "Novidades", com destaque de "não lida".</p>
+            </div>
+          </div>
+          <div id="novidadesPainel"></div>
         </section>
 
         <section class="admin-section" data-aba="usuarios" hidden>

@@ -32,6 +32,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Novidades (patch notes): sem PII, qualquer logado LÊ; escrita só via Cloud
+    // Function (salvarNovidade/excluirNovidade, admin).
+    match /novidades/{id} {
+      allow read:  if request.auth != null;
+      allow write: if false;
+    }
+
     // Bloco de notas pessoal: cada usuário lê/escreve só o próprio doc.
     match /user_notes/{uid} {
       allow read:  if request.auth != null && request.auth.uid == uid;
