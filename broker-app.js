@@ -58,7 +58,7 @@ const state = {
   view:'dashboard',
   pessoasView:'tabela', pessoasFiltro:'Todos', pessoasBusca:'',
   imoveisView:'cards', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente', mesFiltro:'todos',
-  negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'',
+  negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', negView:'tabela',
   relCorretor:'Todos', cfgTab:'usuarios',
   currentDeal:null, dealTab:'timeline', currentPerson:null, pessoaTab:'dados',
   currentProp:null, imovelTab:'dados',
@@ -675,19 +675,92 @@ function negRows(){
   return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div>'+(d.tags&&d.tags.length?'<div class="fx wrap g1" style="margin-top:5px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>':'')+'</td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter">'+agingBadge(d)+'</td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
 function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
+// ── Kanban (quadro por etapa) ────────────────────────────────────────────────
+// Colunas na ordem do funil. drop:true = aceita soltar card (muda status). Os 4
+// status "de trabalho" batem com o que a Cloud Function negocioAtualizar(acao:'status')
+// permite; Novo/Entregue/Concluído NÃO recebem drop (Entregar/Concluir exigem as
+// etapas obrigatórias — continuam nos botões do detalhe).
+const BOARD_COLS = [
+  { key:'negocio_criado',          label:'Novo',                drop:false },
+  { key:'em_andamento',            label:'Em andamento',        drop:true  },
+  { key:'aguardando_corretor',     label:'Aguard. corretor',    drop:true  },
+  { key:'aguardando_broker',       label:'Aguard. broker',      drop:true  },
+  { key:'aguardando_administrativo',label:'Aguard. adm',        drop:true  },
+  { key:'entregue_gestao',         label:'Entregue à gestão',   drop:false },
+  { key:'concluido',               label:'Concluído',           drop:false },
+];
+const KANBAN_CSS = '.kboard{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}'
+  + '.kcol{flex:0 0 250px;background:var(--ink50);border:1px solid var(--ink200);border-radius:12px;display:flex;flex-direction:column;max-height:68vh}'
+  + '.kcol-head{padding:11px 13px;font-size:12px;font-weight:800;color:var(--ink700);text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ink200)}'
+  + '.kcol-body{padding:9px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:70px}'
+  + '.kcol-over{outline:2px dashed var(--brand);outline-offset:-3px;background:rgba(37,99,235,.06)}'
+  + '.kcard{background:#fff;border:1px solid var(--ink200);border-radius:10px;padding:10px 11px;box-shadow:0 1px 2px rgba(0,0,0,.04)}'
+  + '.kcard[draggable="true"]{cursor:grab}.kcard[draggable="true"]:active{cursor:grabbing}.kdragging{opacity:.45}';
+function kanbanCard(d, podeArrastar){
+  const im=propDoDeal(d);
+  const arrast = podeArrastar && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado';
+  const tags = (d.tags&&d.tags.length) ? '<div class="fx wrap g1" style="margin-top:7px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>' : '';
+  return '<div class="kcard" data-deal="'+d.id+'" data-kcard="'+d.id+'" draggable="'+(arrast?'true':'false')+'">'
+    + '<div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px">'+d.tipo+'</span></div>'
+    + '<div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(im.rua)+'</div>'
+    + '<div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div>'
+    + '<div class="fx ac jb g2" style="margin-top:8px"><span class="mono fw6 t900 fz13">'+brl(d.valor)+'</span>'+agingBadge(d)+'</div>'
+    + tags + '</div>';
+}
+function kanbanHTML(){
+  const base=dealsBaseSemStatus();
+  const by={}; base.forEach(d=>{ (by[d.statusRaw]=by[d.statusRaw]||[]).push(d); });
+  const podeArrastar = state.role==='broker';
+  const cols = BOARD_COLS.filter(c=>c.drop || (by[c.key]&&by[c.key].length));
+  const colHTML = cols.map(c=>{
+    const cards=(by[c.key]||[]);
+    const body = cards.length ? cards.map(d=>kanbanCard(d,podeArrastar)).join('') : '<div class="fz12 t400" style="padding:12px;text-align:center">—</div>';
+    const dropAttr = (c.drop && podeArrastar) ? ' data-kdrop="'+c.key+'"' : '';
+    return '<div class="kcol"><div class="kcol-head"><span>'+esc(c.label)+'</span><span class="pill neutral">'+cards.length+'</span></div><div class="kcol-body"'+dropAttr+'>'+body+'</div></div>';
+  }).join('');
+  const hint = podeArrastar
+    ? 'Arraste um card entre as colunas para mudar o status. <b>Entregar</b> e <b>Concluir</b> continuam nos botões do negócio (exigem as etapas obrigatórias).'
+    : 'Somente o broker move os cards.';
+  return '<style>'+KANBAN_CSS+'</style><div class="kboard">'+colHTML+'</div><div class="fz12 t500" style="margin-top:10px">'+hint+'</div>';
+}
+async function kanbanMove(id, novoStatus){
+  const d=DEALS.find(x=>x.id===id); if(!d || d.statusRaw===novoStatus) return;
+  const prev=d.statusRaw, prevL=d.status;
+  d.statusRaw=novoStatus; d.status=NEG_STATUS_LABEL[novoStatus]||novoStatus;   // otimista
+  RENDERERS.negocios($('#root')); refreshIcons();
+  try {
+    const r=await fnNegAtual({negocioId:id, acao:'status', status:novoStatus});
+    const ng=r.data&&r.data.negocio; if(ng){ const m=mapNegocio(ng); const i=DEALS.findIndex(x=>x.id===id); if(i>=0) DEALS[i]=m; }
+    recalcKPI(); RENDERERS.negocios($('#root')); refreshIcons();
+    toast('Movido para '+(NEG_STATUS_LABEL[novoStatus]||novoStatus),'check');
+  } catch(err){
+    d.statusRaw=prev; d.status=prevL; RENDERERS.negocios($('#root')); refreshIcons();   // rollback
+    toast(err.message||'Não foi possível mover','alert-triangle','var(--danger)');
+  }
+}
+
 RENDERERS.negocios = function(host){
   const tipos=['Todos','Venda','Locação'];
+  const isKanban = state.negView==='kanban';
+  const toggle = '<div class="fx ac g1">'
+    + '<button class="chip'+(!isKanban?' active':'')+'" data-action="negview" data-v="tabela" title="Tabela">'+icon('table',14)+'Tabela</button>'
+    + '<button class="chip'+(isKanban?' active':'')+'" data-action="negview" data-v="kanban" title="Quadro (arraste os cards)">'+icon('layout-grid',14)+'Quadro</button>'
+  + '</div>';
+  const tabela = '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(state.role==='corretor'?'800':'900')+'px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Cliente</th>'+(state.role==='corretor'?'':'<th>Corretor</th>')+'<th>Status</th><th class="tcenter" title="Dias desde a última movimentação">Parado</th><th class="tright">'+(state.role==='corretor'?'Minha comissão':'Comissão')+'</th></tr></thead><tbody id="negTbody">'+negRows()+'</tbody></table></div></div>';
   host.innerHTML = pageHead(hTitulo('Negócios'),'Em que etapa está cada negociação? Acompanhe todos os negócios da imobiliária.','')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:14px">'
     + '<div class="fx ac g2 wrap">'+tipos.map(t=>'<button class="chip'+(state.negFiltroTipo===t?' active':'')+'" data-action="negtipo" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
     + '<div class="fx ac g2">'
+      + toggle
       + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(300px,60vw)">'+icon('search',16,'tmut')+'<input data-input="negBusca" value="'+esc(state.negBusca||'')+'" placeholder="Buscar negócio, imóvel, cliente…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>'
       + mesSelect()
     + '</div>'
   + '</div>'
-  + '<div class="fx ac g2 wrap" id="negChips" style="margin-bottom:14px">'+negStatusChips()+'</div>'
-  + '<div class="fz13 tmut" style="margin-bottom:12px"><strong class="tw" id="negCount">'+filteredDeals().length+'</strong> negócios · '+(state.negFiltroTipo)+(state.negFiltroStatus!=='Todos'?' · '+state.negFiltroStatus:'')+'</div>'
-  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(state.role==='corretor'?'800':'900')+'px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Cliente</th>'+(state.role==='corretor'?'':'<th>Corretor</th>')+'<th>Status</th><th class="tcenter" title="Dias desde a última movimentação">Parado</th><th class="tright">'+(state.role==='corretor'?'Minha comissão':'Comissão')+'</th></tr></thead><tbody id="negTbody">'+negRows()+'</tbody></table></div></div>'
+  + (isKanban ? '' : '<div class="fx ac g2 wrap" id="negChips" style="margin-bottom:14px">'+negStatusChips()+'</div>')
+  + '<div class="fz13 tmut" style="margin-bottom:12px">'+(isKanban
+      ? ('<strong class="tw">'+dealsBaseSemStatus().length+'</strong> negócios no quadro · '+(state.negFiltroTipo))
+      : ('<strong class="tw" id="negCount">'+filteredDeals().length+'</strong> negócios · '+(state.negFiltroTipo)+(state.negFiltroStatus!=='Todos'?' · '+state.negFiltroStatus:'')))+'</div>'
+  + (isKanban ? kanbanHTML() : tabela)
   + '<div class="fx ac g3 wrap fz12 t500" style="margin-top:12px"><span class="fw6 t700">Parado:</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"></span>até 7 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>8 a 14 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>mais de 14 dias</span></div>';
 };
 
@@ -1137,6 +1210,12 @@ function wireEvents(root){
     const pers=e.target.closest('[data-person]'); if(pers){ openPerson(pers.dataset.person); return; }
     const pr=e.target.closest('[data-prop]'); if(pr){ openProp(pr.dataset.prop); return; }
   });
+  // Kanban: arrastar card entre colunas (só broker). Delegado no root persistente.
+  root.addEventListener('dragstart', e=>{ const c=e.target.closest('[data-kcard]'); if(!c||c.getAttribute('draggable')!=='true') return; state._dragDeal=c.dataset.kcard; c.classList.add('kdragging'); try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', c.dataset.kcard); }catch(_e){} });
+  root.addEventListener('dragend', e=>{ const c=e.target.closest('[data-kcard]'); if(c) c.classList.remove('kdragging'); const r=ROOT(); if(r) r.querySelectorAll('.kcol-over').forEach(x=>x.classList.remove('kcol-over')); });
+  root.addEventListener('dragover', e=>{ if(!state._dragDeal) return; const col=e.target.closest('[data-kdrop]'); if(!col) return; e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(_e){} col.classList.add('kcol-over'); });
+  root.addEventListener('dragleave', e=>{ const col=e.target.closest('[data-kdrop]'); if(col && !col.contains(e.relatedTarget)) col.classList.remove('kcol-over'); });
+  root.addEventListener('drop', e=>{ const col=e.target.closest('[data-kdrop]'); if(!col) return; e.preventDefault(); col.classList.remove('kcol-over'); const id=state._dragDeal; state._dragDeal=null; if(id) kanbanMove(id, col.dataset.kdrop); });
   root.addEventListener('input', e=>{
     // Busca do topbar (só visível na janela standalone; no Hub o topbar é escondido):
     // roteia pra busca da tela ativa em vez de ficar inerte.
@@ -1153,6 +1232,7 @@ function wireEvents(root){
 function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
   else if(a==='refresh'){ if(el) el.disabled=true; carregarDados().then(()=>{ toast('Atualizado','check-circle-2','var(--success)'); navigate(state.view); }).catch(()=>{ toast('Erro ao atualizar','alert-triangle','var(--warning)'); if(el) el.disabled=false; }); }
+  else if(a==='negview'){ state.negView=el.dataset.v; if(state.negView==='kanban'){ state.negVerCancelados=false; state.negVerArquivados=false; } RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='negstatuschip'){ state.negFiltroStatus=el.dataset.v; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='negverarquivados'){ state.negVerArquivados=!state.negVerArquivados; if(state.negVerArquivados) state.negVerCancelados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='negvercancelados'){ state.negVerCancelados=!state.negVerCancelados; if(state.negVerCancelados) state.negVerArquivados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
