@@ -199,7 +199,7 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 .hub-layout {
   display: grid;
-  grid-template-columns: 160px 1fr 300px;
+  grid-template-columns: 180px 1fr 300px;
   gap: 0;
   height: calc(100vh - 46px);
   overflow: hidden;
@@ -212,6 +212,7 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   background: var(--navy-deep);
   display: flex; flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
 }
 
@@ -281,7 +282,7 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 /* ── Broker embutido na área central do Hub ─────────────────────────── */
 .hub-main.hub-main--broker { padding: 0; gap: 0; overflow: hidden; }
 .hub-main.hub-main--broker > #bkRoot { flex: 1 1 auto; min-height: 0; }
-.hub-layout.loc-embed { grid-template-columns: 160px 1fr; }
+.hub-layout.loc-embed { grid-template-columns: 180px 1fr; }
 .hub-layout.loc-embed .agenda-panel { display: none; }
 
 /* ── Área central ────────────────────────────────────────────────── */
@@ -382,9 +383,9 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 }
 
 /* ── Painel lateral direito (agenda) ─────────────────────────────── */
-.hub-layout.agenda-oculta { grid-template-columns: 160px 1fr; }
+.hub-layout.agenda-oculta { grid-template-columns: 180px 1fr; }
 .hub-layout.agenda-oculta .agenda-panel { display: none; }
-.hub-layout.na-agenda { grid-template-columns: 160px 1fr; }
+.hub-layout.na-agenda { grid-template-columns: 180px 1fr; }
 .hub-layout.na-agenda .agenda-panel { display: none; }
 
 .agenda-panel {
