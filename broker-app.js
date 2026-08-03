@@ -15,7 +15,7 @@
 import { initializeApp, getApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js";
-import { getFirestore, collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+import { getFirestore, collection, doc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-env.js";
 
 // hub-app.js já inicializou o app e (em localhost) ligou os emuladores nas MESMAS
@@ -356,6 +356,7 @@ function renderBreadcrumb(){ const c=CRUMB[state.view]||['SMART HUB','—']; con
 function navigate(view){
   if(view) state.view=view;
   state._viewingDeal = false;   // saiu do detalhe de um negócio (real-time pode re-renderizar)
+  _teardownDealRT();            // desliga os comentários ao vivo do negócio que estava aberto
   // Modo embutido: avisa o Hub pra sanfona destacar o sub-item certo mesmo quando
   // a navegação nasce DENTRO do Broker (KPI cards, "Voltar aos Negócios" etc.).
   if(state.embedded && typeof state.onNavigate==='function'){ try{ state.onNavigate(state.view); }catch(e){} }
@@ -512,6 +513,7 @@ function setupRealtime(){
 }
 function teardownRealtime(){
   clearTimeout(_rtTimer);
+  _teardownDealRT();
   (state._rtUnsubs || []).forEach(u => { try { u(); } catch(_e){} });
   state._rtUnsubs = [];
 }
@@ -671,6 +673,13 @@ function renderStepper(d){
     return '<div class="fx col ac g2" style="flex:1;min-width:80px"><div class="fx ac" style="width:100%"><span style="flex:1;height:2px;background:'+lineL+'"></span><span class="ifx ac jc nsh" style="width:32px;height:32px;border-radius:50%;background:'+bg+';border:'+(bd==='transparent'?'none':bd)+';color:'+col+';font-size:12px;font-weight:700'+(now?';box-shadow:0 0 0 4px rgba(37,99,235,.18)':'')+'">'+(done?icon('check',16):(i+1))+'</span><span style="flex:1;height:2px;background:'+lineR+'"></span></div><div class="tcenter"><div class="fz12 fw6 '+(done||now?'t900':'t500')+'">'+esc((s.label||'').split(' ').slice(0,2).join(' '))+'</div><div class="fz11 '+capc+'" style="margin-top:1px">'+cap+'</div></div></div>'; }).join('')+'</div>';
 }
 
+// Um balão de comentário (usado no render inicial e no append em tempo real).
+function comentBubbleHTML(c){
+  return '<div class="fx g2" style="padding:12px 0;border-top:1px solid var(--ink100)">'+avatar(c.porNome,34,'var(--ink800)')+'<div class="grow"><div class="fx ac g2"><span class="fz13 fw6 t900">'+esc(c.porNome)+'</span><span class="fz11 t400">'+relData(c.em)+'</span></div><div class="fz13 t700" style="margin-top:2px">'+esc(c.texto)+'</div></div></div>';
+}
+// Desliga o listener de tempo real do negócio aberto (comentários ao vivo).
+function _teardownDealRT(){ if(state._dealUnsub){ try{ state._dealUnsub(); }catch(_e){} state._dealUnsub=null; } }
+
 function openDeal(id){
   // DEALS não tem cancelados (filtrados no load); cai no DEALS_DOCS pra poder abrir
   // um cancelado (ver motivo da perda / arquivar).
@@ -694,7 +703,7 @@ function openDeal(id){
   const tabBtn=(k,l)=>'<button class="tab'+(tab===k?' active':'')+'" data-action="dealtab-'+k+'">'+l+'</button>';
   let tabContent='';
   if(tab==='timeline'){ tabContent='<div style="padding:20px">'+(tl.length?tl.map((e,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',32)+(i<tl.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:18px" class="grow"><div class="fz14 fw6 t900">'+esc(e.texto)+'</div><div class="fz12 t500">'+esc(e.porNome||'')+' · '+relData(e.em)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem histórico ainda.</div>')+'</div>'; }
-  else if(tab==='comentarios'){ if(!d.podeComentar){ tabContent='<div class="tcenter t500 fz13" style="padding:24px">Comentários são exclusivos do broker e do corretor responsável.</div>'; } else { const cs=d.comentarios||[]; tabContent='<div style="padding:20px"><div class="fx g2" style="margin-bottom:16px">'+avatar(state.meuNome,34)+'<div class="grow"><textarea id="bkComent" class="input" rows="2" placeholder="Escreva um comentário para a equipe…"></textarea><div class="fx je" style="margin-top:8px"><button class="btn btn-primary sm" data-action="add-coment">Comentar</button></div></div></div>'+(cs.length?cs.slice().reverse().map(c=>'<div class="fx g2" style="padding:12px 0;border-top:1px solid var(--ink100)">'+avatar(c.porNome,34,'var(--ink800)')+'<div class="grow"><div class="fx ac g2"><span class="fz13 fw6 t900">'+esc(c.porNome)+'</span><span class="fz11 t400">'+relData(c.em)+'</span></div><div class="fz13 t700" style="margin-top:2px">'+esc(c.texto)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Nenhum comentário ainda.</div>')+'</div>'; } }
+  else if(tab==='comentarios'){ if(!d.podeComentar){ tabContent='<div class="tcenter t500 fz13" style="padding:24px">Comentários são exclusivos do broker e do corretor responsável.</div>'; } else { const cs=d.comentarios||[]; tabContent='<div style="padding:20px"><div class="fx g2" style="margin-bottom:16px">'+avatar(state.meuNome,34)+'<div class="grow"><textarea id="bkComent" class="input" rows="2" placeholder="Escreva um comentário para a equipe…"></textarea><div class="fx je" style="margin-top:8px"><button class="btn btn-primary sm" data-action="add-coment">Comentar</button></div></div></div><div id="bkComentList">'+(cs.length?cs.slice().reverse().map(comentBubbleHTML).join(''):'<div class="tcenter t500 fz13" data-coment-empty style="padding:20px">Nenhum comentário ainda.</div>')+'</div></div>'; } }
   else { tabContent='<div style="padding:16px 20px"><div class="fz13 fw6 t900" style="margin-bottom:10px">Checklist do negócio</div>'+(d.checklist||[]).map(x=>'<button class="fx ac g3 hoverbg" data-chk="'+esc(x.key)+'" data-feito="'+(x.feito?'0':'1')+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px"><span class="ifx ac jc nsh" style="width:24px;height:24px;border-radius:6px;background:'+(x.feito?'var(--success)':'#fff')+';border:'+(x.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(x.feito?icon('check',15):'')+'</span><div class="grow mw0"><div class="fz13 fw6 t900">'+esc(x.label)+(x.obrigatoria?' <span class="pill danger" style="font-size:10px;padding:1px 6px">obrigatória</span>':'')+'</div>'+(x.feito&&x.feitoPor?'<div class="fz11 t500">'+esc(x.feitoPor)+' · '+relData(x.feitoEm)+'</div>':'')+'</div></button>').join('')+'</div>'; }
 
   const host=$('#root'); host.style.animation='none'; void host.offsetWidth; host.style.animation='';
@@ -712,6 +721,31 @@ function openDeal(id){
     + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
   const sc=$('#scroller'); if(sc) sc.scrollTop=0; refreshIcons();
+
+  // Comentários AO VIVO (estilo chat): escuta ESTE negócio e, quando chega comentário
+  // novo de outra pessoa, insere só o balão novo — sem re-renderizar (não apaga o que
+  // você está digitando). Só p/ quem pode comentar (broker + corretor do negócio) — as
+  // regras deixam gestor/dono ler o doc; administrativo nem tem esta aba.
+  _teardownDealRT();
+  if(REALTIME && d.podeComentar){
+    state._dealRendCount = (d.comentarios||[]).length;
+    state._dealUnsub = onSnapshot(doc(db,'negocios',id), (snap)=>{
+      if(!snap.exists() || state.currentDeal!==id) return;
+      const cs = snap.data().comentarios || [];
+      const dd = DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id);
+      if(dd) dd.comentarios = cs;                    // mantém o cache fresco p/ troca de aba
+      if(state.dealTab!=='comentarios'){ state._dealRendCount = cs.length; return; }
+      if(cs.length > (state._dealRendCount||0)){
+        const listEl = $('#bkComentList');
+        if(listEl){
+          const empty = listEl.querySelector('[data-coment-empty]'); if(empty) empty.remove();
+          cs.slice(state._dealRendCount).forEach(c => listEl.insertAdjacentHTML('afterbegin', comentBubbleHTML(c)));
+          refreshIcons();
+        }
+        state._dealRendCount = cs.length;
+      }
+    }, e=>console.warn('deal rt:', e && e.message));
+  }
 }
 
 async function negAtualizar(payload, okMsg){
