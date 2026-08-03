@@ -680,6 +680,22 @@ function comentBubbleHTML(c){
 // Desliga o listener de tempo real do negócio aberto (comentários ao vivo).
 function _teardownDealRT(){ if(state._dealUnsub){ try{ state._dealUnsub(); }catch(_e){} state._dealUnsub=null; } }
 
+// Card "Documentos deste negócio" no detalhe (anexo rápido). Reusa negocioAnexarDoc:
+// gestor/adm anexam e removem; corretor só vê e baixa (mesma regra da tela Documentos).
+const DOC_CAT_LABEL = { contrato:'Contrato', proposta:'Proposta', cliente:'Doc. do cliente', outro:'Outro' };
+function dealDocsCardHTML(d, podeSubir){
+  const docs = (d.raw && d.raw.documentos) || [];
+  const encerrado = d.statusRaw==='concluido' || d.statusRaw==='cancelado';
+  const addBtn = (podeSubir && !encerrado) ? '<button class="btn btn-outline sm nsh" data-action="deal-doc-add">'+icon('upload',15)+'Anexar</button>' : '';
+  const rows = docs.length ? docs.map(x=>{
+    const meta=[DOC_CAT_LABEL[x.categoria]||'', docFmtTam(x.tamanho), relData(x.em)].filter(Boolean).join(' · ');
+    const baixar='<a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',15)+'</a>';
+    const rem = podeSubir ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(d.id)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>' : '';
+    return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)">'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500 trunc">'+esc(meta)+'</div></div><div class="fx ac g1 nsh">'+baixar+rem+'</div></div>';
+  }).join('') : '<div class="fz13 t500" style="padding:12px 0 4px">Nenhum documento anexado a este negócio.</div>';
+  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2"><span class="up fz12 fw7 t800">Documentos deste negócio</span>'+addBtn+'</div>'+rows+'</div>';
+}
+
 function openDeal(id){
   // DEALS não tem cancelados (filtrados no load); cai no DEALS_DOCS pra poder abrir
   // um cancelado (ver motivo da perda / arquivar).
@@ -713,6 +729,7 @@ function openDeal(id){
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
+  + dealDocsCardHTML(d, (state.role==='broker'||state.role==='administrativo'))
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+'</div>'
@@ -1484,10 +1501,10 @@ function renderDocsClientes(clientes){
     return '<details style="border-top:1px solid var(--ink100)"><summary class="fx ac g3" style="cursor:pointer;padding:13px 20px;list-style:none">'+avatar(c.nome,36,'var(--ink800)')+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(c.nome)+'</div><div class="fz12 t500 trunc">'+vinc+' · '+n+' doc'+(n>1?'s':'')+'</div></div><span class="nsh t400">'+icon('chevron-down',18)+'</span></summary>'+rows+'</details>';
   }).join('')+'</div>';
 }
-function openDocUpload(){
+function openDocUpload(preDealId){
   const deals = DEALS.filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado');
   if(!deals.length){ toast('Não há negócio ativo para anexar documento','alert-triangle','var(--danger)'); return; }
-  const opts = deals.map(d=>'<option value="'+esc(d.id)+'">'+esc((d.code||'—')+' · '+(d.clienteNome||''))+'</option>').join('');
+  const opts = deals.map(d=>'<option value="'+esc(d.id)+'"'+(d.id===preDealId?' selected':'')+'>'+esc((d.code||'—')+' · '+(d.clienteNome||''))+'</option>').join('');
   const cats = [['contrato','Contrato'],['proposta','Proposta'],['cliente','Documentação do cliente'],['outro','Outro']].map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
   openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Enviar documento</div>'
     +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Negócio</div><select id="docDeal" class="input" style="margin-bottom:12px">'+opts+'</select>'
@@ -1646,6 +1663,7 @@ handleAction = function(a, el){
   if(a==='int-gerar'){ if(confirm('Gerar o negócio deste interessado? O imóvel entra em negociação.')){ el.disabled=true; gerarNegocioUI(el.dataset.imovel, +el.dataset.idx, {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); } return; }
   // Documentos do negócio (gestor/adm sobe; corretor só baixa)
   if(a==='doc-upload-open'){ openDocUpload(); return; }
+  if(a==='deal-doc-add'){ openDocUpload(state.currentDeal); return; }
   if(a==='doc-upload-send'){
     const dealId=($('#docDeal')||{}).value, cat=($('#docCat')||{}).value, errEl=$('#docErr');
     const f=($('#docFile')||{}).files && $('#docFile').files[0];
@@ -1661,13 +1679,13 @@ handleAction = function(a, el){
     rd.onload=async()=>{ try{
         const b64=String(rd.result||'').split(',')[1]||'';
         await fnAnexarDoc({negocioId:dealId, categoria:cat, nome:f.name, mime:f.type||'application/octet-stream', base64:b64});
-        toast('Documento enviado','check'); closeModal(); await carregarDados(); if(state.view==='documentos') navigate('documentos');
+        toast('Documento enviado','check'); closeModal(); await carregarDados(); if(state.view==='documentos') navigate('documentos'); else if(state.currentDeal && state._viewingDeal) openDeal(state.currentDeal);
       }catch(e){ if(errEl) errEl.textContent=e.message||'Erro ao enviar'; try{el.disabled=false;}catch(_e){} } };
     rd.onerror=()=>{ if(errEl) errEl.textContent='Falha ao ler o arquivo.'; try{el.disabled=false;}catch(_e){} };
     rd.readAsDataURL(f);
     return;
   }
-  if(a==='doc-remover'){ if(!confirm('Remover o documento “'+(el.dataset.nome||'')+'”?'))return; el.disabled=true; fnRemoverDoc({negocioId:el.dataset.deal, docId:el.dataset.doc}).then(async()=>{ toast('Documento removido','trash-2'); await carregarDados(); if(state.view==='documentos') navigate('documentos'); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
+  if(a==='doc-remover'){ if(!confirm('Remover o documento “'+(el.dataset.nome||'')+'”?'))return; el.disabled=true; fnRemoverDoc({negocioId:el.dataset.deal, docId:el.dataset.doc}).then(async()=>{ toast('Documento removido','trash-2'); await carregarDados(); if(state.view==='documentos') navigate('documentos'); else if(state.currentDeal && state._viewingDeal) openDeal(state.currentDeal); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   // Negócio (gestor): entregar / concluir / cancelar
   if(a==='neg-entregar'){ if(confirm('Entregar este negócio para a gestão? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'entregar'}, 'Entregue para a gestão'); return; }
   if(a==='neg-concluir'){ if(confirm('Concluir este negócio? (exige as etapas obrigatórias)')) negAtualizar({negocioId:state.currentDeal, acao:'concluir'}, 'Negócio concluído'); return; }
