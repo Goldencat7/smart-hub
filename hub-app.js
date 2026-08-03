@@ -79,6 +79,7 @@ try {
 const statusGoogleAgenda = httpsCallable(fns, 'statusGoogleAgenda');
 const listarGoogleAgenda = httpsCallable(fns, 'listarGoogleAgenda');
 const criarNotificacao = httpsCallable(fns, 'criarNotificacao');
+const listarNovidades = httpsCallable(fns, 'listarNovidades');
 const listarMinhasNotificacoes = httpsCallable(fns, 'listarMinhasNotificacoes');
 const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
 const responderConvite = httpsCallable(fns, 'responderConvite');
@@ -1138,6 +1139,80 @@ function mostrarLinkModal(link) {
   });
 }
 
+// ─── Novidades (patch notes) ────────────────────────────────────────────────
+// Botão "📣 Novidades" na topbar com bolinha de "não lida". O conteúdo vem do
+// backend (listarNovidades). "Visto" fica no localStorage (por aparelho) — basta
+// pra saber se tem versão nova que a pessoa ainda não abriu.
+let novidadesCache = null;
+function _cmpVer(a, b) {
+  const pa = String(a || '').split('.').map(Number), pb = String(b || '').split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x - y; }
+  return 0;
+}
+async function carregarNovidadesBadge() {
+  try {
+    const r = await listarNovidades({});
+    novidadesCache = (r.data && r.data.novidades) || [];
+    atualizarBadgeNovidades();
+  } catch (_) { /* silencioso — sem novidades, sem bolinha */ }
+}
+function atualizarBadgeNovidades() {
+  const badge = document.getElementById('novidadesBadge');
+  if (!badge || !novidadesCache || !novidadesCache.length) return;
+  const maisNova = novidadesCache[0].versao; // servidor já ordena desc
+  let vista = ''; try { vista = localStorage.getItem('novidades_vista') || ''; } catch (_) {}
+  badge.hidden = !(!vista || _cmpVer(maisNova, vista) > 0);
+}
+function _novItemHTML(v, sel) {
+  const ativo = sel && v.versao === sel.versao;
+  const data = v.criadoEm ? new Date(v.criadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '';
+  return `<button class="nov-item" data-nov-ver="${escapeHtml(v.versao)}" style="display:block;width:100%;text-align:left;padding:9px 11px;border:none;border-radius:8px;cursor:pointer;background:${ativo ? '#e6f1fb' : 'transparent'};margin-bottom:2px">
+    <span style="font-size:13px;font-weight:600;color:${ativo ? '#185FA5' : 'var(--text-primary,#1a2233)'}">v${escapeHtml(v.versao)}</span>
+    <span style="display:block;font-size:11px;color:var(--text-muted,#8a94a6)">${data}</span></button>`;
+}
+function _novDetalheHTML(n) {
+  if (!n) return '<p class="muted" style="padding:8px">Nenhuma novidade ainda.</p>';
+  const grupo = (t, cor, itens) => (itens && itens.length)
+    ? `<div style="font-size:12px;font-weight:600;color:${cor};margin:0 0 6px">${t}</div><ul style="margin:0 0 14px;padding-left:18px;font-size:13px;line-height:1.6;color:var(--text-secondary,#5b6472)">${itens.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '';
+  const data = n.criadoEm ? new Date(n.criadoEm).toLocaleDateString('pt-BR') : '';
+  const corpo = grupo('✨ Novo', '#16a34a', n.novo) + grupo('🔧 Melhorias', '#2563eb', n.melhorias) + grupo('🐛 Correções', '#d97706', n.correcoes);
+  return `<div style="font-size:15px;font-weight:600;margin-bottom:2px">v${escapeHtml(n.versao)} — o que chegou</div>
+    <div style="font-size:12px;color:var(--text-muted,#8a94a6);margin-bottom:14px">${data}</div>
+    ${corpo || '<p class="muted" style="font-size:13px">Sem detalhes nesta versão.</p>'}`;
+}
+async function abrirNovidades() {
+  if (!novidadesCache) await carregarNovidadesBadge();
+  const lista = novidadesCache || [];
+  let sel = lista[0] || null;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'modal';
+  const fim = () => { dlg.close(); dlg.remove(); };
+  const render = () => {
+    dlg.innerHTML = `
+      <div class="modal-conteudo" style="max-width:640px;width:min(640px,92vw);padding:0;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb)">
+          <strong style="font-size:15px">📣 Novidades</strong>
+          <button type="button" class="topbar-btn" data-acao="fechar" style="padding:4px 9px">✕</button>
+        </div>
+        <div style="display:grid;grid-template-columns:170px 1fr">
+          <div style="border-right:1px solid var(--border,#e5e7eb);padding:8px;overflow:auto;max-height:60vh">${lista.length ? lista.map(v => _novItemHTML(v, sel)).join('') : '<p class="muted" style="font-size:12px;padding:8px">—</p>'}</div>
+          <div style="padding:16px 18px;overflow:auto;max-height:60vh">${_novDetalheHTML(sel)}</div>
+        </div>
+      </div>`;
+    dlg.querySelectorAll('[data-nov-ver]').forEach(b => b.addEventListener('click', () => { sel = lista.find(v => v.versao === b.dataset.novVer); render(); }));
+    const bf = dlg.querySelector('[data-acao="fechar"]'); if (bf) bf.addEventListener('click', fim);
+  };
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) fim(); });   // clicar no fundo fecha
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); fim(); });      // ESC fecha
+  document.body.appendChild(dlg);
+  render();
+  dlg.showModal();
+  // marca a mais nova como vista → some a bolinha
+  if (lista.length) { try { localStorage.setItem('novidades_vista', lista[0].versao); } catch (_) {} }
+  const badge = document.getElementById('novidadesBadge'); if (badge) badge.hidden = true;
+}
+document.getElementById('btnNovidades')?.addEventListener('click', abrirNovidades);
+
 // ─── Abrir app (com ou sem autologin) ────────────────────────────────────
 // Ponte pro Broker embutido: troca a categoria ativa do Hub (ex.: Agenda).
 // Sai do "Meus Negócios" — o renderCentro desmonta o Broker e restaura o layout.
@@ -1922,6 +1997,9 @@ onAuthStateChanged(auth, async (user) => {
   clearInterval(window.__chamadosTimer);
   window.__chamadosTimer = setInterval(() => { if (!document.hidden) atualizarBadgeChamados(); }, 120000);
 
+  // Novidades (patch notes): carrega a lista e acende a bolinha se tem versão nova não lida.
+  carregarNovidadesBadge();
+
   // Atualiza na hora quando a pessoa volta pro app (foco / aba visível),
   // pra não esperar o timer quando a ficha acabou de chegar. Wire uma vez só.
   if (!window.__notifFocusWired) {
@@ -1962,11 +2040,12 @@ onAuthStateChanged(auth, async (user) => {
   // SÓ a peça que mudou, na HORA. Os timers de 3 min continuam de fallback (REALTIME=false → só eles).
   if (REALTIME) {
     if (window.__broadcastUnsub) { try { window.__broadcastUnsub(); } catch (_) {} }
-    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0;
+    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0, bcNov = 0;
     window.__broadcastUnsub = onSnapshot(doc(db, 'config', 'broadcast'), async (snap) => {
       const d = snap.exists() ? (snap.data() || {}) : {};
-      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0;
-      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; return; }
+      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0, nv = d.novidadeSeq || 0;
+      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; bcNov = nv; return; }
+      if (nv !== bcNov) { bcNov = nv; carregarNovidadesBadge(); }   // admin publicou nota → bolinha na hora
       if (s !== bcStatus) {
         bcStatus = s;
         await carregarStatusApps();
