@@ -256,10 +256,11 @@ function propDoDeal(d){ return PROPERTIES.find(p=>p.id===d.imovelId) || {rua:d.i
 
 /* ============================ CARREGAMENTO DE DADOS ============================ */
 async function carregarDados(){
-  const [imR, ngR] = await Promise.all([
-    fnImoveis({}).catch(()=>({data:{imoveis:[]}})),
-    fnNegocios({}).catch(()=>({data:{negocios:[]}})),
-  ]);
+  // Falha de rede/cold-start REJEITA (não vira lista vazia): senão um blip no meio
+  // do refresh do tempo real zerava PROPERTIES/DEALS e a tela mostrava KPI R$ 0 /
+  // carteira vazia em silêncio. Quem chama trata: mount → card de erro; _rtOnChange
+  // → aborta o re-render (mantém os dados antigos); refresh → toast.
+  const [imR, ngR] = await Promise.all([ fnImoveis({}), fnNegocios({}) ]);
   const imoveisRaw = (imR.data&&imR.data.imoveis)||[];
   PROPERTIES = imoveisRaw.filter(im=>!im.arquivado).map(mapImovel);
   const negociosRaw = (ngR.data&&ngR.data.negocios)||[];
@@ -429,7 +430,7 @@ async function mount(opts){
   state.embedded = !!opts.embedded;   // embutido na área central do Hub (sanfona)
   state.view = opts.view || 'dashboard';
   // Reabrir a Locação começa limpo: sem filtros/seleções/pessoas da sessão anterior.
-  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente', mesFiltro:'todos', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline', cliFiltro:'Todos', cliBusca:'', agView:'mes', driveTipo:'Venda' });
+  Object.assign(state, { negFiltroTipo:'Todos', negFiltroStatus:'Todos', negBusca:'', negView:'tabela', negVerArquivados:false, negVerCancelados:false, pessoasFiltro:'Todos', pessoasBusca:'', imoveisFiltro:'Todos', imoveisBusca:'', imoveisSort:'recente', mesFiltro:'todos', filaBusca:'', relCorretor:'Todos', currentDeal:null, dealTab:'timeline', cliFiltro:'Todos', cliBusca:'', agView:'mes', driveTipo:'Venda' });
   PEOPLE = [];
   const root = ROOT();
   if(!root){ console.warn('[broker] #bkRoot ausente'); return; }
@@ -490,7 +491,11 @@ function _rtOnChange(){
       if(!ROOT() || ROOT().hidden) return;
       const overlay = ($('#drawer') && $('#drawer').classList.contains('show'))
                    || ($('#modal') && $('#modal').classList.contains('show'));
-      if(overlay || state._viewingDeal) return;   // não re-renderiza por cima do que a pessoa faz
+      // Também não re-renderiza com um input/select em foco (busca, filtros): o texto
+      // sobreviveria (vem do state) mas o FOCO e o scroll se perderiam no meio da palavra.
+      const ae = document.activeElement;
+      const digitando = ae && ROOT().contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+      if(overlay || state._viewingDeal || digitando) return;   // não re-renderiza por cima do que a pessoa faz
       navigate(state.view);
     } catch(_e){ /* silencioso */ }
   }, 1500);
@@ -647,7 +652,7 @@ function agingBadge(d){
 // Cor por matiz: palavras conhecidas ganham cor semântica (quente=vermelho,
 // frio=azul…); as demais derivam um matiz estável do texto. Alpha via hsl 4-valores.
 const TAG_HUE = { quente:0, morno:32, frio:214, urgente:0, prioridade:270, vip:270, alta:0, media:32, ['média']:32, baixa:150 };
-function tagHue(t){ const k=String(t||'').toLowerCase().trim(); if(k in TAG_HUE) return TAG_HUE[k]; let h=0; for(let i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))>>>0; return h%360; }
+function tagHue(t){ const k=String(t||'').toLowerCase().trim(); if(Object.prototype.hasOwnProperty.call(TAG_HUE,k)) return TAG_HUE[k]; let h=0; for(let i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))>>>0; return h%360; }
 function tagChipHTML(t, removable){
   const H=tagHue(t), fg='hsl('+H+' 70% 64%)', bg='hsl('+H+' 70% 55% / .15)', bd='hsl('+H+' 70% 60% / .40)';
   const x = removable ? '<span data-action="tag-remove" data-tag="'+esc(t)+'" title="Remover" style="margin-left:6px;cursor:pointer;font-weight:800;opacity:.85">×</span>' : '';
@@ -699,7 +704,11 @@ function negRows(){
   if(!list.length) return '<tr><td colspan="'+(meu?7:8)+'"><div class="tcenter t500" style="padding:44px 0"><div class="t400">'+icon('search-x',26)+'</div><p style="margin-top:10px" class="fz14 fw5">Nenhum negócio encontrado para este filtro.</p></div></td></tr>';
   return list.map(d=>{ const im=propDoDeal(d); return '<tr data-deal="'+d.id+'"><td class="mono fz13 t900 fw6">'+esc(d.code)+'</td><td><div class="fw6 t900">'+esc(im.rua)+'</div><div class="fz12 t500">'+esc(im.bairro||d.cidade)+'</div>'+(d.tags&&d.tags.length?'<div class="fx wrap g1" style="margin-top:5px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>':'')+'</td><td><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span></td><td class="t700">'+esc(d.clienteNome)+'</td>'+(meu?'':'<td><div class="fx ac g2">'+avatar(corrNome(d.corretor),24,'var(--ink800)',corrFoto(d.corretor))+'<span class="fz13 t700">'+esc(corrNome(d.corretor))+'</span></div></td>')+'<td>'+statusPill(d.status)+'</td><td class="tcenter"><div class="fx ac jc g1 wrap">'+agingBadge(d)+tarefaBadge(d)+'</div></td><td class="tright mono fw6 t900">'+brl(meu?repasse(d):d.comValor)+'</td></tr>'; }).join('');
 }
-function updateNegTable(){ const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length; }
+function updateNegTable(){
+  // Quadro: re-renderiza SÓ o board (não a página — preserva o foco do input de busca).
+  const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); return; }
+  const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length;
+}
 // ── Kanban (quadro por etapa) ────────────────────────────────────────────────
 // Colunas na ordem do funil. drop:true = aceita soltar card (muda status). Os 4
 // status "de trabalho" batem com o que a Cloud Function negocioAtualizar(acao:'status')
@@ -748,18 +757,30 @@ function kanbanHTML(){
     : 'Somente o broker move os cards.';
   return '<style>'+KANBAN_CSS+'</style><div class="kboard">'+colHTML+'</div><div class="fz12 t500" style="margin-top:10px">'+hint+'</div>';
 }
+// Espelha um negócio atualizado nos DOIS caches (DEALS e DEALS_DOCS) — sem isso o
+// chip "Cancelados"/tela Documentos ficava stale até o próximo carregarDados.
+function _syncDealCache(mapped){
+  const i=DEALS.findIndex(x=>x.id===mapped.id);
+  if(mapped.statusRaw==='cancelado'){ if(i>=0) DEALS.splice(i,1); }
+  else if(i>=0) DEALS[i]=mapped; else DEALS.push(mapped);
+  const j=(DEALS_DOCS||[]).findIndex(x=>x.id===mapped.id);
+  if(j>=0) DEALS_DOCS[j]=mapped; else (DEALS_DOCS||[]).push(mapped);
+}
+// Re-renderiza a tela Negócios SÓ se o usuário ainda está nela (lista, não detalhe) —
+// resposta atrasada não pode pintar a lista por cima de outra view.
+function _rerenderNegocios(){ if(state.view==='negocios' && !state._viewingDeal){ RENDERERS.negocios($('#root')); refreshIcons(); } }
 async function kanbanMove(id, novoStatus){
   const d=DEALS.find(x=>x.id===id); if(!d || d.statusRaw===novoStatus) return;
   const prev=d.statusRaw, prevL=d.status;
   d.statusRaw=novoStatus; d.status=NEG_STATUS_LABEL[novoStatus]||novoStatus;   // otimista
-  RENDERERS.negocios($('#root')); refreshIcons();
+  _rerenderNegocios();
   try {
     const r=await fnNegAtual({negocioId:id, acao:'status', status:novoStatus});
-    const ng=r.data&&r.data.negocio; if(ng){ const m=mapNegocio(ng); const i=DEALS.findIndex(x=>x.id===id); if(i>=0) DEALS[i]=m; }
-    recalcKPI(); RENDERERS.negocios($('#root')); refreshIcons();
+    const ng=r.data&&r.data.negocio; if(ng) _syncDealCache(mapNegocio(ng));
+    recalcKPI(); _rerenderNegocios();
     toast('Movido para '+(NEG_STATUS_LABEL[novoStatus]||novoStatus),'check');
   } catch(err){
-    d.statusRaw=prev; d.status=prevL; RENDERERS.negocios($('#root')); refreshIcons();   // rollback
+    d.statusRaw=prev; d.status=prevL; _rerenderNegocios();   // rollback
     toast(err.message||'Não foi possível mover','alert-triangle','var(--danger)');
   }
 }
@@ -785,7 +806,7 @@ RENDERERS.negocios = function(host){
   + '<div class="fz13 tmut" style="margin-bottom:12px">'+(isKanban
       ? ('<strong class="tw">'+dealsBaseSemStatus().length+'</strong> negócios no quadro · '+(state.negFiltroTipo))
       : ('<strong class="tw" id="negCount">'+filteredDeals().length+'</strong> negócios · '+(state.negFiltroTipo)+(state.negFiltroStatus!=='Todos'?' · '+state.negFiltroStatus:'')))+'</div>'
-  + (isKanban ? kanbanHTML() : tabela)
+  + (isKanban ? '<div id="kanbanWrap">'+kanbanHTML()+'</div>' : tabela)
   + '<div class="fx ac g3 wrap fz12 t500" style="margin-top:12px"><span class="fw6 t700">Parado:</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"></span>até 7 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>8 a 14 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>mais de 14 dias</span></div>';
 };
 
@@ -846,8 +867,8 @@ function openDeal(id){
   let tabContent='';
   if(tab==='timeline'){ tabContent='<div style="padding:20px">'+(tl.length?tl.map((e,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',32)+(i<tl.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:18px" class="grow"><div class="fz14 fw6 t900">'+esc(e.texto)+'</div><div class="fz12 t500">'+esc(e.porNome||'')+' · '+relData(e.em)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem histórico ainda.</div>')+'</div>'; }
   else if(tab==='comentarios'){ if(!d.podeComentar){ tabContent='<div class="tcenter t500 fz13" style="padding:24px">Comentários são exclusivos do broker e do corretor responsável.</div>'; } else { const cs=d.comentarios||[]; tabContent='<div style="padding:20px"><div class="fx g2" style="margin-bottom:16px">'+avatar(state.meuNome,34)+'<div class="grow"><textarea id="bkComent" class="input" rows="2" placeholder="Escreva um comentário para a equipe…"></textarea><div class="fx je" style="margin-top:8px"><button class="btn btn-primary sm" data-action="add-coment">Comentar</button></div></div></div><div id="bkComentList">'+(cs.length?cs.slice().reverse().map(comentBubbleHTML).join(''):'<div class="tcenter t500 fz13" data-coment-empty style="padding:20px">Nenhum comentário ainda.</div>')+'</div></div>'; } }
-  else if(tab==='tarefas'){ const ts=(d.tarefas||[]).slice().sort((a,b)=>{ if(a.feito!==b.feito) return a.feito?1:-1; return (a.prazo||'9999-99-99')<(b.prazo||'9999-99-99')?-1:1; }); const rows = ts.length? ts.map(t=>{ const st=prazoStatus(t.prazo); const cor=t.feito?'':(st==='atrasada'?'#ef4444':st==='hoje'?'#f59e0b':''); const prazoTxt = t.prazo? ('<span style="'+(cor?'color:'+cor+';font-weight:700':'')+'">'+(st==='atrasada'?'Atrasada · ':st==='hoje'?'Hoje · ':'')+fmtPrazo(t.prazo)+'</span>') : '<span class="t400">sem prazo</span>'; return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)"><button class="ifx ac jc nsh" data-action="tarefa-check" data-tid="'+esc(t.id)+'" data-feito="'+(t.feito?'0':'1')+'" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff;cursor:pointer">'+(t.feito?icon('check',14):'')+'</button><div class="grow mw0"><div class="fz13 fw6 t900" style="'+(t.feito?'text-decoration:line-through;opacity:.55':'')+'">'+esc(t.texto)+'</div><div class="fz12 t500">'+prazoTxt+'</div></div><button class="btn btn-ghost sm nsh" data-action="tarefa-rm" data-tid="'+esc(t.id)+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button></div>'; }).join('') : '<div class="tcenter t500 fz13" style="padding:20px">Nenhuma tarefa ainda.</div>'; tabContent='<div style="padding:20px"><div class="fx g2 wrap" style="margin-bottom:14px"><input id="bkTarefaTxt" class="input grow" maxlength="200" placeholder="Nova tarefa (ex.: ligar para o cliente)" style="min-width:180px"><input id="bkTarefaPrazo" type="date" class="input nsh" style="max-width:170px"><button class="btn btn-primary sm nsh" data-action="tarefa-add">'+icon('plus',15)+'Adicionar</button></div><div>'+rows+'</div></div>'; }
-  else { tabContent='<div style="padding:16px 20px"><div class="fz13 fw6 t900" style="margin-bottom:10px">Checklist do negócio</div>'+(d.checklist||[]).map(x=>'<button class="fx ac g3 hoverbg" data-chk="'+esc(x.key)+'" data-feito="'+(x.feito?'0':'1')+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px"><span class="ifx ac jc nsh" style="width:24px;height:24px;border-radius:6px;background:'+(x.feito?'var(--success)':'#fff')+';border:'+(x.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(x.feito?icon('check',15):'')+'</span><div class="grow mw0"><div class="fz13 fw6 t900">'+esc(x.label)+(x.obrigatoria?' <span class="pill danger" style="font-size:10px;padding:1px 6px">obrigatória</span>':'')+'</div>'+(x.feito&&x.feitoPor?'<div class="fz11 t500">'+esc(x.feitoPor)+' · '+relData(x.feitoEm)+'</div>':'')+'</div></button>').join('')+'</div>'; }
+  else if(tab==='tarefas'){ const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado'); const ts=(d.tarefas||[]).slice().sort((a,b)=>{ if(a.feito!==b.feito) return a.feito?1:-1; return (a.prazo||'9999-99-99')<(b.prazo||'9999-99-99')?-1:1; }); const rows = ts.length? ts.map(t=>{ const st=prazoStatus(t.prazo); const cor=t.feito?'':(st==='atrasada'?'#ef4444':st==='hoje'?'#f59e0b':''); const prazoTxt = t.prazo? ('<span style="'+(cor?'color:'+cor+';font-weight:700':'')+'">'+(st==='atrasada'?'Atrasada · ':st==='hoje'?'Hoje · ':'')+fmtPrazo(t.prazo)+'</span>') : '<span class="t400">sem prazo</span>'; const chk = enc ? '<span class="ifx ac jc nsh" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(t.feito?icon('check',14):'')+'</span>' : '<button class="ifx ac jc nsh" data-action="tarefa-check" data-tid="'+esc(t.id)+'" data-feito="'+(t.feito?'0':'1')+'" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff;cursor:pointer">'+(t.feito?icon('check',14):'')+'</button>'; const rm = enc ? '' : '<button class="btn btn-ghost sm nsh" data-action="tarefa-rm" data-tid="'+esc(t.id)+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>'; return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)">'+chk+'<div class="grow mw0"><div class="fz13 fw6 t900" style="'+(t.feito?'text-decoration:line-through;opacity:.55':'')+'">'+esc(t.texto)+'</div><div class="fz12 t500">'+prazoTxt+'</div></div>'+rm+'</div>'; }).join('') : '<div class="tcenter t500 fz13" style="padding:20px">Nenhuma tarefa ainda.</div>'; const addRow = enc ? '<div class="fz12 t500" style="margin-bottom:14px">Negócio encerrado — tarefas em modo leitura.</div>' : '<div class="fx g2 wrap" style="margin-bottom:14px"><input id="bkTarefaTxt" class="input grow" maxlength="200" placeholder="Nova tarefa (ex.: ligar para o cliente)" style="min-width:180px"><input id="bkTarefaPrazo" type="date" class="input nsh" style="max-width:170px"><button class="btn btn-primary sm nsh" data-action="tarefa-add">'+icon('plus',15)+'Adicionar</button></div>'; tabContent='<div style="padding:20px">'+addRow+'<div>'+rows+'</div></div>'; }
+  else { const encCk=(d.statusRaw==='concluido'||d.statusRaw==='cancelado'); tabContent='<div style="padding:16px 20px"><div class="fz13 fw6 t900" style="margin-bottom:10px">Checklist do negócio'+(encCk?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(d.checklist||[]).map(x=>'<button class="fx ac g3'+(encCk?'':' hoverbg')+'"'+(encCk?'':' data-chk="'+esc(x.key)+'" data-feito="'+(x.feito?'0':'1')+'"')+' style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:'+(encCk?'default':'pointer')+';margin-bottom:8px"><span class="ifx ac jc nsh" style="width:24px;height:24px;border-radius:6px;background:'+(x.feito?'var(--success)':'#fff')+';border:'+(x.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(x.feito?icon('check',15):'')+'</span><div class="grow mw0"><div class="fz13 fw6 t900">'+esc(x.label)+(x.obrigatoria?' <span class="pill danger" style="font-size:10px;padding:1px 6px">obrigatória</span>':'')+'</div>'+(x.feito&&x.feitoPor?'<div class="fz11 t500">'+esc(x.feitoPor)+' · '+relData(x.feitoEm)+'</div>':'')+'</div></button>').join('')+'</div>'; }
 
   const host=$('#root'); host.style.animation='none'; void host.offsetWidth; host.style.animation='';
   host.innerHTML =
@@ -876,7 +897,10 @@ function openDeal(id){
     state._dealRendCount = (d.comentarios||[]).length;
     state._dealUnsub = onSnapshot(doc(db,'negocios',id), (snap)=>{
       if(!snap.exists() || state.currentDeal!==id) return;
-      const cs = snap.data().comentarios || [];
+      // O doc cru traz `em` como Timestamp do SDK (a conversão pra ISO vive na Cloud
+      // Function) — normaliza aqui, senão relData(Timestamp) vira "Há NaN dias" e o
+      // cache DEALS fica envenenado pra sempre.
+      const cs = (snap.data().comentarios || []).map(c => ({ ...c, em: (c.em && c.em.toDate) ? c.em.toDate().toISOString() : (c.em || null) }));
       const dd = DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id);
       if(dd) dd.comentarios = cs;                    // mantém o cache fresco p/ troca de aba
       if(state.dealTab!=='comentarios'){ state._dealRendCount = cs.length; return; }
@@ -901,15 +925,14 @@ async function negAtualizar(payload, okMsg){
     let mapped = null;
     if(ng){
       mapped = mapNegocio(ng);
-      const i = DEALS.findIndex(x=>x.id===mapped.id);
-      if(mapped.statusRaw==='cancelado'){ if(i>=0) DEALS.splice(i,1); } // cancelado sai da lista (igual ao load)
-      else if(i>=0) DEALS[i]=mapped; else DEALS.push(mapped);
+      _syncDealCache(mapped);   // DEALS + DEALS_DOCS (cancelado sai da lista, fica no _DOCS)
       recalcKPI();
     }
     if(okMsg) toast(okMsg);
-    // Só reabre se o usuário AINDA está neste negócio — senão a resposta atrasada
-    // redesenhava o detalhe por cima do que a pessoa já estava vendo.
-    if(state.currentDeal===dealId && state.view==='negocios'){
+    // Só reabre se o usuário AINDA está DENTRO deste negócio — `_viewingDeal` cobre o
+    // "cliquei Voltar antes da resposta" (a lista também é view 'negocios', e navigate
+    // não limpa currentDeal — sem essa guarda o detalhe reabria sozinho).
+    if(state.currentDeal===dealId && state.view==='negocios' && state._viewingDeal){
       if(mapped && mapped.statusRaw==='cancelado') navigate('negocios');
       else openDeal(dealId);
     }
@@ -1226,7 +1249,7 @@ function wireEvents(root){
     // — o #overlay é recriado a cada mount, então um listener direto nele vazaria.
     if(e.target.id==='overlay'){ closeDrawer(); closeModal(); closeMobileNav(); return; }
     const nav=e.target.closest('[data-nav]'); if(nav){ navigate(nav.dataset.nav); return; }
-    const ops=e.target.closest('[data-ops]'); if(ops){ const f=ops.dataset.ops; state.negFiltroStatus=(f&&f!=='Todos')?f:'Todos'; navigate('negocios'); return; }
+    const ops=e.target.closest('[data-ops]'); if(ops){ const f=ops.dataset.ops; state.negFiltroStatus=(f&&f!=='Todos')?f:'Todos'; state.negView='tabela'; navigate('negocios'); return; }   // drill-down filtra por status → tabela (o quadro ignora esse filtro)
     const chk=e.target.closest('[data-chk]'); if(chk){ negAtualizar({negocioId:state.currentDeal, acao:'checklist', key:chk.dataset.chk, feito:chk.dataset.feito==='1'}); return; }
     // [data-action] ANTES das linhas container: um botão de ação dentro de uma
     // linha `data-deal` (ex.: Clicksign "Abrir"/"Reenviar") deve disparar a ação,
@@ -1238,7 +1261,7 @@ function wireEvents(root){
   });
   // Kanban: arrastar card entre colunas (só broker). Delegado no root persistente.
   root.addEventListener('dragstart', e=>{ const c=e.target.closest('[data-kcard]'); if(!c||c.getAttribute('draggable')!=='true') return; state._dragDeal=c.dataset.kcard; c.classList.add('kdragging'); try{ e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain', c.dataset.kcard); }catch(_e){} });
-  root.addEventListener('dragend', e=>{ const c=e.target.closest('[data-kcard]'); if(c) c.classList.remove('kdragging'); const r=ROOT(); if(r) r.querySelectorAll('.kcol-over').forEach(x=>x.classList.remove('kcol-over')); });
+  root.addEventListener('dragend', e=>{ state._dragDeal=null; const c=e.target.closest('[data-kcard]'); if(c) c.classList.remove('kdragging'); const r=ROOT(); if(r) r.querySelectorAll('.kcol-over').forEach(x=>x.classList.remove('kcol-over')); });
   root.addEventListener('dragover', e=>{ if(!state._dragDeal) return; const col=e.target.closest('[data-kdrop]'); if(!col) return; e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(_e){} col.classList.add('kcol-over'); });
   root.addEventListener('dragleave', e=>{ const col=e.target.closest('[data-kdrop]'); if(col && !col.contains(e.relatedTarget)) col.classList.remove('kcol-over'); });
   root.addEventListener('drop', e=>{ const col=e.target.closest('[data-kdrop]'); if(!col) return; e.preventDefault(); col.classList.remove('kcol-over'); const id=state._dragDeal; state._dragDeal=null; if(id) kanbanMove(id, col.dataset.kdrop); });
@@ -1409,15 +1432,14 @@ RENDERERS.dashboard = function(host){
   return _dashBroker(host);
 };
 
-// Mesmo critério do Hub (BASE_HOSTING): a ficha resolve o backend pelo hostname
-// DELA, então link de produção gravaria dado de teste na PRODUÇÃO quando o
-// corretor está no staging. `.exe` (file://) e web.app de produção → produção.
-// Produção SÓ quando roda em produção de verdade: `.exe` (file://, sem hostname)
-// ou o web.app de produção. Staging, localhost e emulador → staging (nunca gerar
-// link que gravaria ficha de teste na PRODUÇÃO).
+// Mesmo critério do Hub (BASE_HOSTING/firebase-env): staging e localhost/emulador
+// geram link de staging; QUALQUER outro host (`.exe` sem hostname, web.app de
+// produção e domínios próprios como smarthubapp.com.br) → produção. ⚠️ Não voltar
+// pra allowlist de produção: host novo desconhecido caía no staging e ficha REAL
+// (com CPF) ia parar no projeto de teste, invisível pra produção.
 const _fichaHost = (typeof location !== 'undefined') ? location.hostname : '';
-const _fichaProd = (_fichaHost === '' || _fichaHost === 'remax-smart-hub.web.app' || _fichaHost === 'remax-smart-hub.firebaseapp.com');
-const FICHA_HOST = _fichaProd ? 'https://remax-smart-hub.web.app' : 'https://remax-smart-hub-staging.web.app';
+const _fichaStaging = _fichaHost.includes('remax-smart-hub-staging') || _fichaHost === 'localhost' || _fichaHost === '127.0.0.1';
+const FICHA_HOST = _fichaStaging ? 'https://remax-smart-hub-staging.web.app' : 'https://remax-smart-hub.web.app';
 const FICHAS_CORRETOR = [
   ['ficha-locador.html','Locador','house','info'],
   ['ficha-vendedor.html','Vendedor','key-round','success'],

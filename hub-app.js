@@ -1279,8 +1279,11 @@ async function carregarIndicadoresPerfil() {
 // Dado REAL, role-scoped pelas próprias functions (corretor vê o seu; gestor vê a
 // imobiliária). Reusa negocioListar + locListarImoveis (KPIs/comissão/negócios) +
 // listarEventos (agenda de hoje) + CARTEIRA_FICHAS (links de ficha).
+let _homeRun = 0;   // token de corrida: só a execução mais recente pode escrever na tela
 async function carregarHome() {
   if (!secaoHome) return;
+  if (!currentUid) return;   // boot pré-login: sem token as functions só rejeitam (a rodada pós-login preenche)
+  const _run = ++_homeRun;
   const esc = escapeHtml;
   const brl = v => 'R$ ' + Math.round(v || 0).toLocaleString('pt-BR');
   const hh = new Date().getHours();
@@ -1303,6 +1306,7 @@ async function carregarHome() {
     eventosHoje = eR.data?.eventos || [];
   } catch (_) { /* segue com o que tiver */ }
   if (categoriaAtiva !== 'home') return;   // usuário já saiu da tela enquanto carregava
+  if (_run !== _homeRun) return;           // execução velha terminando por último não sobrescreve a nova
 
   const imById = new Map(imoveis.map(im => [im.id, im]));
   const precoDe = im => indParseMoney(im ? (im.valorAnuncio || im.valorProposta || im.valorFechamento || 0) : 0);
@@ -1768,6 +1772,9 @@ btnSair.addEventListener('click', async () => {
   // Encerra os listeners de tempo real antes do logout (senão disparam permission-denied sem auth).
   if (window.__feedUnsub) { try { window.__feedUnsub(); } catch (_) {} window.__feedUnsub = null; }
   if (window.__broadcastUnsub) { try { window.__broadcastUnsub(); } catch (_) {} window.__broadcastUnsub = null; }
+  // Idem pros listeners do Broker embutido (imoveis/negocios/negócio aberto): o unmount
+  // chama o teardownRealtime dele.
+  if (brokerMontado && window.Broker) { try { window.Broker.unmount(); } catch (_) {} brokerMontado = false; }
   await signOut(auth);
 });
 
@@ -1853,7 +1860,10 @@ onAuthStateChanged(auth, async (user) => {
     // status vive no grid de apps (invisível dentro do Broker), e um renderCentro aqui
     // re-navegaria o Broker (window.Broker.navigate), descartando estado transitório —
     // ex.: um comentário sendo digitado. Ao sair da aba, renderCentro pega o status novo.
-    if (JSON.stringify(statusApps) !== antes && !(categoriaAtiva === 'locacoes' && brokerMontado)) renderCentro();
+    // Guarda por categoria (não só brokerMontado): no fallback sem Broker as telas
+    // antigas da Locação também têm filtros/busca que um renderCentro descartaria —
+    // e o aviso de status é invisível dentro da aba de qualquer jeito.
+    if (JSON.stringify(statusApps) !== antes && categoriaAtiva !== 'locacoes') renderCentro();
   }, 180000);
 
   // Atualiza banners a cada 3 min (para pegar banners novos sem relogar).
@@ -1919,7 +1929,10 @@ onAuthStateChanged(auth, async (user) => {
     window.__feedUnsub = onSnapshot(doc(db, 'user_feed', currentUid), (snap) => {
       if (feedPrimeiro) { feedPrimeiro = false; return; } // ignora o estado inicial (não é "novo")
       atualizarNotifFichas();
-      if (categoriaAtiva === 'documentos') carregarDocumentos('cadastro');
+      // cadCarregarFichas (não carregarDocumentos): só re-busca e re-renderiza a TABELA,
+      // preservando cadFiltro/cadVisao e o texto da busca — o carregarDocumentos refazia
+      // a tela inteira e resetava tudo no meio do uso (empurrado por terceiros).
+      if (categoriaAtiva === 'documentos') cadCarregarFichas();
     }, (e) => console.warn('feed onSnapshot:', e && e.message));
   }
 
@@ -1936,8 +1949,8 @@ onAuthStateChanged(auth, async (user) => {
       if (s !== bcStatus) {
         bcStatus = s;
         await carregarStatusApps();
-        // mesmo cuidado do timer: não re-renderiza o centro com o Broker embutido montado
-        if (!(categoriaAtiva === 'locacoes' && brokerMontado)) renderCentro();
+        // mesmo cuidado do timer: nada de renderCentro dentro da aba Locação (Broker OU fallback)
+        if (categoriaAtiva !== 'locacoes') renderCentro();
       }
       if (b !== bcBanner) {
         bcBanner = b;
@@ -2185,7 +2198,7 @@ function renderPainelAgenda(){
       diaSelecionado = b.dataset.dia;
       const d = new Date(b.dataset.dia + 'T00:00:00');
       calAno = d.getFullYear(); calMes = d.getMonth();
-      categoriaAtiva = 'agenda'; abrirGrupoDe('agenda'); renderSidebar(); renderCentro();
+      categoriaAtiva = 'agenda'; abrirGrupoDe('agenda'); locSub = null; locSanfonaAberta = false; renderSidebar(); renderCentro();
     });
   });
   const prox = eventos.filter(e => e.inicio >= new Date(Date.now()-3600000)).slice(0,8);
@@ -6806,6 +6819,7 @@ function renderNotifPanel() {
       categoriaAtiva = 'documentos';
       abrirGrupoDe('documentos');
       locSub = null;
+      locSanfonaAberta = false;   // recolhe a sanfona do Broker (senão fica aberta e órfã)
       // A tela nova do Cadastro é uma TABELA (não mais sanfonas). O antigo
       // .docs-acc-head não existe mais — em vez de clicar num elemento inexistente,
       // já abre o Cadastro filtrado pelo tipo da ficha (mostra todo o período).

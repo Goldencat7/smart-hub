@@ -1627,6 +1627,8 @@ exports.negocioListar = onCall(async (req) => {
       timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
       checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
       documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
+      tarefas: (n.tarefas || []).map(t => ({ ...t, criadoEm: t.criadoEm?.toDate?.()?.toISOString() || null, feitoEm: t.feitoEm?.toDate?.()?.toISOString() || null })),
+      canceladoEm: n.canceladoEm?.toDate?.()?.toISOString() || null,
       comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })) : null,
     };
   }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
@@ -1655,6 +1657,7 @@ function _negocioSerializar(id, n, podeComentar) {
     checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
     documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
     tarefas: (n.tarefas || []).map(t => ({ ...t, criadoEm: t.criadoEm?.toDate?.()?.toISOString() || null, feitoEm: t.feitoEm?.toDate?.()?.toISOString() || null })),
+    canceladoEm: n.canceladoEm?.toDate?.()?.toISOString() || null,
     criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
     atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
   };

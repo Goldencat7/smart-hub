@@ -1489,7 +1489,12 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 /* ── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 1040px) {
-  .hub-layout { grid-template-columns: 160px 1fr; }
+  /* Repete as variantes: elas têm especificidade maior que .hub-layout sozinho e
+     senão manteriam os 180px da tela larga no layout estreito. */
+  .hub-layout,
+  .hub-layout.loc-embed,
+  .hub-layout.agenda-oculta,
+  .hub-layout.na-agenda { grid-template-columns: 160px 1fr; }
   .agenda-panel { display: none; }
 }
 

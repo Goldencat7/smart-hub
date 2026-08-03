@@ -53,7 +53,7 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 
 - Catálogo em `hub-app.js` (array `APPS`): chave, categoria, título, url, `autologin`, `restrito`.
 - Config de seletores de login por site em `main.js` (objeto `configs`). Sites ASP.NET, 2 etapas, CAPTCHA são tratados lá.
-- **ClickSign**: app restrito; admin abre com login próprio; não-admin liberado usa conta compartilhada (autologin **preenche mas NÃO envia** — `naoEnviar: true` — por causa do reCAPTCHA; a pessoa resolve o captcha e clica Entrar). Credenciais por pessoa: CheckVisto e Motiva (esses não têm autologin).
+- **ClickSign**: liberado pra geral desde a v1.0.118 (`aa00ab4` — não é mais app restrito por pessoa); admin abre com login próprio; os demais usam conta compartilhada (autologin **preenche mas NÃO envia** — `naoEnviar: true` — por causa do reCAPTCHA; a pessoa resolve o captcha e clica Entrar). Credenciais por pessoa: CheckVisto e Motiva (esses não têm autologin).
 - **Aviso de status com saída pelo navegador** (v1.0.98): quando o admin marca um app como
   *Instável/Em manutenção* (Admin → Status dos apps), o Hub mostra um **modal** (não mais `alert()`,
   que não aceita botão). Se o app tiver `linkNavegador` no catálogo (`APPS` do `hub-app.js`), o aviso
@@ -411,21 +411,17 @@ Escrito e revisado, mas **não deployado** e **fora do ar** — o Nathan pediu p
 A "versão enxuta" das Locações (v1.0.90) tirou telas da UI mas deixou o código no lugar,
 porque o Nathan vai voltar nessa parte ("vão ter mais atualizações dessa parte, eu vou mecher depois").
 - `hub-app.js`: `carregarFinanceiro`, `carregarAlertas`, `carregarRelatorios`, `REL_DEFS`, `_relCSV`, `_descAlerta`, `_relatorioDados` e o branch `grupo === 'locacao'` do `carregarDocumentos`.
-- **⚠️ `betaLocacoes`/`locacoesPublicado` NÃO são mais inertes (religados em 2026-07-26).** A aba
-  **"Meus Negócios"** voltou a ser **dark launch**: o filtro da sidebar (`renderSidebar`) só a mostra
-  se `betaLocacoes || locacoesPublicado` (`(!c.locacoes || betaLocacoes || locacoesPublicado)`). Ou seja,
-  **só quem tem "Acesso de teste" (`loc_beta`) vê**, e o painel de **Lançamento** volta a valer como o
-  interruptor "abrir pra todos" (`publicarLocacoes` grava `config/release.locacoesPublicadaEm`; o Hub
-  libera pra todos quando essa versão bate com a versão do app). NÃO herda de admin — cada pessoa recebe
-  `loc_beta` no painel (Admin → Usuários → Permissões → "Acesso de teste"). Antes disso (2026-07-24→25) a
-  aba aparecia pra TODOS roteando por papel; a trava foi religada a pedido do Nathan pra segurar a visão
-  nova só nos testadores até o publish grande. O **papel** dentro da aba (gestor/broker vs administrativo
-  vs corretor) vem SÓ da claim `locRole` — a permissão `loc_gestao` foi **removida** em 2026-07-26 (era
-  redundante: o servidor sempre confiou na claim, e `loc_gestao` sozinha dava layout de broker com dados
-  só do próprio usuário). Removida do cliente (`locPapel`), do Admin (checkbox) e do seed; sobra inerte no
-  backend `setUserAccess`/`getPermissions` (grava `false`, ninguém lê).
+- **⚠️ `betaLocacoes`/`locacoesPublicado` voltaram a ser INERTES (v1.0.126, 2026-08-01 — fim do dark
+  launch a pedido do Nathan).** A aba **"Meus Negócios" aparece pra TODOS** (o filtro
+  `(!c.locacoes || betaLocacoes || locacoesPublicado)` saiu do `renderSidebar`); as variáveis ainda são
+  calculadas no login mas ninguém as lê. Histórico: dark launch original → aba pra todos (2026-07-24) →
+  trava religada (2026-07-26) → liberada de vez (v1.0.126). O **papel** dentro da aba (gestor/broker vs
+  administrativo vs corretor) vem SÓ da claim `locRole` — a permissão `loc_gestao` foi **removida** em
+  2026-07-26 (sobra inerte no backend `setUserAccess`/`getPermissions`; grava `false`, ninguém lê).
 - `admin.html`/`admin-app.js`: o painel de **Lançamento** ("Publicar para todos") e o checkbox
-  **"Acesso de teste"** (`loc_beta`) — **voltaram a funcionar** (ver acima); não são mais inertes.
+  **"Acesso de teste"** (`loc_beta`) — **inertes de novo** (a sidebar não filtra mais por eles). ⚠️ A UI
+  do Admin ainda promete que a checkbox esconde o módulo — promessa falsa hoje; limpar/reformular quando
+  o Nathan decidir o destino final (achado da caça-bugs 2026-08-03).
 - Cloud Functions `locFinanceiro` / `locListarAlertas` / `locRelatorios`: continuam no backend, sem tela.
 
 ### App de celular (PWA) — ✅ NO AR (publicado em 2026-07-14)
