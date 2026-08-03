@@ -1607,10 +1607,14 @@ async function abrirModalPermissoes(uid, email) {
        </label>
        <hr style="border-color:var(--border);margin:10px 0">
        <p class="muted" style="font-size:11px;margin:0 0 6px">Gestão de Locações:</p>
+       <!-- ESCONDIDO 2026-08-03 — "Meus Negócios" liberada pra todos; o checkbox "Acesso de teste"
+            (loc_beta) não filtra mais nada. Nathan pediu p/ tirar da UI sem apagar. Reativar
+            descomentando (o save já lê com ?.checked, então some/volta sem quebrar). Ver CLAUDE.md.
        <label class="auth-label-inline">
          <input type="checkbox" id="permLocBeta" ${locBeta ? 'checked' : ''}>
          Acesso de teste <span class="muted" style="font-size:10px">(vê o módulo "Meus Negócios" — libere só pra quem vai testar)</span>
        </label>
+       -->
        <label class="auth-label-inline" style="gap:8px">
          Perfil
          <select id="permLocRole" class="topbar-btn" style="padding:4px 8px">

@@ -42,10 +42,17 @@
              (com CPF/RG) e pro `imoveis` pelo gatilho onFichaLocadorEnviadaAdmin — limpar
              só a ficha daria falsa sensação de conformidade. Ver CLAUDE.md. -->
         <!-- <button class="admin-nav-item" data-aba="lgpd"><i class="ti ti-lock-access"></i>LGPD — dados dos clientes</button> -->
+        <!-- ESCONDIDO 2026-08-03 — "Meus Negócios" foi liberada pra todos (dark launch encerrado);
+             o painel de Lançamento e o checkbox "Acesso de teste" viraram enfeite. Nathan pediu pra
+             TIRAR DA UI mas NÃO apagar o código — reativar quando ele avisar (descomentar aqui + a
+             seção abaixo + o checkbox permLocBeta no admin-app.js, e restaurar o filtro da sidebar
+             no hub-app.js renderSidebar). Ver "Dívida técnica intencional" no CLAUDE.md.
         <button class="admin-nav-item" data-aba="lancamento"><i class="ti ti-rocket"></i>Lançamento — Locações</button>
+        -->
       </nav>
 
       <div class="admin-conteudo">
+        <!-- ESCONDIDO 2026-08-03 (ver nota na aba acima) — reativar descomentando este bloco.
         <section class="admin-section" data-aba="lancamento" hidden>
           <div class="admin-section-head">
             <div>
@@ -55,6 +62,7 @@
           </div>
           <div id="lancamentoLocacoes" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
         </section>
+        -->
 
         <section class="admin-section" data-aba="bugbot" hidden>
           <div class="admin-section-head">
