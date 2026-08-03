@@ -1149,16 +1149,19 @@ function _cmpVer(a, b) {
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x - y; }
   return 0;
 }
+let novidadesErro = false;   // último carregamento falhou? (distingue erro de "vazio")
 async function carregarNovidadesBadge() {
   try {
     const r = await listarNovidades({});
     novidadesCache = (r.data && r.data.novidades) || [];
+    novidadesErro = false;
     atualizarBadgeNovidades();
-  } catch (_) { /* silencioso — sem novidades, sem bolinha */ }
+  } catch (_) { novidadesErro = true; /* mantém cache anterior; sem bolinha nova */ }
 }
 function atualizarBadgeNovidades() {
   const badge = document.getElementById('novidadesBadge');
-  if (!badge || !novidadesCache || !novidadesCache.length) return;
+  if (!badge) return;
+  if (!novidadesCache || !novidadesCache.length) { badge.hidden = true; return; } // vazio → sem bolinha (fix: bolinha órfã se excluir a última)
   const maisNova = novidadesCache[0].versao; // servidor já ordena desc
   let vista = ''; try { vista = localStorage.getItem('novidades_vista') || ''; } catch (_) {}
   badge.hidden = !(!vista || _cmpVer(maisNova, vista) > 0);
@@ -1180,7 +1183,10 @@ function _novDetalheHTML(n) {
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px">${data}</div>
     ${corpo || '<p style="font-size:13px;color:var(--text-muted)">Sem detalhes nesta versão.</p>'}`;
 }
+let novAberto = false;   // guarda de reentrância (evita 2 modais no duplo clique)
 async function abrirNovidades() {
+  if (novAberto) return;
+  novAberto = true;
   if (!novidadesCache) await carregarNovidadesBadge();
   const lista = novidadesCache || [];
   let sel = lista[0] || null;
@@ -1189,14 +1195,15 @@ async function abrirNovidades() {
   dlg.style.width = 'min(660px, 94vw)';   // .modal é 400px por padrão — largo o bastante p/ 2 colunas
   dlg.style.maxWidth = 'none';
   dlg.style.overflow = 'hidden';           // clipa os cantos arredondados
-  const fim = () => { dlg.close(); dlg.remove(); };
+  const fim = () => { novAberto = false; dlg.close(); dlg.remove(); };
   const render = () => {
     const cab = `<div style="display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)">
         <strong style="font-size:15px">Novidades</strong>
         <button type="button" data-acao="fechar" title="Fechar" style="background:none;border:none;color:var(--text-muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px">✕</button>
       </div>`;
-    const miolo = !lista.length
-      ? `<div style="padding:48px 24px;text-align:center;color:var(--text-muted);font-size:14px">Nenhuma novidade publicada ainda.</div>`
+    const aviso = (t) => `<div style="padding:48px 24px;text-align:center;color:var(--text-muted);font-size:14px">${t}</div>`;
+    const miolo = (novidadesErro && !lista.length) ? aviso('Não foi possível carregar as novidades. Tente novamente.')
+      : !lista.length ? aviso('Nenhuma novidade publicada ainda.')
       : `<div style="display:grid;grid-template-columns:180px 1fr">
           <div style="border-right:1px solid var(--border);padding:8px;overflow:auto;max-height:60vh">${lista.map(v => _novItemHTML(v, sel)).join('')}</div>
           <div style="padding:18px 20px;overflow:auto;max-height:60vh">${_novDetalheHTML(sel)}</div>
@@ -1969,9 +1976,10 @@ onAuthStateChanged(auth, async (user) => {
     const gr = sessionStorage.getItem('__googleRetorno');
     if (gr) {
       sessionStorage.removeItem('__googleRetorno');
-      const [st, msg] = gr.split('|');
+      const st = gr.slice(0, gr.indexOf('|') < 0 ? gr.length : gr.indexOf('|'));
+      const msg = gr.indexOf('|') < 0 ? '' : gr.slice(gr.indexOf('|') + 1);   // não split('|'): msg pode conter '|'
       if (st === 'ok') alert('Conta Google conectada! ✅ A agenda sincroniza e os documentos das fichas vão pro seu Google Drive.');
-      else alert('Não deu pra conectar o Google' + (msg ? ': ' + decodeURIComponent(msg) : '.'));
+      else alert('Não deu pra conectar o Google' + (msg ? ': ' + msg : '.'));   // msg já vem decodificada do URLSearchParams
     }
   } catch (_) { /* ignora */ }
   await carregarEventos(new Date(Date.now() - 86400000), new Date(Date.now() + 1000 * 60 * 60 * 24 * 90));
@@ -2015,6 +2023,7 @@ onAuthStateChanged(auth, async (user) => {
       atualizarNotifFichas();
       verificarNotificacoes();
       atualizarBadgeChamados();
+      carregarNovidadesBadge();   // fallback: bolinha atualiza no foco mesmo com REALTIME=false
     };
     window.addEventListener('focus', attAoVoltar);
     document.addEventListener('visibilitychange', attAoVoltar);

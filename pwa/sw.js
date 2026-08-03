@@ -99,7 +99,9 @@ self.addEventListener('fetch', (evt) => {
         .then(resp => {
           // Só guarda resposta boa: cachear um 404/500/redirect de um deploy no
           // meio do caminho deixaria a página quebrada como fallback offline.
-          if (resp && resp.ok) {
+          // E nunca cacheia navegação COM query string (?code=… do OAuth, ?google=…):
+          // é dinâmica e o code não pode ficar em disco.
+          if (resp && resp.ok && !url.search) {
             const copia = resp.clone();
             caches.open(CACHE).then(c => c.put(req, copia)).catch(() => {});
           }

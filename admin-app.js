@@ -1074,7 +1074,7 @@ function renderNovidades(versaoApp, edit) {
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px">${edit ? 'Editar' : 'Nova'} novidade</div>
       <label style="font-size:12px;color:var(--text-muted)">Versão</label>
-      <input id="novVersao" value="${escHtml(a.versao)}" style="width:130px;display:block;margin:4px 0 12px" />
+      <input id="novVersao" value="${escHtml(a.versao)}" ${edit ? 'readonly title="A versão identifica a nota; para outra versão, crie uma nova"' : ''} style="width:130px;display:block;margin:4px 0 12px${edit ? ';opacity:.7' : ''}" />
       <label style="font-size:12px;color:var(--text-muted)">Novidades <span style="opacity:.7">(um item por linha)</span></label>
       <textarea id="novNovo" rows="3" style="width:100%;margin:4px 0 12px">${escHtml(a.novo.join('\n'))}</textarea>
       <label style="font-size:12px;color:var(--text-muted)">Melhorias <span style="opacity:.7">(um por linha)</span></label>
