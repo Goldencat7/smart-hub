@@ -1072,14 +1072,14 @@ function renderNovidades(versaoApp, edit) {
     </div>`).join('') || '<p class="muted">Nenhuma novidade ainda.</p>';
   cont.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px">${edit ? '✏️ Editar' : '➕ Nova'} novidade</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">${edit ? 'Editar' : 'Nova'} novidade</div>
       <label style="font-size:12px;color:var(--text-muted)">Versão</label>
       <input id="novVersao" value="${escHtml(a.versao)}" style="width:130px;display:block;margin:4px 0 12px" />
-      <label style="font-size:12px;color:var(--text-muted)">✨ Novo <span style="opacity:.7">(um item por linha)</span></label>
+      <label style="font-size:12px;color:var(--text-muted)">Novidades <span style="opacity:.7">(um item por linha)</span></label>
       <textarea id="novNovo" rows="3" style="width:100%;margin:4px 0 12px">${escHtml(a.novo.join('\n'))}</textarea>
-      <label style="font-size:12px;color:var(--text-muted)">🔧 Melhorias <span style="opacity:.7">(um por linha)</span></label>
+      <label style="font-size:12px;color:var(--text-muted)">Melhorias <span style="opacity:.7">(um por linha)</span></label>
       <textarea id="novMelhorias" rows="3" style="width:100%;margin:4px 0 12px">${escHtml(a.melhorias.join('\n'))}</textarea>
-      <label style="font-size:12px;color:var(--text-muted)">🐛 Correções <span style="opacity:.7">(um por linha)</span></label>
+      <label style="font-size:12px;color:var(--text-muted)">Correções <span style="opacity:.7">(um por linha)</span></label>
       <textarea id="novCorrecoes" rows="2" style="width:100%;margin:4px 0 12px">${escHtml(a.correcoes.join('\n'))}</textarea>
       <button class="topbar-btn primario" id="btnSalvarNov">Salvar novidade</button>
       ${edit ? '<button class="topbar-btn" id="btnCancelarNov" style="margin-left:8px">Cancelar</button>' : ''}

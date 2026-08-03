@@ -1175,7 +1175,7 @@ function _novDetalheHTML(n) {
   const grupo = (t, cor, itens) => (itens && itens.length)
     ? `<div style="font-size:12px;font-weight:600;color:${cor};margin:0 0 6px">${t}</div><ul style="margin:0 0 14px;padding-left:18px;font-size:13px;line-height:1.6;color:var(--text-secondary,#5b6472)">${itens.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>` : '';
   const data = n.criadoEm ? new Date(n.criadoEm).toLocaleDateString('pt-BR') : '';
-  const corpo = grupo('✨ Novo', '#16a34a', n.novo) + grupo('🔧 Melhorias', '#2563eb', n.melhorias) + grupo('🐛 Correções', '#d97706', n.correcoes);
+  const corpo = grupo('Novidades', '#16a34a', n.novo) + grupo('Melhorias', '#2563eb', n.melhorias) + grupo('Correções', '#d97706', n.correcoes);
   return `<div style="font-size:15px;font-weight:600;margin-bottom:2px">v${escapeHtml(n.versao)} — o que chegou</div>
     <div style="font-size:12px;color:var(--text-muted,#8a94a6);margin-bottom:14px">${data}</div>
     ${corpo || '<p class="muted" style="font-size:13px">Sem detalhes nesta versão.</p>'}`;
@@ -1191,7 +1191,7 @@ async function abrirNovidades() {
     dlg.innerHTML = `
       <div class="modal-conteudo" style="max-width:640px;width:min(640px,92vw);padding:0;overflow:hidden">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border,#e5e7eb)">
-          <strong style="font-size:15px">📣 Novidades</strong>
+          <strong style="font-size:15px">Novidades</strong>
           <button type="button" class="topbar-btn" data-acao="fechar" style="padding:4px 9px">✕</button>
         </div>
         <div style="display:grid;grid-template-columns:170px 1fr">
