@@ -2039,6 +2039,7 @@ onAuthStateChanged(auth, async (user) => {
     window.__feedUnsub = onSnapshot(doc(db, 'user_feed', currentUid), (snap) => {
       if (feedPrimeiro) { feedPrimeiro = false; return; } // ignora o estado inicial (não é "novo")
       atualizarNotifFichas();
+      verificarNotificacoes();   // resposta do TI chega pela campainha → notificação na hora
       // cadCarregarFichas (não carregarDocumentos): só re-busca e re-renderiza a TABELA,
       // preservando cadFiltro/cadVisao e o texto da busca — o carregarDocumentos refazia
       // a tela inteira e resetava tudo no meio do uso (empurrado por terceiros).
@@ -2051,11 +2052,11 @@ onAuthStateChanged(auth, async (user) => {
   // SÓ a peça que mudou, na HORA. Os timers de 3 min continuam de fallback (REALTIME=false → só eles).
   if (REALTIME) {
     if (window.__broadcastUnsub) { try { window.__broadcastUnsub(); } catch (_) {} }
-    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0, bcNov = 0;
+    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0, bcNov = 0, bcChamado = 0;
     window.__broadcastUnsub = onSnapshot(doc(db, 'config', 'broadcast'), async (snap) => {
       const d = snap.exists() ? (snap.data() || {}) : {};
-      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0, nv = d.novidadeSeq || 0;
-      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; bcNov = nv; return; }
+      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0, nv = d.novidadeSeq || 0, ch = d.chamadoSeq || 0;
+      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; bcNov = nv; bcChamado = ch; return; }
       if (nv !== bcNov) { bcNov = nv; carregarNovidadesBadge(); }   // admin publicou nota → bolinha na hora
       if (s !== bcStatus) {
         bcStatus = s;
@@ -2070,6 +2071,11 @@ onAuthStateChanged(auth, async (user) => {
       if (a !== bcAviso) {
         bcAviso = a;
         verificarNotificacoes();
+      }
+      if (ch !== bcChamado) {
+        bcChamado = ch;
+        atualizarBadgeChamados();                                   // badge do TI sobe na hora (pra quem é TI)
+        if (categoriaAtiva === 'ti') carregarChamadosHub();         // e a lista recarrega se ele estiver na aba
       }
     }, (e) => console.warn('broadcast onSnapshot:', e && e.message));
   }

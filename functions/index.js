@@ -885,7 +885,9 @@ exports.locListarImoveis = onCall(async (req) => {
   if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
   const snap = await q.get();
   // Backfill de numeroProtocolo em imóveis antigos (ordenados por criadoEm p/ manter ordem cronológica).
-  const semNumero = snap.docs.filter(d => d.data().numeroProtocolo == null)
+  // Imóvel do feed NÃO recebe protocolo SH (ele mostra o código do portal) — senão
+  // consumiria a sequência SH à toa com números invisíveis a cada sync diário.
+  const semNumero = snap.docs.filter(d => d.data().numeroProtocolo == null && d.data().origem !== 'feed')
     .sort((a, b) => {
       const ta = a.data().criadoEm?.toMillis?.() || 0;
       const tb = b.data().criadoEm?.toMillis?.() || 0;
@@ -895,11 +897,20 @@ exports.locListarImoveis = onCall(async (req) => {
     await _atribuirProtocoloSeFalta(d.ref); // transacional: sem corrida/buraco na sequência
   }
   const finalSnap = semNumero.length ? await q.get() : snap;
-  const imoveis = finalSnap.docs.map(d => ({
-    id: d.id, ...d.data(),
-    criadoEm: d.data().criadoEm?.toDate?.()?.toISOString() || null,
-    atualizadoEm: d.data().atualizadoEm?.toDate?.()?.toISOString() || null
-  }));
+  const imoveis = finalSnap.docs.map(d => {
+    const dd = d.data();
+    // Aliviar a resposta (egress): a LISTA só usa a CAPA (foto 0). As demais dezenas de
+    // URLs por imóvel só pesam. Mando capa + contagem (qtdFotos); a UI não itera o resto.
+    let feedDados = dd.feedDados;
+    if (feedDados && Array.isArray(feedDados.fotos) && feedDados.fotos.length > 1) {
+      feedDados = { ...feedDados, fotos: feedDados.fotos.slice(0, 1), qtdFotos: feedDados.fotos.length };
+    }
+    return {
+      id: d.id, ...dd, ...(feedDados ? { feedDados } : {}),
+      criadoEm: dd.criadoEm?.toDate?.()?.toISOString() || null,
+      atualizadoEm: dd.atualizadoEm?.toDate?.()?.toISOString() || null
+    };
+  });
   return { imoveis, veTudo, role };
 });
 
@@ -4118,6 +4129,7 @@ exports.enviarSuporte = onCall({ secrets: [SUPPORT_EMAIL_PASS] }, async (req) =>
     resolvidoEm: null
   });
 
+  await _bumpBroadcast('chamadoSeq');   // tempo real: acende o badge do TI na hora
   return { ok: true };
 });
 
@@ -4187,6 +4199,7 @@ exports.responderChamado = onCall(async (req) => {
     lidoPor: []
   });
 
+  await _bumpUserFeed(dados.criadoPor, 'resposta');   // tempo real: campainha do usuário → vê a resposta na hora
   return { ok: true };
 });
 
@@ -6116,46 +6129,69 @@ exports.sincronizarFeedImoveis = onSchedule({ schedule: '0 5 * * *', timeZone: T
       return cacheC[alvo];
     };
 
-    let criados = 0, atualizados = 0;
+    let criados = 0, atualizados = 0, falhas = 0;
     const vistos = new Set();
     for (const L of listings) {
-      const email = _feedTxt((L.ContactInfo || {}).Email).toLowerCase();
-      const corretor = await resolver(email);
-      const m = _feedMapear(L, corretor);
-      if (!m.feedListingId) continue;
-      vistos.add(m.feedListingId);
-      const snap = await db.collection('imoveis').where('feedListingId', '==', m.feedListingId).limit(1).get();
-      const now = admin.firestore.FieldValue.serverTimestamp();
-      if (snap.empty) {
-        await db.collection('imoveis').add({
-          ...m, situacao: 'disponivel', arquivado: false, feedAtivo: true,
-          ...(m.finalidade !== 'venda' ? { status: 'recebido' } : {}),
-          interessados: [], pendentes: [],
-          timeline: [{ texto: 'Imóvel importado do portal (feed RE/MAX)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }],
-          criadoEm: now, atualizadoEm: now, feedSyncEm: now,
-        });
-        criados++;
-      } else {
-        await snap.docs[0].ref.set({
-          finalidade: m.finalidade, tipo: m.tipo, valorAnuncio: m.valorAnuncio, endereco: m.endereco,
-          dormitorios: m.dormitorios, vagas: m.vagas, area: m.area, iptu: m.iptu,
-          corretorUid: m.corretorUid, corretorNome: m.corretorNome, feedDados: m.feedDados, feedAtivo: true,
-          atualizadoEm: now, feedSyncEm: now,
-        }, { merge: true });
-        atualizados++;
+      // Marca como VISTO antes de processar: se der erro no meio, o anúncio (que ESTÁ
+      // no feed) não é confundido com "sumido" e arquivado por engano na varredura.
+      const fid0 = _feedTxt(L.ListingID);
+      if (fid0) vistos.add(fid0);
+      try {
+        const email = _feedTxt((L.ContactInfo || {}).Email).toLowerCase();
+        const corretor = await resolver(email);
+        const m = _feedMapear(L, corretor);
+        if (!m.feedListingId) continue;
+        const snap = await db.collection('imoveis').where('feedListingId', '==', m.feedListingId).limit(1).get();
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        if (snap.empty) {
+          await db.collection('imoveis').add({
+            ...m, situacao: 'disponivel', arquivado: false, feedAtivo: true,
+            ...(m.finalidade !== 'venda' ? { status: 'recebido' } : {}),
+            interessados: [], pendentes: [],
+            timeline: [{ texto: 'Imóvel importado do portal (feed RE/MAX)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }],
+            criadoEm: now, atualizadoEm: now, feedSyncEm: now,
+          });
+          criados++;
+        } else {
+          // Se tinha sido arquivado POR TER SAÍDO do portal e agora voltou, desarquiva
+          // (mas não mexe em arquivamento MANUAL feito pelo gestor).
+          const atual = snap.docs[0].data();
+          const voltou = atual.arquivado === true && atual.arquivadoMotivo === 'Saiu do portal';
+          await snap.docs[0].ref.set({
+            finalidade: m.finalidade, tipo: m.tipo, valorAnuncio: m.valorAnuncio, endereco: m.endereco,
+            dormitorios: m.dormitorios, vagas: m.vagas, area: m.area, iptu: m.iptu,
+            corretorUid: m.corretorUid, corretorNome: m.corretorNome, feedDados: m.feedDados, feedAtivo: true,
+            ...(voltou ? { arquivado: false, arquivadoMotivo: admin.firestore.FieldValue.delete(), voltouAoPortalEm: now } : {}),
+            atualizadoEm: now, feedSyncEm: now,
+          }, { merge: true });
+          atualizados++;
+        }
+      } catch (errItem) {
+        // Um anúncio problemático não pode abortar o sync inteiro do dia.
+        falhas++;
+        console.warn('Sync feed: falha no anúncio', fid0, (errItem && errItem.message) || errItem);
       }
     }
-    // Imóveis do feed que sumiram (vendidos/despublicados): marca, NÃO apaga.
+    // Imóveis do feed que sumiram (vendidos/despublicados): ARQUIVA (não apaga) — vão
+    // pro filtro "Arquivado" da Carteira. `feedAtivo !== false` garante arquivar 1x só,
+    // e respeita se o gestor já desarquivou na mão depois.
     const doFeed = await db.collection('imoveis').where('origem', '==', 'feed').get();
     let sumidos = 0;
     for (const d of doFeed.docs) {
       const fid = d.get('feedListingId');
       if (fid && !vistos.has(fid) && d.get('feedAtivo') !== false) {
-        await d.ref.set({ feedAtivo: false, feedSaiuEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        // Não arquiva imóvel EM NEGOCIAÇÃO (tem negócio ativo) — só marca que saiu do
+        // portal, pra não sumir da lista ativa enquanto o negócio está rolando.
+        const emNeg = d.get('situacao') === 'em_negociacao';
+        await d.ref.set({
+          feedAtivo: false, feedSaiuEm: admin.firestore.FieldValue.serverTimestamp(),
+          ...(emNeg ? {} : { arquivado: true, arquivadoMotivo: 'Saiu do portal', arquivadoEm: admin.firestore.FieldValue.serverTimestamp() }),
+        }, { merge: true });
         sumidos++;
       }
     }
-    console.log(`Sync feed OK: ${criados} criados, ${atualizados} atualizados, ${sumidos} fora do portal.`);
+    console.log(`Sync feed OK: ${criados} criados, ${atualizados} atualizados, ${sumidos} fora do portal, ${falhas} falhas.`);
+    if (falhas) await logErro('sincronizarFeedImoveis', new Error(`${falhas} anúncio(s) falharam no sync (ver logs de warning)`));
   } catch (e) {
     await logErro('sincronizarFeedImoveis', e);
   }

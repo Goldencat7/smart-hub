@@ -175,7 +175,6 @@ function relatorioDryRun(mapeados, meta) {
 
   // avisos
   console.log('\n-- Avisos de qualidade --');
-  const vendaPrecos = mapeados.filter((m) => m.finalidade === 'venda');
   const caros = mapeados.filter((m) => {
     const n = parseInt((m.valorAnuncio || '').replace(/[^\d]/g, ''), 10);
     return m.finalidade === 'venda' && n > 100000000;
@@ -282,12 +281,16 @@ async function baixarFeed() {
       criados++;
     } else {
       // EXISTE: atualiza SÓ os campos do portal — não toca em interessados/negócios/
-      // proprietário/status/situacao/arquivado (tudo isso é do Hub).
+      // proprietário/status/situacao (do Hub). Se tinha sido arquivado por SAIR do
+      // portal e voltou, desarquiva (não mexe em arquivamento manual do gestor).
+      const atual = snap.docs[0].data();
+      const voltou = atual.arquivado === true && atual.arquivadoMotivo === 'Saiu do portal';
       await snap.docs[0].ref.set({
         finalidade: m.finalidade, tipo: m.tipo, valorAnuncio: m.valorAnuncio,
         endereco: m.endereco, dormitorios: m.dormitorios, vagas: m.vagas, area: m.area,
         iptu: m.iptu, corretorUid: m.corretorUid, corretorNome: m.corretorNome,
         feedDados: m.feedDados, feedAtivo: true,
+        ...(voltou ? { arquivado: false, arquivadoMotivo: admin.firestore.FieldValue.delete(), voltouAoPortalEm: now } : {}),
         atualizadoEm: now, feedSyncEm: now,
       }, { merge: true });
       atualizados++;
@@ -303,7 +306,11 @@ async function baixarFeed() {
     for (const d of doFeed.docs) {
       const fid = d.get('feedListingId');
       if (fid && !vistos.has(fid) && d.get('feedAtivo') !== false) {
-        await d.ref.set({ feedAtivo: false, feedSaiuEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        const emNeg = d.get('situacao') === 'em_negociacao';   // negócio ativo → não arquiva
+        await d.ref.set({
+          feedAtivo: false, feedSaiuEm: admin.firestore.FieldValue.serverTimestamp(),
+          ...(emNeg ? {} : { arquivado: true, arquivadoMotivo: 'Saiu do portal', arquivadoEm: admin.firestore.FieldValue.serverTimestamp() }),
+        }, { merge: true });
         sumidos++;
       }
     }
