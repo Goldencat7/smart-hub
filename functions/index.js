@@ -737,6 +737,42 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
     const mudou = _jsonEstavel(before?.dados || {}) !== _jsonEstavel(dados)
       || _jsonEstavel(before?.documentos || {}) !== _jsonEstavel(after.documentos || {});
     if (existente.exists && !mudou) return;
+    // Ficha amarrada a um imóvel que JÁ existe (ex.: veio do feed do portal, sem
+    // proprietário): preenche o proprietário NESSE card, sem criar um duplicado.
+    // Guardas: só o dono do imóvel (o link carrega im.corretorUid) e só se o imóvel
+    // ainda não tem outra ficha de dono vinculada. Fichas comuns (sem imovelId) não
+    // entram aqui — comportamento da captação normal fica intacto.
+    if (after.imovelId && after.imovelId !== fichaId) {
+      const alvoRef = db.collection('imoveis').doc(after.imovelId);
+      const alvoSnap = await alvoRef.get();
+      if (alvoSnap.exists) {
+        const im = alvoSnap.data();
+        const donoOk = !im.corretorUid || !after.corretorUid || im.corretorUid === after.corretorUid;
+        const semOutraFicha = !im.fichaId || im.fichaId === fichaId;
+        if (donoOk && semOutraFicha) {
+          if (im.fichaId === fichaId && !mudou) return;
+          const pa = loc_montarPessoa(dados, LOC_KEYS_1);
+          const ids = [];
+          const a1 = `${fichaId}_loc1`;
+          if (pa.nome) { await db.collection('pessoas').doc(a1).set({ ...pa, corretorUid: after.corretorUid, fichaId, imovelId: after.imovelId, atualizadoEm: ts() }, { merge: true }); ids.push(a1); }
+          else { await db.collection('pessoas').doc(a1).delete().catch(() => {}); }
+          const a2 = `${fichaId}_loc2`;
+          if (dados.loc2_nome) { await db.collection('pessoas').doc(a2).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: after.corretorUid, fichaId, imovelId: after.imovelId, atualizadoEm: ts() }, { merge: true }); ids.push(a2); }
+          else { await db.collection('pessoas').doc(a2).delete().catch(() => {}); }
+          const novaVinc = im.fichaId !== fichaId;
+          await alvoRef.set({
+            fichaId, fichaTipo: 'locador', locadorIds: ids, locadorNome: pa.nome || '',
+            proprietarioNome: pa.nome || '',
+            proprietarioContato: [pa.whatsapp || pa.fixo, pa.email].filter(Boolean).join(' · '),
+            documentos: { ...(im.documentos || {}), ...(after.documentos || {}) },
+            pendentes: after.pendentes || [], atualizadoEm: ts(),
+            ...(novaVinc ? { timeline: admin.firestore.FieldValue.arrayUnion({ texto: 'Proprietário vinculado pela ficha do locador', porNome: 'Sistema', em: admin.firestore.Timestamp.now() }) } : {})
+          }, { merge: true });
+          await _bumpBroadcast('imovelSeq');
+          return;
+        }
+      }
+    }
     // Pessoas (locadores) — ids determinísticos p/ idempotência
     const locadorIds = [];
     const p1 = loc_montarPessoa(dados, LOC_KEYS_1);
@@ -808,6 +844,31 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
     const mudou = _jsonEstavel(before?.dados || {}) !== _jsonEstavel(dados)
       || _jsonEstavel(before?.documentos || {}) !== _jsonEstavel(after.documentos || {});
     if (existente.exists && !mudou) return;
+    // Ficha do vendedor amarrada a um imóvel que JÁ existe (ex.: veio do feed): preenche
+    // o proprietário NESSE card, sem duplicar. Mesmas guardas do locador.
+    if (after.imovelId && after.imovelId !== fichaId) {
+      const alvoRef = db.collection('imoveis').doc(after.imovelId);
+      const alvoSnap = await alvoRef.get();
+      if (alvoSnap.exists) {
+        const im = alvoSnap.data();
+        const donoOk = !im.corretorUid || !after.corretorUid || im.corretorUid === after.corretorUid;
+        const semOutraFicha = !im.fichaId || im.fichaId === fichaId;
+        if (donoOk && semOutraFicha) {
+          if (im.fichaId === fichaId && !mudou) return;
+          const novaVinc = im.fichaId !== fichaId;
+          await alvoRef.set({
+            fichaId, fichaTipo: 'vendedor',
+            proprietarioNome: dados.nome || '',
+            proprietarioContato: [dados.whatsapp || dados.fixo, dados.email].filter(Boolean).join(' · '),
+            documentos: { ...(im.documentos || {}), ...(after.documentos || {}) },
+            pendentes: after.pendentes || [], atualizadoEm: ts(),
+            ...(novaVinc ? { timeline: admin.firestore.FieldValue.arrayUnion({ texto: 'Proprietário vinculado pela ficha do vendedor', porNome: 'Sistema', em: admin.firestore.Timestamp.now() }) } : {})
+          }, { merge: true });
+          await _bumpBroadcast('imovelSeq');
+          return;
+        }
+      }
+    }
     const base = {
       ...loc_montarImovel(dados),
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
