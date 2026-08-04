@@ -3825,18 +3825,38 @@ function _cmpVersao(a, b) {
   return 0;
 }
 
+// Marca no INÍCIO do item = novidade só pro gestor. O servidor NEM ENVIA esses itens pra
+// quem não é gestor (corretor/administrativo não veem, nem inspecionando). Gestor/admin
+// recebem sem a marca (texto limpo). Assim uma nota pode misturar itens gerais e de gestor.
+const NOV_MARCA_GESTOR = '@gestor ';
 exports.listarNovidades = onCall(async (req) => {
-  exigirAutenticado(req);
+  const auth = exigirAutenticado(req);
+  const veGestor = ehGestorAuth(auth) || !!(auth.token && auth.token.admin === true);
+  const filtrar = (arr) => (Array.isArray(arr) ? arr : []).reduce((out, item) => {
+    if (typeof item !== 'string') return out;
+    if (item.startsWith(NOV_MARCA_GESTOR)) { if (veGestor) out.push(item.slice(NOV_MARCA_GESTOR.length)); }
+    else out.push(item);
+    return out;
+  }, []);
   const snap = await db.collection('novidades').get();
-  const novidades = snap.docs.map(x => {
+  let novidades = snap.docs.map(x => {
     const n = x.data();
-    return {
+    const item = {
       versao: n.versao || x.id,
-      novo: n.novo || [], melhorias: n.melhorias || [], correcoes: n.correcoes || [],
+      novo: filtrar(n.novo), melhorias: filtrar(n.melhorias), correcoes: filtrar(n.correcoes),
       criadoEm: n.criadoEm?.toDate?.()?.toISOString() || null,
       atualizadoEm: n.atualizadoEm?.toDate?.()?.toISOString() || null,
     };
+    // Campos CRUS (com a marca @gestor intacta) só pro editor do Admin — gestor/admin.
+    if (veGestor) {
+      item.novoRaw = Array.isArray(n.novo) ? n.novo : [];
+      item.melhoriasRaw = Array.isArray(n.melhorias) ? n.melhorias : [];
+      item.correcoesRaw = Array.isArray(n.correcoes) ? n.correcoes : [];
+    }
+    return item;
   });
+  // Some a versão inteira se, depois do filtro, não sobrou nada (evita "novidade vazia").
+  novidades = novidades.filter(n => n.novo.length || n.melhorias.length || n.correcoes.length);
   novidades.sort((a, b) => _cmpVersao(b.versao, a.versao)); // mais nova primeiro
   return { novidades };
 });
