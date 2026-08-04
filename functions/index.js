@@ -747,7 +747,7 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       const alvoSnap = await alvoRef.get();
       if (alvoSnap.exists) {
         const im = alvoSnap.data();
-        const donoOk = !im.corretorUid || !after.corretorUid || im.corretorUid === after.corretorUid;
+        const donoOk = !!im.corretorUid && !!after.corretorUid && im.corretorUid === after.corretorUid;
         const semOutraFicha = !im.fichaId || im.fichaId === fichaId;
         if (donoOk && semOutraFicha) {
           if (im.fichaId === fichaId && !mudou) return;
@@ -851,7 +851,7 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
       const alvoSnap = await alvoRef.get();
       if (alvoSnap.exists) {
         const im = alvoSnap.data();
-        const donoOk = !im.corretorUid || !after.corretorUid || im.corretorUid === after.corretorUid;
+        const donoOk = !!im.corretorUid && !!after.corretorUid && im.corretorUid === after.corretorUid;
         const semOutraFicha = !im.fichaId || im.fichaId === fichaId;
         if (donoOk && semOutraFicha) {
           if (im.fichaId === fichaId && !mudou) return;
