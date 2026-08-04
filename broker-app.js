@@ -518,6 +518,16 @@ function setupRealtime(){
       if(state.role === 'corretor') qNeg = query(qNeg, where('corretorUid', '==', uid));
       subs.push(onSnapshot(qNeg, () => _rtOnChange(), e => console.warn('rt negocios:', e && e.message)));
     }
+    // Fallback GARANTIDO via broadcast (config/broadcast é lido por TODOS): cobre o caso
+    // do listener direto da coleção `imoveis` ser negado no `list` pro gestor e falhar
+    // calado. Quando a carteira muda no servidor (sync do feed etc.), imovelSeq sobe e
+    // recarregamos — assim o dashboard atualiza mesmo com o app aberto.
+    let bcPrimeiro = true, bcImovel = 0;
+    subs.push(onSnapshot(doc(db, 'config', 'broadcast'), snap => {
+      const seq = (snap.exists() ? (snap.data() || {}) : {}).imovelSeq || 0;
+      if(bcPrimeiro){ bcPrimeiro = false; bcImovel = seq; return; }
+      if(seq !== bcImovel){ bcImovel = seq; _rtOnChange(); }
+    }, e => console.warn('rt broadcast:', e && e.message)));
   } catch(e){ console.warn('setupRealtime:', e && e.message); }
   state._rtUnsubs = subs;
 }

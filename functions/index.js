@@ -1290,6 +1290,7 @@ exports.carteiraArquivar = onCall(async (req) => {
     }, { merge: true });
   });
   await _imovelTimeline(ref, arquivar ? 'Imóvel arquivado' : 'Imóvel restaurado do arquivo', await _nomeDoUid(auth.uid));
+  await _bumpBroadcast('imovelSeq');   // tempo real: dashboards abertos recarregam
   return { ok: true, arquivado: !!arquivar };
 });
 
@@ -1311,6 +1312,7 @@ exports.carteiraSituacao = onCall(async (req) => {
     tx.set(ref, { situacao, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   });
   await _imovelTimeline(ref, `Situação alterada para ${situacao === 'disponivel' ? 'Disponível' : 'Em Negociação'}`, await _nomeDoUid(auth.uid));
+  await _bumpBroadcast('imovelSeq');   // tempo real: dashboards abertos recarregam
   return { ok: true, situacao };
 });
 
@@ -1632,6 +1634,7 @@ exports.negocioGerar = onCall(async (req) => {
   });
   await _imovelTimeline(ref, `Negócio ${codigo} gerado para ${interessado.nome}`, porNome);
   await registrarAudit(auth, 'negocio_gerar', { tipo: 'negocio', id: nRef.id }, { codigo, imovelId });
+  await _bumpBroadcast('imovelSeq');   // tempo real: imóvel foi p/ "Em negociação" → dashboards recarregam
   return { ok: true, negocioId: nRef.id, codigo };
 });
 
@@ -6190,6 +6193,10 @@ exports.sincronizarFeedImoveis = onSchedule({ schedule: '0 5 * * *', timeZone: T
         sumidos++;
       }
     }
+    // Tempo real: se algo mudou na carteira, avisa os Brokers abertos (gestor E corretor)
+    // pelo broadcast — que TODO cliente lê (o listener direto da coleção `imoveis` pode
+    // ser negado no `list` pro gestor e falhar calado; o broadcast é o caminho garantido).
+    if (criados || atualizados || sumidos) await _bumpBroadcast('imovelSeq');
     console.log(`Sync feed OK: ${criados} criados, ${atualizados} atualizados, ${sumidos} fora do portal, ${falhas} falhas.`);
     if (falhas) await logErro('sincronizarFeedImoveis', new Error(`${falhas} anúncio(s) falharam no sync (ver logs de warning)`));
   } catch (e) {
