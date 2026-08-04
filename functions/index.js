@@ -6045,6 +6045,122 @@ exports.backupFirestore = onSchedule({
   console.log('Backup Firestore concluído para', `gs://${projectId}-backups/${timestamp}`);
 });
 
+// ─── Sync diário do FEED de imóveis (portal RE/MAX → Carteira) ────────────────
+// O feed público (padrão VRSync/OLX) atualiza todo dia; este job espelha na
+// coleção `imoveis` (origem:'feed'), 1 imóvel por anúncio, no corretor certo
+// (resolvido por e-mail). UPSERT por feedListingId: cria os novos, atualiza
+// preço/foto dos existentes, marca feedAtivo:false os que saíram do portal (NÃO
+// apaga). Só toca em campos do PORTAL — nunca em interessados/negócios/
+// proprietário/status/situacao (esses são do Hub, o corretor mexe por cima).
+// O feed é público e NÃO traz o dono → proprietário fica em branco (vem da ficha).
+const FEED_IMOVEIS_URL = 'https://feeds.goiconnect.com/RemaxBrazil_FormatoPadraoGrupoOlx/33E833C7-A06A-483C-BF4B-5923F3261294/Remax_60147.xml';
+// Corretor cujo e-mail no feed (@remax) difere do e-mail da conta no Hub.
+const FEED_ALIAS_EMAIL = { 'mauricioallegrini@remax.com.br': 'mauricioallegrini@gmail.com' };
+const FEED_GESTOR_UID = 'OwcT6wCrXMgJ0tPADMUdKdBB8h32'; // fallback: sem corretor mapeado
+const FEED_TIPOS = {
+  'Residential / Apartment': 'Apartamento', 'Residential / Home': 'Casa',
+  'Residential / Studio': 'Studio', 'Residential / Condo': 'Casa de Condomínio',
+  'Residential / Sobrado': 'Sobrado', 'Residential / Penthouse': 'Cobertura',
+  'Residential / Land Lot': 'Terreno', 'Commercial / Office': 'Sala Comercial',
+  'Commercial / Industrial': 'Galpão / Industrial', 'Commercial / Edificio Comercial': 'Edifício Comercial',
+  'Commercial / Building': 'Prédio Comercial', 'Commercial / Business': 'Ponto Comercial',
+};
+function _feedArr(x) { return x == null ? [] : Array.isArray(x) ? x : [x]; }
+function _feedTxt(x) { if (x == null) return ''; if (typeof x === 'object') return String(x['#text'] != null ? x['#text'] : '').trim(); return String(x).trim(); }
+function _feedNum(x) { const n = parseInt(_feedTxt(x).replace(/[^\d]/g, ''), 10); return Number.isFinite(n) ? n : null; }
+function _feedBrl(n) { return n == null ? '' : 'R$ ' + n.toLocaleString('pt-BR'); }
+function _feedTipo(pt) { if (FEED_TIPOS[pt]) return FEED_TIPOS[pt]; const p = String(pt || '').split('/').pop().trim(); return p || 'Imóvel'; }
+function _feedMapear(L, corretor) {
+  const finalidade = _feedTxt(L.TransactionType) === 'For Sale' ? 'venda' : 'locacao';
+  const det = L.Details || {}, loc = L.Location || {};
+  const valorN = finalidade === 'venda' ? _feedNum(det.ListPrice) : _feedNum(det.RentalPrice);
+  const fotos = _feedArr(L.Media && L.Media.Item).filter((m) => m['@_medium'] === 'image').map((m) => _feedTxt(m));
+  const video = _feedArr(L.Media && L.Media.Item).filter((m) => m['@_medium'] === 'video').map((m) => _feedTxt(m))[0] || '';
+  return {
+    feedListingId: _feedTxt(L.ListingID), origem: 'feed', finalidade,
+    tipo: _feedTipo(_feedTxt(det.PropertyType)), valorAnuncio: _feedBrl(valorN),
+    proprietarioNome: '', proprietarioContato: '',
+    corretorUid: corretor.uid, corretorNome: corretor.nome,
+    endereco: { cep: _feedTxt(loc.PostalCode), logradouro: _feedTxt(loc.Address), numero: _feedTxt(loc.StreetNumber), complemento: _feedTxt(loc.Complement), bairro: _feedTxt(loc.Neighborhood), cidade: _feedTxt(loc.City), estado: (loc.State && loc.State['@_abbreviation']) || '' },
+    dormitorios: _feedNum(det.Bedrooms), vagas: _feedNum(det.Garage), area: _feedNum(det.LivingArea),
+    iptu: _feedTxt(det.Iptu) ? _feedBrl(_feedNum(det.Iptu)) : '',
+    feedDados: {
+      titulo: _feedTxt(L.Title), descricao: _feedTxt(det.Description), suites: _feedNum(det.Suites),
+      banheiros: _feedNum(det.Bathrooms), condominio: _feedNum(det.PropertyAdministrationFee), ano: _feedNum(det.YearBuilt),
+      andar: _feedNum(det.UnitFloor), unidade: _feedTxt(det.UnitNumber), areaTotal: _feedNum(det.LotArea),
+      lat: _feedTxt(loc.Latitude), lng: _feedTxt(loc.Longitude), fotos, video,
+      tour: _feedTxt(L.VirtualTourLink), detalheUrl: _feedTxt(L.DetailViewUrl),
+      features: _feedArr(det.Features && det.Features.Feature).map(_feedTxt),
+    },
+  };
+}
+exports.sincronizarFeedImoveis = onSchedule({ schedule: '0 5 * * *', timeZone: TZ, timeoutSeconds: 540, memory: '512MiB' }, async () => {
+  const projectId = process.env.GCLOUD_PROJECT;
+  if (projectId !== 'remax-smart-hub') { console.log(`Sync feed ignorado: ${projectId} não é produção.`); return; }
+  try {
+    const resp = await fetch(FEED_IMOVEIS_URL);
+    if (!resp.ok) throw new Error('Feed HTTP ' + resp.status);
+    const xml = await resp.text();
+    const { XMLParser } = require('fast-xml-parser');
+    const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', trimValues: true, parseTagValue: false });
+    const doc = parser.parse(xml);
+    const listings = _feedArr(doc.ListingDataFeed && doc.ListingDataFeed.Listings && doc.ListingDataFeed.Listings.Listing);
+    if (!listings.length) throw new Error('Feed vazio / não parseou');
+
+    const cacheC = {};
+    const resolver = async (email) => {
+      const alvo = FEED_ALIAS_EMAIL[email] || email;
+      if (cacheC[alvo] !== undefined) return cacheC[alvo];
+      try { const u = await admin.auth().getUserByEmail(alvo); cacheC[alvo] = { uid: u.uid, nome: u.displayName || alvo }; }
+      catch (_e) { cacheC[alvo] = { uid: FEED_GESTOR_UID, nome: '' }; }
+      return cacheC[alvo];
+    };
+
+    let criados = 0, atualizados = 0;
+    const vistos = new Set();
+    for (const L of listings) {
+      const email = _feedTxt((L.ContactInfo || {}).Email).toLowerCase();
+      const corretor = await resolver(email);
+      const m = _feedMapear(L, corretor);
+      if (!m.feedListingId) continue;
+      vistos.add(m.feedListingId);
+      const snap = await db.collection('imoveis').where('feedListingId', '==', m.feedListingId).limit(1).get();
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      if (snap.empty) {
+        await db.collection('imoveis').add({
+          ...m, situacao: 'disponivel', arquivado: false, feedAtivo: true,
+          ...(m.finalidade !== 'venda' ? { status: 'recebido' } : {}),
+          interessados: [], pendentes: [],
+          timeline: [{ texto: 'Imóvel importado do portal (feed RE/MAX)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }],
+          criadoEm: now, atualizadoEm: now, feedSyncEm: now,
+        });
+        criados++;
+      } else {
+        await snap.docs[0].ref.set({
+          finalidade: m.finalidade, tipo: m.tipo, valorAnuncio: m.valorAnuncio, endereco: m.endereco,
+          dormitorios: m.dormitorios, vagas: m.vagas, area: m.area, iptu: m.iptu,
+          corretorUid: m.corretorUid, corretorNome: m.corretorNome, feedDados: m.feedDados, feedAtivo: true,
+          atualizadoEm: now, feedSyncEm: now,
+        }, { merge: true });
+        atualizados++;
+      }
+    }
+    // Imóveis do feed que sumiram (vendidos/despublicados): marca, NÃO apaga.
+    const doFeed = await db.collection('imoveis').where('origem', '==', 'feed').get();
+    let sumidos = 0;
+    for (const d of doFeed.docs) {
+      const fid = d.get('feedListingId');
+      if (fid && !vistos.has(fid) && d.get('feedAtivo') !== false) {
+        await d.ref.set({ feedAtivo: false, feedSaiuEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        sumidos++;
+      }
+    }
+    console.log(`Sync feed OK: ${criados} criados, ${atualizados} atualizados, ${sumidos} fora do portal.`);
+  } catch (e) {
+    await logErro('sincronizarFeedImoveis', e);
+  }
+});
+
 // ─── Relatório diário de SAÚDE ────────────────────────────────────────────────
 // Roda às 8h e manda e-mail TODO DIA — inclusive quando está tudo ok.
 // Por que sempre: antes só mandava se houvesse erro, então dia bom = silêncio,
