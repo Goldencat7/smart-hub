@@ -99,6 +99,7 @@ const BOT_GH_TOKEN = defineSecret('BOT_GH_TOKEN');
 // pode entregar achados pro botReceberAchados. Gerado por nós; não é credencial de conta.
 const BOT_HOOK_SECRET = defineSecret('BOT_HOOK_SECRET');
 const HUB_CHECKVISTO_SECRET = defineSecret('HUB_CHECKVISTO_SECRET'); // integração CheckVisto (INTEGRACAO-CHECKVISTO.md)
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY'); // Assistente de Leads (IA · Gemini)
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
@@ -6986,3 +6987,85 @@ exports.lgpdExpurgoAutomatico = onSchedule({ schedule: '0 4 1 * *', timeZone: TZ
 });
 
 }  // ← fim do if (LGPD_ATIVO). Acima daqui, nada é exportado enquanto a chave for false.
+
+// ─── Assistente de Leads (IA · Gemini) ───────────────────────────────────────
+// Sugere 3 respostas de WhatsApp a partir da mensagem de um lead. A chave do
+// Gemini fica como SECRET do Firebase (GEMINI_API_KEY) — nunca vai pro cliente
+// nem pro .exe. Qualquer usuário logado do Hub pode usar. Modelo trocável pela
+// env GEMINI_MODEL (padrão: apelido oficial do flash atual).
+const IA_LEAD_SYSTEM = `Você é o assistente de um corretor de imóveis da REMAX Smart no Brasil.
+A partir da mensagem de um cliente (lead) que chegou pelo WhatsApp, escreva 3 opções de
+resposta para o corretor enviar. Regras:
+- Português do Brasil, tom de WhatsApp: caloroso, profissional e direto (2 a 5 frases).
+- Objetivo: responder à dúvida, QUALIFICAR o lead (ex.: finalidade, região, orçamento, prazo)
+  e conduzir para AGENDAR uma visita ou próxima conversa.
+- NUNCA invente dados do imóvel (valor, metragem, endereço) que não foram informados.
+- Se o nome do corretor for informado, pode assinar; se o nome do cliente aparecer, use.
+- Cada resposta deve estar pronta para copiar e colar (sem colchetes de preenchimento).
+Devolva também uma "dica" curta de próximo passo para o corretor.`;
+
+exports.sugerirRespostaLead = onCall({ secrets: [GEMINI_API_KEY] }, async (req) => {
+  exigirAutenticado(req);
+  const KEY = (GEMINI_API_KEY.value() || '').trim();
+  if (!KEY) throw new HttpsError('failed-precondition', 'A chave do Gemini não está configurada no servidor.');
+  const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  const dados = req.data || {};
+  const mensagem = String(dados.mensagem || '').trim();
+  if (!mensagem) throw new HttpsError('invalid-argument', 'Cole a mensagem do cliente.');
+  if (mensagem.length > 4000) throw new HttpsError('invalid-argument', 'Mensagem muito longa.');
+
+  const lim = (s, n) => String(s || '').trim().slice(0, n);
+  const ctx = [
+    `Mensagem do cliente: ${mensagem.slice(0, 4000)}`,
+    dados.canal      ? `Canal/origem: ${lim(dados.canal, 120)}` : '',
+    dados.finalidade ? `Interesse: ${lim(dados.finalidade, 60)}` : '',
+    dados.imovel     ? `Imóvel em questão: ${lim(dados.imovel, 300)}` : '',
+    dados.tom        ? `Tom desejado: ${lim(dados.tom, 60)}` : '',
+    dados.corretor   ? `Nome do corretor (assinatura): ${lim(dados.corretor, 80)}` : ''
+  ].filter(Boolean).join('\n');
+
+  const body = {
+    system_instruction: { parts: [{ text: IA_LEAD_SYSTEM }] },
+    contents: [{ role: 'user', parts: [{ text: ctx }] }],
+    generationConfig: {
+      temperature: 0.7,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'object',
+        properties: { respostas: { type: 'array', items: { type: 'string' } }, dica: { type: 'string' } },
+        required: ['respostas']
+      }
+    }
+  };
+
+  let resp, txt;
+  try {
+    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
+      body: JSON.stringify(body)
+    });
+    txt = await resp.text();
+  } catch (e) {
+    throw new HttpsError('unavailable', 'Não consegui falar com o Gemini agora. Tente de novo.');
+  }
+  if (!resp.ok) {
+    let msg = '';
+    try { msg = ((JSON.parse(txt) || {}).error || {}).message || ''; } catch { msg = ''; }
+    console.error('[sugerirRespostaLead] Gemini', resp.status, msg);
+    if (resp.status === 429) throw new HttpsError('resource-exhausted', 'O limite grátis do Gemini foi atingido por enquanto. Tente mais tarde.');
+    throw new HttpsError('internal', 'O Gemini recusou a solicitação. Tente de novo.');
+  }
+
+  let data; try { data = JSON.parse(txt); } catch { data = {}; }
+  const cand = (data.candidates || [])[0];
+  if (!cand) throw new HttpsError('internal', 'O Gemini não retornou resposta. Reformule e tente de novo.');
+  const fim = cand.finishReason || '';
+  if (fim === 'SAFETY' || fim === 'PROHIBITED_CONTENT' || fim === 'BLOCKLIST') throw new HttpsError('invalid-argument', 'O Gemini bloqueou esta mensagem por segurança. Reformule o texto.');
+  if (fim === 'MAX_TOKENS') throw new HttpsError('internal', 'A resposta veio cortada. Tente uma mensagem mais curta.');
+  const conteudo = (((cand.content || {}).parts || [])[0] || {}).text || '';
+  let out; try { out = JSON.parse(conteudo); } catch { throw new HttpsError('internal', 'Não consegui interpretar a resposta da IA. Tente de novo.'); }
+  const respostas = Array.isArray(out.respostas) ? out.respostas.filter(r => typeof r === 'string' && r.trim()).slice(0, 3) : [];
+  if (!respostas.length) throw new HttpsError('internal', 'A IA não retornou respostas utilizáveis. Tente de novo.');
+  return { ok: true, respostas, dica: typeof out.dica === 'string' ? out.dica : '', modelo: MODEL };
+});

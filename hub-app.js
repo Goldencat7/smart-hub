@@ -32,6 +32,7 @@ const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const registrarAcesso = httpsCallable(fns, 'registrarAcesso');
 const getMeuPerfil = httpsCallable(fns, 'getMeuPerfil');
 const salvarMeuPerfil = httpsCallable(fns, 'salvarMeuPerfil');
+const sugerirRespostaLead = httpsCallable(fns, 'sugerirRespostaLead');
 const locListarImoveis = httpsCallable(fns, 'locListarImoveis');
 const locListarFichasImovel = httpsCallable(fns, 'locListarFichasImovel');
 const locMoverImovelStatus = httpsCallable(fns, 'locMoverImovelStatus');
@@ -6169,6 +6170,12 @@ async function salvarNotas() {
 function carregarIA() {
   const MODELOS = [
     {
+      key: 'lead-assistente', nome: 'Assistente de Leads', empresa: 'REMAX Smart · Gemini',
+      desc: 'Cole a mensagem que o cliente mandou no WhatsApp e receba 3 respostas prontas para copiar e enviar.',
+      interno: 'lead',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><path d="M24 12c-6.6 0-12 4.6-12 10.3 0 2.4 1 4.7 2.6 6.4L15 36l7.3-2.2c.5.1 1.1.1 1.7.1 6.6 0 12-4.6 12-10.3S30.6 12 24 12z" fill="none" stroke="#A4D7F4" stroke-width="2.2" stroke-linejoin="round"/><circle cx="19.5" cy="22.5" r="1.4" fill="#fff"/><circle cx="24" cy="22.5" r="1.4" fill="#fff"/><circle cx="28.5" cy="22.5" r="1.4" fill="#fff"/></svg>`
+    },
+    {
       key: 'martina', nome: 'Martina', empresa: 'REMAX Smart',
       desc: 'Assistente virtual da REMAX Smart — precisa estar logado no ChatGPT para usar',
       url: 'https://chatgpt.com/g/g-68b2625b33f481918039b79f11b5c713-martina-assistente-virtual',
@@ -6204,7 +6211,7 @@ function carregarIA() {
   secaoIA.innerHTML = `
     <div class="ia-grid">
       ${MODELOS.map(m => `
-        <button class="ia-card" data-url="${m.url}">
+        <button class="ia-card" data-key="${m.key}">
           <div class="ia-icone">${m.icone}</div>
           <div class="ia-nome">${m.nome}</div>
           <div class="ia-empresa">${m.empresa}</div>
@@ -6215,17 +6222,229 @@ function carregarIA() {
 
   secaoIA.querySelectorAll('.ia-card').forEach(card => {
     card.addEventListener('click', () => {
-      const modelo = MODELOS.find(m => m.url === card.dataset.url);
-      if (modelo?.avisoLogin) {
+      const modelo = MODELOS.find(m => m.key === card.dataset.key);
+      if (!modelo) return;
+      // Assistente de Leads: tela interna do Hub, não abre site de fora.
+      if (modelo.interno === 'lead') { renderAssistenteLead(); return; }
+      if (modelo.avisoLogin) {
         const chave = `ia_login_${modelo.key}`;
         if (!localStorage.getItem(chave)) {
           alert(`💡 Para usar a ${modelo.nome} você precisa estar logado no ChatGPT.\n\nSe ainda não fez login, entre com sua conta na janela que vai abrir.`);
           localStorage.setItem(chave, '1');
         }
       }
-      window.hubApi.abrirApp({ siteKey: card.dataset.url, url: card.dataset.url, credenciais: null });
+      window.hubApi.abrirApp({ siteKey: modelo.url, url: modelo.url, credenciais: null });
     });
   });
+}
+
+// ─── Assistente de Leads (IA · Gemini · em teste) ────────────────────────────
+// Tela DENTRO da aba SMART IA. Cole a mensagem do lead → o main chama o Gemini
+// (chave na env GEMINI_API_KEY) e devolve 3 respostas prontas pra copiar.
+function _leadEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+function _leadCss() {
+  if (document.getElementById('leadiaCss')) return;
+  const s = document.createElement('style');
+  s.id = 'leadiaCss';
+  s.textContent = `
+  .leadia-top{display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+  .leadia-back{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-btn);color:var(--text-muted);font-size:13px;font-family:inherit;cursor:pointer}
+  .leadia-back:hover{color:var(--text-primary);border-color:var(--blue)}
+  .leadia-h{font-size:18px;font-weight:800;color:var(--text-primary)}
+  .leadia-tag{margin-left:auto;display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--text-muted)}
+  .leadia-tag .d{width:7px;height:7px;border-radius:50%;background:var(--warning)}
+  .leadia-grid{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start}
+  .leadia-col{flex:1 1 380px;min-width:0;display:flex;flex-direction:column;gap:14px}
+  .leadia-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:16px}
+  .leadia-card h3{margin:0 0 4px;font-size:14px;font-weight:700;color:var(--text-primary)}
+  .leadia-card p.sub{margin:0 0 12px;font-size:12px;color:var(--text-muted)}
+  .leadia-f{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .leadia-f:last-child{margin-bottom:0}
+  .leadia-f label{font-size:12.5px;color:var(--text-muted)}
+  .leadia-f textarea,.leadia-f input,.leadia-f select{width:100%;font-family:inherit;font-size:14px;color:var(--text-primary);background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-input);outline:none}
+  .leadia-f textarea{min-height:120px;resize:vertical;line-height:1.55;padding:10px 11px}
+  .leadia-f input,.leadia-f select{height:42px;padding:0 11px}
+  .leadia-f textarea:focus,.leadia-f input:focus,.leadia-f select:focus{border-color:var(--blue)}
+  .leadia-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .leadia-acts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+  .leadia-note{font-size:12px;color:var(--text-muted)}
+  .leadia-btns{display:flex;gap:8px}
+  .leadia-btn{height:42px;padding:0 18px;border-radius:var(--radius-btn);font-family:inherit;font-size:13.5px;font-weight:700;border:1px solid transparent;cursor:pointer}
+  .leadia-btn.prim{background:var(--blue);color:#fff}
+  .leadia-btn.prim:disabled{opacity:.6;cursor:default}
+  .leadia-btn.ghost{background:transparent;color:var(--text-muted);border-color:var(--border)}
+  .leadia-btn.ghost:hover{color:var(--text-primary)}
+  .leadia-panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+  .leadia-panel-h .t{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted)}
+  .leadia-status{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted)}
+  .leadia-status .sd{width:7px;height:7px;border-radius:50%;background:var(--text-muted)}
+  .leadia-status.ok .sd{background:var(--success)}
+  .leadia-empty{padding:20px;text-align:center;font-size:13px;color:var(--text-muted);border:1px dashed var(--border);border-radius:var(--radius-input);background:var(--bg)}
+  .leadia-flag{display:none;padding:10px 12px;border-radius:var(--radius-input);font-size:12.5px;line-height:1.5;margin-bottom:4px}
+  .leadia-flag.show{display:block}
+  .leadia-flag.err{background:rgba(200,0,26,.12);border:1px solid rgba(200,0,26,.4);color:var(--danger)}
+  .leadia-flag.tip{background:var(--blue-light);border:1px solid rgba(0,82,204,.35);color:#9dc0ff}
+  .leadia-resp{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card);padding:12px 13px;margin-bottom:10px}
+  .leadia-resp-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}
+  .leadia-resp-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-muted)}
+  .leadia-resp-tag .n{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:var(--blue-light);color:#9dc0ff;font-size:11px}
+  .leadia-resp-txt{font-size:13.5px;line-height:1.6;color:var(--text-primary);white-space:pre-wrap;word-break:break-word}
+  .leadia-copy{display:inline-flex;align-items:center;gap:6px;height:29px;padding:0 12px;font-size:12px;font-weight:600;font-family:inherit;background:var(--bg);border:1px solid var(--border);border-radius:999px;color:var(--text-muted);cursor:pointer}
+  .leadia-copy:hover{border-color:var(--blue);color:#9dc0ff}
+  .leadia-copy.done{border-color:var(--success);color:var(--success)}
+  `;
+  document.head.appendChild(s);
+}
+function _leadCopiar(texto) {
+  return new Promise(resolve => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(() => resolve(true), () => resolve(_leadExec(texto)));
+        return;
+      }
+    } catch (_) { /* cai no fallback */ }
+    resolve(_leadExec(texto));
+  });
+}
+function _leadExec(texto) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (_) { return false; }
+}
+function renderAssistenteLead() {
+  _leadCss();
+  secaoIA.innerHTML = `
+    <div class="leadia-top">
+      <button type="button" class="leadia-back" id="leadVoltar">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        SMART IA
+      </button>
+      <span class="leadia-h">Assistente de Leads</span>
+      <span class="leadia-tag"><span class="d"></span>Gemini · em teste</span>
+    </div>
+    <div class="leadia-grid">
+      <form class="leadia-col" id="leadForm" novalidate>
+        <section class="leadia-card">
+          <h3>Mensagem do cliente</h3>
+          <p class="sub">Cole exatamente como chegou no WhatsApp.</p>
+          <div class="leadia-f">
+            <textarea id="leadMsg" placeholder="Ex.: Oi, vi o anúncio do apartamento no Jardim América. Ainda está disponível? Qual o valor e aceita financiamento?"></textarea>
+          </div>
+        </section>
+        <section class="leadia-card">
+          <h3>Contexto (opcional)</h3>
+          <p class="sub">Ajuda a IA a personalizar — pode deixar em branco.</p>
+          <div class="leadia-2">
+            <div class="leadia-f"><label for="leadFin">Interesse</label>
+              <select id="leadFin"><option value="">Não sei ainda</option><option>Compra</option><option>Locação</option><option>Só pesquisando</option></select></div>
+            <div class="leadia-f"><label for="leadTom">Tom</label>
+              <select id="leadTom"><option value="">Padrão (profissional e caloroso)</option><option>Mais formal</option><option>Mais descontraído</option></select></div>
+          </div>
+          <div class="leadia-f"><label for="leadImovel">Imóvel em questão</label>
+            <input type="text" id="leadImovel" placeholder="Ex.: Apto 82m² no Jardim América, R$ 9.500/mês"></div>
+          <div class="leadia-2">
+            <div class="leadia-f"><label for="leadCanal">Origem do lead</label>
+              <input type="text" id="leadCanal" placeholder="Ex.: portal, indicação, anúncio"></div>
+            <div class="leadia-f"><label for="leadCorretor">Seu nome (assinatura)</label>
+              <input type="text" id="leadCorretor" placeholder="Ex.: Leandro"></div>
+          </div>
+        </section>
+        <div class="leadia-card leadia-acts">
+          <p class="leadia-note">A IA não inventa dados do imóvel que você não informar.</p>
+          <div class="leadia-btns">
+            <button type="button" class="leadia-btn ghost" id="leadLimpar">Limpar</button>
+            <button type="submit" class="leadia-btn prim" id="leadGerar">Gerar respostas</button>
+          </div>
+        </div>
+      </form>
+      <aside class="leadia-col" aria-label="Respostas sugeridas">
+        <div class="leadia-panel-h">
+          <span class="t">Respostas sugeridas</span>
+          <span class="leadia-status" id="leadStatus"><span class="sd"></span>Aguardando</span>
+        </div>
+        <div class="leadia-flag" id="leadFlag"></div>
+        <div id="leadSaida"><div class="leadia-empty">Cole a mensagem do cliente e clique em <b>Gerar respostas</b>. Aparecem 3 opções aqui — é só copiar e enviar.</div></div>
+      </aside>
+    </div>`;
+
+  const $ = id => document.getElementById(id);
+  const form = $('leadForm');
+  const saida = $('leadSaida');
+  const status = $('leadStatus');
+  const flag = $('leadFlag');
+  const btn = $('leadGerar');
+  const val = id => (($(id) || {}).value || '').trim();
+  const setFlag = (kind, msg) => {
+    if (!msg) { flag.className = 'leadia-flag'; flag.textContent = ''; return; }
+    flag.className = 'leadia-flag show ' + kind; flag.textContent = msg;
+  };
+  const setStatus = (cls, txt) => {
+    status.className = 'leadia-status' + (cls ? ' ' + cls : '');
+    status.innerHTML = '<span class="sd"></span>' + _leadEsc(txt);
+  };
+
+  const render = (respostas, dica) => {
+    if (!respostas.length) { saida.innerHTML = '<div class="leadia-empty">A IA não retornou respostas. Tente reformular a mensagem.</div>'; return; }
+    const copiar = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>Copiar';
+    const copiado = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>Copiado';
+    saida.innerHTML = respostas.map((r, i) => (
+      '<div class="leadia-resp"><div class="leadia-resp-h"><span class="leadia-resp-tag"><span class="n">' + (i + 1) + '</span>Opção ' + (i + 1) + '</span>' +
+      '<button class="leadia-copy" data-i="' + i + '">' + copiar + '</button></div>' +
+      '<div class="leadia-resp-txt">' + _leadEsc(r) + '</div></div>'
+    )).join('');
+    if (dica) setFlag('tip', '💡 ' + dica); else setFlag('');
+    saida.querySelectorAll('.leadia-copy').forEach(b => {
+      b.addEventListener('click', () => {
+        const t = respostas[+b.dataset.i] || '';
+        const volta = () => setTimeout(() => { b.classList.remove('done'); b.innerHTML = copiar; }, 1600);
+        _leadCopiar(t).then(ok => {
+          if (ok) { b.classList.add('done'); b.innerHTML = copiado; }
+          else { b.textContent = 'Não copiou — selecione o texto'; }
+          volta();
+        });
+      });
+    });
+  };
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const mensagem = val('leadMsg');
+    setFlag('');
+    if (!mensagem) { setFlag('err', 'Cole a mensagem do cliente primeiro.'); const m = $('leadMsg'); if (m) m.focus(); return; }
+    const payload = { mensagem, finalidade: val('leadFin'), tom: val('leadTom'), imovel: val('leadImovel'), canal: val('leadCanal'), corretor: val('leadCorretor') };
+    btn.disabled = true; setStatus('', 'Gerando…');
+    saida.innerHTML = '<div class="leadia-empty">Consultando a IA…</div>';
+    sugerirRespostaLead(payload)
+      .then(res => {
+        const r = res && res.data;
+        if (!r || !r.ok) throw new Error('Falha ao gerar respostas.');
+        render(r.respostas || [], r.dica || '');
+        setStatus('ok', 'Pronto');
+      })
+      .catch(err => {
+        saida.innerHTML = '<div class="leadia-empty">Sem respostas.</div>';
+        setStatus('', 'Erro');
+        setFlag('err', (err && err.message) || String(err));
+      })
+      .finally(() => { btn.disabled = false; });
+  });
+
+  $('leadLimpar').addEventListener('click', () => {
+    form.reset(); setFlag(''); setStatus('', 'Aguardando');
+    saida.innerHTML = '<div class="leadia-empty">Cole a mensagem do cliente e clique em <b>Gerar respostas</b>. Aparecem 3 opções aqui — é só copiar e enviar.</div>';
+  });
+
+  $('leadVoltar').addEventListener('click', () => carregarIA());
 }
 
 // ─── Documentos ──────────────────────────────────────────────────────────────
