@@ -5,11 +5,17 @@ E-mail: nathangabrieldovale07@gmail.com
 
 AUTOR E TITULAR
 
-Este software ("REMAX Smart Hub", doravante "o Software"), incluindo todo o seu
-código-fonte, arquitetura, documentação e materiais associados, foi criado e é de
-autoria de Nathan Gabriel do Vale Almeida ("o Autor"), que detém a titularidade dos
-direitos autorais e de propriedade intelectual sobre a obra, nos termos da Lei
-nº 9.610/1998 (Direitos Autorais) e da Lei nº 9.609/1998 (Lei do Software).
+Este software ("Smart Hub", doravante "o Software"), incluindo todo o seu código-fonte,
+arquitetura, documentação e materiais associados, foi criado e é de autoria de Nathan
+Gabriel do Vale Almeida ("o Autor"), que detém a titularidade dos direitos autorais e de
+propriedade intelectual sobre a obra, nos termos da Lei nº 9.610/1998 (Direitos Autorais)
+e da Lei nº 9.609/1998 (Lei do Software).
+
+O nome do produto é "Smart Hub". Ele é fornecido a imobiliárias em regime white-label,
+podendo ser exibido com a marca do cliente como prefixo (por exemplo, para a imobiliária
+REMAX Smart o aplicativo aparece como "REMAX Smart Hub"). A marca do cliente usada como
+prefixo pertence ao respectivo cliente; o Software em si — motor, código e arquitetura —
+pertence ao Autor, independentemente do rótulo exibido.
 
 O histórico de versões (git) mantido no repositório do Autor constitui registro
 datado da autoria e da evolução do Software.
@@ -17,11 +23,11 @@ datado da autoria e da evolução do Software.
 RELAÇÃO COM TERCEIROS
 
 O uso do Software por qualquer empresa, organização ou pessoa (incluindo a operação
-interna da imobiliária REMAX Smart) se dá na condição de LICENÇA DE USO concedida
-pelo Autor, e não implica cessão, transferência ou renúncia de qualquer direito de
-autoria ou titularidade. Nenhuma relação de uso, colaboração ou prestação de serviço
-transfere a propriedade do Software ao usuário, salvo acordo escrito, específico e
-assinado pelo Autor que expressamente disponha o contrário.
+interna da imobiliária REMAX Smart, primeira licenciada) se dá na condição de LICENÇA DE
+USO concedida pelo Autor, e não implica cessão, transferência ou renúncia de qualquer
+direito de autoria ou titularidade. Nenhuma relação de uso, colaboração ou prestação de
+serviço transfere a propriedade do Software ao usuário, salvo acordo escrito, específico
+e assinado pelo Autor que expressamente disponha o contrário.
 
 RESTRIÇÕES
 

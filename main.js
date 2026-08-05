@@ -1,5 +1,5 @@
 /*
- * REMAX Smart Hub
+ * Smart Hub — software white-label (esta instância licenciada à REMAX Smart, exibida como "REMAX Smart Hub")
  * Copyright (c) 2026 Nathan Gabriel do Vale Almeida <nathangabrieldovale07@gmail.com>
  * Autor e titular dos direitos. Todos os direitos reservados. Ver arquivo LICENSE.
  */
