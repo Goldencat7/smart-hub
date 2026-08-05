@@ -17,6 +17,24 @@
   .calc-linha.destaque .valor{color:#DC1C2E;font-size:19px}
   .calc-aviso{font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 12px;margin-top:10px;display:none}
   .hint{font-size:11px;color:#6b7280;font-weight:400}
+  .field select{width:100%;padding:10px 12px;border:1px solid #d1d9e3;border-radius:8px;font-size:14px;background:#fff;color:#111827;font-family:inherit}
+  .field select:focus{outline:none;border-color:#002749}
+  .calc-nota{font-size:12px;color:#374151;background:#f8fafc;border:1px solid #e8edf3;border-radius:8px;padding:8px 12px;margin-top:10px}
+  /* Cartões da calculadora de parceria */
+  .pc-explica{font-size:12.5px;color:#374151;background:#eef4fb;border:1px solid #d6e4f5;border-radius:10px;padding:11px 14px;margin-bottom:12px;line-height:1.55}
+  .pc-explica b{color:#002749}
+  .pc-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid #e8edf3;background:#fbfdff;margin-bottom:8px}
+  .pc-dot{width:14px;height:14px;border-radius:50%;flex:none}
+  .pc-info{flex:1;min-width:0}
+  .pc-role{font-weight:700;color:#002749;font-size:14px}
+  .pc-desc{font-size:12px;color:#6b7280;margin-top:2px}
+  .pc-vals{text-align:right;white-space:nowrap;flex:none}
+  .pc-val{font-weight:800;color:#002749;font-size:17px;font-variant-numeric:tabular-nums}
+  .pc-pct{font-size:11px;color:#6b7280;font-weight:600;margin-top:1px}
+  .pc-total{display:flex;justify-content:space-between;align-items:baseline;margin-top:12px;padding-top:12px;border-top:2px solid #DC1C2E}
+  .pc-total .rot{font-weight:700;color:#002749;font-size:15px}
+  .pc-total .val{font-weight:800;color:#DC1C2E;font-size:22px;font-variant-numeric:tabular-nums}
+  .pc-vazio{padding:22px;text-align:center;color:#6b7280;font-size:13px;border:1px dashed #d1d9e3;border-radius:10px;background:#f8fafc}
 </style>
 </head>
 <body>
@@ -73,6 +91,26 @@
       </div>
     </div>
   </div>
+
+  <!-- 3. Comissão de parceria RE/MAX -->
+  <div class="section" id="sec-parceria">
+    <div class="section-title"><span class="num">3</span> Comissão de parceria RE/MAX</div>
+    <div class="calc-grid">
+      <div class="field"><div class="field-header"><label>Valor da comissão</label></div><input type="text" id="pc_comissao" inputmode="numeric" placeholder="R$ 0,00"></div>
+      <div class="field"><div class="field-header"><label>Tipo de parceria</label></div>
+        <select id="pc_tipo">
+          <option value="prop_comp">Referência de proprietário e comprador</option>
+          <option value="prop">Referência de proprietário (vendido pela RE/MAX)</option>
+          <option value="comp">Referência só de comprador</option>
+          <option value="prop_outra">Referência de proprietário, vendido por outra imobiliária</option>
+        </select>
+      </div>
+    </div>
+    <div id="pc_res" style="margin-top:8px">
+      <div class="pc-vazio">Informe o valor da comissão acima para ver a divisão entre as partes.</div>
+    </div>
+    <div class="calc-nota">Sobre cada valor destinado a um corretor RE/MAX, ainda se aplica o percentual de associação dele (conforme o plano do corretor).</div>
+  </div>
 </div>
 
 <script>
@@ -87,9 +125,10 @@ function diasEntre(msIni, msFim){ if(msIni==null||msFim==null) return null; retu
 const $ = id => document.getElementById(id);
 
 // Máscara de dinheiro nos campos monetários
-['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto'].forEach(id=>{
+['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao'].forEach(id=>{
   $(id).addEventListener('input', e=>{ e.target.value = maskMoney(e.target.value); calcular(); });
 });
+$('pc_tipo').addEventListener('change', calcular);
 // Campos numéricos simples (só dígitos)
 ['al_diasMes','al_diasCont'].forEach(id=>{
   $(id).addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,''); calcular(); });
@@ -142,14 +181,69 @@ function calcular(){
   const aviso = $('mu_aviso');
   if(avisos.length){ aviso.textContent = '⚠ ' + avisos.join(' '); aviso.style.display='block'; }
   else aviso.style.display='none';
+
+  calcParceria();
 }
 
-// Exibe só a calculadora indicada por ?calc=aluguel|multa (sem o parâmetro, mostra as duas)
+// ── 3. Comissão de parceria RE/MAX ──
+// A comissão é dividida em duas metades (captação/proprietário e venda/comprador);
+// dentro de cada metade, 25% vai pra indicação e 75% pra quem trabalhou. Conforme
+// a planilha de referência da parceria.
+function calcParceria(){
+  const com = parseMoney($('pc_comissao').value);
+  const tipo = $('pc_tipo').value;
+  const res = $('pc_res');
+  if(!com){ res.innerHTML = '<div class="pc-vazio">Informe o valor da comissão acima para ver a divisão entre as partes.</div>'; return; }
+  const meia = com/2, q = meia*0.25, tq = meia*0.75;   // metade, 25% e 75% da metade
+  // Cores iguais às da planilha de referência: azul=indicação imóvel, amarelo=captação,
+  // laranja=venda, verde=indicação comprador, cinza=repasse a outra imobiliária.
+  const C = { azul:'#3b6fd4', amarelo:'#d99a0b', laranja:'#e07b39', verde:'#2e9e5b', cinza:'#64748b' };
+  const IND_IMOVEL = { rot:'Indicação do imóvel', desc:'Quem indicou o imóvel para a rede', cor:C.azul };
+  const CAPTACAO   = { rot:'Captação — proprietário', desc:'Quem captou o imóvel e atende o proprietário', cor:C.amarelo };
+  const VENDA      = { rot:'Venda — comprador', desc:'Quem vendeu e atende o comprador', cor:C.laranja };
+  const IND_COMP   = { rot:'Indicação do comprador', desc:'Quem indicou o comprador', cor:C.verde };
+  let partes;
+  if(tipo==='prop_comp') partes = [
+    { ...IND_IMOVEL, val:q }, { ...CAPTACAO, val:tq }, { ...VENDA, val:tq }, { ...IND_COMP, val:q }
+  ];
+  else if(tipo==='prop') partes = [
+    { ...IND_IMOVEL, val:q }, { ...CAPTACAO, val:tq },
+    { rot:'Venda', desc:'Quem vendeu o imóvel', cor:C.laranja, val:meia }
+  ];
+  else if(tipo==='comp') partes = [
+    { rot:'Captação', desc:'Quem captou o imóvel (proprietário)', cor:C.amarelo, val:meia },
+    { ...VENDA, val:tq }, { ...IND_COMP, val:q }
+  ];
+  else /* prop_outra */ partes = [
+    { ...IND_IMOVEL, val:q }, { ...CAPTACAO, val:tq },
+    { rot:'Imobiliária não RE/MAX', desc:'Repasse à imobiliária que efetuou a venda', cor:C.cinza, val:meia }
+  ];
+  let html = '<div class="pc-explica">A comissão de <b>'+fmtBRL(com)+'</b> é dividida em duas metades — uma para o <b>lado do imóvel</b> (captação) e outra para o <b>lado da venda</b> (comprador). Em cada metade, <b>25%</b> vai para quem <b>indicou</b> e <b>75%</b> para quem <b>trabalhou</b>.</div>';
+  partes.forEach(p=>{
+    const pct = com ? (p.val/com*100) : 0;
+    html += '<div class="pc-card">'
+      + '<span class="pc-dot" style="background:'+p.cor+'"></span>'
+      + '<div class="pc-info"><div class="pc-role">'+p.rot+'</div><div class="pc-desc">'+p.desc+'</div></div>'
+      + '<div class="pc-vals"><div class="pc-val">'+fmtBRL(p.val)+'</div><div class="pc-pct">'+fmtNum(pct)+'% da comissão</div></div>'
+      + '</div>';
+  });
+  const total = partes.reduce((s,p)=>s+p.val, 0);
+  html += '<div class="pc-total"><span class="rot">Total distribuído</span><span class="val">'+fmtBRL(total)+'</span></div>';
+  res.innerHTML = html;
+}
+
+// Exibe só a calculadora indicada por ?calc=aluguel|multa|parceria (sem o parâmetro, mostra todas)
+const CALC_SECS = {
+  aluguel:  ['sec-aluguel',  'Cálculo de aluguel proporcional'],
+  multa:    ['sec-multa',    'Cálculo de multa rescisória'],
+  parceria: ['sec-parceria', 'Comissão de parceria RE/MAX']
+};
 const calc = new URLSearchParams(location.search).get('calc');
-if(calc==='multa' || calc==='aluguel'){
-  $(calc==='multa' ? 'sec-aluguel' : 'sec-multa').style.display = 'none';
-  $(calc==='multa' ? 'sec-multa' : 'sec-aluguel').querySelector('.num').textContent = '1';
-  const titulo = calc==='multa' ? 'Cálculo de multa rescisória' : 'Cálculo de aluguel proporcional';
+if(CALC_SECS[calc]){
+  Object.keys(CALC_SECS).forEach(k=>{ if(k!==calc){ const s=$(CALC_SECS[k][0]); if(s) s.style.display='none'; } });
+  const sec = $(CALC_SECS[calc][0]);
+  sec.querySelector('.num').textContent = '1';
+  const titulo = CALC_SECS[calc][1];
   document.title = titulo + ' — REMAX Smart';
   document.querySelector('.header h1').childNodes[0].textContent = titulo + ' ';
 }

@@ -128,16 +128,27 @@
       // no Storage abrem em outra origem e não enxergam este localStorage.)
       // Mesclamos pra preservar o que o corretor já ajustou (cargo, CRECI, cidade).
       // No desktop este caminho nem roda — lá o preload/main trata o abrir-template.
-      if (prefill && !ehUrl && /vendido/i.test(raw) && (prefill.nome || prefill.phone || prefill.agent)) {
+      if (prefill && !ehUrl && (prefill.nome || prefill.phone || prefill.agent)) {
+        // 1) Vendido: estado de fábrica (built no bundle).
+        if (/vendido/i.test(raw)) {
+          try {
+            const KEY = 'vendido_editor_v6';
+            let atual = {};
+            try { atual = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) {}
+            if (prefill.nome) atual.nome = prefill.nome;
+            if (prefill.phone) atual.phone = prefill.phone;   // contato na arte
+            if (prefill.agent) atual.agent = prefill.agent;   // foto do corretor
+            localStorage.setItem(KEY, JSON.stringify(atual));
+          } catch (_) { /* localStorage bloqueado: abre sem pré-preencher */ }
+        }
+        // 2) Demais templates locais: um "preenchedor" injetado lê esta chave
+        // genérica (mesmo mecanismo do desktop via preload). Storage (ehUrl) fica de
+        // fora — abre em outra origem e não enxerga este localStorage.
         try {
-          const KEY = 'vendido_editor_v6';
-          let atual = {};
-          try { atual = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) {}
-          if (prefill.nome) atual.nome = prefill.nome;
-          if (prefill.phone) atual.phone = prefill.phone;   // contato na arte
-          if (prefill.agent) atual.agent = prefill.agent;   // foto do corretor
-          localStorage.setItem(KEY, JSON.stringify(atual));
-        } catch (_) { /* localStorage bloqueado: abre sem pré-preencher */ }
+          localStorage.setItem('smarthub_perfil', JSON.stringify({
+            nome: prefill.nome || '', telefone: prefill.phone || '', foto: prefill.agent || ''
+          }));
+        } catch (_) { /* localStorage bloqueado: abre com o demo */ }
       }
       abrirAba(alvo);
     },

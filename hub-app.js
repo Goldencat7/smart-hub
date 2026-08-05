@@ -6048,6 +6048,11 @@ function carregarCalculadoras() {
       calc: 'multa', nome: 'Multa rescisória',
       desc: 'Multa proporcional pela saída antecipada, com base nos dias restantes do contrato.',
       icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><rect x="15" y="12" width="18" height="24" rx="2" fill="none" stroke="#A4D7F4" stroke-width="2"/><path d="M24 19v7" stroke="#DC1C2E" stroke-width="2.5" stroke-linecap="round"/><circle cx="24" cy="30" r="1.4" fill="#DC1C2E"/></svg>`
+    },
+    {
+      calc: 'parceria', nome: 'Comissão de parceria',
+      desc: 'Divide a comissão entre indicação, captação e venda conforme o tipo de parceria RE/MAX.',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><path d="M24 13v9M24 22l-9 13M24 22l9 13" fill="none" stroke="#A4D7F4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="13" r="2.6" fill="#fff"/><circle cx="15" cy="35" r="2.6" fill="#fff"/><circle cx="33" cy="35" r="2.6" fill="#fff"/></svg>`
     }
   ];
 

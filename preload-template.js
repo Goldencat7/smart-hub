@@ -12,6 +12,7 @@ const { ipcRenderer } = require('electron');
 try {
   const prefill = ipcRenderer.sendSync('template-prefill-get');
   if (prefill && (prefill.nome || prefill.phone || prefill.agent)) {
+    // 1) Vendido: lê este estado de fábrica (built no bundle).
     const KEY = 'vendido_editor_v6';
     let atual = {};
     try { atual = JSON.parse(window.localStorage.getItem(KEY) || '{}') || {}; } catch (_) {}
@@ -19,5 +20,16 @@ try {
     if (prefill.phone) atual.phone = prefill.phone;   // contato na arte
     if (prefill.agent) atual.agent = prefill.agent;   // foto do corretor
     window.localStorage.setItem(KEY, JSON.stringify(atual));
+
+    // 2) Demais templates: um "preenchedor" injetado no HTML lê esta chave genérica
+    // (nome/telefone/foto) e preenche os campos. Assim novos templates só precisam
+    // do preenchedor, sem mexer aqui. Ver o <script> injetado em cada template.
+    try {
+      window.localStorage.setItem('smarthub_perfil', JSON.stringify({
+        nome: prefill.nome || '',
+        telefone: prefill.phone || '',
+        foto: prefill.agent || ''
+      }));
+    } catch (_) { /* storage indisponível: template abre com o demo */ }
   }
 } catch (_) { /* sem prefill / storage indisponível: o template abre normal */ }

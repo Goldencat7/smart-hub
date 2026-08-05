@@ -415,12 +415,14 @@ ipcMain.on('abrir-template', async (_e, payload) => {
       preload: path.join(__dirname, 'preload-template.js')
     }
   });
-  // Só os "vendido" leem o estado do editor, e só semeamos se há perfil. O preload
+  // Semeia o perfil do corretor pra QUALQUER template (não só "vendido"): o Vendido
+  // lê de fábrica (localStorage['vendido_editor_v6']); os demais leem um "preenchedor"
+  // injetado que lê localStorage['smarthub_perfil'] (ver preload-template.js). O preload
   // pega isto por IPC síncrono; limpa ao fechar pra não vazar entre janelas.
   // Guardamos o id numa variável: no 'closed' o webContents já foi destruído e
   // ler w.webContents.id lá estoura "Object has been destroyed".
   const wcId = w.webContents.id;
-  if (/vendido/i.test(raw) && prefill && (prefill.nome || prefill.phone || prefill.agent)) {
+  if (prefill && (prefill.nome || prefill.phone || prefill.agent)) {
     _templatePrefill.set(wcId, prefill);
     w.on('closed', () => _templatePrefill.delete(wcId));
   }
