@@ -35,6 +35,31 @@
   .pc-total .rot{font-weight:700;color:#002749;font-size:15px}
   .pc-total .val{font-weight:800;color:#DC1C2E;font-size:22px;font-variant-numeric:tabular-nums}
   .pc-vazio{padding:22px;text-align:center;color:#6b7280;font-size:13px;border:1px dashed #d1d9e3;border-radius:10px;background:#f8fafc}
+  /* Calculadora dos Sonhos (Benchmark REMAX) */
+  .so-intro{font-size:12.5px;color:#374151;background:#eef4fb;border:1px solid #d6e4f5;border-radius:10px;padding:11px 14px;margin-bottom:12px;line-height:1.55}
+  .so-intro b{color:#002749}
+  .so-resumo{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:4px 0 14px}
+  @media(max-width:560px){.so-resumo{grid-template-columns:1fr}}
+  .so-kpi{background:#fbfdff;border:1px solid #e8edf3;border-radius:10px;padding:12px 14px}
+  .so-kpi .rot{font-size:10.5px;color:#6b7280;font-weight:700;text-transform:uppercase;letter-spacing:.02em}
+  .so-kpi .val{font-size:19px;font-weight:800;color:#002749;font-variant-numeric:tabular-nums;margin-top:3px;line-height:1.15}
+  .so-kpi .sub{font-size:11px;color:#6b7280;margin-top:2px}
+  .so-tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  .so-tab{flex:1;min-width:64px;padding:9px 8px;border:1px solid #d1d9e3;background:#fff;border-radius:8px;font-size:13px;font-weight:700;color:#374151;cursor:pointer;text-align:center;font-family:inherit}
+  .so-tab.on{background:#002749;color:#fff;border-color:#002749}
+  .so-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:560px){.so-cols{grid-template-columns:1fr}}
+  .so-col-h{font-weight:800;color:#002749;font-size:13px;margin-bottom:9px;display:flex;align-items:center;gap:7px}
+  .so-col-h .tag{font-size:10px;font-weight:800;padding:2px 8px;border-radius:20px;color:#fff}
+  .so-stage{margin-bottom:8px}
+  .so-stage .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:3px}
+  .so-stage .rot{font-size:12px;color:#374151}
+  .so-stage .num{font-size:13px;font-weight:800;color:#002749;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .so-bar{height:7px;border-radius:6px;background:#eef2f7;overflow:hidden}
+  .so-bar > i{display:block;height:100%;border-radius:6px}
+  .so-nota{font-size:11.5px;color:#6b7280;margin-top:14px;line-height:1.5;background:#f8fafc;border:1px solid #e8edf3;border-radius:8px;padding:9px 12px}
+  #so_com[readonly]{background:#eef2f7;color:#334155;font-weight:700;cursor:default}
+  #so_com[readonly]:focus{outline:none;border-color:#d1d9e3}
 </style>
 </head>
 <body>
@@ -92,15 +117,15 @@
     </div>
   </div>
 
-  <!-- 3. Comissão de parceria RE/MAX -->
+  <!-- 3. Parceria e referenciamentos -->
   <div class="section" id="sec-parceria">
-    <div class="section-title"><span class="num">3</span> Comissão de parceria RE/MAX</div>
+    <div class="section-title"><span class="num">3</span> Parceria e referenciamentos</div>
     <div class="calc-grid">
       <div class="field"><div class="field-header"><label>Valor da comissão</label></div><input type="text" id="pc_comissao" inputmode="numeric" placeholder="R$ 0,00"></div>
       <div class="field"><div class="field-header"><label>Tipo de parceria</label></div>
         <select id="pc_tipo">
           <option value="prop_comp">Referência de proprietário e comprador</option>
-          <option value="prop">Referência de proprietário (vendido pela RE/MAX)</option>
+          <option value="prop">Referência de proprietário (vendido pela REMAX)</option>
           <option value="comp">Referência só de comprador</option>
           <option value="prop_outra">Referência de proprietário, vendido por outra imobiliária</option>
         </select>
@@ -109,7 +134,27 @@
     <div id="pc_res" style="margin-top:8px">
       <div class="pc-vazio">Informe o valor da comissão acima para ver a divisão entre as partes.</div>
     </div>
-    <div class="calc-nota">Sobre cada valor destinado a um corretor RE/MAX, ainda se aplica o percentual de associação dele (conforme o plano do corretor).</div>
+    <div class="calc-nota">Sobre cada valor destinado a um corretor REMAX, ainda se aplica o percentual de associação dele (conforme o plano do corretor).</div>
+  </div>
+
+  <!-- 4. Calculadora dos Sonhos (Benchmark REMAX) -->
+  <div class="section" id="sec-sonhos">
+    <div class="section-title"><span class="num">4</span> Calculadora dos Sonhos</div>
+    <div class="so-intro">Defina a sua <b>meta de comissão no ano</b> e o <b>ticket médio</b> da sua região. A partir do benchmark REMAX (Broker 101), a calculadora mostra quantas transações e atividades de funil você precisa fazer por <b>ano, mês, semana e dia</b> para chegar lá.</div>
+    <div class="calc-grid">
+      <div class="field"><div class="field-header"><label>Meta de comissão no ano</label></div><input type="text" id="so_meta" inputmode="numeric" placeholder="R$ 0,00"></div>
+      <div class="field"><div class="field-header"><label>Ticket médio da sua área <span class="hint">(preço de venda)</span></label></div><input type="text" id="so_ticket" inputmode="numeric" placeholder="R$ 0,00"></div>
+      <div class="field"><div class="field-header"><label>Corretor</label></div>
+        <select id="so_corretor">
+          <option value="40">40%</option>
+          <option value="45">45%</option>
+        </select>
+      </div>
+      <div class="field"><div class="field-header"><label>Comissão padrão REMAX <span class="hint">(definida pelo plano)</span></label></div><input type="text" id="so_com" value="2,4" readonly aria-readonly="true" tabindex="-1"></div>
+    </div>
+    <div id="so_res" style="margin-top:8px">
+      <div class="pc-vazio">Informe a meta de comissão e o ticket médio acima para ver o seu plano.</div>
+    </div>
   </div>
 </div>
 
@@ -125,10 +170,13 @@ function diasEntre(msIni, msFim){ if(msIni==null||msFim==null) return null; retu
 const $ = id => document.getElementById(id);
 
 // Máscara de dinheiro nos campos monetários
-['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao'].forEach(id=>{
+['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao','so_meta','so_ticket'].forEach(id=>{
   $(id).addEventListener('input', e=>{ e.target.value = maskMoney(e.target.value); calcular(); });
 });
 $('pc_tipo').addEventListener('change', calcular);
+// Comissão padrão REMAX definida pelo plano do corretor: 40% → 2,4 · 45% → 2,7 (campo só-leitura)
+const SO_COM_PLANO = { '40': '2,4', '45': '2,7' };
+$('so_corretor').addEventListener('change', e=>{ $('so_com').value = SO_COM_PLANO[e.target.value] || '2,4'; calcular(); });
 // Campos numéricos simples (só dígitos)
 ['al_diasMes','al_diasCont'].forEach(id=>{
   $(id).addEventListener('input', e=>{ e.target.value = e.target.value.replace(/\D/g,''); calcular(); });
@@ -183,9 +231,10 @@ function calcular(){
   else aviso.style.display='none';
 
   calcParceria();
+  calcSonhos();
 }
 
-// ── 3. Comissão de parceria RE/MAX ──
+// ── 3. Parceria e referenciamentos ──
 // A comissão é dividida em duas metades (captação/proprietário e venda/comprador);
 // dentro de cada metade, 25% vai pra indicação e 75% pra quem trabalhou. Conforme
 // a planilha de referência da parceria.
@@ -216,7 +265,7 @@ function calcParceria(){
   ];
   else /* prop_outra */ partes = [
     { ...IND_IMOVEL, val:q }, { ...CAPTACAO, val:tq },
-    { rot:'Imobiliária não RE/MAX', desc:'Repasse à imobiliária que efetuou a venda', cor:C.cinza, val:meia }
+    { rot:'Imobiliária não REMAX', desc:'Repasse à imobiliária que efetuou a venda', cor:C.cinza, val:meia }
   ];
   let html = '<div class="pc-explica">A comissão de <b>'+fmtBRL(com)+'</b> é dividida em duas metades — uma para o <b>lado do imóvel</b> (captação) e outra para o <b>lado da venda</b> (comprador). Em cada metade, <b>25%</b> vai para quem <b>indicou</b> e <b>75%</b> para quem <b>trabalhou</b>.</div>';
   partes.forEach(p=>{
@@ -232,11 +281,113 @@ function calcParceria(){
   res.innerHTML = html;
 }
 
-// Exibe só a calculadora indicada por ?calc=aluguel|multa|parceria (sem o parâmetro, mostra todas)
+// ── 4. Calculadora dos Sonhos (Benchmark REMAX — Broker 101) ──
+// A partir da meta de comissão, calcula o Valor Geral de Vendas e o nº de transações do
+// ano; depois, aplicando as taxas de conversão do benchmark, "sobe" o funil de captação e
+// de venda até o 1º contato — por ano, mês, semana e dia. Fórmulas espelham a planilha.
+let soTab = 'ano';
+// Etapas do funil (do resultado no topo até o 1º contato). `div` = taxa de conversão da
+// etapa anterior para esta (ex.: metade das representações vira apresentação → /0.5).
+const SO_CAPT = [
+  { rot:'Imóveis captados / vendidos',      div:1 },
+  { rot:'Representação do cliente vendedor', div:0.5 },
+  { rot:'Apresentação ACM e Plano de MKT',  div:0.5 },
+  { rot:'1ª Visita',                         div:0.5 },
+  { rot:'Agendamento',                       div:0.5 },
+  { rot:'Contato com proprietário',          div:0.66 },
+  { rot:'1º Contato',                        div:0.6 }
+];
+const SO_VEND = [
+  { rot:'Imóveis comprados',    div:1 },
+  { rot:'Propostas aceitas',    div:0.8 },
+  { rot:'Propostas por escrito', div:0.7 },
+  { rot:'Imóveis visitados',    div:0.6 },
+  { rot:'Imóveis ofertados',    div:0.4 },
+  { rot:'Qualificação',         div:0.4 },
+  { rot:'1º Contato',           div:0.3 }
+];
+function soFunil(base, stages){
+  const out=[]; let v=base;
+  stages.forEach((s,i)=>{ v = (i===0) ? base : v/s.div; out.push({ rot:s.rot, val:v }); });
+  return out;
+}
+function soFmt(v, tf){
+  if(tf==='ano' || tf==='mes') return Math.round(v).toLocaleString('pt-BR');
+  return v.toLocaleString('pt-BR', { minimumFractionDigits:1, maximumFractionDigits:1 });
+}
+function soColuna(titulo, tag, tagCor, barCor, funil){
+  // funil vem do resultado → 1º contato; exibe invertido (topo largo = mais contatos)
+  const arr = funil.slice().reverse();
+  const max = Math.max.apply(null, arr.map(s=>s.val)) || 1;
+  let h = '<div><div class="so-col-h">'+titulo+' <span class="tag" style="background:'+tagCor+'">'+tag+'</span></div>';
+  arr.forEach(s=>{
+    const w = Math.max(4, s.val/max*100);
+    h += '<div class="so-stage"><div class="top"><span class="rot">'+s.rot
+       + '</span><span class="num">'+soFmt(s.val, soTab)+'</span></div>'
+       + '<div class="so-bar"><i style="width:'+w+'%;background:'+barCor+'"></i></div></div>';
+  });
+  return h+'</div>';
+}
+function calcSonhos(){
+  const res = $('so_res');
+  if(!res) return;
+  const meta   = parseMoney($('so_meta').value);
+  const ticket = parseMoney($('so_ticket').value);
+  const comPct = parseFloat(($('so_com').value||'').replace(',','.')) || 0;
+  const com = comPct/100;
+  if(!meta || !ticket || !com){
+    res.innerHTML = '<div class="pc-vazio">Informe a meta de comissão, o ticket médio e a comissão padrão para ver o seu plano.</div>';
+    return;
+  }
+  const vgv = meta/com;                 // Valor Geral de Vendas
+  const transacoes = (vgv/ticket)*2;    // nº de transações no ano
+  const capt = transacoes/2, vend = transacoes - capt;
+
+  // Funis por período (mês = ano/12; semana capt = mês/4, venda = mês/5; dia = semana/5)
+  let fc, fv, ehDia=false;
+  if(soTab==='ano'){        fc=soFunil(capt, SO_CAPT);         fv=soFunil(vend, SO_VEND); }
+  else if(soTab==='mes'){   fc=soFunil(capt/12, SO_CAPT);      fv=soFunil(vend/12, SO_VEND); }
+  else if(soTab==='semana'){fc=soFunil(capt/12/4, SO_CAPT);    fv=soFunil(vend/12/5, SO_VEND); }
+  else { // dia: as 3 etapas de maior volume da semana, divididas por 5 dias úteis
+    const wc=soFunil(capt/12/4, SO_CAPT), wv=soFunil(vend/12/5, SO_VEND);
+    fc = wc.slice(4).map(s=>({ rot:s.rot, val:s.val/5 }));
+    fv = wv.slice(4).map(s=>({ rot:s.rot, val:s.val/5 }));
+    ehDia = true;
+  }
+
+  let html = '<div class="so-resumo">'
+    + '<div class="so-kpi"><div class="rot">VGV necessário no ano</div><div class="val">'+fmtBRL(vgv)+'</div><div class="sub">Volume geral de vendas</div></div>'
+    + '<div class="so-kpi"><div class="rot">Transações no ano</div><div class="val">'+soFmt(transacoes,'ano')+'</div><div class="sub">Total de negócios a fechar</div></div>'
+    + '<div class="so-kpi"><div class="rot">Captação · Venda</div><div class="val">'+soFmt(capt,'ano')+' · '+soFmt(vend,'ano')+'</div><div class="sub">Divisão das transações</div></div>'
+    + '</div>';
+
+  const tabs = [['ano','Ano'],['mes','Mês'],['semana','Semana'],['dia','Dia']];
+  html += '<div class="so-tabs">'+tabs.map(t=>'<button type="button" class="so-tab'+(soTab===t[0]?' on':'')+'" data-sotab="'+t[0]+'">'+t[1]+'</button>').join('')+'</div>';
+
+  html += '<div class="so-cols">'
+    + soColuna('Lado da captação', 'imóvel', '#002749', '#3b6fd4', fc)
+    + soColuna('Lado da venda', 'comprador', '#DC1C2E', '#e8804d', fv)
+    + '</div>';
+
+  const legenda = ehDia
+    ? 'Mostrando as <b>atividades diárias</b> (as etapas de maior volume), por dia útil.'
+    : soTab==='ano'   ? 'Metas para o <b>ano inteiro</b>.'
+    : soTab==='mes'   ? 'Metas <b>por mês</b> (ano ÷ 12).'
+    :                   'Metas <b>por semana</b>.';
+  html += '<div class="so-nota">'+legenda+' As taxas de conversão entre as etapas seguem o benchmark REMAX (Broker 101). Os números são estimativas de planejamento — arredonde para cima ao se organizar.</div>';
+
+  res.innerHTML = html;
+  res.querySelectorAll('[data-sotab]').forEach(b=>{
+    b.addEventListener('click', ()=>{ soTab = b.getAttribute('data-sotab'); calcSonhos(); });
+  });
+}
+
+// Exibe só a calculadora indicada por ?calc=aluguel|multa|parceria|sonhos (sem o parâmetro, mostra todas)
 const CALC_SECS = {
   aluguel:  ['sec-aluguel',  'Cálculo de aluguel proporcional'],
   multa:    ['sec-multa',    'Cálculo de multa rescisória'],
-  parceria: ['sec-parceria', 'Comissão de parceria RE/MAX']
+  parceria: ['sec-parceria', 'Parceria e referenciamentos'],
+  sonhos:   ['sec-sonhos',   'Calculadora dos Sonhos']
 };
 const calc = new URLSearchParams(location.search).get('calc');
 if(CALC_SECS[calc]){

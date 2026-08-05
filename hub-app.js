@@ -6050,9 +6050,14 @@ function carregarCalculadoras() {
       icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><rect x="15" y="12" width="18" height="24" rx="2" fill="none" stroke="#A4D7F4" stroke-width="2"/><path d="M24 19v7" stroke="#DC1C2E" stroke-width="2.5" stroke-linecap="round"/><circle cx="24" cy="30" r="1.4" fill="#DC1C2E"/></svg>`
     },
     {
-      calc: 'parceria', nome: 'Comissão de parceria',
-      desc: 'Divide a comissão entre indicação, captação e venda conforme o tipo de parceria RE/MAX.',
+      calc: 'parceria', nome: 'Parceria e referenciamentos',
+      desc: 'Divide a comissão entre indicação, captação e venda conforme o tipo de parceria REMAX.',
       icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><path d="M24 13v9M24 22l-9 13M24 22l9 13" fill="none" stroke="#A4D7F4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="24" cy="13" r="2.6" fill="#fff"/><circle cx="15" cy="35" r="2.6" fill="#fff"/><circle cx="33" cy="35" r="2.6" fill="#fff"/></svg>`
+    },
+    {
+      calc: 'sonhos', nome: 'Calculadora dos Sonhos',
+      desc: 'A partir da sua meta de comissão no ano, mostra quantas transações e atividades você precisa por ano, mês, semana e dia (benchmark REMAX).',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><path d="M14 34l7-8 5 4 8-11" fill="none" stroke="#A4D7F4" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 19h5v5" fill="none" stroke="#DC1C2E" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`
     }
   ];
 
