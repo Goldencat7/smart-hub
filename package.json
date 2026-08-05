@@ -87,7 +87,7 @@
     "publish": {
       "provider": "github",
       "owner": "Goldencat7",
-      "repo": "remax-smart-hub",
+      "repo": "smart-hub",
       "releaseType": "release"
     }
   }
