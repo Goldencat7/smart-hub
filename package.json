@@ -6,8 +6,10 @@
   "main": "main.js",
   "type": "commonjs",
   "author": {
-    "name": "Remax Smart"
+    "name": "Nathan Gabriel do Vale Almeida",
+    "email": "nathangabrieldovale07@gmail.com"
   },
+  "copyright": "Copyright (c) 2026 Nathan Gabriel do Vale Almeida. Todos os direitos reservados.",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",

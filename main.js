@@ -1,3 +1,8 @@
+/*
+ * REMAX Smart Hub
+ * Copyright (c) 2026 Nathan Gabriel do Vale Almeida <nathangabrieldovale07@gmail.com>
+ * Autor e titular dos direitos. Todos os direitos reservados. Ver arquivo LICENSE.
+ */
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
