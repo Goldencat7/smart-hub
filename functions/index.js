@@ -100,6 +100,7 @@ const BOT_GH_TOKEN = defineSecret('BOT_GH_TOKEN');
 const BOT_HOOK_SECRET = defineSecret('BOT_HOOK_SECRET');
 const HUB_CHECKVISTO_SECRET = defineSecret('HUB_CHECKVISTO_SECRET'); // integração CheckVisto (INTEGRACAO-CHECKVISTO.md)
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY'); // Assistente de Leads (IA · Gemini)
+const RECRUTAMENTO_SECRET = defineSecret('RECRUTAMENTO_SECRET'); // webhook do formulário de recrutamento de corretores
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
@@ -7072,7 +7073,7 @@ exports.sugerirRespostaLead = onCall({ secrets: [GEMINI_API_KEY] }, async (req) 
 
 // ─── Notícia de imóveis (banner automático) ──────────────────────────────────
 // Lê o RSS do Google Notícias (imóveis/BR), guarda a lista ~1h no Firestore e
-// devolve a manchete da FAIXA DE 30 MIN atual (todos veem a mesma; troca sozinho).
+// devolve a LISTA de manchetes (o Hub mostra uma diferente a cada aparição do banner).
 // SEM IA, SEM chave, SEM secret — só um feed. O cliente nunca lê o cache direto:
 // pega tudo pelo retorno desta função (usuário logado do Hub).
 const NOTICIA_CACHE_DOC = '_cache/noticia_imoveis';
@@ -7131,4 +7132,180 @@ exports.noticiaImoveisDoDia = onCall(async (req) => {
   if (!itens.length) return { ok: false };
   // Devolve a lista; o Hub mostra uma manchete diferente a cada vez que o banner aparece.
   return { ok: true, itens: itens.slice(0, 10) };
+});
+
+// ═══ RECRUTAMENTO DE CORRETORES ══════════════════════════════════════════════
+// CRM de funil pra recrutar corretores. Os candidatos chegam por um Google Forms
+// (webhook → Apps Script) e o GESTOR trabalha cada um no Hub (só gestor vê).
+// ⚠️ DADOS SENSÍVEIS (RG, CPF, dados bancários): escrita/leitura SÓ via estas
+// functions (Admin SDK). As regras do Firestore negam acesso direto do cliente à
+// coleção `candidatos` (default-deny). Entra na LGPD quando ela for ligada.
+const REC_ETAPAS = ['sem_contato', 'contato_realizado', 'reuniao_agendada', 'reuniao_realizada', 'associado', 'desassociado'];
+const REC_STATUS = ['ativo', 'inativo'];
+
+// Serializa um candidato pro cliente (Timestamps viram ISO).
+function _recSerializar(id, d) {
+  const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : (typeof t === 'string' ? t : null));
+  return {
+    id,
+    nome: d.nome || '', email: d.email || '', telefone: d.telefone || '',
+    rg: d.rg || '', cpf: d.cpf || '', endereco: d.endereco || '', dadosBancarios: d.dadosBancarios || '',
+    expImobiliaria: !!d.expImobiliaria, expImobiliariaDesc: d.expImobiliariaDesc || '',
+    expVendas: !!d.expVendas, expVendasDesc: d.expVendasDesc || '',
+    maiorSonho: d.maiorSonho || '', opiniaoRemax: d.opiniaoRemax || '', clubeDesejado: d.clubeDesejado || '',
+    etapa: d.etapa || 'sem_contato', status: d.status || 'ativo',
+    perfil: d.perfil || '', nota: (d.nota != null ? d.nota : ''), tags: Array.isArray(d.tags) ? d.tags : [],
+    origem: d.origem || 'manual',
+    historico: Array.isArray(d.historico) ? d.historico : [],
+    criadoEm: iso(d.criadoEm), atualizadoEm: iso(d.atualizadoEm)
+  };
+}
+
+// Webhook do Google Forms (Apps Script POSTa aqui a cada resposta). Cria/atualiza o
+// candidato na etapa inicial. Idempotente por CPF (reenvio não duplica). Secret no header.
+exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, async (req, res) => {
+  try {
+    if (req.method !== 'POST') return res.status(405).json({ ok: false });
+    if ((req.get('x-recrutamento-secret') || '') !== RECRUTAMENTO_SECRET.value()) return res.status(401).json({ ok: false });
+    const b = req.body || {};
+    const nome = _txt(b.nome, 160);
+    if (!nome) return res.status(400).json({ ok: false, erro: 'nome obrigatório' });
+    const cpf = _txt(b.cpf, 20);
+    const sim = (v) => v === true || /^sim$/i.test(String(v || '').trim());
+
+    const dados = {
+      nome, email: _txt(b.email, 160), telefone: _txt(b.telefone, 40),
+      rg: _txt(b.rg, 40), cpf, endereco: _txt(b.endereco, 300), dadosBancarios: _txt(b.dadosBancarios, 400),
+      expImobiliaria: sim(b.expImobiliaria), expImobiliariaDesc: _txt(b.expImobiliariaDesc, 2000),
+      expVendas: sim(b.expVendas), expVendasDesc: _txt(b.expVendasDesc, 2000),
+      maiorSonho: _txt(b.maiorSonho, 2000), opiniaoRemax: _txt(b.opiniaoRemax, 2000),
+      clubeDesejado: _txt(b.clubeDesejado, 120),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // Dedupe por CPF: reenvio da mesma pessoa atualiza os dados, não cria duplicado.
+    let ref = null, existe = false;
+    if (cpf) {
+      const q = await db.collection('candidatos').where('cpf', '==', cpf).limit(1).get();
+      if (!q.empty) { ref = q.docs[0].ref; existe = true; }
+    }
+    if (!ref) ref = db.collection('candidatos').doc();
+
+    if (existe) {
+      await ref.set({ ...dados, historico: admin.firestore.FieldValue.arrayUnion({
+        texto: 'Reenviou o formulário de inscrição', etapa: '', por: 'form', porNome: 'Formulário', em: Date.now()
+      }) }, { merge: true });
+    } else {
+      await ref.set({
+        ...dados, etapa: 'sem_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'formulario',
+        historico: [{ texto: 'Inscrição recebida pelo formulário', etapa: 'sem_contato', por: 'form', porNome: 'Formulário', em: Date.now() }],
+        criadoEm: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    return res.json({ ok: true, id: ref.id, atualizado: existe });
+  } catch (e) {
+    await logErro('recrutamentoWebhook', e, {});
+    return res.status(500).json({ ok: false });
+  }
+});
+
+// (gestor) Lista os candidatos — SÓ campos leves (sem PII pesada: nada de CPF/RG/banco).
+exports.recrutamentoListar = onCall(async (req) => {
+  await exigirGestor(req);
+  const snap = await db.collection('candidatos').orderBy('atualizadoEm', 'desc').limit(1000).get();
+  const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null);
+  const itens = snap.docs.map(doc => {
+    const d = doc.data();
+    return {
+      id: doc.id, nome: d.nome || '', etapa: d.etapa || 'sem_contato', status: d.status || 'ativo',
+      perfil: d.perfil || '', nota: (d.nota != null ? d.nota : ''), tags: Array.isArray(d.tags) ? d.tags : [],
+      origem: d.origem || 'manual', atualizadoEm: iso(d.atualizadoEm), criadoEm: iso(d.criadoEm)
+    };
+  });
+  return { ok: true, itens };
+});
+
+// (gestor) Um candidato completo (com a PII).
+exports.recrutamentoObter = onCall(async (req) => {
+  await exigirGestor(req);
+  const id = _txt((req.data || {}).id, 60);
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  const snap = await db.collection('candidatos').doc(id).get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
+  return { ok: true, candidato: _recSerializar(snap.id, snap.data()) };
+});
+
+// (gestor) Cria (manual) ou edita um candidato. Mudança de etapa gera histórico automático.
+exports.recrutamentoSalvar = onCall(async (req) => {
+  const auth = await exigirGestor(req);
+  const d = req.data || {};
+  const id = _txt(d.id, 60);
+  const porNome = _txt(d.porNome, 80) || 'Gestor';
+
+  // Campos editáveis (todos opcionais no update; nome obrigatório na criação).
+  const patch = {};
+  const setStr = (k, max) => { if (typeof d[k] === 'string') patch[k] = d[k].trim().slice(0, max); };
+  ['nome', 'email', 'telefone', 'rg', 'cpf', 'endereco', 'dadosBancarios', 'perfil', 'expImobiliariaDesc', 'expVendasDesc', 'maiorSonho', 'opiniaoRemax', 'clubeDesejado'].forEach(k => setStr(k, 400));
+  if (typeof d.nome === 'string') patch.nome = d.nome.trim().slice(0, 160);
+  if (typeof d.expImobiliaria === 'boolean') patch.expImobiliaria = d.expImobiliaria;
+  if (typeof d.expVendas === 'boolean') patch.expVendas = d.expVendas;
+  if (d.nota != null) patch.nota = _txt(String(d.nota), 20);
+  if (Array.isArray(d.tags)) patch.tags = d.tags.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim().slice(0, 40)).slice(0, 20);
+  if (d.etapa != null) { if (!REC_ETAPAS.includes(d.etapa)) throw new HttpsError('invalid-argument', 'Etapa inválida.'); patch.etapa = d.etapa; }
+  if (d.status != null) { if (!REC_STATUS.includes(d.status)) throw new HttpsError('invalid-argument', 'Status inválido.'); patch.status = d.status; }
+  patch.atualizadoEm = admin.firestore.FieldValue.serverTimestamp();
+
+  if (!id) {
+    if (!patch.nome) throw new HttpsError('invalid-argument', 'O nome é obrigatório.');
+    const ref = await db.collection('candidatos').add({
+      etapa: 'sem_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'manual',
+      ...patch,
+      historico: [{ texto: 'Candidato cadastrado manualmente', etapa: patch.etapa || 'sem_contato', por: auth.uid, porNome, em: Date.now() }],
+      criadoEm: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { ok: true, id: ref.id };
+  }
+
+  // Update: relê pra detectar mudança de etapa e carimbar histórico.
+  const ref = db.collection('candidatos').doc(id);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
+    const antes = snap.data();
+    const writes = { ...patch };
+    if (patch.etapa && patch.etapa !== antes.etapa) {
+      writes.historico = admin.firestore.FieldValue.arrayUnion({
+        texto: 'Etapa alterada para ' + patch.etapa.replace(/_/g, ' '), etapa: patch.etapa, por: auth.uid, porNome, em: Date.now()
+      });
+    }
+    tx.set(ref, writes, { merge: true });
+  });
+  return { ok: true, id };
+});
+
+// (gestor) Adiciona um registro no histórico do candidato.
+exports.recrutamentoHistorico = onCall(async (req) => {
+  const auth = await exigirGestor(req);
+  const d = req.data || {};
+  const id = _txt(d.id, 60);
+  const texto = _txt(d.texto, 1000);
+  const porNome = _txt(d.porNome, 80) || 'Gestor';
+  if (!id || !texto) throw new HttpsError('invalid-argument', 'id e texto são obrigatórios.');
+  const ref = db.collection('candidatos').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
+  await ref.set({
+    historico: admin.firestore.FieldValue.arrayUnion({ texto, etapa: '', por: auth.uid, porNome, em: Date.now() }),
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true };
+});
+
+// (gestor) Exclui um candidato (some com a PII — decisão do gestor).
+exports.recrutamentoExcluir = onCall(async (req) => {
+  await exigirGestor(req);
+  const id = _txt((req.data || {}).id, 60);
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  await db.collection('candidatos').doc(id).delete();
+  return { ok: true };
 });
