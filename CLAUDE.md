@@ -381,6 +381,27 @@ produção apontar pro lugar errado:
   - Custo estimado: <$1/mês para 12 corretores (~30 fichas/mês, ~$0,02/conversa utility).
   - Setup: Meta for Developers → Meta Business Account → cadastrar número → aprovar template de mensagem (~24h) → token na Cloud Function.
 
+### IA — próximas automações + custo do Gemini (ideia, 2026-08-06)
+Seguindo a linha das IAs que já existem (`sugerirRespostaLead` no Hub + gerador de descrição no
+CheckVisto), próximas automações candidatas — **todas no mesmo molde** (Cloud Function + secret
+`GEMINI_API_KEY` + `responseSchema` + humano revisa; nunca decisão autônoma com peso legal/financeiro):
+- **🥇 Gerador de anúncio do imóvel** (o mais natural): botão "Gerar anúncio com IA" na Carteira →
+  usa os dados do imóvel (tipo, bairro, valor, características — **sem PII do proprietário**) e devolve
+  título + descrição pro portal/marketing. Irmão do gerador do CheckVisto; reusa o padrão da
+  `sugerirRespostaLead` (linha ~7007 do `functions/index.js`). Aditivo, baixo risco. Fazer no staging 1º.
+- Resumo automático da ficha (3 linhas pro corretor; PII → 100% servidor).
+- Próxima ação inteligente no Negócio + rascunho do follow-up daquele estágio.
+- Transcrição de áudio de lead (WhatsApp) → alimenta o assistente de resposta.
+
+**⚠️ Custo/limite do Gemini** (medo do Nathan de "acabar os créditos", 2026-08-06): hoje a MESMA chave
+serve o Hub e o CheckVisto. O plano grátis **não é saldo que some** — são **limites por dia/minuto que
+reiniciam**; estourar = `429`, que o código já trata ("limite grátis atingido, tente mais tarde"). Volume
+real é baixo (IA **só por clique**, equipe pequena) → provavelmente longe do teto. **Solução se quiser
+blindar antes de adicionar mais IA:** ativar **billing** no projeto do Gemini (Flash custa fração de
+centavo/chamada → centavos a poucos R$/mês) **+ teto de orçamento com alerta** (impossível surpresa na
+conta). Extra: **chaves separadas** por app pra enxergar consumo de cada um. Nathan preferiu **não ativar
+billing por enquanto** — deixar como ideia. O passo a passo do billing/alerta ele faz (Claude não toca na chave).
+
 ### LGPD — código PRONTO, porém DESATIVADO de propósito (2026-07-14)
 Escrito e revisado, mas **não deployado** e **fora do ar** — o Nathan pediu pra deixar parado
 ("não vamos colocar a lgpd agr"). Não ligar sem resolver o item que trava.

@@ -86,6 +86,7 @@ const marcarNotificacaoLida = httpsCallable(fns, 'marcarNotificacaoLida');
 const responderConvite = httpsCallable(fns, 'responderConvite');
 const getBanner        = httpsCallable(fns, 'getBanner');
 const listarBanners    = httpsCallable(fns, 'listarBanners');
+const noticiaImoveisDoDia = httpsCallable(fns, 'noticiaImoveisDoDia');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
@@ -384,7 +385,11 @@ let temPermTI = false;
 let statusApps = {};
 let treinamentoLinks = {};     // { itemId: { url, tipo } }
 let treinamentoCatAberta = null; // id da categoria expandida no accordion
-let bannerImagens = [];            // array de data URLs dos banners
+let bannerImagens = [];            // array final exibido no carrossel (admin + notícia)
+let bannerAdmin = [];              // só os banners do admin (antes de anexar a notícia)
+let bannerNoticia = null;          // slot da notícia (último item), ou null
+let noticiaLista = [];             // manchetes do RSS (troca a cada vez que o banner aparece)
+let noticiaPtr = 0;                // ponteiro da manchete atual
 let bannerIdx = 0;                 // índice do banner atual no carrossel
 let renderizandoCal = false;
 let renderCalPendente = false;    // fix 3: guarda clique durante render pra re-renderizar depois
@@ -938,20 +943,72 @@ function renderCentro() {
 
 // ─── Banner principal ──────────────────────────────────────────────────────
 const bannerEl = document.getElementById('bannerPrincipal');
+// Estrutura: um conteúdo (trocado a cada banner) + setas de navegação persistentes.
+bannerEl.classList.add('banner-wrap');
+bannerEl.innerHTML =
+  '<div class="banner-conteudo"></div>' +
+  '<button type="button" class="banner-nav banner-nav--prev" aria-label="Banner anterior">‹</button>' +
+  '<button type="button" class="banner-nav banner-nav--next" aria-label="Próximo banner">›</button>';
+const bannerConteudo = bannerEl.querySelector('.banner-conteudo');
+// Clique no banner de notícia abre a matéria no navegador (ignora as setas)
+bannerEl.addEventListener('click', (e) => {
+  if (e.target.closest('.banner-nav')) return;
+  const b = bannerImagens[bannerIdx];
+  if (b && b.tipo === 'noticia' && b.link) abrirNoNavegador(b.link);
+});
+bannerEl.querySelector('.banner-nav--prev').addEventListener('click', (e) => { e.stopPropagation(); irBanner(-1); });
+bannerEl.querySelector('.banner-nav--next').addEventListener('click', (e) => { e.stopPropagation(); irBanner(1); });
 
 let bannerAssinatura = '';   // id:rev dos banners carregados — o timer compara isso via chamada LEVE
 function _bannerAss(lista) { return (lista || []).map(b => b.id + ':' + (b.rev || 0)).join('|'); }
 async function carregarBanner() {
   try {
     const r = await listarBanners();
-    bannerImagens = (r.data.banners || []).filter(b => b.imagem || b.mediaUrl);
+    bannerAdmin = (r.data.banners || []).filter(b => b.imagem || b.mediaUrl);
     bannerAssinatura = _bannerAss(r.data.banners);
   } catch (e) {
     console.warn('Banner:', e);
-    bannerImagens = [];
+    bannerAdmin = [];
   }
+  await carregarNoticia();   // notícia de imóveis do dia (falha silenciosa)
+  comporBanners();
   bannerIdx = 0;
   iniciarRotacaoBanner();
+  iniciarRefreshNoticia();
+}
+
+// Notícia de imóveis (banner automático): pega a manchete da faixa de 30 min.
+// Falha silenciosa — sem notícia, o carrossel fica só com os banners do admin.
+async function carregarNoticia() {
+  try {
+    const r = await noticiaImoveisDoDia();
+    const d = r && r.data;
+    noticiaLista = (d && d.ok && Array.isArray(d.itens))
+      ? d.itens.filter(n => n && n.titulo && n.link)
+      : [];
+  } catch (_) { noticiaLista = []; }
+  noticiaPtr = 0;
+  // O slot da notícia tem os campos preenchidos na hora de renderizar (troca a cada aparição).
+  bannerNoticia = noticiaLista.length
+    ? { tipo: 'noticia', id: '__noticia', rev: 0, titulo: '', fonte: '', link: '' }
+    : null;
+}
+
+// Array exibido = banners do admin + a notícia como ÚLTIMO item.
+function comporBanners() {
+  bannerImagens = bannerNoticia ? bannerAdmin.concat([bannerNoticia]) : bannerAdmin.slice();
+}
+
+// Re-busca a lista de manchetes a cada 1h (o feed é cacheado ~1h no servidor),
+// sem rebaixar os banners pesados do admin. A troca por aparição é local.
+function iniciarRefreshNoticia() {
+  clearTimeout(window.__noticiaTimer);
+  window.__noticiaTimer = setTimeout(async () => {
+    await carregarNoticia();
+    comporBanners();
+    if (bannerIdx >= bannerImagens.length) bannerIdx = 0;
+    iniciarRefreshNoticia();
+  }, 60 * 60 * 1000);
 }
 // Checagem barata do timer: pede só id+rev ({leve:true}) e só rebaixa o payload
 // completo (base64 de até 600KB por banner) quando a assinatura mudou de fato.
@@ -966,6 +1023,19 @@ async function bannerMudou() {
 const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'locacoes', 'ti']);
 
 function renderBannerEl(banner) {
+  if (banner.tipo === 'noticia') {
+    // Cada vez que o banner de notícia aparece, mostra a próxima manchete da lista.
+    if (noticiaLista.length) {
+      const n = noticiaLista[noticiaPtr % noticiaLista.length];
+      noticiaPtr++;
+      banner.titulo = n.titulo; banner.fonte = n.fonte || ''; banner.link = n.link;
+    }
+    return `<div class="banner-noticia" role="link" tabindex="0" title="Abrir a notícia no navegador">
+      <div class="bn-tag"><span class="bn-dot"></span>Notícia do dia · imóveis</div>
+      <div class="bn-titulo">${escapeHtml(banner.titulo || '')}</div>
+      <div class="bn-rodape">${banner.fonte ? escapeHtml(banner.fonte) + ' · ' : ''}ler a matéria →</div>
+    </div>`;
+  }
   if (banner.tipo === 'video') {
     // loop SÓ quando é o único banner; com vários, sem loop pra o evento 'ended' disparar e avançar
     const loop = bannerImagens.length <= 1 ? 'loop' : '';
@@ -978,8 +1048,9 @@ function renderBannerEl(banner) {
 function atualizarBanner() {
   const mostrar = !SEM_BANNER.has(categoriaAtiva) && bannerImagens.length > 0;
   bannerEl.hidden = !mostrar;
-  if (mostrar && !bannerEl.children.length) {
-    bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
+  bannerEl.classList.toggle('banner-sem-nav', bannerImagens.length <= 1);
+  if (mostrar && !bannerConteudo.childElementCount) {
+    bannerConteudo.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
     agendarProximoBanner(); // DOM já tem o elemento — listener de 'ended' vai funcionar
   }
 }
@@ -989,10 +1060,23 @@ function avancarBanner() {
   bannerEl.style.opacity = '0';
   setTimeout(() => {
     bannerIdx = (bannerIdx + 1) % bannerImagens.length;
-    bannerEl.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
+    bannerConteudo.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
     bannerEl.style.opacity = '1';
     agendarProximoBanner();
   }, 400);
+}
+
+// Navegação manual pelas setas (‹ ›): pula/volta um banner e reprograma o giro.
+function irBanner(dir) {
+  if (bannerImagens.length <= 1) return;
+  clearTimeout(window.__bannerTimer);
+  bannerEl.style.opacity = '0';
+  setTimeout(() => {
+    bannerIdx = (bannerIdx + dir + bannerImagens.length) % bannerImagens.length;
+    bannerConteudo.innerHTML = renderBannerEl(bannerImagens[bannerIdx]);
+    bannerEl.style.opacity = '1';
+    agendarProximoBanner();
+  }, 200);
 }
 
 function agendarProximoBanner() {

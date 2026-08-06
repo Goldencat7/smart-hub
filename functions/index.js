@@ -7069,3 +7069,66 @@ exports.sugerirRespostaLead = onCall({ secrets: [GEMINI_API_KEY] }, async (req) 
   if (!respostas.length) throw new HttpsError('internal', 'A IA não retornou respostas utilizáveis. Tente de novo.');
   return { ok: true, respostas, dica: typeof out.dica === 'string' ? out.dica : '', modelo: MODEL };
 });
+
+// ─── Notícia de imóveis (banner automático) ──────────────────────────────────
+// Lê o RSS do Google Notícias (imóveis/BR), guarda a lista ~1h no Firestore e
+// devolve a manchete da FAIXA DE 30 MIN atual (todos veem a mesma; troca sozinho).
+// SEM IA, SEM chave, SEM secret — só um feed. O cliente nunca lê o cache direto:
+// pega tudo pelo retorno desta função (usuário logado do Hub).
+const NOTICIA_CACHE_DOC = '_cache/noticia_imoveis';
+const NOTICIA_RSS_URL = 'https://news.google.com/rss/search?q=' +
+  encodeURIComponent('mercado imobiliário OR imóveis OR aluguel OR financiamento imobiliário') +
+  '&hl=pt-BR&gl=BR&ceid=BR:pt-419';
+
+function _noticiaLimparXml(s) {
+  return String(s || '')
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ').trim();
+}
+function _noticiaParseRss(xml) {
+  const itens = [];
+  const blocos = String(xml || '').split('<item>').slice(1);
+  for (const b of blocos) {
+    const titulo = _noticiaLimparXml((b.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '');
+    const link   = _noticiaLimparXml((b.match(/<link>([\s\S]*?)<\/link>/) || [])[1] || '');
+    const fonte  = _noticiaLimparXml((b.match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || '');
+    if (titulo && /^https?:\/\//i.test(link)) itens.push({ titulo, link, fonte });
+    if (itens.length >= 15) break;
+  }
+  return itens;
+}
+
+exports.noticiaImoveisDoDia = onCall(async (req) => {
+  exigirAutenticado(req);
+  const db = admin.firestore();
+  const ref = db.doc(NOTICIA_CACHE_DOC);
+  const agora = Date.now();
+  let itens = [];
+
+  // 1) tenta o cache (< 1h)
+  try {
+    const snap = await ref.get();
+    const c = snap.exists ? snap.data() : null;
+    if (c && Array.isArray(c.itens) && c.itens.length && (agora - (c.buscadoEm || 0)) < 3600000) {
+      itens = c.itens;
+    }
+  } catch (_) { /* segue pro fetch */ }
+
+  // 2) cache velho/ausente → lê o RSS e regrava
+  if (!itens.length) {
+    try {
+      const resp = await fetch(NOTICIA_RSS_URL, { headers: { 'User-Agent': 'Mozilla/5.0 SmartHub' } });
+      if (resp.ok) {
+        itens = _noticiaParseRss(await resp.text());
+        if (itens.length) await ref.set({ itens, buscadoEm: agora }, { merge: true });
+      }
+    } catch (_) { /* devolve indisponível */ }
+  }
+
+  if (!itens.length) return { ok: false };
+  // Devolve a lista; o Hub mostra uma manchete diferente a cada vez que o banner aparece.
+  return { ok: true, itens: itens.slice(0, 10) };
+});
