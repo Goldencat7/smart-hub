@@ -6156,15 +6156,18 @@ async function carregarFinanceiro() {
 // ─── Calculadoras ────────────────────────────────────────────────────────────
 // ═══ Recrutamento de corretores (só gestor) ══════════════════════════════════
 const REC_ETAPAS = [
-  ['sem_contato', 'Sem contato'], ['contato_realizado', 'Contato realizado'],
-  ['reuniao_agendada', 'Reunião agendada'], ['reuniao_realizada', 'Reunião realizada'],
-  ['associado', 'Associado'], ['desassociado', 'Desassociado']
+  ['primeiro_contato', 'Primeiro contato'], ['reuniao_agendada', 'Reunião agendada'],
+  ['reuniao_realizada', 'Reunião realizada'], ['acompanhamento', 'Acompanhamento'],
+  ['associado', 'Corretor associado'], ['nao_associado', 'Corretor não associado']
 ];
 const REC_ETAPA_LABEL = Object.fromEntries(REC_ETAPAS);
+// Chaves antigas → novas (defesa; o backend já normaliza na leitura).
+const REC_ETAPA_LEGADO = { sem_contato: 'primeiro_contato', contato_realizado: 'acompanhamento', desassociado: 'nao_associado' };
+const recEtapa = e => REC_ETAPA_LEGADO[e] || (REC_ETAPA_LABEL[e] ? e : 'primeiro_contato');
 let recLista = [];
 let recView = 'lista';   // 'lista' | 'detalhe'
 let recCand = null;      // candidato aberto (completo) no detalhe
-let recFiltroEtapa = '', recBusca = '', recFiltroTag = '', recWired = false;
+let recFiltroEtapa = '', recBusca = '', recFiltroTag = '', recFiltroStatus = '', recWired = false;
 
 const recEsc = s => escapeHtml(String(s == null ? '' : s));
 // Valida CPF pelo dígito verificador (mesma regra do backend) — aviso ao vivo.
@@ -6206,15 +6209,22 @@ function recAbrirNovoModal() {
 
 async function carregarRecrutamento() {
   if (!recWired) { recWireEvents(); recWired = true; }
-  secaoRecrutamento.innerHTML = '<div class="rec-msg">Carregando candidatos…</div>';
+  // O tempo real pode recarregar no meio da digitação da busca — guarda foco/cursor pra devolver.
+  const buscaFocada = document.activeElement && document.activeElement.id === 'recBusca';
+  const pos = buscaFocada ? document.activeElement.selectionStart : 0;
+  if (!buscaFocada) secaoRecrutamento.innerHTML = '<div class="rec-msg">Carregando candidatos…</div>';
   try {
     const r = await recrutamentoListar();
-    recLista = (r && r.data && r.data.itens) || [];
+    recLista = ((r && r.data && r.data.itens) || []).map(c => ({ ...c, etapa: recEtapa(c.etapa) }));
   } catch (e) {
     secaoRecrutamento.innerHTML = '<div class="rec-msg rec-erro">Não foi possível carregar os candidatos.<br><span class="rec-dim">' + recEsc(e && e.message) + '</span></div>';
     return;
   }
   recView = 'lista'; recCand = null; recRender();
+  if (buscaFocada) {
+    const b = document.getElementById('recBusca');
+    if (b) { b.focus(); try { b.setSelectionRange(pos, pos); } catch (_) { /* ok */ } }
+  }
 }
 
 function recRender() {
@@ -6225,31 +6235,39 @@ function recLinhasHtml() {
   const termo = recBusca.trim().toLowerCase();
   const filtrada = recLista.filter(c =>
     (!recFiltroEtapa || c.etapa === recFiltroEtapa) &&
+    (!recFiltroStatus || (c.status || 'ativo') === recFiltroStatus) &&
     (!recFiltroTag || (c.tags || []).includes(recFiltroTag)) &&
     (!termo || (c.nome || '').toLowerCase().includes(termo)));
-  if (!filtrada.length) return '<div class="rec-msg rec-dim">Nenhum candidato' + (recFiltroEtapa || recFiltroTag || termo ? ' com esses filtros.' : ' ainda.') + '</div>';
-  return filtrada.map(c =>
-    '<div class="rec-linha" data-rec="abrir" data-id="' + recEsc(c.id) + '">'
-    + '<div class="rec-linha-main"><div class="rec-nome">' + recEsc(c.nome || '—') + '</div>'
+  if (!filtrada.length) return '<div class="rec-msg rec-dim">Nenhum candidato' + (recFiltroEtapa || recFiltroTag || recFiltroStatus || termo ? ' com esses filtros.' : ' ainda.') + '</div>';
+  return filtrada.map(c => {
+    const inativo = (c.status || 'ativo') === 'inativo';
+    return '<div class="rec-linha" data-rec="abrir" data-id="' + recEsc(c.id) + '">'
+    + '<div class="rec-linha-main"><div class="rec-nome">' + recEsc(c.nome || '—')
+    + '<span class="rec-status rec-status-' + (inativo ? 'inativo' : 'ativo') + '">' + (inativo ? 'Inativo' : 'Ativo') + '</span></div>'
     + '<div class="rec-sub">' + recData(c.atualizadoEm) + (c.origem === 'formulario' ? ' · <span class="rec-dim">do formulário</span>' : '')
     + (c.cpfValido === false ? ' · <span class="rec-cpf-flag">⚠ CPF inválido</span>' : '')
     + ((c.tags && c.tags.length) ? ' · ' + c.tags.map(t => '<span class="rec-tag">' + recEsc(t) + '</span>').join(' ') : '') + '</div></div>'
     + '<span class="rec-badge rec-badge-' + recEsc(c.etapa) + '">' + (REC_ETAPA_LABEL[c.etapa] || c.etapa) + '</span>'
-    + '<span class="rec-btn sm">Ver detalhes</span></div>'
-  ).join('');
+    + '<span class="rec-btn sm">Ver detalhes</span></div>';
+  }).join('');
 }
 
 function recListaHtml() {
   const cont = {}; REC_ETAPAS.forEach(([k]) => cont[k] = 0);
   recLista.forEach(c => { if (cont[c.etapa] != null) cont[c.etapa]++; });
+  const nInativos = recLista.filter(c => (c.status || 'ativo') === 'inativo').length;
+  const semFiltro = !recFiltroEtapa && !recFiltroStatus;
   const tags = [...new Set(recLista.flatMap(c => c.tags || []))].sort();
-  const funil = REC_ETAPAS.map(([k, rot]) =>
-    '<button class="rec-etapa' + (recFiltroEtapa === k ? ' on' : '') + '" data-rec="etapa" data-k="' + k + '"><span class="rec-etapa-n">' + cont[k] + '</span><span class="rec-etapa-r">' + rot + '</span></button>'
-  ).join('');
+  const tile = (cls, attrs, n, rot) => '<button class="rec-etapa' + cls + '" ' + attrs + '><span class="rec-etapa-n">' + n + '</span><span class="rec-etapa-r">' + rot + '</span></button>';
+  const funil =
+    tile(semFiltro ? ' on' : '', 'data-rec="todos"', recLista.length, 'Todos')
+    + REC_ETAPAS.map(([k, rot]) => tile(recFiltroEtapa === k ? ' on' : '', 'data-rec="etapa" data-k="' + k + '"', cont[k], rot)).join('')
+    + tile(recFiltroStatus === 'inativo' ? ' on' : '', 'data-rec="inativos"', nInativos, 'Inativos');
   const filtros = '<div class="rec-filtros">'
     + '<input type="text" class="rec-input" id="recBusca" placeholder="Buscar por nome…" value="' + recEsc(recBusca) + '">'
     + '<select class="rec-input rec-sel" id="recTag"><option value="">Todas as tags</option>' + tags.map(t => '<option value="' + recEsc(t) + '"' + (recFiltroTag === t ? ' selected' : '') + '>' + recEsc(t) + '</option>').join('') + '</select>'
     + (recFiltroEtapa ? '<button class="rec-btn ghost" data-rec="limpar-etapa">Etapa: ' + REC_ETAPA_LABEL[recFiltroEtapa] + ' ✕</button>' : '')
+    + (recFiltroStatus === 'inativo' ? '<button class="rec-btn ghost" data-rec="limpar-status">Status: Inativos ✕</button>' : '')
     + '</div>';
   return '<div class="rec-wrap">'
     + '<div class="rec-head"><div><h2 class="rec-titulo">Recrutamento de corretores</h2>'
@@ -6266,7 +6284,6 @@ function recDetalheHtml() {
   const ta = (id) => '<textarea class="rec-input rec-ta" id="rec_' + id + '">' + recEsc(c[id]) + '</textarea>';
   const simnao = (id) => '<select class="rec-input rec-sel" id="rec_' + id + '"><option value="sim"' + (c[id] ? ' selected' : '') + '>Sim</option><option value="nao"' + (c[id] ? '' : ' selected') + '>Não</option></select>';
   const campo = (lab, html) => '<div class="rec-campo"><label>' + lab + '</label>' + html + '</div>';
-  const etapaSel = '<select class="rec-input rec-sel" id="rec_etapa">' + REC_ETAPAS.map(([k, r]) => '<option value="' + k + '"' + ((c.etapa || 'sem_contato') === k ? ' selected' : '') + '>' + r + '</option>').join('') + '</select>';
   const statusSel = '<select class="rec-input rec-sel" id="rec_status"><option value="ativo"' + ((c.status || 'ativo') === 'ativo' ? ' selected' : '') + '>Ativo</option><option value="inativo"' + (c.status === 'inativo' ? ' selected' : '') + '>Inativo</option></select>';
   const hist = (c.historico || []).slice().sort((a, b) => (b.em || 0) - (a.em || 0)).map(h =>
     '<div class="rec-hist"><div class="rec-hist-top"><b>' + recEsc(h.porNome || '—') + '</b><span class="rec-dim">' + recDataHora(h.em) + '</span></div><div>' + recEsc(h.texto) + '</div></div>'
@@ -6288,20 +6305,54 @@ function recDetalheHtml() {
     + campo('Endereço', inp('endereco'))
     + campo('Dados bancários (comissões)', inp('dadosBancarios'))
     + '<div class="rec-linha2">' + campo('Experiência imobiliária?', simnao('expImobiliaria')) + campo('Experiência em vendas?', simnao('expVendas')) + '</div>'
-    + campo('Descreva a experiência imobiliária', ta('expImobiliariaDesc'))
-    + campo('Descreva a experiência em vendas', ta('expVendasDesc'))
+    // As descrições só aparecem quando a resposta é "Sim" (toggle no change dos selects).
+    + '<div class="rec-campo" id="rec_wrap_expImobiliariaDesc"' + (c.expImobiliaria ? '' : ' hidden') + '><label>Descreva a experiência imobiliária</label>' + ta('expImobiliariaDesc') + '</div>'
+    + '<div class="rec-campo" id="rec_wrap_expVendasDesc"' + (c.expVendas ? '' : ' hidden') + '><label>Descreva a experiência em vendas</label>' + ta('expVendasDesc') + '</div>'
     + campo('Maior sonho', ta('maiorSonho'))
     + campo('O que achou do modelo REMAX', ta('opiniaoRemax'))
     + campo('Clube desejado', inp('clubeDesejado')) + '</div>'
     // Coluna direita: funil + histórico
     + '<div class="rec-card"><div class="rec-card-t">Funil e qualificação</div>'
-    + '<div class="rec-linha2">' + campo('Etapa', etapaSel) + campo('Status', statusSel) + '</div>'
+    + (novo
+        ? campo('Etapa', '<div class="rec-dim" style="padding:4px 0">Começa em “Sem contato”. Salve para mover no funil.</div>')
+        : '<div class="rec-fases-wrap"><label class="rec-fases-lab">Etapa do funil <span class="rec-dim">— clique para mover</span></label>' + recFasesHtml(c.etapa) + '</div>')
+    + campo('Status', statusSel)
     + '<div class="rec-linha2">' + campo('Perfil', inp('perfil')) + campo('Nota', inp('nota')) + '</div>'
     + campo('Tags (separadas por vírgula)', inp('tags'))
     + '<div class="rec-card-t" style="margin-top:14px">Histórico</div>'
     + (novo ? '<div class="rec-dim" style="padding:6px 0">Salve o candidato para registrar histórico.</div>'
       : '<div class="rec-add-hist"><input class="rec-input" id="rec_novoHist" placeholder="Registrar uma ação (ligação, reunião…)"><button class="rec-btn sm" data-rec="add-hist">Adicionar</button></div><div class="rec-hists">' + hist + '</div>')
     + '</div></div></div>';
+}
+
+// Funil clicável dentro da ficha: destaca a fase atual, marca as anteriores como
+// concluídas; clicar move o candidato na hora (handler 'fase').
+function recFasesHtml(atual) {
+  const cur = REC_ETAPAS.findIndex(([k]) => k === recEtapa(atual));
+  return '<div class="rec-fases">' + REC_ETAPAS.map(([k, rot], i) => {
+    let cls = 'rec-fase';
+    if (i < cur) cls += ' done';
+    if (i === cur) cls += ' on';
+    return '<button type="button" class="' + cls + '" data-rec="fase" data-k="' + k + '" title="Mover para: ' + recEsc(rot) + '">'
+      + '<span class="rec-fase-dot"></span><span class="rec-fase-r">' + rot + '</span></button>';
+  }).join('') + '</div>';
+}
+
+// Lê a ficha aberta num payload (SEM a etapa — a etapa só muda pelo funil clicável,
+// então "Salvar" nunca mexe na fase e mover de fase não perde o que foi digitado).
+function recColetarPayload() {
+  const val = id => { const x = document.getElementById('rec_' + id); return x ? x.value : ''; };
+  const payload = {
+    nome: val('nome'), email: val('email'), telefone: val('telefone'), telefone2: val('telefone2'), fonte: val('fonte'), rg: val('rg'), cpf: val('cpf'),
+    endereco: val('endereco'), dadosBancarios: val('dadosBancarios'),
+    expImobiliaria: val('expImobiliaria') === 'sim', expImobiliariaDesc: val('expImobiliariaDesc'),
+    expVendas: val('expVendas') === 'sim', expVendasDesc: val('expVendasDesc'),
+    maiorSonho: val('maiorSonho'), opiniaoRemax: val('opiniaoRemax'), clubeDesejado: val('clubeDesejado'),
+    status: val('status'), perfil: val('perfil'), nota: val('nota'),
+    tags: val('tags').split(',').map(t => t.trim()).filter(Boolean)
+  };
+  if (recCand && recCand.id) payload.id = recCand.id;
+  return payload;
 }
 
 function recWireEvents() {
@@ -6317,12 +6368,18 @@ function recWireEvents() {
   });
   secaoRecrutamento.addEventListener('change', e => {
     if (e.target.id === 'recTag') { recFiltroTag = e.target.value; const el = secaoRecrutamento.querySelector('.rec-lista'); if (el) el.innerHTML = recLinhasHtml(); }
+    // Descrição da experiência só visível quando "Sim".
+    if (e.target.id === 'rec_expImobiliaria') { const w = document.getElementById('rec_wrap_expImobiliariaDesc'); if (w) w.hidden = e.target.value !== 'sim'; }
+    if (e.target.id === 'rec_expVendas') { const w = document.getElementById('rec_wrap_expVendasDesc'); if (w) w.hidden = e.target.value !== 'sim'; }
   });
   secaoRecrutamento.addEventListener('click', async e => {
     const el = e.target.closest('[data-rec]'); if (!el) return;
     const a = el.dataset.rec;
-    if (a === 'etapa') { const k = el.dataset.k; recFiltroEtapa = (recFiltroEtapa === k) ? '' : k; recRender(); return; }
+    if (a === 'etapa') { const k = el.dataset.k; recFiltroEtapa = (recFiltroEtapa === k) ? '' : k; recFiltroStatus = ''; recRender(); return; }
+    if (a === 'todos') { recFiltroEtapa = ''; recFiltroStatus = ''; recRender(); return; }
+    if (a === 'inativos') { recFiltroStatus = (recFiltroStatus === 'inativo') ? '' : 'inativo'; recFiltroEtapa = ''; recRender(); return; }
     if (a === 'limpar-etapa') { recFiltroEtapa = ''; recRender(); return; }
+    if (a === 'limpar-status') { recFiltroStatus = ''; recRender(); return; }
     if (a === 'novo') { recAbrirNovoModal(); return; }
     if (a === 'modal-fechar') { const bg = secaoRecrutamento.querySelector('.rec-modal-bg'); if (bg) bg.remove(); return; }
     if (a === 'modal-bg') { if (e.target === el) el.remove(); return; }
@@ -6342,22 +6399,29 @@ function recWireEvents() {
     if (a === 'abrir') {
       const id = el.dataset.id;
       secaoRecrutamento.innerHTML = '<div class="rec-msg">Abrindo…</div>';
-      try { const r = await recrutamentoObter({ id }); recCand = r.data.candidato; recView = 'detalhe'; recRender(); }
+      try { const r = await recrutamentoObter({ id }); recCand = r.data.candidato; if (recCand) recCand.etapa = recEtapa(recCand.etapa); recView = 'detalhe'; recRender(); }
       catch (err) { recToast('Erro ao abrir: ' + (err && err.message), true); carregarRecrutamento(); }
       return;
     }
+    // Mover de fase clicando no funil da ficha: salva na hora (leva junto o que foi
+    // editado, então nada se perde) e recarrega o detalhe pra mostrar o histórico.
+    if (a === 'fase') {
+      const k = el.dataset.k;
+      if (!recCand || !recCand.id) { recToast('Salve o candidato primeiro.', true); return; }
+      if (k === (recCand.etapa || 'primeiro_contato')) return;   // já está nessa fase
+      const payload = { ...recColetarPayload(), etapa: k };
+      if (!String(payload.nome || '').trim()) { recToast('Informe o nome antes de mover.', true); return; }
+      const fases = secaoRecrutamento.querySelectorAll('[data-rec="fase"]');
+      fases.forEach(b => { b.disabled = true; });
+      try {
+        await recrutamentoSalvar(payload);
+        recToast('Movido para “' + (REC_ETAPA_LABEL[k] || k) + '”');
+        const r = await recrutamentoObter({ id: recCand.id }); recCand = r.data.candidato; if (recCand) recCand.etapa = recEtapa(recCand.etapa); recRender();
+      } catch (err) { recToast('Erro ao mover: ' + (err && err.message), true); fases.forEach(b => { b.disabled = false; }); }
+      return;
+    }
     if (a === 'salvar') {
-      const val = id => { const x = document.getElementById('rec_' + id); return x ? x.value : ''; };
-      const payload = {
-        nome: val('nome'), email: val('email'), telefone: val('telefone'), telefone2: val('telefone2'), fonte: val('fonte'), rg: val('rg'), cpf: val('cpf'),
-        endereco: val('endereco'), dadosBancarios: val('dadosBancarios'),
-        expImobiliaria: val('expImobiliaria') === 'sim', expImobiliariaDesc: val('expImobiliariaDesc'),
-        expVendas: val('expVendas') === 'sim', expVendasDesc: val('expVendasDesc'),
-        maiorSonho: val('maiorSonho'), opiniaoRemax: val('opiniaoRemax'), clubeDesejado: val('clubeDesejado'),
-        etapa: val('etapa'), status: val('status'), perfil: val('perfil'), nota: val('nota'),
-        tags: val('tags').split(',').map(t => t.trim()).filter(Boolean)
-      };
-      if (recCand && recCand.id) payload.id = recCand.id;
+      const payload = recColetarPayload();
       if (!payload.nome.trim()) { recToast('Informe o nome.', true); return; }
       el.disabled = true;
       try { await recrutamentoSalvar(payload); recToast('Candidato salvo'); carregarRecrutamento(); }

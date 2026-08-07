@@ -1259,8 +1259,9 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .rec-btn.ghost { border-color: transparent; background: transparent; color: var(--text-muted); }
 .rec-btn.ghost:hover { color: var(--text-primary); }
 .rec-btn.sm { padding: 6px 11px; font-size: 12px; }
-.rec-funil { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 14px; }
-@media (max-width: 760px) { .rec-funil { grid-template-columns: repeat(3, 1fr); } }
+.rec-funil { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; margin-bottom: 14px; }
+@media (max-width: 1100px) { .rec-funil { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 620px) { .rec-funil { grid-template-columns: repeat(2, 1fr); } }
 .rec-etapa { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius-card); padding: 12px 8px; cursor: pointer; text-align: center; font-family: inherit; transition: all .15s; }
 .rec-etapa:hover { border-color: var(--blue); }
 .rec-etapa.on { background: var(--blue); border-color: var(--blue); }
@@ -1282,18 +1283,35 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .rec-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .rec-tag { display: inline-block; background: rgba(255,255,255,.08); color: var(--text-muted); border-radius: 20px; padding: 1px 8px; font-size: 11px; font-weight: 600; }
 .rec-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; background: rgba(255,255,255,.08); color: var(--text-muted); }
-.rec-badge-sem_contato { background: rgba(148,163,184,.18); color: #cbd5e1; }
-.rec-badge-contato_realizado { background: rgba(56,189,248,.18); color: #7dd3fc; }
+.rec-badge-primeiro_contato { background: rgba(148,163,184,.18); color: #cbd5e1; }
 .rec-badge-reuniao_agendada { background: rgba(250,204,21,.18); color: #fde047; }
 .rec-badge-reuniao_realizada { background: rgba(167,139,250,.2); color: #c4b5fd; }
+.rec-badge-acompanhamento { background: rgba(56,189,248,.18); color: #7dd3fc; }
 .rec-badge-associado { background: rgba(74,222,128,.18); color: #86efac; }
-.rec-badge-desassociado { background: rgba(255,128,117,.18); color: #fca5a5; }
+.rec-badge-nao_associado { background: rgba(255,128,117,.18); color: #fca5a5; }
+/* Tag de status ao lado do nome (Ativo / Inativo) */
+.rec-status { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 20px; margin-left: 8px; vertical-align: middle; white-space: nowrap; }
+.rec-status-ativo { background: rgba(74,222,128,.16); color: #86efac; }
+.rec-status-inativo { background: rgba(148,163,184,.18); color: #cbd5e1; }
 .rec-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 860px) { .rec-cols { grid-template-columns: 1fr; } }
 .rec-card { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 16px 18px; background: var(--surface); }
 .rec-card-t { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--text-primary); margin-bottom: 10px; }
 .rec-campo { margin-bottom: 11px; }
 .rec-campo label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+/* Funil clicável dentro da ficha (mover o candidato de fase com 1 clique) */
+.rec-fases-wrap { margin-bottom: 12px; }
+.rec-fases-lab { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.rec-fases { display: flex; gap: 4px; }
+.rec-fase { flex: 1; border: none; background: transparent; cursor: pointer; font-family: inherit; padding: 0; text-align: center; }
+.rec-fase-dot { display: block; height: 7px; border-radius: 4px; background: var(--border); margin-bottom: 6px; transition: background .15s; }
+.rec-fase-r { display: block; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.15; }
+.rec-fase:hover .rec-fase-dot { background: var(--blue); }
+.rec-fase:hover .rec-fase-r { color: var(--text-primary); }
+.rec-fase.done .rec-fase-dot { background: rgba(74,222,128,.5); }
+.rec-fase.on .rec-fase-dot { background: var(--blue); }
+.rec-fase.on .rec-fase-r { color: var(--text-primary); font-weight: 800; }
+.rec-fase:disabled { cursor: default; opacity: .55; }
 .rec-linha2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .rec-ta { min-height: 58px; resize: vertical; line-height: 1.4; }
 .rec-add-hist { display: flex; gap: 8px; margin-bottom: 12px; }

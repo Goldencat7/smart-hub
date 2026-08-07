@@ -7140,8 +7140,17 @@ exports.noticiaImoveisDoDia = onCall(async (req) => {
 // ⚠️ DADOS SENSÍVEIS (RG, CPF, dados bancários): escrita/leitura SÓ via estas
 // functions (Admin SDK). As regras do Firestore negam acesso direto do cliente à
 // coleção `candidatos` (default-deny). Entra na LGPD quando ela for ligada.
-const REC_ETAPAS = ['sem_contato', 'contato_realizado', 'reuniao_agendada', 'reuniao_realizada', 'associado', 'desassociado'];
+const REC_ETAPAS = ['primeiro_contato', 'reuniao_agendada', 'reuniao_realizada', 'acompanhamento', 'associado', 'nao_associado'];
 const REC_STATUS = ['ativo', 'inativo'];
+const REC_ETAPA_ROTULO = {
+  primeiro_contato: 'Primeiro contato', reuniao_agendada: 'Reunião agendada',
+  reuniao_realizada: 'Reunião realizada', acompanhamento: 'Acompanhamento',
+  associado: 'Corretor associado', nao_associado: 'Corretor não associado'
+};
+// Chaves antigas (antes do rename 2026-08) → novas. Normaliza na LEITURA; a gravação
+// já usa as novas. Migra sozinho quando o gestor mover o candidato de fase.
+const REC_ETAPA_LEGADO = { sem_contato: 'primeiro_contato', contato_realizado: 'acompanhamento', desassociado: 'nao_associado' };
+function _recEtapa(e) { return REC_ETAPA_LEGADO[e] || (REC_ETAPAS.includes(e) ? e : 'primeiro_contato'); }
 
 // Valida CPF pelo dígito verificador (grátis, offline). Pega digitação errada e CPF
 // falso (ex.: 111.111.111-11). NÃO garante que existe na Receita — só que é bem-formado.
@@ -7168,7 +7177,7 @@ function _recSerializar(id, d) {
     expImobiliaria: !!d.expImobiliaria, expImobiliariaDesc: d.expImobiliariaDesc || '',
     expVendas: !!d.expVendas, expVendasDesc: d.expVendasDesc || '',
     maiorSonho: d.maiorSonho || '', opiniaoRemax: d.opiniaoRemax || '', clubeDesejado: d.clubeDesejado || '',
-    etapa: d.etapa || 'sem_contato', status: d.status || 'ativo',
+    etapa: _recEtapa(d.etapa), status: d.status || 'ativo',
     perfil: d.perfil || '', nota: (d.nota != null ? d.nota : ''), tags: Array.isArray(d.tags) ? d.tags : [],
     origem: d.origem || 'manual',
     historico: Array.isArray(d.historico) ? d.historico : [],
@@ -7186,11 +7195,12 @@ exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, asyn
     const nome = _txt(b.nome, 160);
     if (!nome) return res.status(400).json({ ok: false, erro: 'nome obrigatório' });
     const cpf = _txt(b.cpf, 20);
+    const cpfDigits = cpf.replace(/\D/g, '');   // dedupe por dígitos: "123.456.789-09" == "12345678909"
     const sim = (v) => v === true || /^sim$/i.test(String(v || '').trim());
 
     const dados = {
       nome, email: _txt(b.email, 160), telefone: _txt(b.telefone, 40),
-      rg: _txt(b.rg, 40), cpf, endereco: _txt(b.endereco, 300), dadosBancarios: _txt(b.dadosBancarios, 400),
+      rg: _txt(b.rg, 40), cpf, cpfDigits, endereco: _txt(b.endereco, 300), dadosBancarios: _txt(b.dadosBancarios, 400),
       expImobiliaria: sim(b.expImobiliaria), expImobiliariaDesc: _txt(b.expImobiliariaDesc, 2000),
       expVendas: sim(b.expVendas), expVendasDesc: _txt(b.expVendasDesc, 2000),
       maiorSonho: _txt(b.maiorSonho, 2000), opiniaoRemax: _txt(b.opiniaoRemax, 2000),
@@ -7200,9 +7210,12 @@ exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, asyn
     };
 
     // Dedupe por CPF: reenvio da mesma pessoa atualiza os dados, não cria duplicado.
+    // Compara pelos DÍGITOS (cpfDigits) — formato diferente ("123.456…" vs "123456…") não duplica.
+    // Fallback no cpf cru pra docs antigos que ainda não têm cpfDigits.
     let ref = null, existe = false;
-    if (cpf) {
-      const q = await db.collection('candidatos').where('cpf', '==', cpf).limit(1).get();
+    if (cpfDigits) {
+      let q = await db.collection('candidatos').where('cpfDigits', '==', cpfDigits).limit(1).get();
+      if (q.empty) q = await db.collection('candidatos').where('cpf', '==', cpf).limit(1).get();
       if (!q.empty) { ref = q.docs[0].ref; existe = true; }
     }
     if (!ref) ref = db.collection('candidatos').doc();
@@ -7213,8 +7226,8 @@ exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, asyn
       }) }, { merge: true });
     } else {
       await ref.set({
-        ...dados, etapa: 'sem_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'formulario',
-        historico: [{ texto: 'Inscrição recebida pelo formulário', etapa: 'sem_contato', por: 'form', porNome: 'Formulário', em: Date.now() }],
+        ...dados, etapa: 'primeiro_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'formulario',
+        historico: [{ texto: 'Inscrição recebida pelo formulário', etapa: 'primeiro_contato', por: 'form', porNome: 'Formulário', em: Date.now() }],
         criadoEm: admin.firestore.FieldValue.serverTimestamp()
       });
     }
@@ -7234,7 +7247,7 @@ exports.recrutamentoListar = onCall(async (req) => {
   const itens = snap.docs.map(doc => {
     const d = doc.data();
     return {
-      id: doc.id, nome: d.nome || '', etapa: d.etapa || 'sem_contato', status: d.status || 'ativo',
+      id: doc.id, nome: d.nome || '', etapa: _recEtapa(d.etapa), status: d.status || 'ativo',
       cpfValido: (d.cpfValido === undefined ? null : d.cpfValido),
       perfil: d.perfil || '', nota: (d.nota != null ? d.nota : ''), tags: Array.isArray(d.tags) ? d.tags : [],
       origem: d.origem || 'manual', atualizadoEm: iso(d.atualizadoEm), criadoEm: iso(d.criadoEm)
@@ -7261,25 +7274,33 @@ exports.recrutamentoSalvar = onCall(async (req) => {
   const porNome = _txt(d.porNome, 80) || 'Gestor';
 
   // Campos editáveis (todos opcionais no update; nome obrigatório na criação).
+  // ⚠️ Limites por campo IGUAIS aos do webhook — os 4 textos longos aceitam 2000;
+  // um teto único de 400 amputava em silêncio a resposta do formulário no 1º Salvar.
   const patch = {};
-  const setStr = (k, max) => { if (typeof d[k] === 'string') patch[k] = d[k].trim().slice(0, max); };
-  ['nome', 'email', 'telefone', 'telefone2', 'fonte', 'rg', 'cpf', 'endereco', 'dadosBancarios', 'perfil', 'expImobiliariaDesc', 'expVendasDesc', 'maiorSonho', 'opiniaoRemax', 'clubeDesejado'].forEach(k => setStr(k, 400));
-  if (typeof d.nome === 'string') patch.nome = d.nome.trim().slice(0, 160);
+  const REC_MAX = {
+    nome: 160, email: 160, telefone: 40, telefone2: 40, fonte: 120, rg: 40, cpf: 20,
+    endereco: 300, dadosBancarios: 400, perfil: 120, clubeDesejado: 120,
+    expImobiliariaDesc: 2000, expVendasDesc: 2000, maiorSonho: 2000, opiniaoRemax: 2000
+  };
+  Object.keys(REC_MAX).forEach(k => { if (typeof d[k] === 'string') patch[k] = d[k].trim().slice(0, REC_MAX[k]); });
   if (typeof d.expImobiliaria === 'boolean') patch.expImobiliaria = d.expImobiliaria;
   if (typeof d.expVendas === 'boolean') patch.expVendas = d.expVendas;
   if (d.nota != null) patch.nota = _txt(String(d.nota), 20);
   if (Array.isArray(d.tags)) patch.tags = d.tags.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim().slice(0, 40)).slice(0, 20);
   if (d.etapa != null) { if (!REC_ETAPAS.includes(d.etapa)) throw new HttpsError('invalid-argument', 'Etapa inválida.'); patch.etapa = d.etapa; }
   if (d.status != null) { if (!REC_STATUS.includes(d.status)) throw new HttpsError('invalid-argument', 'Status inválido.'); patch.status = d.status; }
-  if ('cpf' in patch) patch.cpfValido = patch.cpf ? _cpfValido(patch.cpf) : null;
+  if ('cpf' in patch) {
+    patch.cpfValido = patch.cpf ? _cpfValido(patch.cpf) : null;
+    patch.cpfDigits = patch.cpf.replace(/\D/g, '');   // mantém o dedupe do webhook funcionando após edição
+  }
   patch.atualizadoEm = admin.firestore.FieldValue.serverTimestamp();
 
   if (!id) {
     if (!patch.nome) throw new HttpsError('invalid-argument', 'O nome é obrigatório.');
     const ref = await db.collection('candidatos').add({
-      etapa: 'sem_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'manual',
+      etapa: 'primeiro_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'manual',
       ...patch,
-      historico: [{ texto: 'Candidato cadastrado manualmente', etapa: patch.etapa || 'sem_contato', por: auth.uid, porNome, em: Date.now() }],
+      historico: [{ texto: 'Candidato cadastrado manualmente', etapa: patch.etapa || 'primeiro_contato', por: auth.uid, porNome, em: Date.now() }],
       criadoEm: admin.firestore.FieldValue.serverTimestamp()
     });
     await _bumpBroadcast('recrutamentoSeq');
@@ -7295,7 +7316,7 @@ exports.recrutamentoSalvar = onCall(async (req) => {
     const writes = { ...patch };
     if (patch.etapa && patch.etapa !== antes.etapa) {
       writes.historico = admin.firestore.FieldValue.arrayUnion({
-        texto: 'Etapa alterada para ' + patch.etapa.replace(/_/g, ' '), etapa: patch.etapa, por: auth.uid, porNome, em: Date.now()
+        texto: 'Etapa alterada para ' + (REC_ETAPA_ROTULO[patch.etapa] || patch.etapa), etapa: patch.etapa, por: auth.uid, porNome, em: Date.now()
       });
     }
     tx.set(ref, writes, { merge: true });
@@ -7319,6 +7340,7 @@ exports.recrutamentoHistorico = onCall(async (req) => {
     historico: admin.firestore.FieldValue.arrayUnion({ texto, etapa: '', por: auth.uid, porNome, em: Date.now() }),
     atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
+  await _bumpBroadcast('recrutamentoSeq');   // muda atualizadoEm (ordem da lista) → avisa quem está com a tela aberta
   return { ok: true };
 });
 
