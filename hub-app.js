@@ -87,6 +87,11 @@ const responderConvite = httpsCallable(fns, 'responderConvite');
 const getBanner        = httpsCallable(fns, 'getBanner');
 const listarBanners    = httpsCallable(fns, 'listarBanners');
 const noticiaImoveisDoDia = httpsCallable(fns, 'noticiaImoveisDoDia');
+const recrutamentoListar    = httpsCallable(fns, 'recrutamentoListar');
+const recrutamentoObter     = httpsCallable(fns, 'recrutamentoObter');
+const recrutamentoSalvar    = httpsCallable(fns, 'recrutamentoSalvar');
+const recrutamentoHistorico = httpsCallable(fns, 'recrutamentoHistorico');
+const recrutamentoExcluir   = httpsCallable(fns, 'recrutamentoExcluir');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
@@ -242,6 +247,7 @@ const ICN = {
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
   calculadoras: svgIcone('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
   notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
+  recrutamento: svgIcone('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>'),
   ti:            svgIcone('<path d="M4 15s1-1 4-1 4 1 4 1"/><circle cx="8" cy="9" r="3"/><path d="M22 19V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14"/><path d="M16 8h.01M16 12h4"/>'),
   imoveis:      svgIcone('<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 21v-4h6v4"/><path d="M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01"/>'),
   financeiro:   svgIcone('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="8" cy="15" r="1.4"/>'),
@@ -319,6 +325,7 @@ const CATEGORIAS = [
   // administrativo→Admin, corretor→Corretor). A visão é roteada por papel no
   // branch cat.locacoes.
   { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true },
+  { id: 'recrutamento', nome: 'Recrutamento', icone: ICN.recrutamento, recrutamento: true, soGestor: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true, webOculto: true },
   { id: 'reuniao',      nome: 'Reuniões',        icone: ICN.reuniao, reuniao: true, webOculto: true },
   { id: 'sala_reuniao', nome: 'Reserva de Sala', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
@@ -337,6 +344,7 @@ const CATEGORIAS = [
 const SIDEBAR_LAYOUT = [
   { item: 'home' },
   { item: 'locacoes' },
+  { item: 'recrutamento' },
   { grupo: 'g_pessoas',        nome: 'Pessoas',        icone: ICN.crm,         filhos: ['crm', 'documentos'] },
   { grupo: 'g_imoveis',        nome: 'Imóveis',        icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia'] },
   { grupo: 'g_agenda',         nome: 'Agenda',         icone: ICN.agenda,      filhos: ['agenda', 'reuniao', 'sala_reuniao'] },
@@ -413,6 +421,7 @@ const secaoSalaReuniao    = document.getElementById('secaoSalaReuniao');
 const secaoIA             = document.getElementById('secaoIA');
 const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
+const secaoRecrutamento   = document.getElementById('secaoRecrutamento');
 const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
 const secaoPainel         = document.getElementById('secaoPainel');
@@ -648,6 +657,7 @@ function renderCentro() {
   secaoIA.hidden = true;
   secaoCalculadoras.hidden = true;
   secaoNotas.hidden = true;
+  secaoRecrutamento.hidden = true;
   secaoImoveis.hidden = true;
   secaoFinanceiro.hidden = true;
   secaoPainel.hidden = true;
@@ -788,6 +798,18 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarNotas();
+    return;
+  }
+
+  // Aba Recrutamento de corretores (só gestor)
+  if (cat.recrutamento) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoRecrutamento.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarRecrutamento();
     return;
   }
 
@@ -970,14 +992,15 @@ async function carregarBanner() {
     console.warn('Banner:', e);
     bannerAdmin = [];
   }
-  await carregarNoticia();   // notícia de imóveis do dia (falha silenciosa)
-  comporBanners();
+  comporBanners();           // mostra os banners do admin JÁ (não espera a notícia)
   bannerIdx = 0;
   iniciarRotacaoBanner();
+  // A notícia vem em segundo plano pra não atrasar a exibição dos banners do admin.
+  carregarNoticia().then(() => { comporBanners(); atualizarBanner(); });
   iniciarRefreshNoticia();
 }
 
-// Notícia de imóveis (banner automático): pega a manchete da faixa de 30 min.
+// Notícia de imóveis (banner automático): busca a lista de manchetes do RSS.
 // Falha silenciosa — sem notícia, o carrossel fica só com os banners do admin.
 async function carregarNoticia() {
   try {
@@ -1007,6 +1030,10 @@ function iniciarRefreshNoticia() {
     await carregarNoticia();
     comporBanners();
     if (bannerIdx >= bannerImagens.length) bannerIdx = 0;
+    // Se a notícia está na tela agora, re-renderiza — senão o slot recriado fica
+    // com link vazio e o clique não abriria nada (e mostraria a manchete antiga).
+    const atual = bannerImagens[bannerIdx];
+    if (atual && atual.tipo === 'noticia') bannerConteudo.innerHTML = renderBannerEl(atual);
     iniciarRefreshNoticia();
   }, 60 * 60 * 1000);
 }
@@ -2137,11 +2164,11 @@ onAuthStateChanged(auth, async (user) => {
   // SÓ a peça que mudou, na HORA. Os timers de 3 min continuam de fallback (REALTIME=false → só eles).
   if (REALTIME) {
     if (window.__broadcastUnsub) { try { window.__broadcastUnsub(); } catch (_) {} }
-    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0, bcNov = 0, bcChamado = 0;
+    let bcPrimeiro = true, bcStatus = 0, bcBanner = 0, bcAviso = 0, bcNov = 0, bcChamado = 0, bcRec = 0;
     window.__broadcastUnsub = onSnapshot(doc(db, 'config', 'broadcast'), async (snap) => {
       const d = snap.exists() ? (snap.data() || {}) : {};
-      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0, nv = d.novidadeSeq || 0, ch = d.chamadoSeq || 0;
-      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; bcNov = nv; bcChamado = ch; return; }
+      const s = d.statusSeq || 0, b = d.bannerSeq || 0, a = d.avisoSeq || 0, nv = d.novidadeSeq || 0, ch = d.chamadoSeq || 0, rc = d.recrutamentoSeq || 0;
+      if (bcPrimeiro) { bcPrimeiro = false; bcStatus = s; bcBanner = b; bcAviso = a; bcNov = nv; bcChamado = ch; bcRec = rc; return; }
       if (nv !== bcNov) { bcNov = nv; carregarNovidadesBadge(); }   // admin publicou nota → bolinha na hora
       if (s !== bcStatus) {
         bcStatus = s;
@@ -2161,6 +2188,12 @@ onAuthStateChanged(auth, async (user) => {
         bcChamado = ch;
         atualizarBadgeChamados();                                   // badge do TI sobe na hora (pra quem é TI)
         if (categoriaAtiva === 'ti') carregarChamadosHub();         // e a lista recarrega se ele estiver na aba
+      }
+      if (rc !== bcRec) {
+        bcRec = rc;
+        // Recrutamento em tempo real: candidato caiu/mudou → a LISTA recarrega sozinha
+        // (não recarrega se o gestor está editando um candidato, pra não perder o que digitou).
+        if (categoriaAtiva === 'recrutamento' && recView === 'lista') carregarRecrutamento();
       }
     }, (e) => console.warn('broadcast onSnapshot:', e && e.message));
   }
@@ -6121,6 +6154,234 @@ async function carregarFinanceiro() {
 }
 
 // ─── Calculadoras ────────────────────────────────────────────────────────────
+// ═══ Recrutamento de corretores (só gestor) ══════════════════════════════════
+const REC_ETAPAS = [
+  ['sem_contato', 'Sem contato'], ['contato_realizado', 'Contato realizado'],
+  ['reuniao_agendada', 'Reunião agendada'], ['reuniao_realizada', 'Reunião realizada'],
+  ['associado', 'Associado'], ['desassociado', 'Desassociado']
+];
+const REC_ETAPA_LABEL = Object.fromEntries(REC_ETAPAS);
+let recLista = [];
+let recView = 'lista';   // 'lista' | 'detalhe'
+let recCand = null;      // candidato aberto (completo) no detalhe
+let recFiltroEtapa = '', recBusca = '', recFiltroTag = '', recWired = false;
+
+const recEsc = s => escapeHtml(String(s == null ? '' : s));
+// Valida CPF pelo dígito verificador (mesma regra do backend) — aviso ao vivo.
+function _recCpfValido(cpf) {
+  const s = String(cpf || '').replace(/\D/g, '');
+  if (s.length !== 11 || /^(\d)\1{10}$/.test(s)) return false;
+  let soma = 0; for (let i = 0; i < 9; i++) soma += parseInt(s[i], 10) * (10 - i);
+  let d1 = (soma * 10) % 11; if (d1 === 10) d1 = 0;
+  if (d1 !== parseInt(s[9], 10)) return false;
+  soma = 0; for (let i = 0; i < 10; i++) soma += parseInt(s[i], 10) * (11 - i);
+  let d2 = (soma * 10) % 11; if (d2 === 10) d2 = 0;
+  return d2 === parseInt(s[10], 10);
+}
+function recData(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('pt-BR'); } catch (_) { return '—'; } }
+function recDataHora(ms) { if (!ms) return ''; try { return new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } }
+function recToast(msg, erro) {
+  let t = document.getElementById('recToast');
+  if (!t) { t = document.createElement('div'); t.id = 'recToast'; document.body.appendChild(t); }
+  t.className = 'rec-toast' + (erro ? ' erro' : ''); t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(window.__recToast); window.__recToast = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// Modal simples de "Adicionar candidato" manual (só o básico; RG/CPF/banco vêm do formulário).
+function recAbrirNovoModal() {
+  const inp = (id, ph) => '<input class="rec-input" id="recn_' + id + '" placeholder="' + (ph || '') + '">';
+  const html = '<div class="rec-modal-bg" data-rec="modal-bg"><div class="rec-modal">'
+    + '<div class="rec-modal-head"><span>Adicionar candidato</span><button class="rec-modal-x" data-rec="modal-fechar" title="Fechar">×</button></div>'
+    + '<div class="rec-linha2"><div class="rec-campo"><label>Nome do candidato *</label>' + inp('nome', 'Nome completo') + '</div>'
+    + '<div class="rec-campo"><label>E-mail</label>' + inp('email') + '</div></div>'
+    + '<div class="rec-linha2"><div class="rec-campo"><label>Celular / WhatsApp *</label>' + inp('telefone', '(00) 00000-0000') + '</div>'
+    + '<div class="rec-campo"><label>Celular / WhatsApp 2</label>' + inp('telefone2') + '</div></div>'
+    + '<div class="rec-linha2"><div class="rec-campo"><label>Perfil</label>' + inp('perfil') + '</div>'
+    + '<div class="rec-campo"><label>Origem</label>' + inp('fonte', 'Ex.: Indicação, Instagram…') + '</div></div>'
+    + '<div style="text-align:right;margin-top:10px"><button class="rec-btn primary" data-rec="novo-salvar">Adicionar</button></div>'
+    + '</div></div>';
+  secaoRecrutamento.insertAdjacentHTML('beforeend', html);
+  const f = document.getElementById('recn_nome'); if (f) f.focus();
+}
+
+async function carregarRecrutamento() {
+  if (!recWired) { recWireEvents(); recWired = true; }
+  secaoRecrutamento.innerHTML = '<div class="rec-msg">Carregando candidatos…</div>';
+  try {
+    const r = await recrutamentoListar();
+    recLista = (r && r.data && r.data.itens) || [];
+  } catch (e) {
+    secaoRecrutamento.innerHTML = '<div class="rec-msg rec-erro">Não foi possível carregar os candidatos.<br><span class="rec-dim">' + recEsc(e && e.message) + '</span></div>';
+    return;
+  }
+  recView = 'lista'; recCand = null; recRender();
+}
+
+function recRender() {
+  secaoRecrutamento.innerHTML = (recView === 'detalhe') ? recDetalheHtml() : recListaHtml();
+}
+
+function recLinhasHtml() {
+  const termo = recBusca.trim().toLowerCase();
+  const filtrada = recLista.filter(c =>
+    (!recFiltroEtapa || c.etapa === recFiltroEtapa) &&
+    (!recFiltroTag || (c.tags || []).includes(recFiltroTag)) &&
+    (!termo || (c.nome || '').toLowerCase().includes(termo)));
+  if (!filtrada.length) return '<div class="rec-msg rec-dim">Nenhum candidato' + (recFiltroEtapa || recFiltroTag || termo ? ' com esses filtros.' : ' ainda.') + '</div>';
+  return filtrada.map(c =>
+    '<div class="rec-linha" data-rec="abrir" data-id="' + recEsc(c.id) + '">'
+    + '<div class="rec-linha-main"><div class="rec-nome">' + recEsc(c.nome || '—') + '</div>'
+    + '<div class="rec-sub">' + recData(c.atualizadoEm) + (c.origem === 'formulario' ? ' · <span class="rec-dim">do formulário</span>' : '')
+    + (c.cpfValido === false ? ' · <span class="rec-cpf-flag">⚠ CPF inválido</span>' : '')
+    + ((c.tags && c.tags.length) ? ' · ' + c.tags.map(t => '<span class="rec-tag">' + recEsc(t) + '</span>').join(' ') : '') + '</div></div>'
+    + '<span class="rec-badge rec-badge-' + recEsc(c.etapa) + '">' + (REC_ETAPA_LABEL[c.etapa] || c.etapa) + '</span>'
+    + '<span class="rec-btn sm">Ver detalhes</span></div>'
+  ).join('');
+}
+
+function recListaHtml() {
+  const cont = {}; REC_ETAPAS.forEach(([k]) => cont[k] = 0);
+  recLista.forEach(c => { if (cont[c.etapa] != null) cont[c.etapa]++; });
+  const tags = [...new Set(recLista.flatMap(c => c.tags || []))].sort();
+  const funil = REC_ETAPAS.map(([k, rot]) =>
+    '<button class="rec-etapa' + (recFiltroEtapa === k ? ' on' : '') + '" data-rec="etapa" data-k="' + k + '"><span class="rec-etapa-n">' + cont[k] + '</span><span class="rec-etapa-r">' + rot + '</span></button>'
+  ).join('');
+  const filtros = '<div class="rec-filtros">'
+    + '<input type="text" class="rec-input" id="recBusca" placeholder="Buscar por nome…" value="' + recEsc(recBusca) + '">'
+    + '<select class="rec-input rec-sel" id="recTag"><option value="">Todas as tags</option>' + tags.map(t => '<option value="' + recEsc(t) + '"' + (recFiltroTag === t ? ' selected' : '') + '>' + recEsc(t) + '</option>').join('') + '</select>'
+    + (recFiltroEtapa ? '<button class="rec-btn ghost" data-rec="limpar-etapa">Etapa: ' + REC_ETAPA_LABEL[recFiltroEtapa] + ' ✕</button>' : '')
+    + '</div>';
+  return '<div class="rec-wrap">'
+    + '<div class="rec-head"><div><h2 class="rec-titulo">Recrutamento de corretores</h2>'
+    + '<div class="rec-dim">' + recLista.length + ' candidato(s) — só o gestor vê esta área</div></div>'
+    + '<button class="rec-btn primary" data-rec="novo">+ Adicionar candidato</button></div>'
+    + '<div class="rec-funil">' + funil + '</div>' + filtros
+    + '<div class="rec-lista">' + recLinhasHtml() + '</div></div>';
+}
+
+function recDetalheHtml() {
+  const c = recCand || {};
+  const novo = !c.id;
+  const inp = (id, ph) => '<input class="rec-input" id="rec_' + id + '" value="' + recEsc(c[id]) + '" placeholder="' + (ph || '') + '">';
+  const ta = (id) => '<textarea class="rec-input rec-ta" id="rec_' + id + '">' + recEsc(c[id]) + '</textarea>';
+  const simnao = (id) => '<select class="rec-input rec-sel" id="rec_' + id + '"><option value="sim"' + (c[id] ? ' selected' : '') + '>Sim</option><option value="nao"' + (c[id] ? '' : ' selected') + '>Não</option></select>';
+  const campo = (lab, html) => '<div class="rec-campo"><label>' + lab + '</label>' + html + '</div>';
+  const etapaSel = '<select class="rec-input rec-sel" id="rec_etapa">' + REC_ETAPAS.map(([k, r]) => '<option value="' + k + '"' + ((c.etapa || 'sem_contato') === k ? ' selected' : '') + '>' + r + '</option>').join('') + '</select>';
+  const statusSel = '<select class="rec-input rec-sel" id="rec_status"><option value="ativo"' + ((c.status || 'ativo') === 'ativo' ? ' selected' : '') + '>Ativo</option><option value="inativo"' + (c.status === 'inativo' ? ' selected' : '') + '>Inativo</option></select>';
+  const hist = (c.historico || []).slice().sort((a, b) => (b.em || 0) - (a.em || 0)).map(h =>
+    '<div class="rec-hist"><div class="rec-hist-top"><b>' + recEsc(h.porNome || '—') + '</b><span class="rec-dim">' + recDataHora(h.em) + '</span></div><div>' + recEsc(h.texto) + '</div></div>'
+  ).join('') || '<div class="rec-dim" style="padding:6px 0">Sem histórico ainda.</div>';
+
+  return '<div class="rec-wrap">'
+    + '<div class="rec-head"><button class="rec-btn ghost" data-rec="voltar">← Voltar</button>'
+    + '<div class="rec-acoes">' + (novo ? '' : '<button class="rec-btn danger" data-rec="excluir">Excluir</button>') + '<button class="rec-btn primary" data-rec="salvar">Salvar</button></div></div>'
+    + '<h2 class="rec-titulo">' + (novo ? 'Novo candidato' : recEsc(c.nome || 'Candidato')) + '</h2>'
+    + '<div class="rec-cols">'
+    // Coluna esquerda: dados
+    + '<div class="rec-card"><div class="rec-card-t">Dados do candidato</div>'
+    + campo('Nome', inp('nome', 'Nome completo')) + campo('E-mail', inp('email'))
+    + '<div class="rec-linha2">' + campo('Telefone', inp('telefone')) + campo('Telefone 2', inp('telefone2')) + '</div>'
+    + campo('Origem', inp('fonte', 'Ex.: Indicação, Instagram…'))
+    + '<div class="rec-linha2">' + campo('RG', inp('rg'))
+    + '<div class="rec-campo"><label>CPF</label>' + inp('cpf')
+    + '<div class="rec-cpf-aviso' + ((c.cpf && c.cpfValido === false) ? ' erro' : '') + '" id="rec_cpf_aviso">' + ((c.cpf && c.cpfValido === false) ? '⚠ CPF inválido (confira os números)' : '') + '</div></div></div>'
+    + campo('Endereço', inp('endereco'))
+    + campo('Dados bancários (comissões)', inp('dadosBancarios'))
+    + '<div class="rec-linha2">' + campo('Experiência imobiliária?', simnao('expImobiliaria')) + campo('Experiência em vendas?', simnao('expVendas')) + '</div>'
+    + campo('Descreva a experiência imobiliária', ta('expImobiliariaDesc'))
+    + campo('Descreva a experiência em vendas', ta('expVendasDesc'))
+    + campo('Maior sonho', ta('maiorSonho'))
+    + campo('O que achou do modelo REMAX', ta('opiniaoRemax'))
+    + campo('Clube desejado', inp('clubeDesejado')) + '</div>'
+    // Coluna direita: funil + histórico
+    + '<div class="rec-card"><div class="rec-card-t">Funil e qualificação</div>'
+    + '<div class="rec-linha2">' + campo('Etapa', etapaSel) + campo('Status', statusSel) + '</div>'
+    + '<div class="rec-linha2">' + campo('Perfil', inp('perfil')) + campo('Nota', inp('nota')) + '</div>'
+    + campo('Tags (separadas por vírgula)', inp('tags'))
+    + '<div class="rec-card-t" style="margin-top:14px">Histórico</div>'
+    + (novo ? '<div class="rec-dim" style="padding:6px 0">Salve o candidato para registrar histórico.</div>'
+      : '<div class="rec-add-hist"><input class="rec-input" id="rec_novoHist" placeholder="Registrar uma ação (ligação, reunião…)"><button class="rec-btn sm" data-rec="add-hist">Adicionar</button></div><div class="rec-hists">' + hist + '</div>')
+    + '</div></div></div>';
+}
+
+function recWireEvents() {
+  secaoRecrutamento.addEventListener('input', e => {
+    if (e.target.id === 'recBusca') { recBusca = e.target.value; const el = secaoRecrutamento.querySelector('.rec-lista'); if (el) el.innerHTML = recLinhasHtml(); }
+    if (e.target.id === 'rec_cpf') {
+      const av = document.getElementById('rec_cpf_aviso'); if (!av) return;
+      const v = e.target.value.trim();
+      if (!v) { av.textContent = ''; av.className = 'rec-cpf-aviso'; }
+      else if (_recCpfValido(v)) { av.textContent = '✓ CPF válido'; av.className = 'rec-cpf-aviso ok'; }
+      else { av.textContent = '⚠ CPF inválido (confira os números)'; av.className = 'rec-cpf-aviso erro'; }
+    }
+  });
+  secaoRecrutamento.addEventListener('change', e => {
+    if (e.target.id === 'recTag') { recFiltroTag = e.target.value; const el = secaoRecrutamento.querySelector('.rec-lista'); if (el) el.innerHTML = recLinhasHtml(); }
+  });
+  secaoRecrutamento.addEventListener('click', async e => {
+    const el = e.target.closest('[data-rec]'); if (!el) return;
+    const a = el.dataset.rec;
+    if (a === 'etapa') { const k = el.dataset.k; recFiltroEtapa = (recFiltroEtapa === k) ? '' : k; recRender(); return; }
+    if (a === 'limpar-etapa') { recFiltroEtapa = ''; recRender(); return; }
+    if (a === 'novo') { recAbrirNovoModal(); return; }
+    if (a === 'modal-fechar') { const bg = secaoRecrutamento.querySelector('.rec-modal-bg'); if (bg) bg.remove(); return; }
+    if (a === 'modal-bg') { if (e.target === el) el.remove(); return; }
+    if (a === 'novo-salvar') {
+      const v = id => { const x = document.getElementById('recn_' + id); return x ? x.value.trim() : ''; };
+      const nome = v('nome'), telefone = v('telefone');
+      if (!nome) { recToast('Informe o nome.', true); return; }
+      if (!telefone) { recToast('Informe o celular/WhatsApp.', true); return; }
+      el.disabled = true;
+      try {
+        await recrutamentoSalvar({ nome, email: v('email'), telefone, telefone2: v('telefone2'), perfil: v('perfil'), fonte: v('fonte') });
+        recToast('Candidato adicionado'); carregarRecrutamento();
+      } catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
+      return;
+    }
+    if (a === 'voltar') { carregarRecrutamento(); return; }
+    if (a === 'abrir') {
+      const id = el.dataset.id;
+      secaoRecrutamento.innerHTML = '<div class="rec-msg">Abrindo…</div>';
+      try { const r = await recrutamentoObter({ id }); recCand = r.data.candidato; recView = 'detalhe'; recRender(); }
+      catch (err) { recToast('Erro ao abrir: ' + (err && err.message), true); carregarRecrutamento(); }
+      return;
+    }
+    if (a === 'salvar') {
+      const val = id => { const x = document.getElementById('rec_' + id); return x ? x.value : ''; };
+      const payload = {
+        nome: val('nome'), email: val('email'), telefone: val('telefone'), telefone2: val('telefone2'), fonte: val('fonte'), rg: val('rg'), cpf: val('cpf'),
+        endereco: val('endereco'), dadosBancarios: val('dadosBancarios'),
+        expImobiliaria: val('expImobiliaria') === 'sim', expImobiliariaDesc: val('expImobiliariaDesc'),
+        expVendas: val('expVendas') === 'sim', expVendasDesc: val('expVendasDesc'),
+        maiorSonho: val('maiorSonho'), opiniaoRemax: val('opiniaoRemax'), clubeDesejado: val('clubeDesejado'),
+        etapa: val('etapa'), status: val('status'), perfil: val('perfil'), nota: val('nota'),
+        tags: val('tags').split(',').map(t => t.trim()).filter(Boolean)
+      };
+      if (recCand && recCand.id) payload.id = recCand.id;
+      if (!payload.nome.trim()) { recToast('Informe o nome.', true); return; }
+      el.disabled = true;
+      try { await recrutamentoSalvar(payload); recToast('Candidato salvo'); carregarRecrutamento(); }
+      catch (err) { recToast('Erro ao salvar: ' + (err && err.message), true); el.disabled = false; }
+      return;
+    }
+    if (a === 'add-hist') {
+      const inpH = document.getElementById('rec_novoHist'); const texto = inpH ? inpH.value.trim() : '';
+      if (!texto || !recCand || !recCand.id) return;
+      el.disabled = true;
+      try { await recrutamentoHistorico({ id: recCand.id, texto }); const r = await recrutamentoObter({ id: recCand.id }); recCand = r.data.candidato; recRender(); }
+      catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
+      return;
+    }
+    if (a === 'excluir') {
+      if (!recCand || !recCand.id) return;
+      if (!confirm('Excluir este candidato? Isso apaga os dados dele (inclusive os sensíveis). Não dá pra desfazer.')) return;
+      try { await recrutamentoExcluir({ id: recCand.id }); recToast('Candidato excluído'); carregarRecrutamento(); }
+      catch (err) { recToast('Erro ao excluir: ' + (err && err.message), true); }
+      return;
+    }
+  });
+}
+
 function carregarCalculadoras() {
   const CALCS = [
     {

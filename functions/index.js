@@ -7143,13 +7143,28 @@ exports.noticiaImoveisDoDia = onCall(async (req) => {
 const REC_ETAPAS = ['sem_contato', 'contato_realizado', 'reuniao_agendada', 'reuniao_realizada', 'associado', 'desassociado'];
 const REC_STATUS = ['ativo', 'inativo'];
 
+// Valida CPF pelo dígito verificador (grátis, offline). Pega digitação errada e CPF
+// falso (ex.: 111.111.111-11). NÃO garante que existe na Receita — só que é bem-formado.
+function _cpfValido(cpf) {
+  const s = String(cpf || '').replace(/\D/g, '');
+  if (s.length !== 11 || /^(\d)\1{10}$/.test(s)) return false;
+  let soma = 0;
+  for (let i = 0; i < 9; i++) soma += parseInt(s[i], 10) * (10 - i);
+  let d1 = (soma * 10) % 11; if (d1 === 10) d1 = 0;
+  if (d1 !== parseInt(s[9], 10)) return false;
+  soma = 0;
+  for (let i = 0; i < 10; i++) soma += parseInt(s[i], 10) * (11 - i);
+  let d2 = (soma * 10) % 11; if (d2 === 10) d2 = 0;
+  return d2 === parseInt(s[10], 10);
+}
+
 // Serializa um candidato pro cliente (Timestamps viram ISO).
 function _recSerializar(id, d) {
   const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : (typeof t === 'string' ? t : null));
   return {
     id,
-    nome: d.nome || '', email: d.email || '', telefone: d.telefone || '',
-    rg: d.rg || '', cpf: d.cpf || '', endereco: d.endereco || '', dadosBancarios: d.dadosBancarios || '',
+    nome: d.nome || '', email: d.email || '', telefone: d.telefone || '', telefone2: d.telefone2 || '', fonte: d.fonte || '',
+    rg: d.rg || '', cpf: d.cpf || '', cpfValido: (d.cpfValido === undefined ? null : d.cpfValido), endereco: d.endereco || '', dadosBancarios: d.dadosBancarios || '',
     expImobiliaria: !!d.expImobiliaria, expImobiliariaDesc: d.expImobiliariaDesc || '',
     expVendas: !!d.expVendas, expVendasDesc: d.expVendasDesc || '',
     maiorSonho: d.maiorSonho || '', opiniaoRemax: d.opiniaoRemax || '', clubeDesejado: d.clubeDesejado || '',
@@ -7180,6 +7195,7 @@ exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, asyn
       expVendas: sim(b.expVendas), expVendasDesc: _txt(b.expVendasDesc, 2000),
       maiorSonho: _txt(b.maiorSonho, 2000), opiniaoRemax: _txt(b.opiniaoRemax, 2000),
       clubeDesejado: _txt(b.clubeDesejado, 120),
+      cpfValido: cpf ? _cpfValido(cpf) : null,
       atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
     };
 
@@ -7202,6 +7218,7 @@ exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, asyn
         criadoEm: admin.firestore.FieldValue.serverTimestamp()
       });
     }
+    await _bumpBroadcast('recrutamentoSeq');   // tempo real: a tela Recrutamento (se aberta) recarrega
     return res.json({ ok: true, id: ref.id, atualizado: existe });
   } catch (e) {
     await logErro('recrutamentoWebhook', e, {});
@@ -7218,6 +7235,7 @@ exports.recrutamentoListar = onCall(async (req) => {
     const d = doc.data();
     return {
       id: doc.id, nome: d.nome || '', etapa: d.etapa || 'sem_contato', status: d.status || 'ativo',
+      cpfValido: (d.cpfValido === undefined ? null : d.cpfValido),
       perfil: d.perfil || '', nota: (d.nota != null ? d.nota : ''), tags: Array.isArray(d.tags) ? d.tags : [],
       origem: d.origem || 'manual', atualizadoEm: iso(d.atualizadoEm), criadoEm: iso(d.criadoEm)
     };
@@ -7245,7 +7263,7 @@ exports.recrutamentoSalvar = onCall(async (req) => {
   // Campos editáveis (todos opcionais no update; nome obrigatório na criação).
   const patch = {};
   const setStr = (k, max) => { if (typeof d[k] === 'string') patch[k] = d[k].trim().slice(0, max); };
-  ['nome', 'email', 'telefone', 'rg', 'cpf', 'endereco', 'dadosBancarios', 'perfil', 'expImobiliariaDesc', 'expVendasDesc', 'maiorSonho', 'opiniaoRemax', 'clubeDesejado'].forEach(k => setStr(k, 400));
+  ['nome', 'email', 'telefone', 'telefone2', 'fonte', 'rg', 'cpf', 'endereco', 'dadosBancarios', 'perfil', 'expImobiliariaDesc', 'expVendasDesc', 'maiorSonho', 'opiniaoRemax', 'clubeDesejado'].forEach(k => setStr(k, 400));
   if (typeof d.nome === 'string') patch.nome = d.nome.trim().slice(0, 160);
   if (typeof d.expImobiliaria === 'boolean') patch.expImobiliaria = d.expImobiliaria;
   if (typeof d.expVendas === 'boolean') patch.expVendas = d.expVendas;
@@ -7253,6 +7271,7 @@ exports.recrutamentoSalvar = onCall(async (req) => {
   if (Array.isArray(d.tags)) patch.tags = d.tags.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim().slice(0, 40)).slice(0, 20);
   if (d.etapa != null) { if (!REC_ETAPAS.includes(d.etapa)) throw new HttpsError('invalid-argument', 'Etapa inválida.'); patch.etapa = d.etapa; }
   if (d.status != null) { if (!REC_STATUS.includes(d.status)) throw new HttpsError('invalid-argument', 'Status inválido.'); patch.status = d.status; }
+  if ('cpf' in patch) patch.cpfValido = patch.cpf ? _cpfValido(patch.cpf) : null;
   patch.atualizadoEm = admin.firestore.FieldValue.serverTimestamp();
 
   if (!id) {
@@ -7263,6 +7282,7 @@ exports.recrutamentoSalvar = onCall(async (req) => {
       historico: [{ texto: 'Candidato cadastrado manualmente', etapa: patch.etapa || 'sem_contato', por: auth.uid, porNome, em: Date.now() }],
       criadoEm: admin.firestore.FieldValue.serverTimestamp()
     });
+    await _bumpBroadcast('recrutamentoSeq');
     return { ok: true, id: ref.id };
   }
 
@@ -7280,6 +7300,7 @@ exports.recrutamentoSalvar = onCall(async (req) => {
     }
     tx.set(ref, writes, { merge: true });
   });
+  await _bumpBroadcast('recrutamentoSeq');
   return { ok: true, id };
 });
 
@@ -7307,5 +7328,6 @@ exports.recrutamentoExcluir = onCall(async (req) => {
   const id = _txt((req.data || {}).id, 60);
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
   await db.collection('candidatos').doc(id).delete();
+  await _bumpBroadcast('recrutamentoSeq');
   return { ok: true };
 });
