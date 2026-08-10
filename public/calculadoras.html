@@ -156,6 +156,19 @@
       <div class="pc-vazio">Informe a meta de comissão e o ticket médio acima para ver o seu plano.</div>
     </div>
   </div>
+
+  <!-- 5. Custo de Escritura (Emolumentos 2026) -->
+  <div class="section" id="sec-emolumentos">
+    <div class="section-title"><span class="num">5</span> Custo de Escritura (Emolumentos 2026)</div>
+    <div class="pc-explica">Informe o <b>Valor Venal de Referência</b> (consultado no site da Prefeitura de SP). A calculadora acha a <b>faixa</b> na Tabela de Emolumentos 2026 do <b>Tabelionato de Notas de SP</b> e mostra a <b>linha completa</b> — cada componente e o total.</div>
+    <div class="calc-grid">
+      <div class="field"><div class="field-header"><label>Valor Venal de Referência</label></div><input type="text" id="em_valor" inputmode="numeric" placeholder="R$ 0,00"></div>
+    </div>
+    <div id="em_res" style="margin-top:8px">
+      <div class="pc-vazio">Informe o Valor Venal de Referência acima para ver o emolumento da escritura.</div>
+    </div>
+    <div class="calc-nota">Inclui a <b>escritura</b> (Tabelionato de Notas) + o <b>ITBI</b> a 3% do valor. O <b>Registro de Imóveis</b> é cobrança à parte, não incluída aqui.</div>
+  </div>
 </div>
 
 <script>
@@ -170,7 +183,7 @@ function diasEntre(msIni, msFim){ if(msIni==null||msFim==null) return null; retu
 const $ = id => document.getElementById(id);
 
 // Máscara de dinheiro nos campos monetários
-['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao','so_meta','so_ticket'].forEach(id=>{
+['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao','so_meta','so_ticket','em_valor'].forEach(id=>{
   $(id).addEventListener('input', e=>{ e.target.value = maskMoney(e.target.value); calcular(); });
 });
 $('pc_tipo').addEventListener('change', calcular);
@@ -232,6 +245,7 @@ function calcular(){
 
   calcParceria();
   calcSonhos();
+  calcEmolumento();
 }
 
 // ── 3. Parceria e referenciamentos ──
@@ -382,12 +396,72 @@ function calcSonhos(){
   });
 }
 
+// ── 5. Custo de Escritura (Emolumentos 2026 — Tabelionato de Notas SP, Seção 1) ──
+// Faixas extraídas da planilha "MULTICÁLCULO 2026". TOTAL (tt) = tb+es+sf+mu+mp+rc+tj+sc.
+// Os Cart. Prev. Serv. (c1/c2) são detalhamento e NÃO entram no total (igual à planilha).
+// Município (mu) = 5% do Tabelião (ROUNDDOWN 2 casas). A última faixa (z6) tem ate=0 = sem teto.
+const EMOL_FAIXAS = [
+  {l:'a',de:0,ate:1524,tb:212.51,es:60.4,sf:41.34,c1:31.14,c2:10.2,mu:10.62,mp:10.2,rc:11.19,tj:14.59,sc:2.13,tt:362.98},
+  {l:'b',de:1524.01,ate:5761,tb:317.59,es:90.26,sf:61.77,c1:46.53,c2:15.24,mu:15.87,mp:15.24,rc:16.72,tj:21.8,sc:3.18,tt:542.43},
+  {l:'c',de:5761.01,ate:9603,tb:495.89,es:140.93,sf:96.46,c1:72.66,c2:23.8,mu:24.79,mp:23.8,rc:26.1,tj:34.03,sc:4.96,tt:846.96},
+  {l:'d',de:9603.01,ate:19210,tb:708.41,es:201.34,sf:137.8,c1:103.8,c2:34,mu:35.42,mp:34,rc:37.28,tj:48.62,sc:7.08,tt:1209.95},
+  {l:'e',de:19210.01,ate:38420,tb:957.54,es:272.14,sf:186.27,c1:140.31,c2:45.96,mu:47.87,mp:45.96,rc:50.4,tj:65.72,sc:9.58,tt:1635.48},
+  {l:'f',de:38420.01,ate:76840,tb:1135.9,es:322.83,sf:220.96,c1:166.44,c2:54.52,mu:56.79,mp:54.52,rc:59.78,tj:77.96,sc:11.36,tt:1940.1},
+  {l:'g',de:76840.01,ate:115260,tb:1348.42,es:383.23,sf:262.3,c1:197.58,c2:64.72,mu:67.42,mp:64.72,rc:70.97,tj:92.54,sc:13.48,tt:2303.08},
+  {l:'h',de:115260.01,ate:153680,tb:1597.56,es:454.04,sf:310.76,c1:234.08,c2:76.68,mu:79.87,mp:76.68,rc:84.08,tj:109.64,sc:15.98,tt:2728.61},
+  {l:'i',de:153680.01,ate:192100,tb:1810.12,es:514.46,sf:352.11,c1:265.23,c2:86.88,mu:90.5,mp:86.89,rc:95.27,tj:124.23,sc:18.1,tt:3091.68},
+  {l:'j',de:192100.01,ate:230520,tb:2025.08,es:575.54,sf:393.92,c1:296.72,c2:97.2,mu:101.25,mp:97.2,rc:106.58,tj:138.98,sc:20.25,tt:3458.8},
+  {l:'k',de:230520.01,ate:268940,tb:2271.77,es:645.66,sf:441.92,c1:332.88,c2:109.04,mu:113.58,mp:109.05,rc:119.57,tj:155.92,sc:22.72,tt:3880.19},
+  {l:'l',de:268940.01,ate:307360,tb:2486.77,es:706.77,sf:483.74,c1:364.38,c2:119.36,mu:124.33,mp:119.36,rc:130.88,tj:170.67,sc:24.87,tt:4247.39},
+  {l:'m',de:307360.01,ate:330146,tb:2735.91,es:777.58,sf:532.2,c1:400.88,c2:131.32,mu:136.79,mp:131.32,rc:144,tj:187.77,sc:27.36,tt:4672.93},
+  {l:'n',de:330146.01,ate:384200,tb:2911.79,es:827.56,sf:566.41,c1:426.65,c2:139.76,mu:145.58,mp:139.77,rc:153.25,tj:199.84,sc:29.12,tt:4973.32},
+  {l:'o',de:384200.01,ate:768400,tb:3231.8,es:918.51,sf:628.66,c1:473.54,c2:155.12,mu:161.59,mp:155.13,rc:170.09,tj:221.8,sc:32.32,tt:5519.9},
+  {l:'p',de:768400.01,ate:1152600,tb:3588.44,es:1019.86,sf:698.04,c1:525.8,c2:172.24,mu:179.42,mp:172.25,rc:188.87,tj:246.28,sc:35.88,tt:6129.04},
+  {l:'q',de:1152600.01,ate:1536800,tb:3979.28,es:1130.95,sf:774.07,c1:583.07,c2:191,mu:198.96,mp:191.01,rc:209.44,tj:273.1,sc:39.79,tt:6796.6},
+  {l:'r',de:1536800.01,ate:2345066,tb:4397,es:1249.67,sf:855.33,c1:644.28,c2:211.05,mu:219.85,mp:211.06,rc:231.42,tj:301.77,sc:43.97,tt:7510.07},
+  {l:'s',de:2345066.01,ate:3908444,tb:6106.97,es:1735.67,sf:1187.96,c1:894.83,c2:293.13,mu:305.34,mp:293.13,rc:321.42,tj:419.13,sc:61.07,tt:10430.69},
+  {l:'t',de:3908444.01,ate:5862665,tb:7939.03,es:2256.35,sf:1544.35,c1:1163.28,c2:381.07,mu:396.95,mp:381.07,rc:417.84,tj:544.87,sc:79.39,tt:13559.85},
+  {l:'u',de:5862665.01,ate:7816887,tb:9771.13,es:2777.06,sf:1900.74,c1:1431.73,c2:469.01,mu:488.55,mp:469.01,rc:514.27,tj:670.61,sc:97.71,tt:16689.08},
+  {l:'v',de:7816887.01,ate:9771109,tb:11603.2,es:3297.75,sf:2257.12,c1:1700.17,c2:556.95,mu:580.16,mp:556.95,rc:610.69,tj:796.35,sc:116.03,tt:19818.25},
+  {l:'w',de:9771109.01,ate:11725331,tb:13435.25,es:3818.44,sf:2613.51,c1:1968.62,c2:644.89,mu:671.76,mp:644.89,rc:707.12,tj:922.08,sc:134.35,tt:22947.4},
+  {l:'x',de:11725331.01,ate:13679552,tb:15267.37,es:4339.14,sf:2969.9,c1:2237.07,c2:732.83,mu:763.36,mp:732.83,rc:803.54,tj:1047.82,sc:152.67,tt:26076.63},
+  {l:'y',de:13679552.01,ate:15633774,tb:17099.42,es:4859.84,sf:3326.28,c1:2505.51,c2:820.77,mu:854.97,mp:820.77,rc:899.97,tj:1173.56,sc:170.99,tt:29205.8},
+  {l:'z',de:15633774.01,ate:17587996,tb:18931.51,es:5380.53,sf:3682.67,c1:2773.96,c2:908.71,mu:946.57,mp:908.71,rc:996.39,tj:1299.3,sc:189.32,tt:32335.0},
+  {l:'z1',de:17587996.01,ate:19542217,tb:20763.64,es:5901.24,sf:4039.07,c1:3042.42,c2:996.65,mu:1038.18,mp:996.65,rc:1092.82,tj:1425.04,sc:207.64,tt:35464.28},
+  {l:'z2',de:19542217.01,ate:23450661,tb:24427.8,es:6942.64,sf:4751.84,c1:3579.31,c2:1172.53,mu:1221.39,mp:1172.53,rc:1285.67,tj:1676.52,sc:244.28,tt:41722.67},
+  {l:'z3',de:23450661.01,ate:27359105,tb:28091.94,es:7984.03,sf:5464.62,c1:4116.21,c2:1348.41,mu:1404.59,mp:1348.41,rc:1478.52,tj:1927.99,sc:280.92,tt:47981.02},
+  {l:'z4',de:27359105.01,ate:31267548,tb:31756.12,es:9025.42,sf:6177.39,c1:4653.1,c2:1524.29,mu:1587.8,mp:1524.29,rc:1671.37,tj:2179.47,sc:317.56,tt:54239.42},
+  {l:'z5',de:31267548.01,ate:35175992,tb:35420.24,es:10066.81,sf:6890.17,c1:5190,c2:1700.17,mu:1771.01,mp:1700.17,rc:1864.22,tj:2430.95,sc:354.2,tt:60497.77},
+  {l:'z6',de:35175992.01,ate:0,tb:39084.46,es:11108.22,sf:7602.95,c1:5726.9,c2:1876.05,mu:1954.22,mp:1876.05,rc:2057.08,tj:2682.43,sc:390.84,tt:66756.25}
+];
+function calcEmolumento(){
+  const res = $('em_res'); if(!res) return;
+  const v = parseMoney($('em_valor').value);
+  if(!v){ res.innerHTML = '<div class="pc-vazio">Informe o Valor Venal de Referência acima para ver o emolumento da escritura.</div>'; return; }
+  const f = EMOL_FAIXAS.find(x => v >= x.de && (x.ate===0 || v <= x.ate)) || EMOL_FAIXAS[EMOL_FAIXAS.length-1];
+  const faixaTxt = f.ate===0 ? ('acima de '+fmtBRL(f.de)) : (fmtBRL(f.de)+' até '+fmtBRL(f.ate));
+  const itens = [
+    ['Tabelião', f.tb], ['Estado', f.es], ['Secretaria da Fazenda', f.sf],
+    ['Município (ISS 5%)', f.mu], ['Ministério Público', f.mp], ['Registro Civil', f.rc],
+    ['Tribunal de Justiça', f.tj], ['Santa Casa', f.sc]
+  ];
+  const itbi = v * 0.03;   // ITBI SP = 3% do valor (Valor Venal de Referência)
+  res.innerHTML = '<div class="calc-res">'
+    + '<div class="calc-linha"><span class="rotulo">Faixa <b>'+f.l+'</b> <span class="hint">('+faixaTxt+')</span></span><span class="valor"></span></div>'
+    + itens.map(i => '<div class="calc-linha"><span class="rotulo">'+i[0]+'</span><span class="valor">'+fmtBRL(i[1])+'</span></div>').join('')
+    + '<div class="calc-linha destaque"><span class="rotulo">TOTAL da escritura</span><span class="valor">'+fmtBRL(f.tt)+'</span></div>'
+    + '<div class="calc-linha"><span class="rotulo">ITBI <span class="hint">(3% do Valor Venal de Referência)</span></span><span class="valor">'+fmtBRL(itbi)+'</span></div>'
+    + '<div class="calc-linha destaque"><span class="rotulo">TOTAL geral <span class="hint">(escritura + ITBI)</span></span><span class="valor">'+fmtBRL(f.tt + itbi)+'</span></div>'
+    + '</div>';
+}
+
 // Exibe só a calculadora indicada por ?calc=aluguel|multa|parceria|sonhos (sem o parâmetro, mostra todas)
 const CALC_SECS = {
   aluguel:  ['sec-aluguel',  'Cálculo de aluguel proporcional'],
   multa:    ['sec-multa',    'Cálculo de multa rescisória'],
   parceria: ['sec-parceria', 'Parceria e referenciamentos'],
-  sonhos:   ['sec-sonhos',   'Calculadora dos Sonhos']
+  sonhos:   ['sec-sonhos',   'Calculadora dos Sonhos'],
+  emolumentos: ['sec-emolumentos', 'Custo de Escritura (Emolumentos 2026)']
 };
 const calc = new URLSearchParams(location.search).get('calc');
 if(CALC_SECS[calc]){

@@ -6473,6 +6473,11 @@ function carregarCalculadoras() {
       calc: 'sonhos', nome: 'Calculadora dos Sonhos',
       desc: 'A partir da sua meta de comissão no ano, mostra quantas transações e atividades você precisa por ano, mês, semana e dia (benchmark REMAX).',
       icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><path d="M14 34l7-8 5 4 8-11" fill="none" stroke="#A4D7F4" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 19h5v5" fill="none" stroke="#DC1C2E" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+    },
+    {
+      calc: 'emolumentos', nome: 'Custo de Escritura (Emolumentos 2026)',
+      desc: 'Informe o Valor Venal de Referência e veja a faixa da tabela de emolumentos do Tabelionato de Notas de SP — cada componente e o total da escritura.',
+      icone: `<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><rect width="48" height="48" rx="12" fill="#002749"/><path d="M17 13h10l6 6v16a2 2 0 0 1-2 2H17a2 2 0 0 1-2-2V15a2 2 0 0 1 2-2z" fill="none" stroke="#A4D7F4" stroke-width="2.2" stroke-linejoin="round"/><path d="M27 13v6h6" fill="none" stroke="#A4D7F4" stroke-width="2.2" stroke-linejoin="round"/><path d="M20 27h8M20 31h8" stroke="#DC1C2E" stroke-width="2" stroke-linecap="round"/></svg>`
     }
   ];
 
