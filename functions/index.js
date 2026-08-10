@@ -480,6 +480,11 @@ exports.setUserAccess = onCall(async (req) => {
   const { uid, apps, drives_fotografia, loc_beta, loc_gestao, loc_role, loc_financeiro, ti, marketing_gerenciar } = req.data || {};
   if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
   const limpos = Array.isArray(apps) ? apps.filter(a => GRANTABLE_APPS.includes(a)) : [];
+  // Valida o usuário ANTES de qualquer gravação — evita write parcial (user_access gravado,
+  // claims não) se o Auth não existir. O user_access pode ficar órfão após deleteUserAccount,
+  // que só apaga o Auth.
+  const userRec = await admin.auth().getUser(uid).catch(() => null);
+  if (!userRec) throw new HttpsError('not-found', 'Usuário não encontrado.');
   await db.collection('user_access').doc(uid).set({
     apps: limpos,
     drives_fotografia: !!drives_fotografia,
@@ -493,8 +498,6 @@ exports.setUserAccess = onCall(async (req) => {
   // regra do Storage checa request.auth.token.marketing_gerenciar — o firestore.get()
   // cross-service dentro da regra de Storage é frágil e estava negando pra todos.
   // locRole (Locação) segue a mesma lógica. Uma única escrita de claims (merge).
-  const userRec = await admin.auth().getUser(uid).catch(() => null);
-  if (!userRec) throw new HttpsError('not-found', 'Usuário não encontrado.');
   const claims = { ...(userRec.customClaims || {}) };
   if (marketing_gerenciar) claims.marketing_gerenciar = true; else delete claims.marketing_gerenciar;
   let role;
