@@ -161,6 +161,16 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
     - ⚠️ **Os nomes dos campos do PDF são "sem sentido"** (editável mal nomeado: `07ggA…`, `25FDG`, `Texto novo 0006`…). O mapa (`CONTRATO_CAMPOS` no `functions/index.js`) foi conferido **visualmente campo a campo** renderizando o PDF — **não reordenar às cegas**. Se trocar o PDF-modelo, refazer o mapa (encher cada campo vazio com o próprio nome e renderizar pra ver o que é o quê).
     - **Casos de borda tratados**: imóvel de venda **manual** (sem ficha de vendedor) → sai com imóvel+corretor e vendedores em branco (flag `semFicha`); corretor sem CRECI no perfil → flag `semCreci`. Ambos viram aviso no toast, não erro. Testado no staging (#SH-0001 = sem ficha → aviso certo; preenchimento completo validado localmente com renderização real). **`pdf-lib` é dependência nova das functions.**
 - **Marketing** (dinâmico, editável no painel): sanfonas + templates em Firestore `marketing_config/layout` (semente `MARKETING_SEED` + versão/merge); ⚙ Gerenciar (permissão `marketing_gerenciar`) edita/reordena/faz upload de HTML e capa pro Storage. Templates abrem em janela dedicada (`abrir-template` no `main.js`).
+  - **⚠️ `marketing_gerenciar` é CLAIM, não só campo do `user_access` (2026-08-10, v1.0.150 backend).** A
+    regra do Storage (`podeMarketing`, `storage.rules`) checa `request.auth.token.marketing_gerenciar` — igual
+    o `podeLocacao` usa `locRole`. Antes ela lia `firestore.get(user_access).marketing_gerenciar` de dentro da
+    regra de Storage; essa **leitura cross-service é frágil e passou a negar o upload pra TODOS** (inclusive quem
+    tinha a permissão) — sintoma: `storage/unauthorized` no HTML mesmo com permissão. O `setUserAccess` agora
+    grava o campo no `user_access` **E** carimba a claim (merge, preserva admin/locRole). **Conceder a permissão
+    exige RELOGIN** pra o token pegar a claim (mesma regra do `locRole`). O upload do cliente força
+    `contentType:'text/html'` (`hub-app.js` `uploadArquivoTemplate`) — sem isso um .html com `file.type` vazio no
+    Windows subia como octet-stream e a regra (`ehHtmlOuImagem`) barrava. ⚠️ Nenhuma outra regra de Storage usa
+    `firestore.get` — se precisar de permissão numa regra, use CLAIM.
   - **Layout de "prateleiras"** (2026-07-21, pedido do chefe, referência REMARKT; **só no staging**):
     a sanfona `<details>` virou faixa sempre visível — título à esquerda + contador + **"Ver mais"**
     (vira grade; só aparece com >4 templates) e os cards numa linha que rola. O card é **só a capa**
