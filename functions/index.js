@@ -7071,6 +7071,110 @@ exports.sugerirRespostaLead = onCall({ secrets: [GEMINI_API_KEY] }, async (req) 
   return { ok: true, respostas, dica: typeof out.dica === 'string' ? out.dica : '', modelo: MODEL };
 });
 
+// ─── Próxima ação do Negócio (IA · Gemini) ───────────────────────────────────
+// A partir do ESTADO de um negócio (etapa, checklist, dias parado, histórico),
+// sugere (1) a próxima ação para o corretor e (2) um rascunho de mensagem pronta
+// para o cliente. SÓ POR CLIQUE — nunca roda sozinha (não torra o limite grátis).
+// Mesmo molde da sugerirRespostaLead: secret GEMINI_API_KEY, responseSchema, humano
+// revisa. Posse via _negocioComPosse (gestor/administrativo/corretor responsável).
+const IA_NEG_SYSTEM = `Você é o assistente de um corretor de imóveis da REMAX Smart no Brasil.
+Recebe o ESTADO de um negócio (imobiliário) em andamento: tipo, etapa atual, o que já foi
+concluído no checklist, o que falta, há quantos dias está parado e o histórico recente.
+Sua tarefa é devolver DUAS coisas:
+- "acao": a próxima ação concreta que o corretor deve tomar AGORA para destravar o negócio
+  (1 a 3 frases, direto ao ponto, em português do Brasil). Baseie-se SÓ no que falta no
+  checklist e no tempo parado. Se está tudo em dia, oriente o próximo passo natural da etapa.
+- "mensagem": um rascunho de mensagem de WhatsApp pronto para o corretor ENVIAR AO CLIENTE
+  neste momento do negócio (2 a 5 frases, tom caloroso e profissional, pronto para copiar,
+  sem colchetes de preenchimento). Se souber o nome do cliente, use.
+Regras: NUNCA invente valores, metragem, endereço ou dados que não foram informados. Não
+prometa prazos que você não tem como garantir. Escreva sempre em português do Brasil.`;
+
+exports.negocioSugerirAcao = onCall({ secrets: [GEMINI_API_KEY] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const KEY = (GEMINI_API_KEY.value() || '').trim();
+  if (!KEY) throw new HttpsError('failed-precondition', 'A chave do Gemini não está configurada no servidor.');
+  const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  // Posse: gestor/administrativo veem tudo; corretor só o seu negócio.
+  const { snap } = await _negocioComPosse((req.data || {}).negocioId, auth);
+  const n = snap.data() || {};
+  if (n.status === 'concluido' || n.status === 'cancelado') {
+    throw new HttpsError('failed-precondition', 'Este negócio já está encerrado — não há próxima ação.');
+  }
+
+  const ROTULO_STATUS = {
+    negocio_criado: 'Negócio criado', em_andamento: 'Em andamento',
+    aguardando_broker: 'Aguardando o gestor', aguardando_corretor: 'Aguardando o corretor',
+    aguardando_administrativo: 'Aguardando o administrativo', entregue_gestao: 'Entregue para a gestão'
+  };
+  const checklist = Array.isArray(n.checklist) ? n.checklist : [];
+  const feitas = checklist.filter(x => x.feito).map(x => x.label);
+  const pendentes = checklist.filter(x => !x.feito);
+  const proxObrig = pendentes.filter(x => x.obrigatoria).map(x => x.label);
+  const ultAtual = n.atualizadoEm && n.atualizadoEm.toDate ? n.atualizadoEm.toDate().getTime() : Date.now();
+  const diasParado = Math.max(0, Math.floor((Date.now() - ultAtual) / 86400000));
+  const hist = (n.timeline || []).slice(-5).map(h => `- ${h.texto || ''}`).join('\n');
+
+  const ctx = [
+    `Tipo de negócio: ${n.tipo === 'venda' ? 'Venda' : 'Locação'}`,
+    `Etapa atual (status): ${ROTULO_STATUS[n.status] || n.status || '—'}`,
+    `Cliente: ${n.clienteNome || '(não informado)'}`,
+    `Imóvel: ${(n.imovelResumo || '') + (n.cidade ? ' — ' + n.cidade : '') || '(não informado)'}`,
+    `Próxima ação registrada no sistema: ${n.proximaAcao || '(nenhuma)'}`,
+    `Dias parado sem atualização: ${diasParado}`,
+    `Etapas JÁ concluídas do checklist: ${feitas.length ? feitas.join('; ') : '(nenhuma ainda)'}`,
+    `Etapas que FALTAM: ${pendentes.length ? pendentes.map(x => x.label).join('; ') : '(nenhuma — checklist completo)'}`,
+    proxObrig.length ? `Dessas, são OBRIGATÓRIAS: ${proxObrig.join('; ')}` : '',
+    hist ? `Histórico recente:\n${hist}` : ''
+  ].filter(Boolean).join('\n');
+
+  const body = {
+    system_instruction: { parts: [{ text: IA_NEG_SYSTEM }] },
+    contents: [{ role: 'user', parts: [{ text: ctx }] }],
+    generationConfig: {
+      temperature: 0.6,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'object',
+        properties: { acao: { type: 'string' }, mensagem: { type: 'string' } },
+        required: ['acao', 'mensagem']
+      }
+    }
+  };
+
+  let resp, txt;
+  try {
+    resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
+      body: JSON.stringify(body)
+    });
+    txt = await resp.text();
+  } catch (e) {
+    throw new HttpsError('unavailable', 'Não consegui falar com o Gemini agora. Tente de novo.');
+  }
+  if (!resp.ok) {
+    let msg = '';
+    try { msg = ((JSON.parse(txt) || {}).error || {}).message || ''; } catch { msg = ''; }
+    console.error('[negocioSugerirAcao] Gemini', resp.status, msg);
+    if (resp.status === 429) throw new HttpsError('resource-exhausted', 'O limite grátis do Gemini foi atingido por enquanto. Tente mais tarde.');
+    throw new HttpsError('internal', 'O Gemini recusou a solicitação. Tente de novo.');
+  }
+
+  let data; try { data = JSON.parse(txt); } catch { data = {}; }
+  const cand = (data.candidates || [])[0];
+  if (!cand) throw new HttpsError('internal', 'O Gemini não retornou resposta. Tente de novo.');
+  const fim = cand.finishReason || '';
+  if (fim === 'SAFETY' || fim === 'PROHIBITED_CONTENT' || fim === 'BLOCKLIST') throw new HttpsError('invalid-argument', 'O Gemini bloqueou esta solicitação por segurança.');
+  if (fim === 'MAX_TOKENS') throw new HttpsError('internal', 'A resposta veio cortada. Tente de novo.');
+  const conteudo = (((cand.content || {}).parts || [])[0] || {}).text || '';
+  let out; try { out = JSON.parse(conteudo); } catch { throw new HttpsError('internal', 'Não consegui interpretar a resposta da IA. Tente de novo.'); }
+  const acao = typeof out.acao === 'string' ? out.acao.trim() : '';
+  const mensagem = typeof out.mensagem === 'string' ? out.mensagem.trim() : '';
+  if (!acao && !mensagem) throw new HttpsError('internal', 'A IA não retornou uma sugestão utilizável. Tente de novo.');
+  return { ok: true, acao, mensagem, modelo: MODEL };
+});
+
 // ─── Notícia de imóveis (banner automático) ──────────────────────────────────
 // Lê o RSS do Google Notícias (imóveis/BR), guarda a lista ~1h no Firestore e
 // devolve a LISTA de manchetes (o Hub mostra uma diferente a cada aparição do banner).

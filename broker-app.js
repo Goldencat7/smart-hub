@@ -44,6 +44,7 @@ const fnDocsClientes= call('documentosClientes');   // sanfona: clientes (fichas
 const fnImovelDoc   = call('carteiraAnexarDoc');    // dono/gestor/adm sobe documento avulso a um imóvel
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
+const fnSugAcao     = call('negocioSugerirAcao');   // IA (Gemini): próxima ação + rascunho de mensagem do negócio
 const FTIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -857,6 +858,16 @@ function dealDocsCardHTML(d, podeSubir){
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2"><span class="up fz12 fw7 t800">Documentos deste negócio</span>'+addBtn+'</div>'+rows+'</div>';
 }
 
+// Card do Assistente IA (Gemini): botão que sugere a próxima ação + rascunho de
+// mensagem ao cliente. SÓ POR CLIQUE (não gasta token sozinho). Some no negócio
+// encerrado. O resultado é injetado em #bkIaBox (ver handleAction 'ia-sugerir').
+function iaCardHTML(){
+  return '<div class="card" style="padding:18px;margin-bottom:16px">'
+    + '<div class="fx ac jb wrap g2"><div class="fx ac g2">'+iconChip('sparkles','ai',34)+'<div><div class="up fz12 fw7 t800">Assistente IA</div><div class="fz11 t500">Sugere o próximo passo e um rascunho de mensagem</div></div></div>'
+    + '<button class="btn btn-primary sm nsh" data-action="ia-sugerir">'+icon('sparkles',15)+'Sugerir próxima ação</button></div>'
+    + '<div id="bkIaBox"></div></div>';
+}
+
 function openDeal(id){
   // DEALS não tem cancelados (filtrados no load); cai no DEALS_DOCS pra poder abrir
   // um cancelado (ver motivo da perda / arquivar).
@@ -891,6 +902,7 @@ function openDeal(id){
     '<button class="btn-dark-ghost" style="margin-bottom:16px" data-nav="negocios">'+icon('arrow-left',15)+'Voltar aos Negócios</button>'
   + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a><button class="btn btn-outline sm" data-action="drive-set" data-cur="'+esc(d.driveUrl)+'">'+icon('pencil',15)+'Editar</button>':'<button class="btn btn-outline sm" data-action="drive-set" data-cur="">'+icon('folder-plus',15)+'Adicionar Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
+  + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? iaCardHTML() : '')
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? dealTagsCardHTML(d) : '')
@@ -1894,6 +1906,25 @@ handleAction = function(a, el){
   if(a==='prop-ficha-copy'){ const l=fichaLinkImovel(el.dataset.arq, el.dataset.imovel); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha copiado — mande ao proprietário do imóvel','copy'); return; }
   if(a==='copiar-fone'){ try{ navigator.clipboard.writeText(el.dataset.valor||''); }catch(e){} toast('Telefone copiado','copy'); return; }
   if(a==='copiar-email'){ try{ navigator.clipboard.writeText(el.dataset.valor||''); }catch(e){} toast('E-mail copiado','copy'); return; }
+  // Assistente IA do negócio (Gemini): sugere próxima ação + rascunho de mensagem.
+  if(a==='ia-sugerir'){
+    const box=$('#bkIaBox'); if(!box) return;
+    const oh=el.innerHTML; el.disabled=true; el.innerHTML=icon('loader-2',15)+'Gerando…';
+    box.innerHTML='<div class="fz12 t500" style="padding:10px 2px">'+icon('loader-2',14)+' A IA está analisando o negócio…</div>'; refreshIcons();
+    fnSugAcao({negocioId:state.currentDeal}).then(r=>{
+      const dd=(r&&r.data)||r||{}; const acao=dd.acao||''; const msg=dd.mensagem||'';
+      box.innerHTML='<div style="margin-top:12px;padding:14px;border:1px solid var(--ink200);border-radius:10px;background:var(--ink50)">'
+        + (acao?'<div class="up fz11 fw7 t800" style="margin-bottom:6px">Próxima ação sugerida</div><div class="fz13 t900" style="margin-bottom:14px;white-space:pre-wrap">'+esc(acao)+'</div>':'')
+        + (msg?'<div class="up fz11 fw7 t800" style="margin-bottom:6px">Rascunho de mensagem ao cliente</div><textarea id="bkIaMsg" class="input" rows="5" style="width:100%;height:auto;resize:vertical;padding:10px 12px">'+esc(msg)+'</textarea>'
+            + '<div class="fx g2 wrap" style="margin-top:8px"><button class="btn btn-outline sm" data-action="ia-copiar">'+icon('copy',14)+'Copiar mensagem</button><button class="btn btn-ghost sm" data-action="ia-whats">'+icon('message-circle',14)+'Abrir no WhatsApp</button></div>':'')
+        + '<div class="fz11 t400" style="margin-top:12px">Sugestão de IA — revise antes de enviar. A IA pode errar.</div></div>';
+      refreshIcons();
+    }).catch(e=>{ box.innerHTML='<div class="fz12" style="color:var(--danger);padding:8px 2px">'+esc(e.message||'Não consegui gerar agora. Tente de novo.')+'</div>'; })
+    .finally(()=>{ try{ el.disabled=false; el.innerHTML=oh; refreshIcons(); }catch(_e){} });
+    return;
+  }
+  if(a==='ia-copiar'){ const t=(($('#bkIaMsg')||{}).value)||''; try{ navigator.clipboard.writeText(t); }catch(e){} toast('Mensagem copiada','copy'); return; }
+  if(a==='ia-whats'){ const t=(($('#bkIaMsg')||{}).value)||''; window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank'); return; }
   if(a==='int-ver-ficha'){ const map={proposta:'ficha-proposta.html',pf:'ficha-pf.html',pj:'ficha-pj.html',locacao_fiador:'ficha-locacao-fiador.html',fianca:'ficha-fianca.html',vendedor:'ficha-vendedor.html',locador:'ficha-locador.html'}; const arq=map[el.dataset.tipo]||'ficha-proposta.html'; const url=FICHA_HOST+'/'+arq+'?modo=corretor&idFicha='+encodeURIComponent(el.dataset.ficha||'')+'&origem=hub'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Ficha do interessado'); } else { window.open(url,'_blank'); } return; }
   if(a==='alterar-valor'){ openAlterarValor(el.dataset.imovel); return; }
   if(a==='alterar-valor-save'){ salvarNovoValor(el.dataset.imovel); return; }
