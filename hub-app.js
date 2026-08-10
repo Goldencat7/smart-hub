@@ -3220,7 +3220,13 @@ async function uploadArquivoTemplate(si, ti, campo) {
       const ext = campo === 'arquivo' ? 'html' : (file.name.split('.').pop() || 'jpg');
       const path = `marketing/${sanfonaId}/${templateId}-${Date.now()}.${ext}`;
       const ref = storageRef(storage, path);
-      const snap = await uploadBytesResumable(ref, file);
+      // Força o contentType — a regra do Storage exige text/html ou image/*. Sem isso, um
+      // .html cujo file.type o Windows reporta vazio sobe como octet-stream e a regra nega
+      // (erro genérico "sem permissão", mesmo tendo a permissão marketing_gerenciar).
+      const contentType = campo === 'arquivo'
+        ? 'text/html'
+        : (file.type && /^image\//.test(file.type) ? file.type : 'image/' + (ext === 'jpg' ? 'jpeg' : ext.toLowerCase()));
+      const snap = await uploadBytesResumable(ref, file, { contentType });
       const url = await getDownloadURL(snap.ref);
       mktConfig.sanfonas[si].templates[ti][campo] = url;
       agendarRerender();
