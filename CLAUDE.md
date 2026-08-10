@@ -483,9 +483,24 @@ O Hub roda no celular em **`https://remax-smart-hub.web.app/app/`** (instalável
   SW ativo no escopo `/app/`, manifest com 3 ícones, gaveta abre/fecha, sem scroll horizontal.
   **Publicado** — no ar em `remax-smart-hub.web.app/app/` (acompanha as versões do `.exe` via
   `deploy:pwa`). Teste em celular físico (login, 2FA, fichas) segue recomendado a cada release grande.
-- **Fase 2 (opcional)**: o Electron virar casca que faz `loadURL(hosting)` — aí
-  `firebase deploy --only hosting` atualiza **desktop + celular juntos** e o `.exe` só é republicado
-  quando mexer no autologin. Hoje ainda são dois deploys (o `.exe` carrega os arquivos do disco).
+- **Fase 2 — "casca fina" (TALVEZ, não decidido — conversado em 2026-08-10)**: o Electron virar casca
+  que faz `loadURL(hosting)` em vez de carregar as telas do disco — aí `firebase deploy --only hosting`
+  atualiza **desktop + celular juntos** e o `.exe` só é republicado quando mexer no autologin. Hoje ainda
+  são dois deploys (o `.exe` carrega os arquivos do disco).
+  - **Contexto da conversa**: o Nathan cogitou "migrar pro online" (chegou a pensar em pôr um aviso no
+    `.exe` de "vai ser desativado, use o link online"). ⚠️ **Migrar pro PWA puro MATA o autologin** — o
+    autologin é a camada nativa (`main.js`/`preload.js`), impossível no navegador (`hubApi.autologin=false`
+    no `platform-web.js` é de propósito). A **casca fina é o meio-termo**: cara de site (deploy único,
+    atualiza todo mundo na hora) **mantendo** o autologin, porque continua Electron (analogia: WhatsApp
+    Desktop vs WhatsApp Web). Decisão do Nathan: **deixar como está por enquanto**, sem descartar a ideia.
+  - **Riscos se retomar (categoria "fim de semana / branch / testar muito no staging")**: (1) 🔴 a
+    **detecção do autologin** — a casca tem que carregar a versão CRUA do Hosting (sem o shim
+    `platform-web.js`) e deixar o `preload` injetar `hubApi`, senão o `.exe` pega o shim web e o autologin
+    **desliga em silêncio**; CONFIRMAR que dispara. (2) 🟡 sem internet na abertura = tela de erro (precisa
+    fallback amigável). (3) 🟡 deploy quebrado atinge TODOS os desktops na hora (testar no staging antes).
+    (4) 🟡 o "Frankenstein" do cache (HTML novo + CSS/JS velho) — já resolvido no PWA, herdar o guard.
+    (5) 🟢 muda `file://`→`https://` (conserta reCAPTCHA/origem, mas auditar o que assume `file://`).
+    Manter o `.exe` atual como rollback.
 - **Loja (opcional)**: Capacitor/TWA pra Play Store — mas review de loja quebra o "update simultâneo".
 
 ### Infra / segurança
