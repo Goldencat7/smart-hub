@@ -489,14 +489,21 @@ exports.setUserAccess = onCall(async (req) => {
     marketing_gerenciar: !!marketing_gerenciar,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   });
-  // Perfil de Locação (opcional): grava na claim locRole (autoridade) + loc_perfis p/ Financeiro.
+  // Claims do token (autoridade nas regras). marketing_gerenciar vira CLAIM porque a
+  // regra do Storage checa request.auth.token.marketing_gerenciar — o firestore.get()
+  // cross-service dentro da regra de Storage é frágil e estava negando pra todos.
+  // locRole (Locação) segue a mesma lógica. Uma única escrita de claims (merge).
+  const userRec = await admin.auth().getUser(uid).catch(() => null);
+  if (!userRec) throw new HttpsError('not-found', 'Usuário não encontrado.');
+  const claims = { ...(userRec.customClaims || {}) };
+  if (marketing_gerenciar) claims.marketing_gerenciar = true; else delete claims.marketing_gerenciar;
+  let role;
   if (loc_role !== undefined) {
-    const role = LOC_ROLES.includes(loc_role) ? loc_role : 'corretor';
-    const userRec = await admin.auth().getUser(uid).catch(() => null);
-    if (!userRec) throw new HttpsError('not-found', 'Usuário não encontrado.');
-    const claims = { ...(userRec.customClaims || {}) };
+    role = LOC_ROLES.includes(loc_role) ? loc_role : 'corretor';
     if (role === 'corretor') delete claims.locRole; else claims.locRole = role;   // preserva claim admin
-    await admin.auth().setCustomUserClaims(uid, claims);
+  }
+  await admin.auth().setCustomUserClaims(uid, claims);
+  if (loc_role !== undefined) {
     await db.collection('loc_perfis').doc(uid).set({
       role, financeiro: role === 'corretor' ? false : !!loc_financeiro,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()

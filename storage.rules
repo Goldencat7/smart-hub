@@ -44,9 +44,12 @@ service firebase.storage {
              || request.resource.contentType.matches('text/html.*');
     }
     // Gerenciar Marketing é permissão à parte — NÃO herda de admin, só marketing_gerenciar.
+    // Usa o CLAIM (setUserAccess grava a claim marketing_gerenciar). Antes lia o Firestore
+    // com firestore.get() dentro da regra de Storage — leitura cross-service frágil que
+    // passou a negar pra TODOS (inclusive quem tinha a permissão). Claim é o padrão do app
+    // (igual locRole no podeLocacao). Exige relogin p/ o token pegar a claim nova.
     function podeMarketing() {
-      return request.auth != null &&
-        firestore.get(/databases/(default)/documents/user_access/$(request.auth.uid)).data.marketing_gerenciar == true;
+      return request.auth != null && request.auth.token.marketing_gerenciar == true;
     }
     // Documentos da Gestão de Locações (docs do locatário, apólice da garantia).
     // Gestor/administrativo (ou admin) enviam; autenticados leem. Só imagem/PDF, ≤20MB.
