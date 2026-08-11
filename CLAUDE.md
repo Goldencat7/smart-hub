@@ -4,7 +4,14 @@ App **Electron** (desktop Windows) da imobiliária REMAX Smart. Dá acesso rápi
 plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login próprio**
 (Firebase, com 2FA), **Gestão de Locações** (Painel + Imóveis, liberada por permissão),
 **Marketing** (templates editáveis), **fichas** cadastrais (web), **agenda**, **calculadoras**,
-**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.104** (auto-update via GitHub Releases).
+**bloco de notas** e uma **área admin**. Versão publicada atual: **1.0.152** (auto-update via GitHub Releases).
+
+> ⚠️ Este cabeçalho de versão fica desatualizado rápido — a fonte da verdade do que há de mais
+> recente é a memória `project-hub` + `pending-negocios-drive-2026-08`. Muita coisa descrita abaixo
+> como "só no staging" já FOI publicada. **Hub hoje é TEMA ESCURO** (vars em `styles.css :root`) com
+> **modo claro opcional** (Meu Perfil → "deixar os quadrados claros"; `:root[data-theme="light"]`,
+> apps/SMART IA seguem escuros). A aba **"Meus Negócios"** (Broker embutido, `broker-app.js`) é o
+> app de Locação vigente e aparece **pra todos**.
 
 ## Stack
 
@@ -253,6 +260,26 @@ plataformas de trabalho com **autologin**, e é o hub interno da equipe: **login
 - **Calculadoras** (`public/calculadoras.html`): aluguel proporcional + multa rescisória (conferidas com o Excel do financeiro).
 - **Bloco de Notas**: notas por usuário (`user_notes/{uid}`), autosave com debounce.
 - **Documentos (Google Drive)**: embed da pasta do Drive — **desabilitado temporariamente** no `index.html` (limitação de service account/tamanho).
+- **Drive por negócio — ROBÔ central (v1.0.152, PROD).** Conta Google DEDICADA `remaxsmarthub@gmail.com`
+  (o "robô"), com escopo **`drive` completo** (só pro robô — corretores seguem com `drive.file`), organiza
+  os documentos de cada negócio dentro da pasta da imobiliária ("02 - Corretores" no Drive REMAX, id
+  `1-0dJYva2LtFbebZLSfwxMdFzKqdlY1Yh`, compartilhada com o robô como Editor). Estrutura:
+  `02-Corretores / <Corretor do negócio> / <endereço (NG-código)> /` — **nunca grava na raiz**. É Gmail
+  real (15 GB próprios) pra fugir da cota 0 do service account. **Setup (Meu Perfil, admin+desktop):**
+  Conectar robô (OAuth escopo drive — `main.js conectar-google` aceita scope custom), Mapear pastas
+  (auto-match corretor→pasta, salvo em `drive_robot/mapa`={uid:folderId}), Testar gravação. **Uso:** botão
+  **"Sincronizar Drive"** no negócio (`broker-app.js`) → `driveSyncNegocio` cria a subpasta + sobe docs do
+  negócio + anexos/PDFs das fichas vinculadas (dedup; **só ADITIVO** — remoção fica pra 1.0.153). Token
+  central em `drive_robot/config` (default-deny nas regras). Functions: `conectarDriveRobo`,
+  `driveRoboStatus`, `driveRoboTeste`, `driveListarSubpastas`, `driveMapaGet/Salvar`, `driveSyncNegocio`.
+  ⚠️ Toda function callable 2ª geração NOVA precisa de `allUsers`/`run.invoker` (nome do serviço no Cloud
+  Run é minúsculo) senão dá "unauthenticated". Detalhes em `pending-negocios-drive-2026-08`.
+- **Negócios — extras da v1.0.152 (`broker-app.js` + `negocioAtualizar`):** editar comentário próprio
+  (`comentario_editar`) + responder (thread, `respostaDe`); botão **Proprietário** com enviar ficha nova
+  (link `&imovelId=`, não cria imóvel) OU **vincular ficha existente** (`listarFichasProprietario`/
+  `carteiraVincularProprietario`); **excluir imóvel/negócio** — SÓ gestor, com confirmação
+  (`carteiraExcluirImovel` bloqueia se há negócio ativo; `negocioExcluir` libera o imóvel). Checklists
+  venda+locação com **7 obrigatórias, sem "contrato aprovado"** (só vale pra negócio NOVO — snapshot).
 - **Configurações**: perfil (nome + foto + **telefone** + **CRECI** + **CPF**, `user_profiles`, foto em base64). Functions: `getMeuPerfil`, `salvarMeuPerfil` (retornam/aceitam `telefone` **em produção**; `creci`/`cpf` **só no staging por enquanto** — deploy aditivo de 2026-07-24, entram na produção no publish grande). O telefone reaproveita o campo `cfgWhatsapp` e alimenta o pré-preenchimento dos templates de Marketing (ver Marketing). **CRECI/CPF** preenchem o contrato de representação (ver "Gerar Contrato").
 - **Admin**: credenciais dos sistemas (cripto KMS), códigos de convite, usuários (admin/excluir/**permissões granulares**), banners (reordenáveis), "último app acessado". O **painel de Lançamento** ("Publicar para todos") e o checkbox "Acesso de teste" ainda aparecem na tela mas **não fazem nada** — ver "Dívida técnica intencional".
 
