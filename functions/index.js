@@ -1850,6 +1850,11 @@ exports.negocioAtualizar = onCall(async (req) => {
       if (url && !/^https:\/\//i.test(url)) throw new HttpsError('invalid-argument', 'Link inválido (precisa começar com https://).');
       up.driveUrl = url;
       anota(url ? 'Pasta do Google Drive vinculada' : 'Pasta do Google Drive removida');
+    } else if (d.acao === 'origem') {
+      // De onde veio o cliente (lead source) — o corretor responsável preenche na mão.
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      up.origem = _txt(d.origem, 120);
+      anota(up.origem ? ('Origem do cliente: ' + up.origem) : 'Origem do cliente removida');
     } else if (d.acao === 'status') {
       if (!ehGestor) throw new HttpsError('permission-denied', 'Mudar status é decisão do broker.');
       const permitidos = ['em_andamento', 'aguardando_broker', 'aguardando_corretor', 'aguardando_administrativo'];
@@ -1974,6 +1979,19 @@ exports.negocioAtualizar = onCall(async (req) => {
 // chega em base64 e é gravado no Storage pela Admin SDK (mesma regra de ouro das
 // fichas: escrita de Locação SÓ via Cloud Function), com token de download próprio.
 const NEGOCIO_DOC_CATEGORIAS = ['contrato', 'proposta', 'cliente', 'outro'];
+// Documentos de escritório aceitos além de PDF/imagem raster no upload de docs de
+// negócio/imóvel. São BAIXADOS pela URL (não renderizam no navegador) → sem risco de
+// script como o SVG. Aceita Word/Excel/PowerPoint/RTF/TXT/CSV (mime já normalizado).
+const _MIME_DOC_OK = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/rtf', 'text/rtf', 'text/plain', 'text/csv',
+]);
+function _mimeDocOk(m) { return _MIME_DOC_OK.has(m); }
 exports.negocioAnexarDoc = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const d = req.data || {};
@@ -1990,7 +2008,7 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   // curta pra não recusar bmp/tiff/avif/heic legítimos de celular.
   const mime = _txt(d.mime, 100).toLowerCase().split(';')[0].trim();
   const ehImagem = /^image\//.test(mime) && !mime.includes('svg');
-  if (mime !== 'application/pdf' && !ehImagem) throw new HttpsError('invalid-argument', 'Só PDF ou imagem (SVG não é aceito).');
+  if (mime !== 'application/pdf' && !ehImagem && !_mimeDocOk(mime)) throw new HttpsError('invalid-argument', 'Tipo não aceito. Use PDF, imagem ou documento (Word, Excel, PowerPoint). SVG não é aceito.');
   const b64 = typeof d.base64 === 'string' ? d.base64 : '';
   const buf = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
   if (!buf.length) throw new HttpsError('invalid-argument', 'Arquivo vazio ou inválido.');
@@ -2069,7 +2087,7 @@ exports.carteiraAnexarDoc = onCall(async (req) => {
   const nome = _txt(d.nome, 160) || 'documento';
   const mime = _txt(d.mime, 100).toLowerCase().split(';')[0].trim();
   const ehImagem = /^image\//.test(mime) && !mime.includes('svg');
-  if (mime !== 'application/pdf' && !ehImagem) throw new HttpsError('invalid-argument', 'Só PDF ou imagem (SVG não é aceito).');
+  if (mime !== 'application/pdf' && !ehImagem && !_mimeDocOk(mime)) throw new HttpsError('invalid-argument', 'Tipo não aceito. Use PDF, imagem ou documento (Word, Excel, PowerPoint). SVG não é aceito.');
   const b64 = typeof d.base64 === 'string' ? d.base64 : '';
   const buf = b64 ? Buffer.from(b64, 'base64') : Buffer.alloc(0);
   if (!buf.length) throw new HttpsError('invalid-argument', 'Arquivo vazio ou inválido.');
@@ -4835,8 +4853,9 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
   const pastaCorretor = mapa[n.corretorUid];
   if (!pastaCorretor) throw new HttpsError('failed-precondition', 'O corretor deste negócio ainda não tem pasta no Drive. Peça ao admin pra mapear em Meu Perfil → Mapear pastas.');
   const token = await _driveRoboToken();
-  // 2) subpasta do imóvel: "endereço (NG-código)"
-  const nomeImovel = _driveSanitizar((n.imovelResumo || 'Imovel') + ' (' + (n.codigo || (n.imovelId || '').slice(0, 6)) + ')');
+  // 2) subpasta do imóvel: "endereço - Locação|Venda (NG-código)"
+  const tipoLabel = n.tipo === 'venda' ? 'Venda' : 'Locação';
+  const nomeImovel = _driveSanitizar((n.imovelResumo || 'Imovel') + ' - ' + tipoLabel + ' (' + (n.codigo || (n.imovelId || '').slice(0, 6)) + ')');
   let pastaImovel;
   try { pastaImovel = await _driveFindOrCreateFolder(token, nomeImovel, pastaCorretor); }
   catch (e) { throw new HttpsError('failed-precondition', 'Não consegui criar a pasta do imóvel — confirme que a pasta do corretor está compartilhada com o robô como Editor. (' + ((e && e.message) || e) + ')'); }
@@ -6184,6 +6203,59 @@ exports.carteiraExcluirImovel = onCall(async (req) => {
   await registrarAudit(auth, 'imovel_excluir', { tipo: 'imovel', id: imovelId }, { protocolo: im.numeroProtocolo != null ? im.numeroProtocolo : null });
   await _bumpBroadcast('imovelSeq');
   return { ok: true };
+});
+
+// ── Kanban customizável (Modelo 2 — Trello) ─────────────────────────────────
+// As colunas do quadro deixam de ser os status fixos e viram config editável
+// (smarthub_config/kanban.colunas = [{id,label}]). Cada negócio ganha `colunaId`
+// (posição no quadro), SEPARADO do `status` semântico (que segue mandando em
+// permissões/relatórios/Entregar/Concluir). Negócio sem colunaId é derivado do
+// status no cliente (migração suave, sem mexer nos docs existentes).
+const KANBAN_COLUNAS_PADRAO = [
+  { id: 'novo', label: 'Novo' },
+  { id: 'andamento', label: 'Em andamento' },
+  { id: 'aguard_corretor', label: 'Aguard. corretor' },
+  { id: 'aguard_broker', label: 'Aguard. broker' },
+  { id: 'aguard_adm', label: 'Aguard. adm' },
+];
+function _kanbanSanitizaColunas(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set(); const cols = [];
+  for (const c of raw) {
+    const id = _txt(c && c.id, 40).replace(/[^a-z0-9_]/gi, '').toLowerCase();
+    const label = _txt(c && c.label, 40);
+    if (!id || !label || seen.has(id)) continue;
+    seen.add(id); cols.push({ id, label });
+    if (cols.length >= 20) break;
+  }
+  return cols;
+}
+exports.kanbanColunasGet = onCall(async (req) => {
+  exigirAutenticado(req);
+  const snap = await db.collection('smarthub_config').doc('kanban').get();
+  const cols = snap.exists ? _kanbanSanitizaColunas(snap.data().colunas) : [];
+  return { colunas: cols.length ? cols : KANBAN_COLUNAS_PADRAO, padrao: !cols.length };
+});
+exports.kanbanColunasSalvar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth)) throw new HttpsError('permission-denied', 'Só o gestor gerencia as colunas do quadro.');
+  const cols = _kanbanSanitizaColunas(req.data && req.data.colunas);
+  if (!cols.length) throw new HttpsError('invalid-argument', 'Envie ao menos uma coluna válida (id + nome).');
+  await db.collection('smarthub_config').doc('kanban').set({ colunas: cols, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await registrarAudit(auth, 'kanban_colunas_salvar', 'smarthub_config/kanban', { n: cols.length });
+  await _bumpBroadcast('imovelSeq'); // tempo real: quadros recarregam a config
+  return { ok: true, colunas: cols };
+});
+// Move um negócio pra uma coluna do quadro (SÓ gestor, como o arrastar de hoje).
+exports.negocioMoverColuna = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref, ehGestor } = await _negocioComPosse(d.negocioId, auth);
+  if (!ehGestor) throw new HttpsError('permission-denied', 'Só o gestor move os cards.');
+  const colunaId = _txt(d.colunaId, 40).replace(/[^a-z0-9_]/gi, '').toLowerCase();
+  if (!colunaId) throw new HttpsError('invalid-argument', 'Coluna inválida.');
+  await ref.set({ colunaId, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { ok: true, colunaId };
 });
 
 exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS], memory: '512MiB' }, async (req) => {

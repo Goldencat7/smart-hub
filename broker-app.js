@@ -47,6 +47,19 @@ const fnFichasProp  = call('listarFichasProprietario');  // fichas de vendedor/l
 const fnVincularProp= call('carteiraVincularProprietario'); // vincula ficha existente ao imóvel
 const fnNegExcluir  = call('negocioExcluir');       // gestor: exclui negócio
 const fnImovelExcluir=call('carteiraExcluirImovel'); // gestor: exclui imóvel
+const fnKanbanGet   = call('kanbanColunasGet');     // colunas customizáveis do quadro
+const fnKanbanSalvar= call('kanbanColunasSalvar');  // gestor: salva colunas
+const fnMoverColuna = call('negocioMoverColuna');   // gestor: move card de coluna (Modelo 2)
+// Kanban Modelo 2 (Trello): colunas do quadro = config editável; cada negócio tem
+// `colunaId` (posição), separado do status. Sem colunaId → deriva do status (migração).
+const KANBAN_COLUNAS_PADRAO = [
+  { id:'novo', label:'Novo' }, { id:'andamento', label:'Em andamento' },
+  { id:'aguard_corretor', label:'Aguard. corretor' }, { id:'aguard_broker', label:'Aguard. broker' }, { id:'aguard_adm', label:'Aguard. adm' },
+];
+const STATUS_PARA_COLUNA = { negocio_criado:'novo', em_andamento:'andamento', aguardando_corretor:'aguard_corretor', aguardando_broker:'aguard_broker', aguardando_administrativo:'aguard_adm', entregue_gestao:'aguard_adm' };
+function kanbanCols(){ return (state.kanbanCols && state.kanbanCols.length) ? state.kanbanCols : KANBAN_COLUNAS_PADRAO; }
+function colunaDoDeal(d, cols){ let cid=d.colunaId||STATUS_PARA_COLUNA[d.statusRaw]||''; if(!cols.some(c=>c.id===cid)) cid=(cols[0]||{}).id; return cid; }
+async function carregarKanbanCols(){ try{ const r=await fnKanbanGet(); state.kanbanCols=(r.data&&r.data.colunas)||KANBAN_COLUNAS_PADRAO; }catch(_e){ state.kanbanCols=KANBAN_COLUNAS_PADRAO; } }
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
 const fnSugAcao     = call('negocioSugerirAcao');   // IA (Gemini): próxima ação + rascunho de mensagem do negócio
@@ -114,6 +127,13 @@ function parseMoney(v){
 }
 function ini(nome){ const p=(nome||'').trim().split(/\s+/); return (((p[0]||'')[0]||'')+((p[p.length-1]||'')[0]||'')).toUpperCase()||'?'; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Tipo aceito no upload de doc (negócio/imóvel): PDF, imagem raster (não SVG) ou
+// documento de escritório (Word/Excel/PowerPoint/RTF/TXT/CSV) — por mime OU extensão
+// (alguns navegadores dão file.type vazio no .docx). O servidor é o gate final.
+const _DOC_EXT_OK=/\.(docx?|xlsx?|pptx?|rtf|txt|csv)$/i;
+const _DOC_MIME_OK=new Set(['application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','application/rtf','text/rtf','text/plain','text/csv']);
+function _docTipoOk(f){ const tp=((f&&f.type)||'').toLowerCase().split(';')[0].trim(); if(tp==='application/pdf') return true; if(tp.indexOf('image/')===0 && tp.indexOf('svg')<0) return true; if(_DOC_MIME_OK.has(tp)) return true; if(_DOC_EXT_OK.test((f&&f.name)||'')) return true; return false; }
+const _DOC_ACCEPT='application/pdf,image/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,.txt,.csv';
 // Busca sem acento/caixa ("jose" acha "José") — aplicar na query E no texto pesquisado.
 function semAcento(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }
 // ─── Repasse do corretor (% da comissão da imobiliária que fica com o corretor) ───
@@ -253,6 +273,7 @@ function mapNegocio(n){
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
     arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
+    colunaId: n.colunaId||'', origem: n.origem||'',   // kanban Modelo 2 + origem do cliente
     tags: Array.isArray(n.tags) ? n.tags : [],
     tarefas: Array.isArray(n.tarefas) ? n.tarefas : [],
     // O servidor só devolve o array pra quem PODE comentar (broker + corretor do
@@ -729,21 +750,10 @@ function updateNegTable(){
   const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); return; }
   const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length;
 }
-// ── Kanban (quadro por etapa) ────────────────────────────────────────────────
-// Colunas na ordem do funil. drop:true = aceita soltar card (muda status). Os 4
-// status "de trabalho" batem com o que a Cloud Function negocioAtualizar(acao:'status')
-// permite; Novo/Entregue/Concluído NÃO recebem drop (Entregar/Concluir exigem as
-// etapas obrigatórias — continuam nos botões do detalhe).
-const BOARD_COLS = [
-  { key:'negocio_criado',          label:'Novo',                drop:false },
-  { key:'em_andamento',            label:'Em andamento',        drop:true  },
-  { key:'aguardando_corretor',     label:'Aguard. corretor',    drop:true  },
-  { key:'aguardando_broker',       label:'Aguard. broker',      drop:true  },
-  { key:'aguardando_administrativo',label:'Aguard. adm',        drop:true  },
-  { key:'entregue_gestao',         label:'Entregue à gestão',   drop:false },
-  { key:'concluido',               label:'Concluído',           drop:false },
-];
-const KANBAN_CSS = '.kboard{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}'
+// ── Kanban (Modelo 2 — colunas customizáveis) ───────────────────────────────
+// As colunas vêm da config (kanbanCols()); cada negócio tem colunaId separado do
+// status. Arrastar move a COLUNA (negocioMoverColuna), não o status.
+const KANBAN_CSS ='.kboard{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}'
   + '.kcol{flex:0 0 250px;background:var(--ink50);border:1px solid var(--ink200);border-radius:12px;display:flex;flex-direction:column;max-height:68vh}'
   + '.kcol-head{padding:11px 13px;font-size:12px;font-weight:800;color:var(--ink700);text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ink200)}'
   + '.kcol-body{padding:9px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:70px}'
@@ -762,20 +772,26 @@ function kanbanCard(d, podeArrastar){
     + tags + '</div>';
 }
 function kanbanHTML(){
+  // carrega a config das colunas 1x (async) e re-renderiza o board quando chegar
+  if(!state.kanbanCols && !state._kanbanLoading){ state._kanbanLoading=true; carregarKanbanCols().then(()=>{ state._kanbanLoading=false; const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); } }); }
+  const cols=kanbanCols();
   const base=dealsBaseSemStatus();
-  const by={}; base.forEach(d=>{ (by[d.statusRaw]=by[d.statusRaw]||[]).push(d); });
+  const by={}; cols.forEach(c=>by[c.id]=[]);
+  base.forEach(d=>{ const cid=colunaDoDeal(d,cols); (by[cid]=by[cid]||[]).push(d); });
   const podeArrastar = state.role==='broker';
-  const cols = BOARD_COLS.filter(c=>c.drop || (by[c.key]&&by[c.key].length));
   const colHTML = cols.map(c=>{
-    const cards=(by[c.key]||[]);
+    const cards=(by[c.id]||[]);
     const body = cards.length ? cards.map(d=>kanbanCard(d,podeArrastar)).join('') : '<div class="fz12 t400" style="padding:12px;text-align:center">—</div>';
-    const dropAttr = (c.drop && podeArrastar) ? ' data-kdrop="'+c.key+'"' : '';
-    return '<div class="kcol"><div class="kcol-head"><span>'+esc(c.label)+'</span><span class="pill neutral">'+cards.length+'</span></div><div class="kcol-body"'+dropAttr+'>'+body+'</div></div>';
+    const dropAttr = podeArrastar ? ' data-kdrop="'+esc(c.id)+'"' : '';
+    const total = cards.reduce((s,d)=>s+(d.valor||0),0);
+    const totalHTML = cards.length ? '<div class="fz12 fw7 c-suc" style="padding:0 12px 8px;margin-top:-2px">'+brl(total)+'</div>' : '';
+    return '<div class="kcol"><div class="kcol-head"><span class="trunc">'+esc(c.label)+'</span><span class="pill neutral">'+cards.length+'</span></div>'+totalHTML+'<div class="kcol-body"'+dropAttr+'>'+body+'</div></div>';
   }).join('');
+  const manage = podeArrastar ? '<button class="btn btn-outline sm" data-action="kanban-gerenciar" style="margin-bottom:10px">'+icon('settings-2',14)+'Gerenciar colunas</button>' : '';
   const hint = podeArrastar
-    ? 'Arraste um card entre as colunas para mudar o status. <b>Entregar</b> e <b>Concluir</b> continuam nos botões do negócio (exigem as etapas obrigatórias).'
+    ? 'Arraste os cards entre as colunas pra organizar o quadro. As etapas, relatórios e permissões seguem pelo status do negócio (independente das colunas).'
     : 'Somente o broker move os cards.';
-  return '<style>'+KANBAN_CSS+'</style><div class="kboard">'+colHTML+'</div><div class="fz12 t500" style="margin-top:10px">'+hint+'</div>';
+  return '<style>'+KANBAN_CSS+'</style>'+manage+'<div class="kboard">'+colHTML+'</div><div class="fz12 t500" style="margin-top:10px">'+hint+'</div>';
 }
 // Espelha um negócio atualizado nos DOIS caches (DEALS e DEALS_DOCS) — sem isso o
 // chip "Cancelados"/tela Documentos ficava stale até o próximo carregarDados.
@@ -789,20 +805,48 @@ function _syncDealCache(mapped){
 // Re-renderiza a tela Negócios SÓ se o usuário ainda está nela (lista, não detalhe) —
 // resposta atrasada não pode pintar a lista por cima de outra view.
 function _rerenderNegocios(){ if(state.view==='negocios' && !state._viewingDeal){ RENDERERS.negocios($('#root')); refreshIcons(); } }
-async function kanbanMove(id, novoStatus){
-  const d=DEALS.find(x=>x.id===id); if(!d || d.statusRaw===novoStatus) return;
-  const prev=d.statusRaw, prevL=d.status;
-  d.statusRaw=novoStatus; d.status=NEG_STATUS_LABEL[novoStatus]||novoStatus;   // otimista
-  _rerenderNegocios();
+// Modelo 2: mover = trocar a COLUNA do quadro (colunaId), sem mexer no status.
+async function kanbanMove(id, colunaId){
+  const d=DEALS.find(x=>x.id===id); if(!d) return;
+  const cols=kanbanCols(); if(colunaDoDeal(d,cols)===colunaId) return;
+  const prev=d.colunaId; d.colunaId=colunaId;   // otimista
+  const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); }
   try {
-    const r=await fnNegAtual({negocioId:id, acao:'status', status:novoStatus});
-    const ng=r.data&&r.data.negocio; if(ng) _syncDealCache(mapNegocio(ng));
-    recalcKPI(); _rerenderNegocios();
-    toast('Movido para '+(NEG_STATUS_LABEL[novoStatus]||novoStatus),'check');
+    await fnMoverColuna({negocioId:id, colunaId});
+    const dd=(DEALS_DOCS||[]).find(x=>x.id===id); if(dd) dd.colunaId=colunaId;
+    const c=(cols.find(x=>x.id===colunaId)||{}); toast('Movido para '+(c.label||colunaId),'check');
   } catch(err){
-    d.statusRaw=prev; d.status=prevL; _rerenderNegocios();   // rollback
+    d.colunaId=prev; const kw2=$('#kanbanWrap'); if(kw2){ kw2.innerHTML=kanbanHTML(); refreshIcons(); }
     toast(err.message||'Não foi possível mover','alert-triangle','var(--danger)');
   }
+}
+// ── Gerenciar colunas do quadro (Modelo 2) ───────────────────────────────────
+function _colCaptura(){ (state._colEdit||[]).forEach((c,i)=>{ const inp=document.querySelector('[data-colinput="'+i+'"]'); if(inp) c.label=inp.value; }); }
+function openKanbanGerenciar(){ state._colEdit=kanbanCols().map(c=>({id:c.id,label:c.label})); renderKanbanGerenciar(); }
+function renderKanbanGerenciar(){
+  const cols=state._colEdit||[];
+  const rows=cols.map((c,i)=>'<div class="fx ac g2" style="margin-bottom:8px">'
+    +'<input class="input grow" data-colinput="'+i+'" value="'+esc(c.label)+'" maxlength="40" placeholder="Nome da coluna">'
+    +'<button class="btn btn-ghost sm nsh" data-action="col-up" data-i="'+i+'"'+(i===0?' disabled':'')+' title="Subir">'+icon('chevron-up',15)+'</button>'
+    +'<button class="btn btn-ghost sm nsh" data-action="col-down" data-i="'+i+'"'+(i===cols.length-1?' disabled':'')+' title="Descer">'+icon('chevron-down',15)+'</button>'
+    +'<button class="btn btn-ghost sm nsh" data-action="col-rm" data-i="'+i+'" style="color:var(--danger)" title="Remover">'+icon('trash-2',15)+'</button>'
+    +'</div>').join('');
+  openModal('<div style="padding:20px;min-width:380px;max-width:460px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Colunas do quadro</div><div class="fz12 t500" style="margin-bottom:14px">Renomeie, reordene (↑↓), adicione ou remova. Cards de uma coluna removida voltam pra primeira.</div>'
+    +'<div id="colEditList">'+rows+'</div>'
+    +'<button class="btn btn-outline sm" data-action="col-add" style="width:100%;margin-top:6px">'+icon('plus',15)+'Adicionar coluna</button>'
+    +'<div class="fx g2" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="col-salvar">'+icon('check',15)+'Salvar</button></div></div>');
+}
+function _colGenId(){ return 'c'+Math.random().toString(36).slice(2,8); }
+async function salvarKanbanColunas(){
+  _colCaptura();
+  const cols=(state._colEdit||[]).filter(c=>(c.label||'').trim());
+  if(!cols.length){ toast('Deixe ao menos uma coluna com nome','alert-triangle','var(--warning)'); return; }
+  try{
+    const r=await fnKanbanSalvar({colunas:cols});
+    state.kanbanCols=(r.data&&r.data.colunas)||cols;
+    closeModal(); toast('Colunas salvas','check','var(--success)');
+    const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); }
+  }catch(e){ toast(e.message||'Erro ao salvar','alert-triangle','var(--danger)'); }
 }
 
 RENDERERS.negocios = function(host){
@@ -938,7 +982,7 @@ function openDeal(id){
   + dealDocsCardHTML(d, (state.role==='broker'||state.role==='administrativo'))
   + '<div class="split-r">'
     + '<div class="fx col g4">'
-      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
+      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+'<div class="fx ac jb g2" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz11 t500 up fw6">Origem do cliente</div><div class="fz13 fw6 t900 trunc">'+(d.origem?esc(d.origem):'<span class="t400 fw4">não informada</span>')+'</div></div><button class="btn btn-ghost sm nsh" data-action="origem-edit" data-origem="'+esc(d.origem||'')+'" title="Editar origem">'+icon('pencil',14)+'</button></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor ('+Math.round(repassePct(d.corretor)*100)+'%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
     + '<div class="card" id="bkDealTabs" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
@@ -1461,6 +1505,13 @@ function openDriveModal(cur){
     +'<div id="drvErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
     +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="drive-save">'+icon('check',15)+'Salvar</button></div></div>');
 }
+// Modal pra editar a origem do cliente (ação `origem`). O texto é setado via JS.
+function openOrigemModal(cur){
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:6px">Origem do cliente</div><div class="fz12 t500" style="margin-bottom:12px">De onde veio esse cliente? (ex.: Instagram, Indicação, Portal, Placa, WhatsApp…)</div>'
+    +'<input id="origemInp" class="input" maxlength="120" placeholder="Ex.: Indicação da Maria" style="margin-bottom:6px">'
+    +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="origem-salvar">'+icon('check',15)+'Salvar</button></div></div>');
+  const t=document.getElementById('origemInp'); if(t){ t.value=cur||''; t.focus(); }
+}
 // Modal pra editar um comentário próprio (ação `comentario_editar`). O texto é setado
 // via JS (não no HTML) pra não escapar aspas/quebras de linha.
 function openEditarComent(id, texto){
@@ -1532,7 +1583,7 @@ function openImovelDocUpload(imovelId){
   if(!imovelId){ toast('Abra um imóvel primeiro','alert-triangle','var(--warning)'); return; }
   openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Adicionar documento ao imóvel</div>'
     +'<input type="hidden" id="imDocId" value="'+esc(imovelId)+'">'
-    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF ou imagem, até 20MB)</span></div><input id="imDocFile" type="file" accept="application/pdf,image/*" class="input" style="margin-bottom:6px">'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF, imagem ou documento, até 20MB)</span></div><input id="imDocFile" type="file" accept="'+_DOC_ACCEPT+'" class="input" style="margin-bottom:6px">'
     +'<div id="imDocErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
     +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="imovel-doc-send">'+icon('upload',15)+'Enviar</button></div></div>');
 }
@@ -1859,7 +1910,7 @@ function openDocUpload(preDealId){
   openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Enviar documento</div>'
     +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Negócio</div><select id="docDeal" class="input" style="margin-bottom:12px">'+opts+'</select>'
     +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Categoria</div><select id="docCat" class="input" style="margin-bottom:12px">'+cats+'</select>'
-    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF ou imagem, até 20MB)</span></div><input id="docFile" type="file" accept="application/pdf,image/*" class="input" style="margin-bottom:6px">'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF, imagem ou documento, até 20MB)</span></div><input id="docFile" type="file" accept="'+_DOC_ACCEPT+'" class="input" style="margin-bottom:6px">'
     +'<div id="docErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
     +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="doc-upload-send">'+icon('upload',15)+'Enviar</button></div></div>');
 }
@@ -1988,8 +2039,7 @@ handleAction = function(a, el){
     const f=($('#imDocFile')||{}).files && $('#imDocFile').files[0];
     if(!f){ if(errEl) errEl.textContent='Escolha um arquivo.'; return; }
     if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
-    const _tp=(f.type||'').toLowerCase().split(';')[0].trim();   // normaliza igual ao servidor
-    if(!(_tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp.indexOf('svg')<0))){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
+    if(!_docTipoOk(f)){ if(errEl) errEl.textContent='Tipo não aceito. Use PDF, imagem ou documento (Word, Excel, PowerPoint).'; return; }
     el.disabled=true; if(errEl) errEl.textContent='Enviando…';
     const rd=new FileReader();
     rd.onload=async()=>{ try{
@@ -2022,8 +2072,16 @@ handleAction = function(a, el){
   if(a==='prop-vincular-do'){ vincularProprietario(el.dataset.imovel, el.dataset.ficha, el.dataset.tipo); return; }
   if(a==='neg-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o negócio '+(el.dataset.codigo||'')+'?\n\nEsta ação é PERMANENTE e não pode ser desfeita. O imóvel volta a Disponível.')) return; const id=state.currentDeal; fnNegExcluir({negocioId:id}).then(()=>{ [DEALS, DEALS_DOCS].forEach(arr=>{ if(Array.isArray(arr)){ const i=arr.findIndex(x=>x&&x.id===id); if(i>=0) arr.splice(i,1); } }); try{ recalcKPI(); }catch(_e){} state._viewingDeal=false; toast('Negócio excluído','trash-2','var(--danger)'); navigate('negocios'); }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
   if(a==='imovel-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o imóvel "'+(el.dataset.rua||'')+'"?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return; const iid=el.dataset.imovel; fnImovelExcluir({imovelId:iid}).then(()=>{ const idx=PROPERTIES.findIndex(p=>p&&p.id===iid); if(idx>=0) PROPERTIES.splice(idx,1); closeDrawer(); toast('Imóvel excluído','trash-2','var(--danger)'); if(RENDERERS[state.view]){ RENDERERS[state.view]($('#root')); refreshIcons(); } }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
+  if(a==='kanban-gerenciar'){ openKanbanGerenciar(); return; }
+  if(a==='col-add'){ _colCaptura(); (state._colEdit=state._colEdit||[]).push({id:_colGenId(), label:''}); renderKanbanGerenciar(); return; }
+  if(a==='col-rm'){ _colCaptura(); state._colEdit.splice(+el.dataset.i,1); renderKanbanGerenciar(); return; }
+  if(a==='col-up'){ _colCaptura(); const i=+el.dataset.i; if(i>0){ const A=state._colEdit; const t=A[i-1]; A[i-1]=A[i]; A[i]=t; } renderKanbanGerenciar(); return; }
+  if(a==='col-down'){ _colCaptura(); const i=+el.dataset.i; const A=state._colEdit; if(i<A.length-1){ const t=A[i+1]; A[i+1]=A[i]; A[i]=t; } renderKanbanGerenciar(); return; }
+  if(a==='col-salvar'){ salvarKanbanColunas(); return; }
   if(a==='ir-comentarios'){ state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const el=$('#bkDealTabs'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60); return; }
   if(a==='drive-sync-real'){ syncNegocioDrive(); return; }
+  if(a==='origem-edit'){ openOrigemModal(el.dataset.origem||''); return; }
+  if(a==='origem-salvar'){ const v=(($('#origemInp')||{}).value||'').trim(); closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'origem', origem:v}, 'Origem salva'); return; }
   // Assistente IA do negócio (Gemini): sugere próxima ação + rascunho de mensagem.
   if(a==='ia-sugerir'){
     const box=$('#bkIaBox'); if(!box) return;
@@ -2062,9 +2120,7 @@ handleAction = function(a, el){
     if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
     // Valida o tipo AQUI (antes de ler os ~15MB): SVG e tipos fora da lista são
     // recusados pelo servidor de qualquer jeito — pegar cedo evita o upload inútil.
-    const _tp=(f.type||'').toLowerCase().split(';')[0].trim();   // normaliza igual ao servidor
-    const _tpOk = _tp==='application/pdf' || (_tp.indexOf('image/')===0 && _tp.indexOf('svg')<0);
-    if(!_tpOk){ if(errEl) errEl.textContent='Só PDF ou imagem (JPG, PNG, WEBP). SVG não é aceito.'; return; }
+    if(!_docTipoOk(f)){ if(errEl) errEl.textContent='Tipo não aceito. Use PDF, imagem ou documento (Word, Excel, PowerPoint).'; return; }
     el.disabled=true; if(errEl) errEl.textContent='Enviando…';
     const rd=new FileReader();
     rd.onload=async()=>{ try{
