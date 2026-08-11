@@ -163,11 +163,12 @@
     <div class="pc-explica">Informe o <b>Valor Venal de Referência</b> (consultado no site da Prefeitura de SP). A calculadora acha a <b>faixa</b> na Tabela de Emolumentos 2026 do <b>Tabelionato de Notas de SP</b> e mostra a <b>linha completa</b> — cada componente e o total.</div>
     <div class="calc-grid">
       <div class="field"><div class="field-header"><label>Valor Venal de Referência</label></div><input type="text" id="em_valor" inputmode="numeric" placeholder="R$ 0,00"></div>
+      <div class="field"><div class="field-header"><label>Registro de Imóveis <span class="hint">(opcional)</span></label></div><input type="text" id="em_registro" inputmode="numeric" placeholder="R$ 0,00"></div>
     </div>
     <div id="em_res" style="margin-top:8px">
       <div class="pc-vazio">Informe o Valor Venal de Referência acima para ver o emolumento da escritura.</div>
     </div>
-    <div class="calc-nota">Inclui a <b>escritura</b> (Tabelionato de Notas) + o <b>ITBI</b> a 3% do valor. O <b>Registro de Imóveis</b> é cobrança à parte, não incluída aqui.</div>
+    <div class="calc-nota">Inclui a <b>escritura</b> (Tabelionato de Notas) + o <b>ITBI</b> a 3%. O <b>Registro de Imóveis</b> é opcional — consulte grátis em <b>registrodeimoveis.org.br/calculadora</b> e cole o valor no campo acima para somar no total geral.</div>
   </div>
 </div>
 
@@ -183,7 +184,7 @@ function diasEntre(msIni, msFim){ if(msIni==null||msFim==null) return null; retu
 const $ = id => document.getElementById(id);
 
 // Máscara de dinheiro nos campos monetários
-['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao','so_meta','so_ticket','em_valor'].forEach(id=>{
+['al_aluguel','mu_aluguel','mu_acrescimo','mu_desconto','pc_comissao','so_meta','so_ticket','em_valor','em_registro'].forEach(id=>{
   $(id).addEventListener('input', e=>{ e.target.value = maskMoney(e.target.value); calcular(); });
 });
 $('pc_tipo').addEventListener('change', calcular);
@@ -446,12 +447,14 @@ function calcEmolumento(){
     ['Tribunal de Justiça', f.tj], ['Santa Casa', f.sc]
   ];
   const itbi = v * 0.03;   // ITBI SP = 3% do valor (Valor Venal de Referência)
+  const registro = parseMoney($('em_registro').value);   // opcional (colado da calculadora do ONR)
   res.innerHTML = '<div class="calc-res">'
     + '<div class="calc-linha"><span class="rotulo">Faixa <b>'+f.l+'</b> <span class="hint">('+faixaTxt+')</span></span><span class="valor"></span></div>'
     + itens.map(i => '<div class="calc-linha"><span class="rotulo">'+i[0]+'</span><span class="valor">'+fmtBRL(i[1])+'</span></div>').join('')
     + '<div class="calc-linha destaque"><span class="rotulo">TOTAL da escritura</span><span class="valor">'+fmtBRL(f.tt)+'</span></div>'
     + '<div class="calc-linha"><span class="rotulo">ITBI <span class="hint">(3% do Valor Venal de Referência)</span></span><span class="valor">'+fmtBRL(itbi)+'</span></div>'
-    + '<div class="calc-linha destaque"><span class="rotulo">TOTAL geral <span class="hint">(escritura + ITBI)</span></span><span class="valor">'+fmtBRL(f.tt + itbi)+'</span></div>'
+    + (registro ? '<div class="calc-linha"><span class="rotulo">Registro de Imóveis</span><span class="valor">'+fmtBRL(registro)+'</span></div>' : '')
+    + '<div class="calc-linha destaque"><span class="rotulo">TOTAL geral <span class="hint">(escritura + ITBI'+(registro ? ' + registro' : '')+')</span></span><span class="valor">'+fmtBRL(f.tt + itbi + registro)+'</span></div>'
     + '</div>';
 }
 

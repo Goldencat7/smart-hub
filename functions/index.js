@@ -1509,42 +1509,40 @@ const NEGOCIO_STATUS = ['negocio_criado', 'em_andamento', 'aguardando_broker', '
 const NEGOCIO_ATIVO = s => !['concluido', 'cancelado'].includes(s);
 const _chkItem = ([key, label, obrigatoria]) => ({ key, label, obrigatoria, feito: false, feitoPor: '', feitoEm: null });
 const CHECKLIST_NEGOCIO = {
+  // Locação: 7 primeiras obrigatórias (travam Entregar/Concluir e aparecem no stepper).
   locacao: [
+    ['doc_pasta', 'Documentação completa e ficha cadastral no drive', true],
+    ['analise_credito', 'Análise de crédito aprovada', true],
+    ['contrato_assinado', 'Contrato assinado', true],
+    ['vistoria_assinada', 'Vistoria assinada', true],
+    ['seguro_fianca', 'Seguro fiança emitido', true],
+    ['enel', 'Transferência ENEL', true],
+    ['seguro_incendio', 'Seguro incêndio', true],
+    ['chaves', 'Entrega de chaves', false],
+    ['cadastrar_locacao', 'Cadastrar locação no sistema', false],
+    ['gerar_cobranca', 'Gerar cobrança', false],
+    ['acompanhamento', 'Acompanhamento', false],
+    ['conferir_enel', 'Conferir transferência ENEL', false],
+  ],
+  // Venda: 7 primeiras obrigatórias.
+  venda: [
     ['doc_pasta', 'Documentação salva na pasta', true],
     ['ficha', 'Ficha cadastral preenchida', true],
-    ['proposta', 'Proposta ajustada', true],
-    ['contrato_emitido', 'Contrato emitido', true],
-    ['contrato_aprovado', 'Contrato aprovado', true],
-    ['contrato_assinado', 'Contrato assinado', true],
-    ['seguro', 'Seguro aprovado', true],
-    ['chaves', 'Entrega das chaves', false],
+    ['proposta', 'Proposta ajustada entre as partes', true],
+    ['compromisso_emitido', 'Compromisso de compra e venda emitido', true],
+    ['certidoes', 'Certidões salvas na pasta', true],
+    ['matricula_atualizada', 'Puxar matrícula atualizada', true],
+    ['compromisso_aprovado', 'Compromisso aprovado pelas partes', true],
+    ['compromisso_assinado', 'Compromisso assinado', false],
+    ['comissao1', '1ª parcela da comissão paga', false],
+    ['comissao2', '2ª parcela da comissão paga', false],
+    ['averbacao', 'Averbação da escritura/financiamento', false],
+    ['matricula_emitida', 'Matrícula atualizada emitida', false],
+    ['chaves', 'Entrega de chaves', false],
     ['enel', 'Transferência ENEL', false],
     ['iptu', 'Transferência IPTU', false],
     ['condominio', 'Transferência titularidade condomínio', false],
     ['avaliacao', 'Avaliação Google', false],
-    ['finalizado', 'Processo finalizado', false],
-  ],
-  venda: [
-    ['doc_pasta', 'Documentação salva na pasta', true],
-    ['ficha', 'Ficha cadastral preenchida', true],
-    // Due diligence do imóvel ANTES da proposta/compromisso: conferir certidões e
-    // matrícula cedo evita tocar o negócio adiante num imóvel com pendência.
-    ['certidoes', 'Certidões', true],
-    ['matricula_atualizada', 'Matrícula atualizada', true],
-    ['proposta', 'Proposta ajustada', true],
-    ['compromisso_emitido', 'Compromisso emitido', true],
-    ['compromisso_aprovado', 'Compromisso aprovado', true],
-    ['compromisso_assinado', 'Compromisso assinado', true],
-    ['comissao1', '1ª parcela comissão', false],
-    ['comissao2', '2ª parcela comissão', false],
-    ['averbacao', 'Averbação', false],
-    ['matricula_emitida', 'Matrícula emitida', false],
-    ['chaves', 'Entrega das chaves', false],
-    ['enel', 'Transferência ENEL', false],
-    ['iptu', 'Transferência IPTU', false],
-    ['condominio', 'Transferência condomínio', false],
-    ['avaliacao', 'Avaliação Google', false],
-    ['finalizado', 'Processo finalizado', false],
   ],
 };
 
@@ -1732,7 +1730,7 @@ exports.negocioListar = onCall(async (req) => {
       documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
       tarefas: (n.tarefas || []).map(t => ({ ...t, criadoEm: t.criadoEm?.toDate?.()?.toISOString() || null, feitoEm: t.feitoEm?.toDate?.()?.toISOString() || null })),
       canceladoEm: n.canceladoEm?.toDate?.()?.toISOString() || null,
-      comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })) : null,
+      comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null, editadoEm: c.editadoEm?.toDate?.()?.toISOString() || null })) : null,
     };
   }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
   return { negocios, veTudo };
@@ -1755,7 +1753,7 @@ function _negocioSerializar(id, n, podeComentar) {
   return {
     ...n, id,
     // Comentários internos são EXCLUSIVOS do broker + corretor responsável (spec 04B).
-    comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null })) : null,
+    comentarios: podeComentar ? (n.comentarios || []).map(c => ({ ...c, em: c.em?.toDate?.()?.toISOString() || null, editadoEm: c.editadoEm?.toDate?.()?.toISOString() || null })) : null,
     timeline: (n.timeline || []).map(h => ({ ...h, em: h.em?.toDate?.()?.toISOString() || null })),
     checklist: (n.checklist || []).map(x => ({ ...x, feitoEm: x.feitoEm?.toDate?.()?.toISOString() || null })),
     documentos: (n.documentos || []).map(x => ({ ...x, em: x.em?.toDate?.()?.toISOString() || null })),
@@ -1785,7 +1783,7 @@ exports.negocioAtualizar = onCall(async (req) => {
   const { ref, snap, ehGestor, ehAdm, ehResponsavel } = await _negocioComPosse(d.negocioId, auth);
   const n0 = snap.data();
   // Alinhado com a trava de dentro da transação (arquivar/desarquivar valem em encerrado).
-  if (['concluido', 'cancelado'].includes(n0.status) && !['comentario', 'arquivar', 'desarquivar'].includes(d.acao)) {
+  if (['concluido', 'cancelado'].includes(n0.status) && !['comentario', 'comentario_editar', 'arquivar', 'desarquivar'].includes(d.acao)) {
     throw new HttpsError('failed-precondition', 'Negócio encerrado não aceita mais alterações.');
   }
   const porNome = await _nomeDoUid(auth.uid);
@@ -1801,7 +1799,7 @@ exports.negocioAtualizar = onCall(async (req) => {
     const s = await tx.get(ref);
     if (!s.exists) throw new HttpsError('not-found', 'Negócio não encontrado.');
     const n = s.data();
-    if (['concluido', 'cancelado'].includes(n.status) && !['comentario', 'arquivar', 'desarquivar'].includes(d.acao)) {
+    if (['concluido', 'cancelado'].includes(n.status) && !['comentario', 'comentario_editar', 'arquivar', 'desarquivar'].includes(d.acao)) {
       throw new HttpsError('failed-precondition', 'Negócio encerrado não aceita mais alterações.');
     }
     const agora = admin.firestore.Timestamp.now();
@@ -1829,7 +1827,22 @@ exports.negocioAtualizar = onCall(async (req) => {
       if (!texto) throw new HttpsError('invalid-argument', 'Comentário vazio.');
       const com = Array.isArray(n.comentarios) ? [...n.comentarios] : [];
       if (com.length >= 200) throw new HttpsError('resource-exhausted', 'Limite de comentários atingido.');
-      com.push({ texto, porUid: auth.uid, porNome, em: agora });
+      // Resposta a outro comentário: guarda o id do pai (thread renderizada no cliente).
+      const respostaDe = _txt(d.respostaDe, 80) || null;
+      if (respostaDe && !com.some(c => c.id === respostaDe)) throw new HttpsError('invalid-argument', 'Comentário respondido não existe (recarregue a tela).');
+      const novo = { id: crypto.randomUUID(), texto, porUid: auth.uid, porNome, em: agora };
+      if (respostaDe) novo.respostaDe = respostaDe;
+      com.push(novo);
+      up.comentarios = com;
+    } else if (d.acao === 'comentario_editar') {
+      if (!ehGestor && !ehResponsavel) throw new HttpsError('permission-denied', 'Comentários são exclusivos do broker e do corretor responsável.');
+      const texto = _txt(d.texto, 1000);
+      if (!texto) throw new HttpsError('invalid-argument', 'Comentário vazio.');
+      const com = Array.isArray(n.comentarios) ? [...n.comentarios] : [];
+      const c = com.find(x => x.id && x.id === d.comentarioId);
+      if (!c) throw new HttpsError('not-found', 'Comentário não encontrado (só dá pra editar comentários novos, com id).');
+      if (c.porUid !== auth.uid) throw new HttpsError('permission-denied', 'Só quem escreveu pode editar o comentário.');
+      c.texto = texto; c.editadoEm = agora;
       up.comentarios = com;
     } else if (d.acao === 'drive') {
       if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
@@ -4695,6 +4708,184 @@ async function _driveTriggerFicha(event, col) {
 exports.onFichaDriveSync = onDocumentWritten({ document: 'fichas/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas'));
 exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/{fichaId}', secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 300, memory: '256MiB' }, (event) => _driveTriggerFicha(event, 'fichas_locador'));
 
+// ═══ Google Drive: ROBÔ central (conta dedicada) — pastas por negócio ═════════
+// Diferente do sync por-ficha (que usa o Drive de CADA corretor com drive.file),
+// o ROBÔ é UMA conta Google dedicada (remaxsmarthub@gmail.com) com escopo `drive`
+// COMPLETO, que escreve dentro de uma pasta da imobiliária compartilhada com ele
+// como Editor. Token guardado central em `drive_robot/config`. O escopo amplo é só
+// pro robô — os corretores seguem com drive.file (login Google deles intacto).
+// Como é conta Gmail real (não service account), os arquivos que ela cria contam
+// nos 15 GB dela — resolvendo a cota 0 do service account.
+const DRIVE_ROBO_ROOT_PADRAO = '1-0dJYva2LtFbebZLSfwxMdFzKqdlY1Yh'; // "02 - Corretores" (trocável em drive_robot/config.rootId)
+
+async function _driveRoboToken() {
+  const snap = await db.collection('drive_robot').doc('config').get();
+  if (!snap.exists || !snap.data().refreshToken) throw new HttpsError('failed-precondition', 'Robô do Drive não conectado — conecte em Meu Perfil (admin).');
+  return getAccessToken(snap.data().refreshToken, snap.data().web);
+}
+async function _driveRoboRoot() {
+  const snap = await db.collection('drive_robot').doc('config').get();
+  return (snap.exists && snap.data().rootId) || DRIVE_ROBO_ROOT_PADRAO;
+}
+
+// Conecta o robô: troca o code por refresh_token (escopo drive completo) e guarda central.
+exports.conectarDriveRobo = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
+  const auth = await exigirAdmin(req);
+  const { code, codeVerifier, redirectUri } = req.data || {};
+  if (!code || !codeVerifier || !redirectUri) throw new HttpsError('invalid-argument', 'Dados do OAuth incompletos.');
+  const tokens = await trocarCodePorTokens(code, codeVerifier, redirectUri);
+  if (!tokens.refresh_token) throw new HttpsError('failed-precondition', 'O Google não devolveu refresh_token. Remova o app em myaccount.google.com/permissions e conecte de novo.');
+  if (!(tokens.scope || '').includes('/auth/drive')) throw new HttpsError('failed-precondition', 'Faltou autorizar o acesso ao Google Drive.');
+  let email = '';
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: 'Bearer ' + tokens.access_token } });
+    const j = await r.json().catch(() => ({}));
+    email = j.email || '';
+  } catch (_e) { /* email é só informativo */ }
+  await db.collection('drive_robot').doc('config').set({
+    refreshToken: tokens.refresh_token,
+    web: /^https:\/\//i.test(redirectUri || ''),
+    email,
+    conectadoPor: auth.uid,
+    conectadoEm: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  await registrarAudit(auth, 'drive_robo_conectar', 'drive_robot/config', { email });
+  return { ok: true, email };
+});
+
+exports.driveRoboStatus = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
+  const auth = await exigirAdmin(req);
+  const snap = await db.collection('drive_robot').doc('config').get();
+  const d = snap.exists ? snap.data() : {};
+  return { conectado: !!(d && d.refreshToken), email: (d && d.email) || '', rootId: (d && d.rootId) || DRIVE_ROBO_ROOT_PADRAO };
+});
+
+// Teste de gravação: confirma que o robô ENXERGA a pasta compartilhada e consegue
+// CRIAR pasta + subir arquivo dentro dela (o grande "será que funciona?"). Durante
+// os testes, escrevemos DENTRO da subpasta "NATHAN" (a do Nathan), não na raiz.
+const DRIVE_ROBO_SUBPASTA_TESTE = 'NATHAN';
+exports.driveRoboTeste = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 120 }, async (req) => {
+  await exigirAdmin(req);
+  const token = await _driveRoboToken();
+  const rootId = await _driveRoboRoot();
+  // 1) o robô enxerga a pasta raiz compartilhada?
+  let root;
+  try { root = await _driveApi(token, `files/${rootId}?fields=id,name`); }
+  catch (e) { throw new HttpsError('failed-precondition', 'O robô não acessa a pasta raiz (' + rootId + '): ' + ((e && e.message) || e) + '. Confirme que compartilhou a pasta com o robô como Editor.'); }
+  // 2) acha a subpasta "NATHAN" dentro da raiz (não cria — tem que existir)
+  const nomeEsc = DRIVE_ROBO_SUBPASTA_TESTE.replace(/'/g, "\\'");
+  const q = `mimeType='application/vnd.google-apps.folder' and name='${nomeEsc}' and '${rootId}' in parents and trashed=false`;
+  const achado = await _driveApi(token, `files?q=${encodeURIComponent(q)}&fields=files(id,name,capabilities(canAddChildren))&pageSize=1`);
+  if (!achado.files || !achado.files.length) throw new HttpsError('failed-precondition', 'Não achei a subpasta "' + DRIVE_ROBO_SUBPASTA_TESTE + '" dentro de "' + (root.name || rootId) + '". Confirme o nome/compartilhamento.');
+  const nathan = achado.files[0];
+  if (nathan.capabilities && nathan.capabilities.canAddChildren === false) throw new HttpsError('failed-precondition', 'O robô vê a pasta "' + nathan.name + '" mas NÃO pode criar dentro dela — compartilhe como Editor (não Leitor).');
+  // 3) cria a subpasta de teste + sobe um arquivinho DENTRO da NATHAN
+  const sub = await _driveFindOrCreateFolder(token, '___teste-hub', nathan.id);
+  const buf = Buffer.from('Teste de gravacao do robo do Hub — pode apagar esta pasta.\n', 'utf8');
+  const up = await _driveUploadBuffer(token, 'teste-hub.txt', sub, buf, 'text/plain');
+  return { ok: true, raiz: (root.name || rootId) + ' / ' + nathan.name, arquivo: up.name, link: `https://drive.google.com/drive/folders/${sub}` };
+});
+
+// Lista as SUBPASTAS diretas da raiz "02 - Corretores" (pro dropdown do mapa).
+exports.driveListarSubpastas = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 60 }, async (req) => {
+  await exigirAdmin(req);
+  const token = await _driveRoboToken();
+  const rootId = await _driveRoboRoot();
+  const q = `mimeType='application/vnd.google-apps.folder' and '${rootId}' in parents and trashed=false`;
+  const r = await _driveApi(token, `files?q=${encodeURIComponent(q)}&fields=files(id,name)&orderBy=name&pageSize=1000`);
+  return { pastas: (r.files || []).map(f => ({ id: f.id, name: f.name })) };
+});
+
+// Lê o mapa corretor→pasta (drive_robot/mapa: { uid: folderId }).
+exports.driveMapaGet = onCall(async (req) => {
+  await exigirAdmin(req);
+  const snap = await db.collection('drive_robot').doc('mapa').get();
+  return { mapa: snap.exists ? (snap.data() || {}) : {} };
+});
+
+// Salva o mapa corretor→pasta (substitui o doc inteiro).
+exports.driveMapaSalvar = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const mapa = (req.data && req.data.mapa) || null;
+  if (!mapa || typeof mapa !== 'object' || Array.isArray(mapa)) throw new HttpsError('invalid-argument', 'Mapa inválido.');
+  // sanitiza: só pares uid(string)→folderId(string não vazio)
+  const limpo = {};
+  for (const [uid, fid] of Object.entries(mapa)) {
+    if (typeof uid === 'string' && typeof fid === 'string' && fid.trim()) limpo[uid] = fid.trim();
+  }
+  await db.collection('drive_robot').doc('mapa').set(limpo);
+  await registrarAudit(auth, 'drive_mapa_salvar', 'drive_robot/mapa', { n: Object.keys(limpo).length });
+  return { ok: true, n: Object.keys(limpo).length };
+});
+
+// Sincroniza os documentos de UM negócio pro Drive (via robô): pasta do corretor →
+// subpasta do imóvel ("endereço (NG-código)"). Sobe os docs do negócio + os anexos e
+// PDFs das fichas vinculadas (vendedor/locador do imóvel + comprador/locatário interessado).
+// Manual (botão no negócio) — dedup por existência de nome; não apaga nada (aditivo).
+const _LABEL_FICHA = { locador: 'Locador', pf: 'Pessoa Fisica', pj: 'Pessoa Juridica', 'locacao-fiador': 'Locacao c Fiador', locacao_fiador: 'Locacao c Fiador', vendedor: 'Vendedor', proposta: 'Proposta' };
+exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 300, memory: '512MiB' }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const { ref, snap, ehGestor, ehAdm } = await _negocioComPosse(req.data && req.data.negocioId, auth);
+  const n = snap.data();
+  const ehDono = n.corretorUid === auth.uid;
+  if (!ehGestor && !ehAdm && !ehDono) throw new HttpsError('permission-denied', 'Sem acesso a este negócio.');
+  // 1) pasta do corretor (pelo mapa)
+  const mapaSnap = await db.collection('drive_robot').doc('mapa').get();
+  const mapa = mapaSnap.exists ? (mapaSnap.data() || {}) : {};
+  const pastaCorretor = mapa[n.corretorUid];
+  if (!pastaCorretor) throw new HttpsError('failed-precondition', 'O corretor deste negócio ainda não tem pasta no Drive. Peça ao admin pra mapear em Meu Perfil → Mapear pastas.');
+  const token = await _driveRoboToken();
+  // 2) subpasta do imóvel: "endereço (NG-código)"
+  const nomeImovel = _driveSanitizar((n.imovelResumo || 'Imovel') + ' (' + (n.codigo || (n.imovelId || '').slice(0, 6)) + ')');
+  let pastaImovel;
+  try { pastaImovel = await _driveFindOrCreateFolder(token, nomeImovel, pastaCorretor); }
+  catch (e) { throw new HttpsError('failed-precondition', 'Não consegui criar a pasta do imóvel — confirme que a pasta do corretor está compartilhada com o robô como Editor. (' + ((e && e.message) || e) + ')'); }
+  // 3) reúne os arquivos: docs do negócio + fichas vinculadas (anexos + PDF)
+  const itens = []; // { nome, url } (baixa da Storage) OU { nomePdf, buf } (PDF gerado)
+  for (const doc of (n.documentos || [])) {
+    if (doc && typeof doc.url === 'string' && /^https?:/.test(doc.url) && urlStoragePermitida(doc.url))
+      itens.push({ nome: _driveSanitizar(((doc.categoria && doc.categoria !== 'outro') ? doc.categoria + ' - ' : '') + (doc.nome || 'documento')), url: doc.url });
+  }
+  const im = (await db.collection('imoveis').doc(n.imovelId).get()).data() || {};
+  const fichaIds = [];
+  if (im.fichaId) fichaIds.push(im.fichaId);
+  // Interessado do negócio: por negocioId (o índice envelhece com remoções — invariante 2026-07-28).
+  const lista = Array.isArray(im.interessados) ? im.interessados : [];
+  const inter = lista.find(i => i && i.negocioId === ref.id) || lista[n.interessadoIndex] || null;
+  if (inter && inter.fichaId && !fichaIds.includes(inter.fichaId)) fichaIds.push(inter.fichaId);
+  for (const fid of fichaIds) {
+    let fSnap = await db.collection('fichas').doc(fid).get(); let col = 'fichas';
+    if (!fSnap.exists) { fSnap = await db.collection('fichas_locador').doc(fid).get(); col = 'fichas_locador'; }
+    if (!fSnap.exists) continue;
+    const f = fSnap.data();
+    const nomeP = _driveSanitizar((f.dados && (f.dados.nome || f.dados.razaoSocial || f.dados.nomeCompleto)) || 'Ficha');
+    for (const [campo, url] of Object.entries(f.documentos || {})) {
+      if (typeof url === 'string' && /^https?:/.test(url) && urlStoragePermitida(url))
+        itens.push({ nome: _driveSanitizar('Ficha ' + nomeP + ' - ' + campo), url });
+    }
+    try {
+      const tipoF = col === 'fichas_locador' ? 'locador' : (f.tipo || 'ficha');
+      const label = _LABEL_FICHA[tipoF] || 'Ficha';
+      const pdfBuf = await gerarPdfFicha(f, label);
+      itens.push({ nomePdf: _driveSanitizar('Ficha ' + label + ' - ' + nomeP) + '.pdf', buf: pdfBuf });
+    } catch (e) { console.error('driveSyncNegocio pdf', (e && e.message) || e); }
+  }
+  // 4) sobe (dedup por nome já existente na pasta)
+  let enviados = 0, jaExistiam = 0, falhas = 0;
+  for (const it of itens) {
+    try {
+      const nomeArq = it.buf ? it.nomePdf : it.nome;
+      if (await _driveArquivoExiste(token, nomeArq, pastaImovel)) { jaExistiam++; continue; }
+      if (it.buf) await _driveUploadBuffer(token, it.nomePdf, pastaImovel, it.buf, 'application/pdf');
+      else await _driveUpload(token, it.nome, pastaImovel, it.url);
+      enviados++;
+    } catch (e) { falhas++; console.error('driveSyncNegocio upload', (e && e.message) || e); }
+  }
+  const link = `https://drive.google.com/drive/folders/${pastaImovel}`;
+  await registrarAudit(auth, 'negocio_drive_sync', { tipo: 'negocio', id: ref.id }, { enviados, jaExistiam, falhas });
+  return { ok: true, pasta: nomeImovel, enviados, jaExistiam, falhas, total: itens.length, link };
+});
+
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
 // Qualquer usuário pode criar eventos, convidar pessoas ou marcar "para todos".
 exports.criarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
@@ -5872,6 +6063,127 @@ exports.listarFichasInteressaveis = onCall(async (req) => {
       criadoEm: f.criadoEm?.toDate?.()?.toISOString() || ''
     };
   }).sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+});
+
+// Lista fichas de PROPRIETÁRIO (vendedor em `fichas`, locador em `fichas_locador`)
+// pro picker "vincular ficha existente" ao imóvel. Role-scoped (gestor/adm vê tudo;
+// corretor vê as suas). Filtra pela finalidade do imóvel.
+exports.listarFichasProprietario = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const fin = (req.data && req.data.finalidade) || 'locacao';
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo') || !!(auth.token && auth.token.admin);
+  const querVend = fin === 'venda' || fin === 'venda_locacao';
+  const querLoc = fin === 'locacao' || fin === 'venda_locacao';
+  const out = [];
+  const push = (d, tipoLabel) => { const f = d.data(); const dd = f.dados || {}; out.push({ id: d.id, tipo: tipoLabel, nome: _txt(dd.nome, 120) || '(sem nome)', cpf: _txt(dd.cpf || dd.cnpj, 40), telefone: _txt(dd.whatsapp || dd.fixo || dd.celular, 40), criadoEm: f.criadoEm?.toDate?.()?.toISOString() || '' }); };
+  if (querVend) {
+    // vendedor: coleção `fichas`, tipo='vendedor'. Sem índice composto: veTudo filtra por tipo;
+    // corretor filtra por corretorUid e checa o tipo em memória.
+    const snap = veTudo ? await db.collection('fichas').where('tipo', '==', 'vendedor').limit(100).get()
+                        : await db.collection('fichas').where('corretorUid', '==', auth.uid).limit(150).get();
+    for (const d of snap.docs) if (veTudo || d.data().tipo === 'vendedor') push(d, 'vendedor');
+  }
+  if (querLoc) {
+    const snap = veTudo ? await db.collection('fichas_locador').limit(100).get()
+                        : await db.collection('fichas_locador').where('corretorUid', '==', auth.uid).limit(100).get();
+    for (const d of snap.docs) push(d, 'locador');
+  }
+  return out.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
+});
+
+// Vincula uma ficha de proprietário JÁ EXISTENTE a um imóvel (preenche o card, como
+// o trigger faz no envio). Posse pelo imóvel; recusa se já houver outra ficha vinculada.
+exports.carteiraVincularProprietario = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref } = await _carteiraImovelComPosse(d.imovelId, auth);
+  const tipo = d.tipo === 'vendedor' ? 'vendedor' : 'locador';
+  const col = tipo === 'vendedor' ? 'fichas' : 'fichas_locador';
+  const fichaId = String(d.fichaId || '');
+  const fSnap = await db.collection(col).doc(fichaId).get();
+  if (!fSnap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
+  const f = fSnap.data();
+  const dados = f.dados || {};
+  const porNome = await _nomeDoUid(auth.uid);
+  const ts = () => admin.firestore.FieldValue.serverTimestamp();
+  // Locador: cria as pessoas (loc1/loc2) como o trigger, pra aparecer em Pessoas.
+  const locadorIds = [];
+  const pa = tipo === 'locador' ? loc_montarPessoa(dados, LOC_KEYS_1) : null;
+  if (tipo === 'locador') {
+    if (pa.nome) { await db.collection('pessoas').doc(`${fichaId}_loc1`).set({ ...pa, corretorUid: auth.uid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true }); locadorIds.push(`${fichaId}_loc1`); }
+    if (dados.loc2_nome) { await db.collection('pessoas').doc(`${fichaId}_loc2`).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: auth.uid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true }); locadorIds.push(`${fichaId}_loc2`); }
+  }
+  const nome = tipo === 'locador' ? (pa.nome || '') : (dados.nome || '');
+  const contato = tipo === 'locador' ? [pa.whatsapp || pa.fixo, pa.email].filter(Boolean).join(' · ') : [dados.whatsapp || dados.fixo, dados.email].filter(Boolean).join(' · ');
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+    const im = s.data();
+    if (im.fichaId && im.fichaId !== fichaId) throw new HttpsError('failed-precondition', 'Este imóvel já tem uma ficha de proprietário vinculada.');
+    const up = {
+      fichaId, fichaTipo: tipo, proprietarioNome: nome,
+      proprietarioContato: contato,
+      documentos: { ...(im.documentos || {}), ...(f.documentos || {}) },
+      timeline: admin.firestore.FieldValue.arrayUnion({ texto: `Proprietário vinculado (ficha ${tipo} existente)`, porNome, em: admin.firestore.Timestamp.now() }),
+      atualizadoEm: ts()
+    };
+    if (tipo === 'locador') { up.locadorIds = locadorIds; up.locadorNome = nome; }
+    tx.set(ref, up, { merge: true });
+  });
+  await registrarAudit(auth, 'imovel_vincular_proprietario', { tipo: 'imovel', id: d.imovelId }, { fichaId, tipoFicha: tipo });
+  await _bumpBroadcast('imovelSeq');
+  return { ok: true, nome };
+});
+
+// Exclui um NEGÓCIO (SÓ gestor). Libera o imóvel: interessado volta a 'aprovado',
+// imóvel volta a 'disponivel' (como o cancelar). Hard delete + audit.
+exports.negocioExcluir = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth)) throw new HttpsError('permission-denied', 'Só o gestor pode excluir negócios.');
+  const negocioId = String((req.data && req.data.negocioId) || '');
+  const ref = db.collection('negocios').doc(negocioId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Negócio não encontrado.');
+  const n = snap.data();
+  if (n.imovelId) {
+    const imRef = db.collection('imoveis').doc(n.imovelId);
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(imRef);
+      if (!s.exists) return;
+      const im = s.data();
+      const lista = Array.isArray(im.interessados) ? [...im.interessados] : [];
+      let mudou = false;
+      for (let i = 0; i < lista.length; i++) { if (lista[i] && lista[i].negocioId === negocioId) { lista[i] = { ...lista[i], status: 'aprovado', negocioId: null }; mudou = true; } }
+      const up = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+      if (mudou) up.interessados = lista;
+      if (im.situacao === 'em_negociacao') up.situacao = 'disponivel';
+      tx.set(imRef, up, { merge: true });
+    });
+  }
+  await ref.delete();
+  await registrarAudit(auth, 'negocio_excluir', { tipo: 'negocio', id: negocioId }, { codigo: n.codigo });
+  await _bumpBroadcast('imovelSeq');
+  return { ok: true };
+});
+
+// Exclui um IMÓVEL (SÓ gestor). Bloqueia se houver negócio ATIVO (cancele/exclua antes).
+// Apaga as pessoas (locadores) derivadas. Hard delete + audit.
+exports.carteiraExcluirImovel = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  if (!ehGestorAuth(auth)) throw new HttpsError('permission-denied', 'Só o gestor pode excluir imóveis.');
+  const imovelId = String((req.data && req.data.imovelId) || '');
+  const ref = db.collection('imoveis').doc(imovelId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const negs = await db.collection('negocios').where('imovelId', '==', imovelId).get();
+  const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+  if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}). Exclua ou cancele o negócio antes.`);
+  const im = snap.data();
+  for (const pid of (Array.isArray(im.locadorIds) ? im.locadorIds : [])) await db.collection('pessoas').doc(pid).delete().catch(() => {});
+  await ref.delete();
+  await registrarAudit(auth, 'imovel_excluir', { tipo: 'imovel', id: imovelId }, { protocolo: im.numeroProtocolo != null ? im.numeroProtocolo : null });
+  await _bumpBroadcast('imovelSeq');
+  return { ok: true };
 });
 
 exports.enviarFichaTipoAdmin = onCall({ secrets: [SUPPORT_EMAIL_PASS], memory: '512MiB' }, async (req) => {

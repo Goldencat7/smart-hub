@@ -536,7 +536,8 @@ ipcMain.on('abrir-ficha-local', (_e, payload) => {
 // ─── Conectar Google Agenda (fluxo OAuth no navegador externo) ───────────────
 // Devolve { ok, code, codeVerifier, redirectUri } pro renderer, que então chama
 // a Cloud Function pra finalizar. Usa PKCE (S256) por segurança.
-ipcMain.handle('conectar-google', async () => {
+ipcMain.handle('conectar-google', async (_evt, scopeArg) => {
+  const scopeUsado = (typeof scopeArg === 'string' && scopeArg.trim()) ? scopeArg.trim() : GOOGLE_SCOPES;
   return await new Promise((resolve) => {
     const codeVerifier  = base64url(crypto.randomBytes(32));
     const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
@@ -573,7 +574,7 @@ ipcMain.handle('conectar-google', async () => {
         client_id: GOOGLE_CLIENT_ID,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: GOOGLE_SCOPES,
+        scope: scopeUsado,
         access_type: 'offline',
         prompt: 'consent',
         state,

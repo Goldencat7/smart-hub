@@ -66,6 +66,14 @@ const excluirEvento = httpsCallable(fns, 'excluirEvento');
 const listarPessoas = httpsCallable(fns, 'listarPessoas');
 const conectarGoogleAgenda = httpsCallable(fns, 'conectarGoogleAgenda');
 const desconectarGoogleAgenda = httpsCallable(fns, 'desconectarGoogleAgenda');
+// Robô do Drive (setup admin, só .exe) — conecta a conta dedicada com escopo drive completo.
+const conectarDriveRobo = httpsCallable(fns, 'conectarDriveRobo');
+const driveRoboStatus   = httpsCallable(fns, 'driveRoboStatus');
+const driveRoboTeste    = httpsCallable(fns, 'driveRoboTeste');
+const driveListarSubpastas = httpsCallable(fns, 'driveListarSubpastas');
+const driveMapaGet      = httpsCallable(fns, 'driveMapaGet');
+const driveMapaSalvar   = httpsCallable(fns, 'driveMapaSalvar');
+const DRIVE_ROBO_SCOPE  = 'openid email https://www.googleapis.com/auth/drive';
 
 // Retorno do OAuth do Google no WEB: a página google-callback.html volta pra cá
 // com ?google=ok|erro. Guarda o resultado e limpa a URL agora; o aviso sai depois
@@ -725,6 +733,7 @@ function renderCentro() {
     inputBusca.placeholder = '';
     carregarPerfil();
     atualizarStatusGoogle(); // pinta o botão "Conectar Google" (Agenda + Drive) em Meu Perfil
+    atualizarStatusRoboDrive(); // seção do robô do Drive (só admin + desktop)
     carregarIndicadoresPerfil(); // números reais em "Meus indicadores"
     return;
   }
@@ -1334,6 +1343,24 @@ async function abrirNovidades() {
 }
 document.getElementById('btnNovidades')?.addEventListener('click', abrirNovidades);
 
+// ─── Tema claro/escuro (alterna pelo botão do topo, salvo em localStorage) ───
+(function(){
+  const SOL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+  const LUA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>';
+  const btn = document.getElementById('btnTema');
+  const lerTema = () => { try { return localStorage.getItem('hub_tema') === 'light' ? 'light' : 'dark'; } catch (_) { return 'dark'; } };
+  function aplicar(tema){
+    document.documentElement.dataset.theme = tema === 'light' ? 'light' : 'dark';
+    if (btn){ btn.innerHTML = tema === 'light' ? LUA : SOL; btn.title = tema === 'light' ? 'Mudar para o tema escuro' : 'Mudar para o tema claro'; }
+  }
+  aplicar(lerTema());
+  btn?.addEventListener('click', () => {
+    const novo = lerTema() === 'light' ? 'dark' : 'light';
+    try { localStorage.setItem('hub_tema', novo); } catch (_) {}
+    aplicar(novo);
+  });
+})();
+
 // ─── Abrir app (com ou sem autologin) ────────────────────────────────────
 // Ponte pro Broker embutido: troca a categoria ativa do Hub (ex.: Agenda).
 // Sai do "Meus Negócios" — o renderCentro desmonta o Broker e restaura o layout.
@@ -1531,7 +1558,7 @@ async function carregarHome() {
 
   // Estilos base (tema claro do Hub)
   const cardSt = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)';
-  const kpi = (ico, num, label, cor) => `<div style="${cardSt};padding:14px 16px;flex:1;min-width:140px">
+  const kpi = (ico, num, label, cor) => `<div class="lc-q" style="${cardSt};padding:14px 16px;flex:1;min-width:140px">
     <div style="font-size:12px;font-weight:600;color:var(--text-muted);display:flex;align-items:center;gap:6px">${ico} ${esc(label)}</div>
     <div style="font-size:26px;font-weight:700;margin-top:6px;color:${cor || 'var(--text-primary)'}">${num}</div></div>`;
   const secTit = (t, extra) => `<div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 10px"><span style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em">${t}</span>${extra || ''}</div>`;
@@ -1549,7 +1576,7 @@ async function carregarHome() {
     <span style="color:var(--blue)">○</span><span style="flex:1;min-width:0">${esc(a.prox)}</span>
     <span style="font-size:11px;color:var(--text-muted);white-space:nowrap">${esc(a.rua)}</span></div>`).join('') ||
     '<p style="font-size:13px;color:var(--text-muted);padding:12px 0">Nenhuma ação pendente. 🎉</p>';
-  const colProx = `<div style="${cardSt};padding:16px;flex:1;min-width:280px">${secTit('📋 Próximas ações')}${proxItems}</div>`;
+  const colProx = `<div class="lc-q" style="${cardSt};padding:16px;flex:1;min-width:280px">${secTit('📋 Próximas ações')}${proxItems}</div>`;
 
   // Agenda de hoje
   const evOrd = eventosHoje.slice().sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
@@ -1558,7 +1585,7 @@ async function carregarHome() {
     return `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
       <span style="font-weight:700;color:var(--blue);white-space:nowrap">${hhmm}</span><span style="flex:1;min-width:0">${esc(ev.titulo || 'Compromisso')}</span></div>`;
   }).join('') || '<p style="font-size:13px;color:var(--text-muted);padding:12px 0">Nada agendado para hoje.</p>';
-  const colAgenda = `<div style="${cardSt};padding:16px;flex:1;min-width:280px">${secTit('📅 Agenda de hoje', '<button class="topbar-btn" data-home="agenda" style="font-size:11px;padding:3px 10px">Abrir Agenda</button>')}${evItems}</div>`;
+  const colAgenda = `<div class="lc-q" style="${cardSt};padding:16px;flex:1;min-width:280px">${secTit('📅 Agenda de hoje', '<button class="topbar-btn" data-home="agenda" style="font-size:11px;padding:3px 10px">Abrir Agenda</button>')}${evItems}</div>`;
 
   // Negócios em andamento (com barra de progresso)
   const negItems = ativosOrd.slice(0, 6).map(a => `<div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border)">
@@ -1566,7 +1593,7 @@ async function carregarHome() {
     <div style="width:120px;height:7px;background:var(--border);border-radius:99px;overflow:hidden;flex-shrink:0"><div style="width:${a.prog}%;height:100%;background:var(--blue)"></div></div>
     <span style="font-size:12px;font-weight:700;color:var(--text-primary);width:38px;text-align:right;flex-shrink:0">${a.prog}%</span></div>`).join('') ||
     '<p style="font-size:13px;color:var(--text-muted);padding:12px 0">Nenhum negócio em andamento.</p>';
-  const blocoNeg = `<div style="${cardSt};padding:16px;margin-bottom:18px">${secTit('📁 Negócios em andamento', '<button class="topbar-btn" data-home="negocios" style="font-size:11px;padding:3px 10px">Ver todos</button>')}${negItems}</div>`;
+  const blocoNeg = `<div class="lc-q" style="${cardSt};padding:16px;margin-bottom:18px">${secTit('📁 Negócios em andamento', '<button class="topbar-btn" data-home="negocios" style="font-size:11px;padding:3px 10px">Ver todos</button>')}${negItems}</div>`;
 
   // Fichas digitais (links reais do corretor)
   const fichaRows = CARTEIRA_FICHAS.map(f => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
@@ -1574,7 +1601,7 @@ async function carregarHome() {
     <button class="topbar-btn" data-home="ficha-copiar" data-arq="${esc(f.arquivo)}" style="font-size:11px;padding:3px 9px">📋 Copiar</button>
     <button class="topbar-btn" data-home="ficha-wpp" data-arq="${esc(f.arquivo)}" style="font-size:11px;padding:3px 9px">💬 WhatsApp</button>
     <button class="topbar-btn" data-home="ficha-abrir" data-arq="${esc(f.arquivo)}" style="font-size:11px;padding:3px 9px">👁 Abrir</button></div>`).join('');
-  const blocoFichas = `<div style="${cardSt};padding:16px">${secTit('🗂️ Fichas digitais', '<button class="topbar-btn" data-home="fichas" style="font-size:11px;padding:3px 10px">Ver todas</button>')}${fichaRows}</div>`;
+  const blocoFichas = `<div class="lc-q" style="${cardSt};padding:16px">${secTit('🗂️ Fichas digitais', '<button class="topbar-btn" data-home="fichas" style="font-size:11px;padding:3px 10px">Ver todas</button>')}${fichaRows}</div>`;
 
   const header = `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px">
     <div><div style="font-size:20px;font-weight:700;color:var(--text-primary)">${saud}${nome ? ', ' + esc(nome) : ''} 👋</div></div>
@@ -2792,6 +2819,102 @@ btnGoogleAgenda.addEventListener('click', async ()=>{
     btnGoogleAgenda.disabled = false;
     if(!googleConectado) pintarBotaoGoogle(false, ''); // fix 1: restaura HTML completo (com SVG), não só texto
   }
+});
+
+// ── Robô do Drive (setup de bastidor — admin, só .exe) ───────────────────────
+// Conecta a conta dedicada (remaxsmarthub@gmail.com) com escopo Drive COMPLETO.
+// Reusa o mesmo fluxo OAuth do desktop, passando um escopo diferente. Só aparece
+// pra admin no app de computador (o Picker/loopback não existe no PWA).
+const cfgRoboDrive = document.getElementById('cfgRoboDrive');
+const cfgRoboDriveStatus = document.getElementById('cfgRoboDriveStatus');
+const btnRoboConectar = document.getElementById('btnRoboConectar');
+const btnRoboTeste = document.getElementById('btnRoboTeste');
+async function atualizarStatusRoboDrive(){
+  if(!cfgRoboDrive) return;
+  // Só admin + desktop (no web não há loopback pra escopo amplo).
+  if(!isAdmin || ehWeb()){ cfgRoboDrive.hidden = true; return; }
+  cfgRoboDrive.hidden = false;
+  try {
+    const r = await driveRoboStatus();
+    const d = r.data || {};
+    if(d.conectado){
+      cfgRoboDriveStatus.innerHTML = 'Conectado como <code>'+escapeHtml(d.email||'?')+'</code>. As pastas dos negócios são organizadas na pasta da imobiliária.';
+      if(btnRoboConectar) btnRoboConectar.textContent = 'Reconectar robô';
+    } else {
+      cfgRoboDriveStatus.innerHTML = 'Conecte a conta-robô (<code>remaxsmarthub@gmail.com</code>) que organiza os documentos dos negócios. Entre com a conta do robô ao autorizar.';
+      if(btnRoboConectar) btnRoboConectar.textContent = 'Conectar robô';
+    }
+  } catch(e){ /* silencioso: se não for admin, a function nega */ }
+}
+if(btnRoboConectar) btnRoboConectar.addEventListener('click', async ()=>{
+  btnRoboConectar.disabled = true;
+  const txt = btnRoboConectar.textContent;
+  btnRoboConectar.textContent = 'Abrindo navegador...';
+  try {
+    const r = await window.hubApi.conectarGoogle(DRIVE_ROBO_SCOPE);
+    if(r && r.redirecting) return; // web não usa este fluxo, mas por segurança
+    if(!r || !r.ok){ alert('Conexão cancelada' + (r && r.erro ? ': '+r.erro : '.')); return; }
+    btnRoboConectar.textContent = 'Finalizando...';
+    const res = await conectarDriveRobo({ code: r.code, codeVerifier: r.codeVerifier, redirectUri: r.redirectUri });
+    alert('Robô conectado! ✅ Conta: ' + ((res.data && res.data.email) || '?') + '\n\nAgora clique em "Testar gravação" pra confirmar o acesso à pasta.');
+    atualizarStatusRoboDrive();
+  } catch(e){ alert('Erro ao conectar o robô: ' + e.message); }
+  finally { btnRoboConectar.disabled = false; btnRoboConectar.textContent = txt; }
+});
+if(btnRoboTeste) btnRoboTeste.addEventListener('click', async ()=>{
+  btnRoboTeste.disabled = true;
+  const txt = btnRoboTeste.textContent;
+  btnRoboTeste.textContent = 'Testando...';
+  try {
+    const r = await driveRoboTeste();
+    const d = r.data || {};
+    alert('✅ Gravação OK!\n\nPasta raiz: ' + (d.raiz||'?') + '\nArquivo criado: ' + (d.arquivo||'?') + '\n\nAbra a pasta "___teste-hub" no Drive pra confirmar (pode apagar depois).');
+  } catch(e){ alert('❌ Falhou: ' + e.message); }
+  finally { btnRoboTeste.disabled = false; btnRoboTeste.textContent = txt; }
+});
+
+// ── Mapa corretor → pasta do Drive (robô) ────────────────────────────────────
+const modalRoboMapa = document.getElementById('modalRoboMapa');
+const roboMapaCorpo = document.getElementById('roboMapaCorpo');
+const roboMapaMsg = document.getElementById('roboMapaMsg');
+function _normNome(s){ return String(s||'').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+// Casa o nome do corretor com uma pasta: 1) igual; 2) pasta é prefixo por tokens
+// do nome (NATHAN ⊂ "Nathan Gabriel"); 3) mesmo primeiro nome. Devolve o id ou ''.
+function _autoMatchPasta(nomeCorretor, pastas){
+  const n = _normNome(nomeCorretor); if(!n) return '';
+  const primeiro = n.split(' ')[0];
+  let hit = pastas.find(p => _normNome(p.name) === n); if(hit) return hit.id;
+  hit = pastas.find(p => { const pn=_normNome(p.name); return pn && (n === pn || n.startsWith(pn + ' ')); }); if(hit) return hit.id;
+  hit = pastas.find(p => _normNome(p.name).split(' ')[0] === primeiro); if(hit) return hit.id;
+  return '';
+}
+async function abrirRoboMapa(){
+  if(!modalRoboMapa) return;
+  roboMapaCorpo.innerHTML = 'Carregando…'; roboMapaMsg.hidden = true;
+  modalRoboMapa.showModal();
+  try {
+    const [pRes, fRes, mRes] = await Promise.all([listarPessoas(), driveListarSubpastas(), driveMapaGet()]);
+    const pessoas = (pRes.data||[]).slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||'','pt'));
+    const pastas = (fRes.data && fRes.data.pastas) || [];
+    const mapa = (mRes.data && mRes.data.mapa) || {};
+    if(!pastas.length){ roboMapaCorpo.innerHTML = '<p class="muted" style="font-size:13px">O robô não encontrou subpastas na "02 - Corretores". Confirme que ele está conectado e a pasta compartilhada.</p>'; return; }
+    const opts = (sel) => '<option value="">— não mapear —</option>' + pastas.map(p=>`<option value="${escapeHtml(p.id)}"${p.id===sel?' selected':''}>${escapeHtml(p.name)}</option>`).join('');
+    roboMapaCorpo.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+      + '<thead><tr><th style="text-align:left;padding:6px 8px;color:var(--text-muted)">Corretor</th><th style="text-align:left;padding:6px 8px;color:var(--text-muted)">Pasta no Drive</th></tr></thead><tbody>'
+      + pessoas.map(u=>{ const sel = mapa[u.uid] || _autoMatchPasta(u.nome, pastas); return `<tr data-uid="${escapeHtml(u.uid)}"><td style="padding:6px 8px;border-top:1px solid var(--border)">${escapeHtml(u.nome)}</td><td style="padding:6px 8px;border-top:1px solid var(--border)"><select class="robo-mapa-sel" style="width:100%;padding:5px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text-primary)">${opts(sel)}</select></td></tr>`; }).join('')
+      + '</tbody></table>';
+  } catch(e){ roboMapaCorpo.innerHTML = '<p class="muted" style="font-size:13px">Erro ao carregar: '+escapeHtml(e.message||'')+'</p>'; }
+}
+document.getElementById('btnRoboMapa')?.addEventListener('click', abrirRoboMapa);
+document.getElementById('roboMapaFechar')?.addEventListener('click', ()=>modalRoboMapa.close());
+document.getElementById('roboMapaCancelar')?.addEventListener('click', ()=>modalRoboMapa.close());
+document.getElementById('roboMapaSalvar')?.addEventListener('click', async ()=>{
+  const mapa = {};
+  roboMapaCorpo.querySelectorAll('tr[data-uid]').forEach(tr=>{ const uid=tr.getAttribute('data-uid'); const v=tr.querySelector('.robo-mapa-sel')?.value; if(v) mapa[uid]=v; });
+  const btn = document.getElementById('roboMapaSalvar'); btn.disabled=true; const t=btn.textContent; btn.textContent='Salvando…';
+  try { const r = await driveMapaSalvar({ mapa }); roboMapaMsg.hidden=false; roboMapaMsg.style.color='#8ddca8'; roboMapaMsg.textContent='✅ Mapa salvo ('+((r.data&&r.data.n)||0)+' corretores).'; setTimeout(()=>modalRoboMapa.close(), 900); }
+  catch(e){ roboMapaMsg.hidden=false; roboMapaMsg.style.color='#ffb4bc'; roboMapaMsg.textContent='Erro: '+e.message; }
+  finally { btn.disabled=false; btn.textContent=t; }
 });
 
 document.getElementById('formEvento').addEventListener('submit', async (e)=>{

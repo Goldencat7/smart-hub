@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('hubApi', {
   fecharJanela: () => ipcRenderer.send('fechar-janela'),
 
   // Conectar Google Agenda: abre o navegador e devolve o código de autorização
-  conectarGoogle: () => ipcRenderer.invoke('conectar-google'),
+  conectarGoogle: (scope) => ipcRenderer.invoke('conectar-google', scope),
 
   // Versão do app
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),

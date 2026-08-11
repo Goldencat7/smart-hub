@@ -37,6 +37,59 @@
   --bg-card: var(--surface);
 }
 
+/* ── Modo CLARO = só os QUADRADOS de conteúdo brancos ───────────────────────
+   Fundo (--bg), sidebar navy E TOPBAR continuam escuros — igual ao print.
+   NÃO mexemos no --surface global (senão input/calendário/topbar viravam
+   branco também). Só os cards de conteúdo recebem fundo branco + texto escuro;
+   pela cascata das variáveis, o que fica DENTRO do card lê o texto escuro, e o
+   que está direto no fundo escuro continua com texto claro. */
+/* Abordagem por VARIÁVEL (sem `background:#fff` direto) pra não estragar estados
+   como o funil "selecionado" (.rec-etapa.on continua azul) e hovers.
+   `.lc-q` = classe dos cards inline do Dashboard (que não têm classe própria).
+   NÃO usar [class*="kpi"]: pintava o CONTAINER .cad-kpis (o retângulo de trás
+   dos cards de Fichas, que já são #fff próprios) e ficava estranho. */
+:root[data-theme="light"] .lc-q,
+:root[data-theme="light"] [class*="card"],
+:root[data-theme="light"] [class*="quadro"],
+:root[data-theme="light"] [class*="painel"],
+:root[data-theme="light"] .modal,
+:root[data-theme="light"] .notif-panel,
+:root[data-theme="light"] .rec-linha,
+:root[data-theme="light"] .rec-modal,
+:root[data-theme="light"] .rec-etapa {
+  --surface: #ffffff;
+  --bg: #eef1f6;               /* sub-fundos DENTRO do card (ex.: .codigo-box) claros */
+  --bg-card: #ffffff;
+  --text-primary: #14181f;
+  --text-muted:   #5b6472;
+  --text:  #14181f;
+  --muted: #5b6472;
+  --border: #e3e8ef;
+  --success: #15803d;
+  --danger:  #b91c1c;
+  --warning: #b45309;
+  color: #14181f;
+}
+/* funil selecionado mantém o azul (senão a regra acima o deixaria branco) */
+:root[data-theme="light"] .rec-etapa.on { --surface: var(--blue); }
+/* Cards de APP (.hub-card) e de IA/Calculadoras (.ia-card) ficam ESCUROS de
+   propósito (pedido do Nathan) — eles casam com [class*="card"] acima, então
+   revertemos as variáveis pro tom escuro. O ícone (.card-icon) já é #fff próprio. */
+:root[data-theme="light"] .hub-card,
+:root[data-theme="light"] .ia-card {
+  --surface: #1d222d;
+  --bg: #0f1115;
+  --text-primary: #f5f7fa;
+  --text-muted:   #9aa3b2;
+  --text:  #f5f7fa;
+  --muted: #9aa3b2;
+  --border: #2a3140;
+  --success: #4ade80;
+  --danger:  #ff8075;
+  --warning: #fbbf24;
+  color: #f5f7fa;
+}
+
 * { box-sizing: border-box; }
 
 html, body {

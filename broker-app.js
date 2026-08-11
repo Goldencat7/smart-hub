@@ -42,6 +42,11 @@ const fnAnexarDoc   = call('negocioAnexarDoc');     // gestor/adm sobe documento
 const fnRemoverDoc  = call('negocioRemoverDoc');    // gestor/adm remove documento do negócio
 const fnDocsClientes= call('documentosClientes');   // sanfona: clientes (fichas) + docs + imóvel vinculado
 const fnImovelDoc   = call('carteiraAnexarDoc');    // dono/gestor/adm sobe documento avulso a um imóvel
+const fnDriveSync   = call('driveSyncNegocio');     // robô: sincroniza docs+fichas do negócio pro Drive do corretor
+const fnFichasProp  = call('listarFichasProprietario');  // fichas de vendedor/locador p/ vincular como proprietário
+const fnVincularProp= call('carteiraVincularProprietario'); // vincula ficha existente ao imóvel
+const fnNegExcluir  = call('negocioExcluir');       // gestor: exclui negócio
+const fnImovelExcluir=call('carteiraExcluirImovel'); // gestor: exclui imóvel
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
 const fnSugAcao     = call('negocioSugerirAcao');   // IA (Gemini): próxima ação + rascunho de mensagem do negócio
@@ -223,7 +228,9 @@ function mapImovel(im){
 }
 
 function chkPct(cl){ if(!cl||!cl.length) return 0; const f=cl.filter(x=>x.feito).length; return Math.round(f/cl.length*100); }
-function clicksignDe(cl){ cl=cl||[]; const f=k=>cl.find(x=>x.key===k&&x.feito); if(f('contrato_assinado')) return 'Concluído'; if(f('contrato_emitido')||f('contrato_aprovado')) return 'Enviado'; return '—'; }
+// Checklist NOVO (2026-08): venda usa compromisso_*; locação usa contrato_assinado.
+// As chaves antigas (contrato_emitido/aprovado) ficam pros negócios já criados.
+function clicksignDe(cl){ cl=cl||[]; const f=k=>cl.find(x=>x.key===k&&x.feito); if(f('contrato_assinado')||f('compromisso_assinado')) return 'Concluído'; if(f('contrato_emitido')||f('contrato_aprovado')||f('compromisso_emitido')||f('compromisso_aprovado')) return 'Enviado'; return '—'; }
 function mapNegocio(n){
   const im = PROPERTIES.find(p=>p.id===n.imovelId);
   const preco = im ? im.preco : 0;
@@ -680,11 +687,10 @@ function dealTagsCardHTML(d){
   const cheio = tags.length>=6;
   const presets = TAG_PRESETS.filter(p=>!tags.some(t=>t.toLowerCase()===p.toLowerCase()))
     .map(p=>'<button class="btn btn-ghost sm" data-action="tag-preset" data-tag="'+esc(p)+'" '+(cheio?'disabled':'')+'>'+tagChipHTML(p,false)+'</button>').join('');
-  const input = cheio ? '<div class="fz11 t500" style="margin-top:10px">Máximo de 6 etiquetas.</div>'
-    : '<div class="fx g2" style="margin-top:12px"><input id="bkTagInput" class="input" maxlength="24" placeholder="Nova etiqueta…" style="max-width:220px"><button class="btn btn-outline sm nsh" data-action="tag-add">'+icon('plus',15)+'Adicionar</button></div>';
-  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Etiquetas</div><div class="fx wrap g2" style="align-items:center">'+chips+'</div>'
-    + (presets?'<div class="fx wrap g1" style="margin-top:12px">'+presets+'</div>':'')
-    + input + '</div>';
+  const input = cheio ? ''
+    : '<input id="bkTagInput" class="input nsh" maxlength="24" placeholder="+ etiqueta…" style="max-width:150px;height:30px;font-size:12px"><button class="btn btn-outline sm nsh" data-action="tag-add" style="height:30px;padding:0 10px">'+icon('plus',14)+'</button>';
+  // Faixa compacta (uma linha), fica no topo do detalhe do negócio.
+  return '<div class="card fx ac wrap g2" style="padding:10px 14px;margin-bottom:16px"><span class="up fz11 fw7 t800 nsh">Etiquetas</span>'+(tags.length?chips:'')+presets+input+'</div>';
 }
 function _curDealTags(){ const d=DEALS.find(x=>x.id===state.currentDeal)||(DEALS_DOCS||[]).find(x=>x.id===state.currentDeal); return d?(d.tags||[]).slice():[]; }
 function _saveTags(tags){ negAtualizar({negocioId:state.currentDeal, acao:'tags', tags}); }
@@ -835,9 +841,27 @@ function renderStepper(d){
     return '<div class="fx col ac g2" style="flex:1;min-width:80px"><div class="fx ac" style="width:100%"><span style="flex:1;height:2px;background:'+lineL+'"></span><span class="ifx ac jc nsh" style="width:32px;height:32px;border-radius:50%;background:'+bg+';border:'+(bd==='transparent'?'none':bd)+';color:'+col+';font-size:12px;font-weight:700'+(now?';box-shadow:0 0 0 4px rgba(37,99,235,.18)':'')+'">'+(done?icon('check',16):(i+1))+'</span><span style="flex:1;height:2px;background:'+lineR+'"></span></div><div class="tcenter"><div class="fz12 fw6 '+(done||now?'t900':'t500')+'">'+esc((s.label||'').split(' ').slice(0,2).join(' '))+'</div><div class="fz11 '+capc+'" style="margin-top:1px">'+cap+'</div></div></div>'; }).join('')+'</div>';
 }
 
-// Um balão de comentário (usado no render inicial e no append em tempo real).
-function comentBubbleHTML(c){
-  return '<div class="fx g2" style="padding:12px 0;border-top:1px solid var(--ink100)">'+avatar(c.porNome,34,'var(--ink800)')+'<div class="grow"><div class="fx ac g2"><span class="fz13 fw6 t900">'+esc(c.porNome)+'</span><span class="fz11 t400">'+relData(c.em)+'</span></div><div class="fz13 t700" style="margin-top:2px">'+esc(c.texto)+'</div></div></div>';
+// Um balão de comentário. `isReply` = está aninhado sob outro (não mostra "Responder"
+// pra evitar thread profunda). "Editar" só aparece pra quem escreveu (c.porUid).
+function comentBubbleHTML(c, isReply){
+  const meu=(auth.currentUser&&auth.currentUser.uid)||'';
+  const podeEditar=c.id&&c.porUid===meu;
+  const podeResp=c.id&&!isReply;
+  const editado=c.editadoEm?' · <span class="fz11 t400">editado</span>':'';
+  const acoes=(podeEditar||podeResp)?'<div class="fx g1" style="margin-top:4px">'
+    +(podeResp?'<button class="btn btn-ghost sm" data-action="coment-responder" data-id="'+esc(c.id)+'" data-nome="'+esc(c.porNome)+'">'+icon('reply',13)+'Responder</button>':'')
+    +(podeEditar?'<button class="btn btn-ghost sm" data-action="coment-editar" data-id="'+esc(c.id)+'" data-texto="'+esc(c.texto)+'">'+icon('pencil',13)+'Editar</button>':'')
+    +'</div>':'';
+  return '<div class="fx g2" style="padding:12px 0;border-top:1px solid var(--ink100)">'+avatar(c.porNome,34,'var(--ink800)')+'<div class="grow"><div class="fx ac g2"><span class="fz13 fw6 t900">'+esc(c.porNome)+'</span><span class="fz11 t400">'+relData(c.em)+editado+'</span></div><div class="fz13 t700" style="margin-top:2px;white-space:pre-wrap">'+esc(c.texto)+'</div>'+acoes+'</div></div>';
+}
+// Lista de comentários com respostas aninhadas (thread de 1 nível). Topos do mais
+// novo pro mais antigo; respostas em ordem cronológica sob o pai.
+function comentListHTML(cs){
+  const filhos={}; cs.forEach(c=>{ if(c.respostaDe){ (filhos[c.respostaDe]=filhos[c.respostaDe]||[]).push(c); } });
+  return cs.filter(c=>!c.respostaDe).slice().reverse().map(c=>{
+    const reps=filhos[c.id]||[];
+    return comentBubbleHTML(c,false)+(reps.length?'<div style="margin-left:38px;border-left:2px solid var(--ink100);padding-left:10px">'+reps.map(r=>comentBubbleHTML(r,true)).join('')+'</div>':'');
+  }).join('');
 }
 // Desliga o listener de tempo real do negócio aberto (comentários ao vivo).
 function _teardownDealRT(){ if(state._dealUnsub){ try{ state._dealUnsub(); }catch(_e){} state._dealUnsub=null; } }
@@ -893,26 +917,31 @@ function openDeal(id){
   const tabBtn=(k,l)=>'<button class="tab'+(tab===k?' active':'')+'" data-action="dealtab-'+k+'">'+l+'</button>';
   let tabContent='';
   if(tab==='timeline'){ tabContent='<div style="padding:20px">'+(tl.length?tl.map((e,i)=>'<div class="fx g3"><div class="fx col ac">'+iconChip('circle-dot','info',32)+(i<tl.length-1?'<span class="timeline-line"></span>':'')+'</div><div style="padding-bottom:18px" class="grow"><div class="fz14 fw6 t900">'+esc(e.texto)+'</div><div class="fz12 t500">'+esc(e.porNome||'')+' · '+relData(e.em)+'</div></div></div>').join(''):'<div class="tcenter t500 fz13" style="padding:20px">Sem histórico ainda.</div>')+'</div>'; }
-  else if(tab==='comentarios'){ if(!d.podeComentar){ tabContent='<div class="tcenter t500 fz13" style="padding:24px">Comentários são exclusivos do broker e do corretor responsável.</div>'; } else { const cs=d.comentarios||[]; tabContent='<div style="padding:20px"><div class="fx g2" style="margin-bottom:16px">'+avatar(state.meuNome,34)+'<div class="grow"><textarea id="bkComent" class="input" rows="2" placeholder="Escreva um comentário para a equipe…"></textarea><div class="fx je" style="margin-top:8px"><button class="btn btn-primary sm" data-action="add-coment">Comentar</button></div></div></div><div id="bkComentList">'+(cs.length?cs.slice().reverse().map(comentBubbleHTML).join(''):'<div class="tcenter t500 fz13" data-coment-empty style="padding:20px">Nenhum comentário ainda.</div>')+'</div></div>'; } }
+  else if(tab==='comentarios'){ if(!d.podeComentar){ tabContent='<div class="tcenter t500 fz13" style="padding:24px">Comentários são exclusivos do broker e do corretor responsável.</div>'; } else { const cs=d.comentarios||[]; if(state.respondendo&&state.respondendo.deal!==d.id) state.respondendo=null; const resp=state.respondendo; const banner=resp?'<div class="fx ac jb g2" style="margin-bottom:8px;padding:6px 10px;background:var(--base);border:1px solid var(--bd);border-radius:8px"><span class="fz12 fw6 t900">'+icon('reply',13)+' Respondendo a '+esc(resp.nome)+'</span><button class="btn btn-ghost sm" data-action="cancelar-resposta">Cancelar</button></div>':''; tabContent='<div style="padding:20px">'+banner+'<div class="fx g2" style="margin-bottom:16px">'+avatar(state.meuNome,34)+'<div class="grow"><textarea id="bkComent" class="input" rows="2" placeholder="'+(resp?'Sua resposta…':'Escreva um comentário para a equipe…')+'"></textarea><div class="fx je" style="margin-top:8px"><button class="btn btn-primary sm" data-action="add-coment">'+(resp?'Responder':'Comentar')+'</button></div></div></div><div id="bkComentList">'+(cs.length?comentListHTML(cs):'<div class="tcenter t500 fz13" data-coment-empty style="padding:20px">Nenhum comentário ainda.</div>')+'</div></div>'; } }
   else if(tab==='tarefas'){ const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado'); const ts=(d.tarefas||[]).slice().sort((a,b)=>{ if(a.feito!==b.feito) return a.feito?1:-1; return (a.prazo||'9999-99-99')<(b.prazo||'9999-99-99')?-1:1; }); const rows = ts.length? ts.map(t=>{ const st=prazoStatus(t.prazo); const cor=t.feito?'':(st==='atrasada'?'#ef4444':st==='hoje'?'#f59e0b':''); const prazoTxt = t.prazo? ('<span style="'+(cor?'color:'+cor+';font-weight:700':'')+'">'+(st==='atrasada'?'Atrasada · ':st==='hoje'?'Hoje · ':'')+fmtPrazo(t.prazo)+'</span>') : '<span class="t400">sem prazo</span>'; const chk = enc ? '<span class="ifx ac jc nsh" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(t.feito?icon('check',14):'')+'</span>' : '<button class="ifx ac jc nsh" data-action="tarefa-check" data-tid="'+esc(t.id)+'" data-feito="'+(t.feito?'0':'1')+'" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff;cursor:pointer">'+(t.feito?icon('check',14):'')+'</button>'; const rm = enc ? '' : '<button class="btn btn-ghost sm nsh" data-action="tarefa-rm" data-tid="'+esc(t.id)+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>'; return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)">'+chk+'<div class="grow mw0"><div class="fz13 fw6 t900" style="'+(t.feito?'text-decoration:line-through;opacity:.55':'')+'">'+esc(t.texto)+'</div><div class="fz12 t500">'+prazoTxt+'</div></div>'+rm+'</div>'; }).join('') : '<div class="tcenter t500 fz13" style="padding:20px">Nenhuma tarefa ainda.</div>'; const addRow = enc ? '<div class="fz12 t500" style="margin-bottom:14px">Negócio encerrado — tarefas em modo leitura.</div>' : '<div class="fx g2 wrap" style="margin-bottom:14px"><input id="bkTarefaTxt" class="input grow" maxlength="200" placeholder="Nova tarefa (ex.: ligar para o cliente)" style="min-width:180px"><input id="bkTarefaPrazo" type="date" class="input nsh" style="max-width:170px"><button class="btn btn-primary sm nsh" data-action="tarefa-add">'+icon('plus',15)+'Adicionar</button></div>'; tabContent='<div style="padding:20px">'+addRow+'<div>'+rows+'</div></div>'; }
   else { const encCk=(d.statusRaw==='concluido'||d.statusRaw==='cancelado'); tabContent='<div style="padding:16px 20px"><div class="fz13 fw6 t900" style="margin-bottom:10px">Checklist do negócio'+(encCk?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(d.checklist||[]).map(x=>'<button class="fx ac g3'+(encCk?'':' hoverbg')+'"'+(encCk?'':' data-chk="'+esc(x.key)+'" data-feito="'+(x.feito?'0':'1')+'"')+' style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:'+(encCk?'default':'pointer')+';margin-bottom:8px"><span class="ifx ac jc nsh" style="width:24px;height:24px;border-radius:6px;background:'+(x.feito?'var(--success)':'#fff')+';border:'+(x.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(x.feito?icon('check',15):'')+'</span><div class="grow mw0"><div class="fz13 fw6 t900">'+esc(x.label)+(x.obrigatoria?' <span class="pill danger" style="font-size:10px;padding:1px 6px">obrigatória</span>':'')+'</div>'+(x.feito&&x.feitoPor?'<div class="fz11 t500">'+esc(x.feitoPor)+' · '+relData(x.feitoEm)+'</div>':'')+'</div></button>').join('')+'</div>'; }
 
   const host=$('#root'); host.style.animation='none'; void host.offsetWidth; host.style.animation='';
   host.innerHTML =
     '<button class="btn-dark-ghost" style="margin-bottom:16px" data-nav="negocios">'+icon('arrow-left',15)+'Voltar aos Negócios</button>'
-  + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span></div></div><div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a><button class="btn btn-outline sm" data-action="drive-set" data-cur="'+esc(d.driveUrl)+'">'+icon('pencil',15)+'Editar</button>':'<button class="btn btn-outline sm" data-action="drive-set" data-cur="">'+icon('folder-plus',15)+'Adicionar Drive</button>')+'<button class="btn btn-outline sm" data-action="dealtab-comentarios">'+icon('message-square',15)+'Comentários</button></div></div>'
+  + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1" title="Data em que o negócio foi gerado">'+icon('calendar',14,'t400')+'Gerado em '+esc(d.criado||relData(d.criadoEm))+'</span></div></div>'
+    + (imv ? '<button class="nsh" data-prop="'+esc(d.imovelId)+'" title="Ver imóvel completo" style="background:none;border:1px solid var(--ink200);border-radius:12px;padding:8px;cursor:pointer;display:flex;gap:10px;align-items:center;max-width:260px">'
+        + (imv.capa ? '<img src="'+esc(imv.capa)+'" alt="" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex:none">' : '<span class="ifx ac jc nsh" style="width:60px;height:60px;border-radius:8px;background:var(--ink100)">'+icon('building-2',24,'t400')+'</span>')
+        + '<div class="mw0" style="text-align:left"><div class="fz13 fw6 t900 trunc">'+esc(imv.tipo||'Imóvel')+'</div><div class="fz12 t500 trunc">'+esc(imv.code||'')+'</div><div class="fz11 c-inf fw6" style="margin-top:2px">Ver imóvel ›</div></div>'
+        + '</button>' : '')
+    + '<div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'')+'<button class="btn btn-primary sm" data-action="drive-sync-real" title="Cria a pasta do imóvel no Drive do corretor e envia os documentos + fichas">'+icon('refresh-cw',15)+'Sincronizar Drive</button>'+'<button class="btn btn-outline sm" data-action="ir-comentarios">'+icon('message-square',15)+'Comentários</button><button class="btn btn-outline sm" data-action="prop-info">'+icon('user-round',15)+'Proprietário</button></div></div>'
+  + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? dealTagsCardHTML(d) : '')
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? iaCardHTML() : '')
-  + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
-  + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Negócio encerrado</div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
-  + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? dealTagsCardHTML(d) : '')
+  + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',15)+'Excluir</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
+  + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800 fx ac jb" style="margin-bottom:12px"><span>Negócio encerrado</span><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',14)+'Excluir</button></div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
   + dealDocsCardHTML(d, (state.role==='broker'||state.role==='administrativo'))
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor ('+Math.round(repassePct(d.corretor)*100)+'%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
-    + '<div class="card" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
+    + '<div class="card" id="bkDealTabs" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
   const sc=$('#scroller'); if(sc) sc.scrollTop=0; refreshIcons();
 
@@ -928,19 +957,15 @@ function openDeal(id){
       // O doc cru traz `em` como Timestamp do SDK (a conversão pra ISO vive na Cloud
       // Function) — normaliza aqui, senão relData(Timestamp) vira "Há NaN dias" e o
       // cache DEALS fica envenenado pra sempre.
-      const cs = (snap.data().comentarios || []).map(c => ({ ...c, em: (c.em && c.em.toDate) ? c.em.toDate().toISOString() : (c.em || null) }));
+      const cs = (snap.data().comentarios || []).map(c => ({ ...c, em: (c.em && c.em.toDate) ? c.em.toDate().toISOString() : (c.em || null), editadoEm: (c.editadoEm && c.editadoEm.toDate) ? c.editadoEm.toDate().toISOString() : (c.editadoEm || null) }));
       const dd = DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id);
       if(dd) dd.comentarios = cs;                    // mantém o cache fresco p/ troca de aba
       if(state.dealTab!=='comentarios'){ state._dealRendCount = cs.length; return; }
-      if(cs.length > (state._dealRendCount||0)){
-        const listEl = $('#bkComentList');
-        if(listEl){
-          const empty = listEl.querySelector('[data-coment-empty]'); if(empty) empty.remove();
-          cs.slice(state._dealRendCount).forEach(c => listEl.insertAdjacentHTML('afterbegin', comentBubbleHTML(c)));
-          refreshIcons();
-        }
-        state._dealRendCount = cs.length;
-      }
+      // Re-renderiza a lista inteira (pega adições, edições e threads). O textarea
+      // (#bkComent) fica FORA do #bkComentList, então quem está digitando não é atrapalhado.
+      const listEl = $('#bkComentList');
+      if(listEl){ listEl.innerHTML = cs.length ? comentListHTML(cs) : '<div class="tcenter t500 fz13" data-coment-empty style="padding:20px">Nenhum comentário ainda.</div>'; refreshIcons(); }
+      state._dealRendCount = cs.length;
     }, e=>console.warn('deal rt:', e && e.message));
   }
 }
@@ -965,6 +990,31 @@ async function negAtualizar(payload, okMsg){
       else openDeal(dealId);
     }
   } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); }
+}
+
+// Sincroniza os documentos + fichas do negócio pro Drive do corretor (via robô).
+// Cria a pasta "endereço (NG-código)" na pasta do corretor e sobe os arquivos.
+// Ao terminar, salva o link da pasta como driveUrl do negócio (aparece "Abrir Drive").
+async function syncNegocioDrive(){
+  const id = state.currentDeal; if(!id) return;
+  const btn = document.querySelector('[data-action="drive-sync-real"]');
+  if(btn){ btn.disabled = true; btn.innerHTML = icon('loader',15)+'Sincronizando…'; }
+  toast('Sincronizando com o Drive…','refresh-cw');
+  try {
+    const r = await fnDriveSync({ negocioId: id });
+    const d = r.data || {};
+    const resumo = '✅ '+(d.enviados||0)+' enviado(s)'+(d.jaExistiam?(' · '+d.jaExistiam+' já lá'):'')+(d.falhas?(' · '+d.falhas+' falha(s)'):'');
+    // salva o link da pasta como driveUrl e recarrega o negócio (reusa negAtualizar → reabre o detalhe).
+    // Negócio ENCERRADO aceita o sync (arquivos sobem) mas o servidor recusa gravar driveUrl —
+    // então só toast, sem tentar salvar (senão o erro esconderia o sucesso do envio).
+    const deal = DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id);
+    const encerrado = deal && (deal.statusRaw==='concluido'||deal.statusRaw==='cancelado');
+    if(d.link && !encerrado){ await negAtualizar({ negocioId:id, acao:'drive', url:d.link }, resumo); }
+    else { toast(resumo); if(state.currentDeal===id && state._viewingDeal) openDeal(id); }
+  } catch(e){
+    toast(e.message||'Erro ao sincronizar','alert-triangle','var(--danger)');
+    if(btn){ btn.disabled=false; if(state.currentDeal===id) openDeal(id); }
+  }
 }
 
 // Modal de CANCELAR negócio com motivo da perda (gestor). O motivo vira campo
@@ -1262,7 +1312,7 @@ function propDrawer(id){
    + '<div style="height:150px;background:'+GRAD[(gi<0?0:gi)%GRAD.length]+';position:relative;flex-shrink:0;overflow:hidden">'+(p.capa?'<img src="'+esc(p.capa)+'" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.6),rgba(0,0,0,0) 55%)"></div>':'')+'<span class="mono" style="position:absolute;bottom:12px;left:16px;color:#fff;font-weight:700;font-size:20px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:13px;font-weight:500">/mês</span>':''):'')+'</span><span class="pill" style="position:absolute;top:12px;left:16px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span></div>'
    + '<div class="fx g1" style="padding:2px 16px 0;border-bottom:1px solid var(--ink100);overflow-x:auto">'+tabs.map(t=>'<button class="tab'+(tab===t[0]?' active':'')+'" data-action="itab-'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'
    + '<div class="grow scrolly" style="overflow:auto;padding:18px 20px">'+body+'</div>'
-   + '<div class="fx g2" style="padding:14px 20px;border-top:1px solid var(--ink100)"><button class="btn btn-outline sm grow" data-action="close-drawer">Fechar</button></div>';
+   + '<div class="fx g2" style="padding:14px 20px;border-top:1px solid var(--ink100)">'+(state.role==='broker'?'<button class="btn btn-outline sm nsh" data-action="imovel-excluir" data-imovel="'+esc(p.id)+'" data-rua="'+esc(p.rua||'')+'" style="color:var(--danger);border-color:var(--danger)">'+icon('trash-2',15)+'Excluir</button>':'')+'<button class="btn btn-outline sm grow" data-action="close-drawer">Fechar</button></div>';
 }
 
 /* ---------------- RELATÓRIOS ---------------- */
@@ -1376,7 +1426,11 @@ function handleAction(a,el){
   else if(a.indexOf('ptab-')===0){ state.pessoaTab=a.slice(5); openPerson(state.currentPerson); }
   else if(a.indexOf('itab-')===0){ state.imovelTab=a.slice(5); openProp(state.currentProp); }
   else if(a.indexOf('cfgtab-')===0){ state.cfgTab=a.slice(7); RENDERERS.configuracoes($('#root')); refreshIcons(); }
-  else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'comentario', texto:txt}, 'Comentário adicionado').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
+  else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; const resp=state.respondendo; const payload={negocioId:state.currentDeal, acao:'comentario', texto:txt}; if(resp&&resp.id) payload.respostaDe=resp.id; state.respondendo=null; negAtualizar(payload, resp?'Resposta enviada':'Comentário adicionado').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
+  else if(a==='coment-responder'){ state.respondendo={id:el.dataset.id, nome:el.dataset.nome||'', deal:state.currentDeal}; state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const t=$('#bkComent'); if(t) t.focus(); },60); }
+  else if(a==='cancelar-resposta'){ state.respondendo=null; openDeal(state.currentDeal); }
+  else if(a==='coment-editar'){ openEditarComent(el.dataset.id, el.dataset.texto||''); }
+  else if(a==='coment-editar-salvar'){ const t=$('#edComentTxt'); const txt=t?t.value.trim():''; if(!txt){ toast('Escreva algo','alert-triangle','var(--warning)'); return; } el.disabled=true; closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'comentario_editar', comentarioId:el.dataset.id, texto:txt}, 'Comentário editado'); }
   else if(a==='tag-preset'){ _addTag(el.dataset.tag); }
   else if(a==='tag-add'){ const inp=$('#bkTagInput'); _addTag(inp?inp.value:''); }
   else if(a==='tag-remove'){ _saveTags(_curDealTags().filter(x=>x!==el.dataset.tag)); }
@@ -1406,6 +1460,62 @@ function openDriveModal(cur){
     +'<input id="drvUrl" class="input" placeholder="https://drive.google.com/…" value="'+esc(cur||'')+'" style="margin-bottom:6px">'
     +'<div id="drvErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
     +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="drive-save">'+icon('check',15)+'Salvar</button></div></div>');
+}
+// Modal pra editar um comentário próprio (ação `comentario_editar`). O texto é setado
+// via JS (não no HTML) pra não escapar aspas/quebras de linha.
+function openEditarComent(id, texto){
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:8px">Editar comentário</div>'
+    +'<textarea id="edComentTxt" class="input" rows="3" maxlength="1000" style="margin-bottom:6px"></textarea>'
+    +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="coment-editar-salvar" data-id="'+esc(id)+'">'+icon('check',15)+'Salvar</button></div></div>');
+  const t=document.getElementById('edComentTxt'); if(t){ t.value=texto; t.focus(); }
+}
+// Modal com as informações do proprietário do imóvel do negócio aberto.
+function openProprietario(){
+  const d=DEALS.find(x=>x.id===state.currentDeal)||(DEALS_DOCS||[]).find(x=>x.id===state.currentDeal); if(!d) return;
+  const imv=PROPERTIES.find(p=>p.id===d.imovelId);
+  const nome=(imv&&imv.proprietarioNome&&imv.proprietarioNome!=='—')?imv.proprietarioNome:'';
+  const contato=(imv&&imv.proprietarioContato)||'';
+  const fichaId=(imv&&imv.raw&&imv.raw.fichaId)||''; const fichaTipo=(imv&&imv.raw&&imv.raw.fichaTipo)||'';
+  // Sem ficha vinculada → botão pra ENVIAR a ficha do proprietário (vendedor na venda,
+  // locador na locação; venda_locacao mostra os dois). O link vai amarrado ao imóvel
+  // (&imovelId=): a ficha enviada PREENCHE este card — não cria imóvel novo (trigger).
+  const fin=(imv&&imv.finalidadeRaw)||'locacao';
+  const btnFicha=(arq,rot)=>'<button class="btn btn-outline sm" data-action="prop-ficha-link" data-arq="'+arq+'" data-imovel="'+esc(d.imovelId)+'" style="width:100%;margin-bottom:8px">'+icon('clipboard-list',14)+rot+'</button>';
+  const btnVincular='<button class="btn btn-outline sm" data-action="prop-vincular" data-imovel="'+esc(d.imovelId)+'" data-fin="'+esc(fin)+'" style="width:100%;margin-bottom:8px">'+icon('link',14)+'Vincular uma ficha já existente</button>';
+  const enviarFicha = fichaId ? '' :
+      ((fin==='venda' ? btnFicha('ficha-vendedor.html','Copiar link — ficha do vendedor')
+    : fin==='venda_locacao' ? btnFicha('ficha-vendedor.html','Copiar link — ficha do vendedor')+btnFicha('ficha-locador.html','Copiar link — ficha do locador')
+    : btnFicha('ficha-locador.html','Copiar link — ficha do locador'))
+    + btnVincular);
+  openModal('<div style="padding:20px;min-width:320px;max-width:420px">'
+    + '<div class="fz15 fw7 t900 fx ac g2" style="margin-bottom:14px">'+icon('user-round',18)+'Proprietário do imóvel</div>'
+    + (nome ? '<div class="fx ac g3" style="margin-bottom:14px">'+avatar(nome,42,'var(--ink800)')+'<div class="mw0"><div class="fz15 fw6 t900 trunc">'+esc(nome)+'</div>'+(contato?'<div class="fz13 t500 trunc">'+esc(contato)+'</div>':'<div class="fz12 t400">sem contato cadastrado</div>')+'</div></div>'
+        + (contato?'<button class="btn btn-outline sm" data-action="copiar-fone" data-valor="'+esc(contato)+'" style="width:100%;margin-bottom:8px">'+icon('copy',14)+'Copiar contato</button>':'')
+        + (fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(fichaId)+'" data-tipo="'+esc(fichaTipo)+'" style="width:100%;margin-bottom:8px">'+icon('file-text',14)+'Ver ficha do proprietário</button>':'')
+        + enviarFicha
+      : '<div class="pc-vazio" style="margin-bottom:12px">Proprietário não informado neste imóvel.</div>'
+        + '<div class="fz12 t500" style="margin-bottom:10px">Envie a ficha ao proprietário — quando ele preencher, os dados entram neste imóvel (não cria um imóvel novo).</div>'
+        + enviarFicha)
+    + '<button class="btn btn-primary sm" data-action="close-modal" style="width:100%">Fechar</button></div>');
+}
+// Picker de fichas de proprietário (vendedor/locador) já existentes, pra vincular ao imóvel.
+function openVincularProp(imovelId, fin){
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Vincular ficha do proprietário</div><div class="fz12 t500" style="margin-bottom:14px">Escolha uma ficha '+(fin==='venda'?'de vendedor':fin==='venda_locacao'?'de vendedor ou locador':'de locador')+' já cadastrada. Os dados entram neste imóvel.</div><div id="propPickList" class="fz13 t500" style="max-height:52vh;overflow:auto">Carregando fichas…</div><div class="fx" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Fechar</button></div></div>');
+  fnFichasProp({ finalidade: fin }).then(r=>{
+    const list=(r.data||[]); const el=$('#propPickList'); if(!el) return;
+    if(!list.length){ el.innerHTML='<div class="tcenter t500" style="padding:20px">Nenhuma ficha de proprietário encontrada no Cadastro.</div>'; return; }
+    el.innerHTML=list.map(f=>'<div class="fx ac jb g2" style="padding:10px 0;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz13 fw6 t900 trunc">'+esc(f.nome)+' <span class="pill '+(f.tipo==='vendedor'?'info':'ai')+'" style="font-size:10px">'+(f.tipo==='vendedor'?'Vendedor':'Locador')+'</span></div><div class="fz12 t500 trunc">'+esc([f.cpf,f.telefone].filter(Boolean).join(' · ')||'—')+'</div></div><button class="btn btn-primary sm nsh" data-action="prop-vincular-do" data-imovel="'+esc(imovelId)+'" data-ficha="'+esc(f.id)+'" data-tipo="'+esc(f.tipo)+'">'+icon('link',13)+'Vincular</button></div>').join('');
+    refreshIcons();
+  }).catch(e=>{ const el=$('#propPickList'); if(el) el.innerHTML='<div class="tcenter t500" style="padding:20px">Erro ao carregar: '+esc(e.message||'')+'</div>'; });
+}
+async function vincularProprietario(imovelId, fichaId, tipo){
+  const btn=document.querySelector('[data-action="prop-vincular-do"][data-ficha="'+fichaId+'"]'); if(btn){ btn.disabled=true; btn.innerHTML='...'; }
+  try{
+    const r=await fnVincularProp({ imovelId, fichaId, tipo });
+    closeModal(); toast('✅ Proprietário vinculado'+((r.data&&r.data.nome)?': '+r.data.nome:'')+'.','check','var(--success)');
+    // recarrega o imóvel no cache (o onSnapshot de imóveis já atualiza; força um reload leve)
+    if(typeof carregarImoveis==='function'){ try{ await carregarImoveis(); }catch(_e){} }
+  }catch(e){ if(btn){ btn.disabled=false; btn.innerHTML=icon('link',13)+'Vincular'; refreshIcons(); } toast(e.message||'Erro ao vincular','alert-triangle','var(--danger)'); }
 }
 // Menu "+ Novo" do corretor — abre os atalhos (que já existem como ações).
 function openNovoMenu(){
@@ -1906,6 +2016,14 @@ handleAction = function(a, el){
   if(a==='prop-ficha-copy'){ const l=fichaLinkImovel(el.dataset.arq, el.dataset.imovel); try{ navigator.clipboard.writeText(l); }catch(e){} toast('Link da ficha copiado — mande ao proprietário do imóvel','copy'); return; }
   if(a==='copiar-fone'){ try{ navigator.clipboard.writeText(el.dataset.valor||''); }catch(e){} toast('Telefone copiado','copy'); return; }
   if(a==='copiar-email'){ try{ navigator.clipboard.writeText(el.dataset.valor||''); }catch(e){} toast('E-mail copiado','copy'); return; }
+  if(a==='prop-info'){ openProprietario(); return; }
+  if(a==='prop-ficha-link'){ const link=fichaLinkImovel(el.dataset.arq, el.dataset.imovel); try{ navigator.clipboard.writeText(link); }catch(_e){} toast('Link copiado! Envie ao proprietário — a ficha entra neste imóvel.','clipboard-check','var(--success)'); return; }
+  if(a==='prop-vincular'){ openVincularProp(el.dataset.imovel, el.dataset.fin||'locacao'); return; }
+  if(a==='prop-vincular-do'){ vincularProprietario(el.dataset.imovel, el.dataset.ficha, el.dataset.tipo); return; }
+  if(a==='neg-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o negócio '+(el.dataset.codigo||'')+'?\n\nEsta ação é PERMANENTE e não pode ser desfeita. O imóvel volta a Disponível.')) return; const id=state.currentDeal; fnNegExcluir({negocioId:id}).then(()=>{ [DEALS, DEALS_DOCS].forEach(arr=>{ if(Array.isArray(arr)){ const i=arr.findIndex(x=>x&&x.id===id); if(i>=0) arr.splice(i,1); } }); try{ recalcKPI(); }catch(_e){} state._viewingDeal=false; toast('Negócio excluído','trash-2','var(--danger)'); navigate('negocios'); }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
+  if(a==='imovel-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o imóvel "'+(el.dataset.rua||'')+'"?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return; const iid=el.dataset.imovel; fnImovelExcluir({imovelId:iid}).then(()=>{ const idx=PROPERTIES.findIndex(p=>p&&p.id===iid); if(idx>=0) PROPERTIES.splice(idx,1); closeDrawer(); toast('Imóvel excluído','trash-2','var(--danger)'); if(RENDERERS[state.view]){ RENDERERS[state.view]($('#root')); refreshIcons(); } }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
+  if(a==='ir-comentarios'){ state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const el=$('#bkDealTabs'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60); return; }
+  if(a==='drive-sync-real'){ syncNegocioDrive(); return; }
   // Assistente IA do negócio (Gemini): sugere próxima ação + rascunho de mensagem.
   if(a==='ia-sugerir'){
     const box=$('#bkIaBox'); if(!box) return;
