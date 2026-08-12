@@ -422,7 +422,7 @@ exports.getModoCofre = onCall(async (req) => {
 });
 
 // Apps restritos que o usuário ATUAL pode ver (admin vê todos)
-exports.getMinhasPermissoes = onCall(async (req) => {
+exports.getMinhasPermissoes = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
   const auth = exigirAutenticado(req);
   const snap = await db.collection('user_access').doc(auth.uid).get();
   const dados = snap.exists ? snap.data() : {};
@@ -3492,7 +3492,7 @@ exports.registrarAcesso = onCall(async (req) => {
 
 // ─── Status dos apps (aviso de instabilidade, sem precisar atualizar o .exe) ──
 // Admin marca um app como instável com uma mensagem; aparece pra todos no Hub.
-exports.listarStatusApps = onCall(async (req) => {
+exports.listarStatusApps = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
   exigirAutenticado(req);
   const snap = await db.collection('app_status').where('ativo', '==', true).get();
   const status = {};
@@ -3533,7 +3533,7 @@ exports.listarFotosPerfil = onCall(async (req) => {
   return { fotos };
 });
 
-exports.getMeuPerfil = onCall(async (req) => {
+exports.getMeuPerfil = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
   const auth = exigirAutenticado(req);
   const userRec = await admin.auth().getUser(auth.uid).catch(() => null);
   const snap = await db.collection('user_profiles').doc(auth.uid).get();
@@ -3806,7 +3806,7 @@ exports.setTreinamentoLink = onCall(async (req) => {
 
 // ─── Banners principais (carrossel — múltiplas imagens, alternam no Hub) ────────
 // Coleção `banners`: cada doc tem { imagem: base64, ordem: number, updatedAt }.
-exports.listarBanners = onCall(async (req) => {
+exports.listarBanners = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
   exigirAutenticado(req);
   const snap = await db.collection('banners').orderBy('ordem').get();
   // Modo LEVE ({leve:true}): só id+rev — o timer de 3 min do Hub usa isso pra saber
@@ -4580,7 +4580,7 @@ exports.desconectarGoogleAgenda = onCall(async (req) => {
   return { ok: true };
 });
 
-exports.statusGoogleAgenda = onCall(async (req) => {
+exports.statusGoogleAgenda = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
   const auth = exigirAutenticado(req);
   const snap = await db.collection('google_tokens').doc(auth.uid).get();
   if (!snap.exists) return { conectado: false, email: '' };
@@ -4678,6 +4678,13 @@ async function _driveArquivoExiste(token, nome, parentId) {
   const q = `name='${nome.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
   const r = await _driveApi(token, `files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=1`);
   return !!(r.files && r.files.length);
+}
+// Igual ao anterior mas devolve {id,name} (ou null) — a sync precisa do ID pra registrar
+// o que o robô subiu e poder remover depois.
+async function _driveAcharArquivo(token, nome, parentId) {
+  const q = `name='${nome.replace(/'/g, "\\'")}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const r = await _driveApi(token, `files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
+  return (r.files && r.files.length) ? r.files[0] : null;
 }
 // Núcleo da sincronização — usado pela callable (auth.uid) e pelo trigger (corretorUid).
 async function _driveSyncFicha(uid, fichaId, col) {
@@ -4933,20 +4940,37 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
       itens.push({ nomePdf: _driveSanitizar('Ficha ' + label + ' - ' + nomeP) + '.pdf', buf: pdfBuf });
     } catch (e) { console.error('driveSyncNegocio pdf', (e && e.message) || e); }
   }
-  // 4) sobe (dedup por nome já existente na pasta)
-  let enviados = 0, jaExistiam = 0, falhas = 0;
+  // 4) sobe (dedup por nome já existente na pasta) e registra o ID de cada arquivo
+  // DESEJADO — a lista `atuais` vira a base de remoção da PRÓXIMA sync.
+  let enviados = 0, jaExistiam = 0, falhas = 0, removidos = 0;
+  const atuais = [];              // [{id, nome}] de tudo que DEVE estar na pasta agora
+  const desejados = new Set();    // nomes desejados (p/ decidir o que remover)
   for (const it of itens) {
+    const nomeArq = it.buf ? it.nomePdf : it.nome;
+    desejados.add(nomeArq);
     try {
-      const nomeArq = it.buf ? it.nomePdf : it.nome;
-      if (await _driveArquivoExiste(token, nomeArq, pastaImovel)) { jaExistiam++; continue; }
-      if (it.buf) await _driveUploadBuffer(token, it.nomePdf, pastaImovel, it.buf, 'application/pdf');
-      else await _driveUpload(token, it.nome, pastaImovel, it.url);
+      const existe = await _driveAcharArquivo(token, nomeArq, pastaImovel);
+      if (existe) { jaExistiam++; atuais.push({ id: existe.id, nome: nomeArq }); continue; }
+      const up = it.buf ? await _driveUploadBuffer(token, it.nomePdf, pastaImovel, it.buf, 'application/pdf')
+                        : await _driveUpload(token, it.nome, pastaImovel, it.url);
+      if (up && up.id) atuais.push({ id: up.id, nome: nomeArq });
       enviados++;
     } catch (e) { falhas++; console.error('driveSyncNegocio upload', (e && e.message) || e); }
   }
+  // 5) REMOÇÃO SEGURA: só os arquivos que o robô registrou numa sync ANTERIOR
+  // (n.driveSync.arquivos) e que não estão mais no negócio. Nunca toca em arquivo
+  // que a pessoa colocou na pasta manualmente (esses nunca entram em driveSync).
+  // Vai pra LIXEIRA (trashed) — recuperável, não é exclusão definitiva.
+  const anteriores = (n.driveSync && Array.isArray(n.driveSync.arquivos)) ? n.driveSync.arquivos : [];
+  for (const a of anteriores) {
+    if (!a || !a.id || desejados.has(a.nome)) continue;
+    try { await _driveApi(token, 'files/' + a.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); removidos++; }
+    catch (e) { console.error('driveSyncNegocio remove', (e && e.message) || e); }
+  }
+  await ref.set({ driveSync: { pastaId: pastaImovel, arquivos: atuais, em: admin.firestore.FieldValue.serverTimestamp() } }, { merge: true });
   const link = `https://drive.google.com/drive/folders/${pastaImovel}`;
-  await registrarAudit(auth, 'negocio_drive_sync', { tipo: 'negocio', id: ref.id }, { enviados, jaExistiam, falhas });
-  return { ok: true, pasta: nomeImovel, enviados, jaExistiam, falhas, total: itens.length, link };
+  await registrarAudit(auth, 'negocio_drive_sync', { tipo: 'negocio', id: ref.id }, { enviados, jaExistiam, removidos, falhas });
+  return { ok: true, pasta: nomeImovel, enviados, jaExistiam, removidos, falhas, total: itens.length, link };
 });
 
 // ─── Agenda / Eventos ────────────────────────────────────────────────────────
@@ -5094,7 +5118,7 @@ exports.editarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SE
 });
 
 // Lista os eventos do usuário num período (participante, "todos", ou criados por ele)
-exports.listarEventos = onCall(async (req) => {
+exports.listarEventos = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
   const auth = exigirAutenticado(req);
   const { de, ate } = req.data || {};
   const dDe = de ? new Date(de) : new Date();

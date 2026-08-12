@@ -1100,7 +1100,7 @@ async function syncNegocioDrive(){
   try {
     const r = await fnDriveSync({ negocioId: id });
     const d = r.data || {};
-    const resumo = '✅ '+(d.enviados||0)+' enviado(s)'+(d.jaExistiam?(' · '+d.jaExistiam+' já lá'):'')+(d.falhas?(' · '+d.falhas+' falha(s)'):'');
+    const resumo = '✅ '+(d.enviados||0)+' enviado(s)'+(d.jaExistiam?(' · '+d.jaExistiam+' já lá'):'')+(d.removidos?(' · '+d.removidos+' removido(s)'):'')+(d.falhas?(' · '+d.falhas+' falha(s)'):'');
     // salva o link da pasta como driveUrl e recarrega o negócio (reusa negAtualizar → reabre o detalhe).
     // Negócio ENCERRADO aceita o sync (arquivos sobem) mas o servidor recusa gravar driveUrl —
     // então só toast, sem tentar salvar (senão o erro esconderia o sucesso do envio).
