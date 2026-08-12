@@ -1855,6 +1855,45 @@ exports.negocioAtualizar = onCall(async (req) => {
       if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
       up.origem = _txt(d.origem, 120);
       anota(up.origem ? ('Origem do cliente: ' + up.origem) : 'Origem do cliente removida');
+    } else if (d.acao === 'comissao') {
+      // % de comissão editável POR NEGÓCIO (pedido Marcelo): venda padrão 6% mas
+      // parceria cai pra 3% (ou 4/5% negociado); locação padrão 100%.
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const pct = Number(d.pct);
+      if (!isFinite(pct) || pct < 0 || pct > 100) throw new HttpsError('invalid-argument', 'Percentual de comissão inválido (use um número entre 0 e 100).');
+      if (pct === 0) {
+        // 0 = limpar o override e voltar ao padrão (venda 6% / locação 100%) —
+        // sem isso não havia caminho de desfazer uma comissão negociada.
+        up.comissaoPct = admin.firestore.FieldValue.delete();
+        anota('Comissão do negócio restaurada ao padrão');
+      } else {
+        up.comissaoPct = pct;
+        anota('Comissão do negócio: ' + pct + '%');
+      }
+    } else if (d.acao === 'campos') {
+      // Campos personalizados (pedido Marcelo). Whitelist por chave — merge aditivo.
+      // Locação: administracao/parceria/comissaoRecebida (sim|nao). Venda: parceria +
+      // comissaoRecebida (parcela1|parcela2|total). Vazio = limpar o campo.
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const SN = ['', 'sim', 'nao'];
+      const CR = ['', 'sim', 'nao', 'parcela1', 'parcela2', 'total'];
+      const cIn = (d.campos && typeof d.campos === 'object') ? d.campos : {};
+      const limpo = { ...(n.campos || {}) };
+      if ('administracao' in cIn) { if (!SN.includes(cIn.administracao)) throw new HttpsError('invalid-argument', 'Valor inválido em administração.'); limpo.administracao = cIn.administracao; }
+      if ('parceria' in cIn) { if (!SN.includes(cIn.parceria)) throw new HttpsError('invalid-argument', 'Valor inválido em parceria.'); limpo.parceria = cIn.parceria; }
+      if ('comissaoRecebida' in cIn) { if (!CR.includes(cIn.comissaoRecebida)) throw new HttpsError('invalid-argument', 'Valor inválido em comissão recebida.'); limpo.comissaoRecebida = cIn.comissaoRecebida; }
+      up.campos = limpo;
+      anota('Campos do negócio atualizados');
+    } else if (d.acao === 'proposta') {
+      // Proposta preenchida na mão (broker ou corretor). Merge por whitelist de chaves;
+      // valores como TEXTO (datas dd/mm/aaaa ou ISO, números como o usuário digitar).
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const KEYS = ['inicio', 'valorAcordado', 'prazo', 'taxaAdm', 'sinal', 'sinalData', 'parcelaA', 'parcelaAData', 'parcelaB', 'parcelaBData', 'fgts', 'fgtsValor', 'financiamento'];
+      const pIn = (d.proposta && typeof d.proposta === 'object') ? d.proposta : {};
+      const prop = { ...(n.proposta || {}) };
+      for (const k of KEYS) if (k in pIn) prop[k] = _txt(pIn[k], 60);
+      up.proposta = prop;
+      anota('Proposta atualizada');
     } else if (d.acao === 'status') {
       if (!ehGestor) throw new HttpsError('permission-denied', 'Mudar status é decisão do broker.');
       const permitidos = ['em_andamento', 'aguardando_broker', 'aguardando_corretor', 'aguardando_administrativo'];
@@ -4609,7 +4648,8 @@ async function _driveRoot(token, uid) {
 }
 // Sobe um Buffer pro Drive (multipart).
 async function _driveUploadBuffer(token, nome, parentId, buf, contentType) {
-  const boundary = 'rmxdrv' + Buffer.from(nome).length + parentId.slice(-6);
+  // Boundary aleatório: um determinístico poderia colidir com bytes do próprio arquivo.
+  const boundary = 'rmxdrv' + crypto.randomUUID().replace(/-/g, '');
   const body = Buffer.concat([
     Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: nome, parents: [parentId] })}\r\n--${boundary}\r\nContent-Type: ${contentType || 'application/octet-stream'}\r\n\r\n`),
     buf,
@@ -4826,11 +4866,15 @@ exports.driveMapaSalvar = onCall(async (req) => {
   const auth = await exigirAdmin(req);
   const mapa = (req.data && req.data.mapa) || null;
   if (!mapa || typeof mapa !== 'object' || Array.isArray(mapa)) throw new HttpsError('invalid-argument', 'Mapa inválido.');
-  // sanitiza: só pares uid(string)→folderId(string não vazio)
+  // sanitiza: só pares uid(string)→folderId com cara de id do Drive (um id colado
+  // errado — URL inteira, espaços — só estouraria lá na frente, no sync).
   const limpo = {};
   for (const [uid, fid] of Object.entries(mapa)) {
-    if (typeof uid === 'string' && typeof fid === 'string' && fid.trim()) limpo[uid] = fid.trim();
+    if (typeof uid === 'string' && typeof fid === 'string' && /^[A-Za-z0-9_-]{10,80}$/.test(fid.trim())) limpo[uid] = fid.trim();
   }
+  // O doc é substituído inteiro — mapa vazio (modal que falhou ao carregar) apagaria
+  // todos os vínculos em silêncio.
+  if (!Object.keys(limpo).length) throw new HttpsError('invalid-argument', 'Nenhum vínculo válido pra salvar — recarregue o mapa.');
   await db.collection('drive_robot').doc('mapa').set(limpo);
   await registrarAudit(auth, 'drive_mapa_salvar', 'drive_robot/mapa', { n: Object.keys(limpo).length });
   return { ok: true, n: Object.keys(limpo).length };
@@ -6090,7 +6134,9 @@ exports.listarFichasInteressaveis = onCall(async (req) => {
 exports.listarFichasProprietario = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const fin = (req.data && req.data.finalidade) || 'locacao';
-  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo') || !!(auth.token && auth.token.admin);
+  // Admin do Hub NÃO herda visão total (mesma política do documentosClientes, v1.0.117);
+  // só o bootstrap admin conta como gestor (dentro do ehGestorAuth).
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const querVend = fin === 'venda' || fin === 'venda_locacao';
   const querLoc = fin === 'locacao' || fin === 'venda_locacao';
   const out = [];
@@ -6122,15 +6168,23 @@ exports.carteiraVincularProprietario = onCall(async (req) => {
   const fSnap = await db.collection(col).doc(fichaId).get();
   if (!fSnap.exists) throw new HttpsError('not-found', 'Ficha não encontrada.');
   const f = fSnap.data();
+  // Posse da FICHA (não só do imóvel): sem isso um corretor vincularia a ficha de
+  // OUTRO corretor (PII + docs com token) num imóvel próprio e leria tudo.
+  const veTudoFicha = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudoFicha && f.corretorUid && f.corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Essa ficha pertence a outro corretor.');
+  // 1 ficha ↔ 1 imóvel: revincular repontaria pessoas/{fichaId}_loc* e corromperia o vínculo original.
+  const jaUsada = await db.collection('imoveis').where('fichaId', '==', fichaId).limit(1).get();
+  if (!jaUsada.empty && jaUsada.docs[0].id !== String(d.imovelId)) throw new HttpsError('failed-precondition', 'Essa ficha já está vinculada a outro imóvel.');
   const dados = f.dados || {};
   const porNome = await _nomeDoUid(auth.uid);
   const ts = () => admin.firestore.FieldValue.serverTimestamp();
-  // Locador: cria as pessoas (loc1/loc2) como o trigger, pra aparecer em Pessoas.
-  const locadorIds = [];
   const pa = tipo === 'locador' ? loc_montarPessoa(dados, LOC_KEYS_1) : null;
+  // Locador: as pessoas (loc1/loc2) apontariam pro corretor/imóvel novo — por isso
+  // só grava DEPOIS da transação do imóvel dar certo, preservando o dono da ficha.
+  const locadorIds = [];
   if (tipo === 'locador') {
-    if (pa.nome) { await db.collection('pessoas').doc(`${fichaId}_loc1`).set({ ...pa, corretorUid: auth.uid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true }); locadorIds.push(`${fichaId}_loc1`); }
-    if (dados.loc2_nome) { await db.collection('pessoas').doc(`${fichaId}_loc2`).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: auth.uid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true }); locadorIds.push(`${fichaId}_loc2`); }
+    if (pa.nome) locadorIds.push(`${fichaId}_loc1`);
+    if (dados.loc2_nome) locadorIds.push(`${fichaId}_loc2`);
   }
   const nome = tipo === 'locador' ? (pa.nome || '') : (dados.nome || '');
   const contato = tipo === 'locador' ? [pa.whatsapp || pa.fixo, pa.email].filter(Boolean).join(' · ') : [dados.whatsapp || dados.fixo, dados.email].filter(Boolean).join(' · ');
@@ -6149,6 +6203,13 @@ exports.carteiraVincularProprietario = onCall(async (req) => {
     if (tipo === 'locador') { up.locadorIds = locadorIds; up.locadorNome = nome; }
     tx.set(ref, up, { merge: true });
   });
+  // Pessoas só depois do imóvel confirmar (sem write parcial se a transação recusar);
+  // corretorUid = dono ORIGINAL da ficha (regra de ouro), não quem clicou.
+  if (tipo === 'locador') {
+    const donoUid = f.corretorUid || auth.uid;
+    if (pa.nome) await db.collection('pessoas').doc(`${fichaId}_loc1`).set({ ...pa, corretorUid: donoUid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true });
+    if (dados.loc2_nome) await db.collection('pessoas').doc(`${fichaId}_loc2`).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: donoUid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true });
+  }
   await registrarAudit(auth, 'imovel_vincular_proprietario', { tipo: 'imovel', id: d.imovelId }, { fichaId, tipoFicha: tipo });
   await _bumpBroadcast('imovelSeq');
   return { ok: true, nome };
@@ -6180,6 +6241,8 @@ exports.negocioExcluir = onCall(async (req) => {
     });
   }
   await ref.delete();
+  // Anexos do negócio (PII, URL com token) não podem ficar órfãos no Storage.
+  try { await admin.storage().bucket(FICHA_BUCKET).deleteFiles({ prefix: `negocios/${negocioId}/` }); } catch (_) { /* sem anexos ou já sumiu */ }
   await registrarAudit(auth, 'negocio_excluir', { tipo: 'negocio', id: negocioId }, { codigo: n.codigo });
   await _bumpBroadcast('imovelSeq');
   return { ok: true };
@@ -6192,14 +6255,21 @@ exports.carteiraExcluirImovel = onCall(async (req) => {
   if (!ehGestorAuth(auth)) throw new HttpsError('permission-denied', 'Só o gestor pode excluir imóveis.');
   const imovelId = String((req.data && req.data.imovelId) || '');
   const ref = db.collection('imoveis').doc(imovelId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
-  const negs = await db.collection('negocios').where('imovelId', '==', imovelId).get();
-  const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
-  if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}). Exclua ou cancele o negócio antes.`);
-  const im = snap.data();
+  // Checagem de negócio ativo + delete na MESMA transação: um negocioGerar concorrente
+  // entre o check e o delete deixaria negócio ativo apontando pra imóvel inexistente.
+  let im = null;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+    const negs = await tx.get(db.collection('negocios').where('imovelId', '==', imovelId));
+    const ativo = negs.docs.find(d => NEGOCIO_ATIVO(d.data().status));
+    if (ativo) throw new HttpsError('failed-precondition', `Este imóvel tem um negócio ativo (${ativo.data().codigo}). Exclua ou cancele o negócio antes.`);
+    im = snap.data();
+    tx.delete(ref);
+  });
   for (const pid of (Array.isArray(im.locadorIds) ? im.locadorIds : [])) await db.collection('pessoas').doc(pid).delete().catch(() => {});
-  await ref.delete();
+  // Anexos avulsos do imóvel (documentosExtra) não podem ficar órfãos no Storage.
+  try { await admin.storage().bucket(FICHA_BUCKET).deleteFiles({ prefix: `imoveis/${imovelId}/` }); } catch (_) { /* sem anexos ou já sumiu */ }
   await registrarAudit(auth, 'imovel_excluir', { tipo: 'imovel', id: imovelId }, { protocolo: im.numeroProtocolo != null ? im.numeroProtocolo : null });
   await _bumpBroadcast('imovelSeq');
   return { ok: true };
@@ -6254,6 +6324,11 @@ exports.negocioMoverColuna = onCall(async (req) => {
   if (!ehGestor) throw new HttpsError('permission-denied', 'Só o gestor move os cards.');
   const colunaId = _txt(d.colunaId, 40).replace(/[^a-z0-9_]/gi, '').toLowerCase();
   if (!colunaId) throw new HttpsError('invalid-argument', 'Coluna inválida.');
+  // Só aceita coluna que EXISTE na config (senão o card "voltaria pro Novo" em silêncio no cliente).
+  const cfgSnap = await db.collection('smarthub_config').doc('kanban').get();
+  const cfgCols = cfgSnap.exists ? _kanbanSanitizaColunas(cfgSnap.data().colunas) : [];
+  const validas = (cfgCols.length ? cfgCols : KANBAN_COLUNAS_PADRAO).map(c => c.id);
+  if (!validas.includes(colunaId)) throw new HttpsError('invalid-argument', 'Essa coluna não existe mais — recarregue o quadro.');
   await ref.set({ colunaId, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   return { ok: true, colunaId };
 });

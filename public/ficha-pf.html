@@ -14,7 +14,7 @@
 </head>
 <body>
 <div class="corretor-bar" id="barraCorretor" style="display:none"><div><strong>Modo Corretor</strong> — Revisão</div><div class="corretor-acoes"><button class="btn-corretor btn-solicitar" onclick="solicitarCorrecao()">⚠ Solicitar correção</button><button class="btn-corretor btn-aprovar" onclick="enviarParaAdmin()">✓ Aprovar e enviar ao admin</button></div></div>
-<div class="header"><svg width="38" height="38" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="#DC1C2E"/><text x="50" y="68" text-anchor="middle" font-size="48" font-weight="900" fill="#fff" font-family="Arial">R</text></svg><div><h1>Ficha Cadastral (Pessoa Física) <span class="badge-modo" id="badgeModo" style="display:none"></span></h1><p>REMAX Smart — Imóveis</p></div></div>
+<div class="header"><img src="logo.png" alt="REMAX Smart Imóveis" style="height:52px;width:auto;display:block;flex:none"><div><h1>Ficha Cadastral (Pessoa Física) <span class="badge-modo" id="badgeModo" style="display:none"></span></h1></div></div>
 <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
 <div class="container">
 <div class="resumo-pendencias" id="resumoPendencias" style="display:none"><h4>⚠ Informações pendentes</h4><ul id="listaPendencias"></ul></div>
@@ -39,7 +39,7 @@
 <div id="docs-h1" style="display:none;font-weight:700;color:#002749;font-size:13px;margin:2px 0 8px">👤 Documentos do 1º Cliente</div>
 <div class="docs-grid">
 <div class="doc-wrapper"><div class="doc-area" id="area-rgcpf"><div class="doc-clickable" onclick="triggerFile('rgcpf')"><div class="doc-icon">🪪</div><div class="doc-label">RG, CPF ou CNH <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-rgcpf">Toque para selecionar</div></div><input type="file" id="file-rgcpf" accept="image/*,.pdf" style="display:none" data-doc="rgcpf" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-rgcpf" style="display:none">Informação pendente</div></div>
-<div class="doc-wrapper"><div class="doc-area" id="area-compEndereco"><div class="doc-clickable" onclick="triggerFile('compEndereco')"><div class="doc-icon">🏠</div><div class="doc-label">Comprovante de endereço <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-compEndereco">Toque para selecionar</div></div><input type="file" id="file-compEndereco" accept="image/*,.pdf" style="display:none" data-doc="compEndereco" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEndereco" style="display:none">Informação pendente</div></div>
+<div class="doc-wrapper"><div class="doc-area" id="area-compEndereco"><div class="doc-clickable" onclick="triggerFile('compEndereco')"><div class="doc-icon">🏠</div><div class="doc-label">Comprovante de endereço <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-compEndereco">Toque para selecionar</div></div><input type="file" id="file-compEndereco" accept="image/*,.pdf" style="display:none" data-doc="compEndereco" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEndereco" style="display:none">Informação pendente</div></div>
 <div class="doc-wrapper"><div class="doc-area" id="area-compRenda"><div class="doc-clickable" onclick="triggerFile('compRenda')"><div class="doc-icon">💰</div><div class="doc-label">Comprovante de renda (90 dias) <span class="badge-obrig">Obrigatório</span></div><div class="doc-status" id="status-compRenda">Toque para selecionar</div></div><input type="file" id="file-compRenda" accept="image/*,.pdf" style="display:none" data-doc="compRenda" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compRenda" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compRenda"><span>Não tenho agora</span></label></div>
 <div class="doc-wrapper"><div class="doc-area" id="area-compEstadoCivil"><div class="doc-clickable" onclick="triggerFile('compEstadoCivil')"><div class="doc-icon">📋</div><div class="doc-label">Comprovante de estado civil <span class="badge-opc">opcional</span></div><div class="doc-status" id="status-compEstadoCivil">Toque para selecionar</div></div><input type="file" id="file-compEstadoCivil" accept="image/*,.pdf" style="display:none" data-doc="compEstadoCivil" onchange="docSelecionado(this)"></div><div class="pendente-tag" id="pend-compEstadoCivil" style="display:none">Informação pendente</div><label class="nao-tenho doc-nao-tenho"><input type="checkbox" data-doc-campo="compEstadoCivil"><span>Não tenho agora</span></label></div>
 </div>
@@ -414,7 +414,7 @@ function docsExtraList(){
       const nome=(v(P+'nome')||'').trim();
       arr.push({heading:'👤 Documentos do '+i+'º Cliente'+(nome?' · '+nome:'')});
       arr.push({key:P+'rgcpf',        icon:'🪪', label:'RG, CPF ou CNH',              badge:'obrig'});
-      arr.push({key:P+'compEndereco', icon:'🏠', label:'Comprovante de endereço',     badge:'obrig'});
+      arr.push({key:P+'compEndereco', icon:'🏠', label:'Comprovante de endereço',     badge:'opc'});
       arr.push({key:P+'compRenda',    icon:'💰', label:'Comprovante de renda (90 dias)',badge:'obrig', nta:true});
       arr.push({key:P+'compEstadoCivil',icon:'📋',label:'Comprovante de estado civil', badge:'opc', nta:true});
     }
@@ -452,7 +452,7 @@ form.addEventListener('submit', async e=>{
   // Itens rotulados "Obrigatório" sem preencher/anexar e sem "não tenho agora":
   // confirma com o cliente e registra como pendência — antes passavam em
   // silêncio e a ficha chegava "sem pendências" faltando tudo.
-  const DOCS_OBRIG = { rgcpf:'RG, CPF ou CNH', compEndereco:'Comprovante de endereço', compRenda:'Comprovante de renda' };
+  const DOCS_OBRIG = { rgcpf:'RG, CPF ou CNH', compRenda:'Comprovante de renda' };  // comprovante de endereço = opcional (fase de adaptação)
   let _lastH='';
   docsExtraList().forEach(d=>{ if(d.heading){ _lastH=d.heading.replace(/^\S+\s/,''); return; } if(d.key && d.badge==='obrig') DOCS_OBRIG[d.key]=d.label+' — '+_lastH; });
   const docsFaltando = Object.keys(DOCS_OBRIG).filter(k => !arquivos[k] && !docsExistentes[k] && !isPend(k));

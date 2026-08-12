@@ -1348,7 +1348,9 @@ document.getElementById('btnNovidades')?.addEventListener('click', abrirNovidade
   const SOL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
   const LUA = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>';
   const btn = document.getElementById('btnTema');
-  const lerTema = () => { try { return localStorage.getItem('hub_tema') === 'light' ? 'light' : 'dark'; } catch (_) { return 'dark'; } };
+  // CLARO é o padrão (pedido 2026-08-12); escuro só pra quem escolher no botão —
+  // a escolha fica salva NA MÁQUINA (localStorage) e persiste ao reabrir o app.
+  const lerTema = () => { try { return localStorage.getItem('hub_tema') === 'dark' ? 'dark' : 'light'; } catch (_) { return 'light'; } };
   function aplicar(tema){
     document.documentElement.dataset.theme = tema === 'light' ? 'light' : 'dark';
     if (btn){ btn.innerHTML = tema === 'light' ? LUA : SOL; btn.title = tema === 'light' ? 'Mudar para o tema escuro' : 'Mudar para o tema claro'; }
@@ -1653,7 +1655,7 @@ async function carregarPerfil() {
 
 function mostrarMsgCfg(texto, ok) {
   cfgMsg.textContent = texto;
-  cfgMsg.style.color = ok ? '#8ddca8' : '#ffb4bc';
+  cfgMsg.style.color = ok ? 'var(--success)' : 'var(--danger)'; // tema claro/escuro
   cfgMsg.hidden = false;
   setTimeout(() => { cfgMsg.hidden = true; }, 3000);
 }
@@ -2911,9 +2913,12 @@ document.getElementById('roboMapaCancelar')?.addEventListener('click', ()=>modal
 document.getElementById('roboMapaSalvar')?.addEventListener('click', async ()=>{
   const mapa = {};
   roboMapaCorpo.querySelectorAll('tr[data-uid]').forEach(tr=>{ const uid=tr.getAttribute('data-uid'); const v=tr.querySelector('.robo-mapa-sel')?.value; if(v) mapa[uid]=v; });
+  // Modal que falhou ao carregar (ou tudo "não mapear") não tem o que salvar — e o
+  // servidor substitui o doc INTEIRO, então {} apagaria todos os vínculos.
+  if(!Object.keys(mapa).length){ roboMapaMsg.hidden=false; roboMapaMsg.style.color='var(--danger)'; roboMapaMsg.textContent='Nenhum vínculo selecionado — nada foi salvo.'; return; }
   const btn = document.getElementById('roboMapaSalvar'); btn.disabled=true; const t=btn.textContent; btn.textContent='Salvando…';
-  try { const r = await driveMapaSalvar({ mapa }); roboMapaMsg.hidden=false; roboMapaMsg.style.color='#8ddca8'; roboMapaMsg.textContent='✅ Mapa salvo ('+((r.data&&r.data.n)||0)+' corretores).'; setTimeout(()=>modalRoboMapa.close(), 900); }
-  catch(e){ roboMapaMsg.hidden=false; roboMapaMsg.style.color='#ffb4bc'; roboMapaMsg.textContent='Erro: '+e.message; }
+  try { const r = await driveMapaSalvar({ mapa }); roboMapaMsg.hidden=false; roboMapaMsg.style.color='var(--success)'; roboMapaMsg.textContent='✅ Mapa salvo ('+((r.data&&r.data.n)||0)+' corretores).'; setTimeout(()=>modalRoboMapa.close(), 900); }
+  catch(e){ roboMapaMsg.hidden=false; roboMapaMsg.style.color='var(--danger)'; roboMapaMsg.textContent='Erro: '+e.message; }
   finally { btn.disabled=false; btn.textContent=t; }
 });
 
@@ -4034,8 +4039,8 @@ let cartFiltros = { fin: null, sit: null, corretor: null, busca: '' };
 const CARTEIRA_FICHAS = [
   { label: 'Locador',       arquivo: 'ficha-locador.html' },
   { label: 'Vendedor',      arquivo: 'ficha-vendedor.html' },
-  { label: 'Locatário PF',  arquivo: 'ficha-pf.html' },
-  { label: 'Locatário PJ',  arquivo: 'ficha-pj.html' },
+  { label: 'Cliente PF',  arquivo: 'ficha-pf.html' },
+  { label: 'Cliente PJ',  arquivo: 'ficha-pj.html' },
   { label: 'Comprador',     arquivo: 'ficha-proposta.html' },
   { label: 'Fiador',        arquivo: 'ficha-locacao-fiador.html' },
 ];
@@ -4279,8 +4284,8 @@ function renderDetalheImovel(d, paraTela03) {
   const vistoriaHtml = sec('Vistorias', vistList + vistForm + vistCv);
 
   const FICHAS_IMOVEL = [
-    { key: 'pf', label: 'Pessoa Física', arquivo: 'ficha-pf.html' },
-    { key: 'pj', label: 'Pessoa Jurídica', arquivo: 'ficha-pj.html' },
+    { key: 'pf', label: 'Cliente PF', arquivo: 'ficha-pf.html' },
+    { key: 'pj', label: 'Cliente PJ', arquivo: 'ficha-pj.html' },
     { key: 'fianca', label: 'Fiança', arquivo: 'ficha-fianca.html' },
   ];
   const fichasBtns = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
@@ -4928,8 +4933,8 @@ function tela03IntHtml(im, broker, ehGestorTela) {
   const fin = cartFinalidadeDe(im);
   const fichasOpcoes = [
     ...(fin !== 'venda' ? [
-      { label: 'Locatário PF', arquivo: 'ficha-pf.html' },
-      { label: 'Locatário PJ', arquivo: 'ficha-pj.html' },
+      { label: 'Cliente PF', arquivo: 'ficha-pf.html' },
+      { label: 'Cliente PJ', arquivo: 'ficha-pj.html' },
     ] : []),
     ...(fin !== 'locacao' ? [{ label: 'Comprador', arquivo: 'ficha-proposta.html' }] : []),
   ];

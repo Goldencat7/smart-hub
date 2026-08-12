@@ -59,7 +59,7 @@ const KANBAN_COLUNAS_PADRAO = [
 const STATUS_PARA_COLUNA = { negocio_criado:'novo', em_andamento:'andamento', aguardando_corretor:'aguard_corretor', aguardando_broker:'aguard_broker', aguardando_administrativo:'aguard_adm', entregue_gestao:'aguard_adm' };
 function kanbanCols(){ return (state.kanbanCols && state.kanbanCols.length) ? state.kanbanCols : KANBAN_COLUNAS_PADRAO; }
 function colunaDoDeal(d, cols){ let cid=d.colunaId||STATUS_PARA_COLUNA[d.statusRaw]||''; if(!cols.some(c=>c.id===cid)) cid=(cols[0]||{}).id; return cid; }
-async function carregarKanbanCols(){ try{ const r=await fnKanbanGet(); state.kanbanCols=(r.data&&r.data.colunas)||KANBAN_COLUNAS_PADRAO; }catch(_e){ state.kanbanCols=KANBAN_COLUNAS_PADRAO; } }
+async function carregarKanbanCols(){ try{ const r=await fnKanbanGet(); state.kanbanCols=(r.data&&r.data.colunas)||KANBAN_COLUNAS_PADRAO; }catch(_e){ if(!state.kanbanCols) state.kanbanCols=KANBAN_COLUNAS_PADRAO; } }
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
 const fnSugAcao     = call('negocioSugerirAcao');   // IA (Gemini): próxima ação + rascunho de mensagem do negócio
@@ -252,11 +252,18 @@ function chkPct(cl){ if(!cl||!cl.length) return 0; const f=cl.filter(x=>x.feito)
 // As chaves antigas (contrato_emitido/aprovado) ficam pros negócios já criados.
 function clicksignDe(cl){ cl=cl||[]; const f=k=>cl.find(x=>x.key===k&&x.feito); if(f('contrato_assinado')||f('compromisso_assinado')) return 'Concluído'; if(f('contrato_emitido')||f('contrato_aprovado')||f('compromisso_emitido')||f('compromisso_aprovado')) return 'Enviado'; return '—'; }
 function mapNegocio(n){
-  const im = PROPERTIES.find(p=>p.id===n.imovelId);
+  // PROPERTIES_ALL (não PROPERTIES): imóvel ARQUIVADO após concluir a venda ainda
+  // precisa dar preço/comissão ao negócio — senão KPIs e "Minhas Comissões" zeravam.
+  const im = (PROPERTIES_ALL||[]).find(p=>p.id===n.imovelId);
   const preco = im ? im.preco : 0;
   const tipo = n.tipo==='venda' ? 'Venda' : 'Locação';
+  // % de comissão: editável por negócio (n.comissaoPct — venda com parceria cai pra 3%,
+  // negociadas 4/5%); padrão venda 6%, locação 100%. O valor do feed (valorComissao)
+  // só vale quando NÃO há % editado.
+  const pctPadrao = tipo==='Venda' ? 6 : 100;
+  const comPct = (isFinite(n.comissaoPct) && n.comissaoPct>0) ? n.comissaoPct : pctPadrao;
   const comBruto = (im&&im.raw&&im.raw.valorComissao) ? parseMoney(im.raw.valorComissao) : 0;
-  const comValor = comBruto || (tipo==='Venda' ? preco*0.06 : preco);
+  const comValor = (n.comissaoPct ? preco*comPct/100 : (comBruto || preco*pctPadrao/100));
   const rel = relData(n.atualizadoEm || n.criadoEm);
   return {
     id: n.id, raw: n,
@@ -266,7 +273,8 @@ function mapNegocio(n){
     corretor: n.corretorUid, corretorNome: n.corretorNome||'',
     imovelId: n.imovelId, imovelResumo: n.imovelResumo||'', cidade: n.cidade||'',
     clienteNome: n.clienteNome||'—', clienteContato: n.clienteContato||'',
-    valor: preco, comPct: tipo==='Venda'?6:100, comValor, comStatus:'Prevista',
+    valor: preco, comPct, comValor, comStatus:'Prevista',
+    comDoFeed: (!n.comissaoPct && !!comBruto),   // valor veio do feed — o rótulo não pode dizer "(6%)"
     criado: (n.criadoEm||'').slice(0,10).split('-').reverse().join('/'), criadoEm: n.criadoEm||'',
     prox: n.proximaAcao || 'Sem próxima ação definida',
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
@@ -274,6 +282,7 @@ function mapNegocio(n){
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
     arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
     colunaId: n.colunaId||'', origem: n.origem||'',   // kanban Modelo 2 + origem do cliente
+    campos: n.campos||{}, proposta: n.proposta||{},   // campos personalizados + proposta (Marcelo)
     tags: Array.isArray(n.tags) ? n.tags : [],
     tarefas: Array.isArray(n.tarefas) ? n.tarefas : [],
     // O servidor só devolve o array pra quem PODE comentar (broker + corretor do
@@ -291,7 +300,9 @@ async function carregarDados(){
   // do refresh do tempo real zerava PROPERTIES/DEALS e a tela mostrava KPI R$ 0 /
   // carteira vazia em silêncio. Quem chama trata: mount → card de erro; _rtOnChange
   // → aborta o re-render (mantém os dados antigos); refresh → toast.
-  const [imR, ngR] = await Promise.all([ fnImoveis({}), fnNegocios({}) ]);
+  // Recarrega também a config das colunas do kanban (o broadcast do kanbanColunasSalvar
+  // dispara carregarDados nos outros clientes — sem isto eles ficavam com colunas velhas).
+  const [imR, ngR] = await Promise.all([ fnImoveis({}), fnNegocios({}), (state.kanbanCols ? carregarKanbanCols() : Promise.resolve()) ]);
   const imoveisRaw = (imR.data&&imR.data.imoveis)||[];
   PROPERTIES_ALL = imoveisRaw.map(mapImovel);
   PROPERTIES = PROPERTIES_ALL.filter(p=>!p.arquivado);
@@ -655,6 +666,9 @@ function dealsBaseSemStatus(){
 function nArquivados(){ return DEALS.filter(d=>d.arquivado).length; }
 function nCancelados(){ return (DEALS_DOCS||[]).filter(d=>d.statusRaw==='cancelado').length; }
 function filteredDeals(){ return dealsBaseSemStatus().filter(d=>state.negFiltroStatus==='Todos'||d.status===state.negFiltroStatus); }
+// Quadro (kanban): SEM encerrados — concluído/cancelado não têm coluna (cairiam na
+// primeira, sem poder arrastar, inflando o "Total comissões" dela pra sempre).
+function dealsQuadro(){ return dealsBaseSemStatus().filter(d=>d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'); }
 function allStatusReais(){ return [...new Set(DEALS.map(d=>d.status))]; }
 // Abas com contador (estilo Pipe Imob): Todos + cada status presente, com o total.
 // Reusa state.negFiltroStatus (mesmo filtro do drill-down do dashboard) — clicar filtra na hora.
@@ -747,7 +761,7 @@ function negRows(){
 }
 function updateNegTable(){
   // Quadro: re-renderiza SÓ o board (não a página — preserva o foco do input de busca).
-  const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); return; }
+  const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); const ck=$('#negCountK'); if(ck) ck.textContent=dealsQuadro().length; return; }
   const tb=$('#negTbody'); if(tb){ tb.innerHTML=negRows(); } const ch=$('#negChips'); if(ch){ ch.innerHTML=negStatusChips(); } refreshIcons(); const c=$('#negCount'); if(c) c.textContent=filteredDeals().length;
 }
 // ── Kanban (Modelo 2 — colunas customizáveis) ───────────────────────────────
@@ -760,22 +774,43 @@ const KANBAN_CSS ='.kboard{display:flex;gap:12px;overflow-x:auto;padding-bottom:
   + '.kcol-over{outline:2px dashed var(--brand);outline-offset:-3px;background:rgba(37,99,235,.06)}'
   + '.kcard{background:#fff;border:1px solid var(--ink200);border-radius:10px;padding:10px 11px;box-shadow:0 1px 2px rgba(0,0,0,.04)}'
   + '.kcard[draggable="true"]{cursor:grab}.kcard[draggable="true"]:active{cursor:grabbing}.kdragging{opacity:.45}';
+// Rótulo curto do "comissão recebida" (venda tem parcelas; locação é sim/não).
+const _CR_LABEL={ sim:'Sim', nao:'Não', parcela1:'1ª parcela', parcela2:'2ª parcela', total:'Total' };
+function _snLabel(v){ return v==='sim'?'Sim':v==='nao'?'Não':''; }
+// Linhas de visualização rápida do card (pedido Marcelo): campos personalizados +
+// data de início da proposta. Só mostra o que está preenchido.
+function kanbanCardInfo(d){
+  const c=d.campos||{}, p=d.proposta||{};
+  const linhas=[];
+  if(d.tipo==='Locação' && c.administracao) linhas.push(['Administração', _snLabel(c.administracao)]);
+  if(c.parceria) linhas.push(['Parceria', _snLabel(c.parceria)]);
+  if(c.comissaoRecebida) linhas.push(['Comissão recebida', _CR_LABEL[c.comissaoRecebida]||c.comissaoRecebida]);
+  if(p.inicio) linhas.push(['Início do contrato', p.inicio]);
+  if(!linhas.length) return '';
+  return '<div style="margin-top:8px;padding-top:7px;border-top:1px dashed var(--ink200)">'
+    + linhas.map(l=>'<div class="fx ac jb fz11" style="padding:1px 0"><span class="t500">'+esc(l[0])+'</span><span class="fw7 t900">'+esc(l[1])+'</span></div>').join('')+'</div>';
+}
 function kanbanCard(d, podeArrastar){
   const im=propDoDeal(d);
   const arrast = podeArrastar && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado';
   const tags = (d.tags&&d.tags.length) ? '<div class="fx wrap g1" style="margin-top:7px">'+d.tags.map(t=>tagChipHTML(t,false)).join('')+'</div>' : '';
+  // Botão "mover" (só broker): fallback do drag pro TOUCH — no celular o HTML5 drag
+  // não dispara, então sem ele não dava pra mover card nenhum. data-action é captado
+  // antes do data-deal, então não abre o negócio ao tocar.
+  const btnMover = arrast ? '<button class="nsh" data-action="kmove-open" data-deal="'+d.id+'" title="Mover de coluna" style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;border:1px solid var(--ink200);border-radius:8px;background:#fff;cursor:pointer;color:var(--ink500);flex:none">'+icon('arrow-left-right',15)+'</button>' : '';
   return '<div class="kcard" data-deal="'+d.id+'" data-kcard="'+d.id+'" draggable="'+(arrast?'true':'false')+'">'
-    + '<div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px">'+d.tipo+'</span></div>'
+    + '<div class="fx ac jb g2"><span class="mono fz12 fw7 t900">'+esc(d.code)+'</span><span class="fx ac g1">'+'<span class="pill '+(d.tipo==='Venda'?'info':'ai')+'" style="font-size:10px">'+d.tipo+'</span>'+btnMover+'</span></div>'
     + '<div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(im.rua)+'</div>'
     + '<div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div>'
     + '<div class="fx ac jb g2" style="margin-top:8px"><span class="mono fw6 t900 fz13">'+brl(d.valor)+'</span><span class="fx ac g1">'+agingBadge(d)+tarefaBadge(d)+'</span></div>'
+    + kanbanCardInfo(d)
     + tags + '</div>';
 }
 function kanbanHTML(){
   // carrega a config das colunas 1x (async) e re-renderiza o board quando chegar
   if(!state.kanbanCols && !state._kanbanLoading){ state._kanbanLoading=true; carregarKanbanCols().then(()=>{ state._kanbanLoading=false; const kw=$('#kanbanWrap'); if(kw){ kw.innerHTML=kanbanHTML(); refreshIcons(); } }); }
   const cols=kanbanCols();
-  const base=dealsBaseSemStatus();
+  const base=dealsQuadro();
   const by={}; cols.forEach(c=>by[c.id]=[]);
   base.forEach(d=>{ const cid=colunaDoDeal(d,cols); (by[cid]=by[cid]||[]).push(d); });
   const podeArrastar = state.role==='broker';
@@ -783,8 +818,8 @@ function kanbanHTML(){
     const cards=(by[c.id]||[]);
     const body = cards.length ? cards.map(d=>kanbanCard(d,podeArrastar)).join('') : '<div class="fz12 t400" style="padding:12px;text-align:center">—</div>';
     const dropAttr = podeArrastar ? ' data-kdrop="'+esc(c.id)+'"' : '';
-    const total = cards.reduce((s,d)=>s+(d.valor||0),0);
-    const totalHTML = cards.length ? '<div class="fz12 fw7 c-suc" style="padding:0 12px 8px;margin-top:-2px">'+brl(total)+'</div>' : '';
+    const total = cards.reduce((s,d)=>s+(d.comValor||0),0);
+    const totalHTML = cards.length ? '<div class="fx ac jb" style="padding:2px 14px 10px"><span class="fz12 fw6 t500">Total comissões</span><span class="mono fw7 c-suc" style="font-size:15px">'+brl(total)+'</span></div>' : '';
     return '<div class="kcol"><div class="kcol-head"><span class="trunc">'+esc(c.label)+'</span><span class="pill neutral">'+cards.length+'</span></div>'+totalHTML+'<div class="kcol-body"'+dropAttr+'>'+body+'</div></div>';
   }).join('');
   const manage = podeArrastar ? '<button class="btn btn-outline sm" data-action="kanban-gerenciar" style="margin-bottom:10px">'+icon('settings-2',14)+'Gerenciar colunas</button>' : '';
@@ -819,6 +854,14 @@ async function kanbanMove(id, colunaId){
     d.colunaId=prev; const kw2=$('#kanbanWrap'); if(kw2){ kw2.innerHTML=kanbanHTML(); refreshIcons(); }
     toast(err.message||'Não foi possível mover','alert-triangle','var(--danger)');
   }
+}
+// Seletor de coluna (fallback do arrastar pro touch): lista as colunas e move ao tocar.
+function openKanbanMovePicker(dealId){
+  const d=DEALS.find(x=>x.id===dealId); if(!d) return;
+  const cols=kanbanCols(); const cur=colunaDoDeal(d,cols);
+  openModal('<div style="padding:20px;max-width:340px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Mover card</div><div class="fz12 t500" style="margin-bottom:14px">'+esc(d.code)+' — escolha a coluna</div>'
+    + cols.map(c=>'<button class="fx ac jb hoverbg" data-action="kmove-to" data-deal="'+esc(dealId)+'" data-col="'+esc(c.id)+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:13px 14px;cursor:pointer;margin-bottom:8px"><span class="fz14 fw6 t900">'+esc(c.label)+'</span>'+(c.id===cur?'<span class="pill neutral">atual</span>':'')+'</button>').join('')
+    + '<button class="btn btn-outline sm" data-action="close-modal" style="width:100%;margin-top:4px">Cancelar</button></div>');
 }
 // ── Gerenciar colunas do quadro (Modelo 2) ───────────────────────────────────
 function _colCaptura(){ (state._colEdit||[]).forEach((c,i)=>{ const inp=document.querySelector('[data-colinput="'+i+'"]'); if(inp) c.label=inp.value; }); }
@@ -869,7 +912,7 @@ RENDERERS.negocios = function(host){
   + '</div>'
   + (isKanban ? '' : '<div class="fx ac g2 wrap" id="negChips" style="margin-bottom:14px">'+negStatusChips()+'</div>')
   + '<div class="fz13 tmut" style="margin-bottom:12px">'+(isKanban
-      ? ('<strong class="tw">'+dealsBaseSemStatus().length+'</strong> negócios no quadro · '+(state.negFiltroTipo))
+      ? ('<strong class="tw" id="negCountK">'+dealsQuadro().length+'</strong> negócios no quadro · '+(state.negFiltroTipo))
       : ('<strong class="tw" id="negCount">'+filteredDeals().length+'</strong> negócios · '+(state.negFiltroTipo)+(state.negFiltroStatus!=='Todos'?' · '+state.negFiltroStatus:'')))+'</div>'
   + (isKanban ? '<div id="kanbanWrap">'+kanbanHTML()+'</div>' : tabela)
   + '<div class="fx ac g3 wrap fz12 t500" style="margin-top:12px"><span class="fw6 t700">Parado:</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#10b981;display:inline-block"></span>até 7 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block"></span>8 a 14 dias</span><span class="fx ac g1"><span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block"></span>mais de 14 dias</span></div>';
@@ -976,14 +1019,16 @@ function openDeal(id){
     + '<div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'')+'<button class="btn btn-primary sm" data-action="drive-sync-real" title="Cria a pasta do imóvel no Drive do corretor e envia os documentos + fichas">'+icon('refresh-cw',15)+'Sincronizar Drive</button>'+'<button class="btn btn-outline sm" data-action="ir-comentarios">'+icon('message-square',15)+'Comentários</button><button class="btn btn-outline sm" data-action="prop-info">'+icon('user-round',15)+'Proprietário</button></div></div>'
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? dealTagsCardHTML(d) : '')
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
+  + camposCardHTML(d)
+  + propostaCardHTML(d)
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? iaCardHTML() : '')
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',15)+'Excluir</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800 fx ac jb" style="margin-bottom:12px"><span>Negócio encerrado</span><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',14)+'Excluir</button></div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
   + dealDocsCardHTML(d, (state.role==='broker'||state.role==='administrativo'))
   + '<div class="split-r">'
     + '<div class="fx col g4">'
-      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+'<div class="fx ac jb g2" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz11 t500 up fw6">Origem do cliente</div><div class="fz13 fw6 t900 trunc">'+(d.origem?esc(d.origem):'<span class="t400 fw4">não informada</span>')+'</div></div><button class="btn btn-ghost sm nsh" data-action="origem-edit" data-origem="'+esc(d.origem||'')+'" title="Editar origem">'+icon('pencil',14)+'</button></div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
-      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:14px">Financeiro</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão ('+d.comPct+'%)',brlFull(d.comValor)],['Repasse corretor ('+Math.round(repassePct(d.corretor)*100)+'%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
+      + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+'<div class="fx ac jb g2" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz11 t500 up fw6">Origem do cliente</div><div class="fz13 fw6 t900 trunc">'+(d.origem?esc(d.origem):'<span class="t400 fw4">não informada</span>')+'</div></div>'+(d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-ghost sm nsh" data-action="origem-edit" data-origem="'+esc(d.origem||'')+'" title="Editar origem">'+icon('pencil',14)+'</button>':'')+'</div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
+      + '<div class="card" style="padding:18px"><div class="fx ac jb g2" style="margin-bottom:14px"><span class="up fz12 fw7 t800">Financeiro</span>'+(d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-ghost sm nsh" data-action="comissao-edit" title="Editar % de comissão">'+icon('pencil',13)+'Editar comissão</button>':'')+'</div><div class="fx col g3 fz13">'+[['Valor',brlFull(d.valor)],['Comissão'+(d.comDoFeed?' (valor do feed)':' ('+d.comPct+'%)'),brlFull(d.comValor)],['Repasse corretor ('+Math.round(repassePct(d.corretor)*100)+'%)',brlFull(repasse(d))],['Progresso',d.progresso+'%'],['Clicksign',d.clicksign]].map(r=>'<div class="fx jb ac"><span class="t500">'+r[0]+'</span><span class="fw6 t900 mono">'+r[1]+'</span></div>').join('')+'</div></div>'
     + '</div>'
     + '<div class="card" id="bkDealTabs" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
@@ -1031,9 +1076,17 @@ async function negAtualizar(payload, okMsg){
     // não limpa currentDeal — sem essa guarda o detalhe reabria sozinho).
     if(state.currentDeal===dealId && state.view==='negocios' && state._viewingDeal){
       if(mapped && mapped.statusRaw==='cancelado') navigate('negocios');
-      else openDeal(dealId);
+      else {
+        // Preserva o que foi digitado nos OUTROS cards (Proposta/Informações/comentário):
+        // o openDeal re-renderiza o detalhe inteiro e apagaria rascunho não salvo.
+        const drafts={};
+        document.querySelectorAll('#root [id^="pp"], #root [id^="cp"], #root #bkComent, #root #bkTarefaTxt').forEach(x=>{ if(x.id&&x.value) drafts[x.id]=x.value; });
+        openDeal(dealId);
+        Object.entries(drafts).forEach(([k,v])=>{ const x=document.getElementById(k); if(x) x.value=v; });
+      }
     }
-  } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); }
+    return true;
+  } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); return false; }
 }
 
 // Sincroniza os documentos + fichas do negócio pro Drive do corretor (via robô).
@@ -1334,7 +1387,7 @@ function propDrawer(id){
   const tabs=[['dados','Dados'],['interessados','Interessados'],['docs','Documentos'],['vinc','Negócios']];
   let body='';
   if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>'+(p.raw&&p.raw.origem==='feed'?' <span class="fz11 t400" title="Vem do portal — edite o valor no anúncio">· do portal</span>':' <button class="btn btn-ghost sm" data-action="alterar-valor" data-imovel="'+esc(p.id)+'" title="Alterar valor" style="margin-left:6px;padding:2px 8px;font-size:11px">'+icon('pencil',12)+'Alterar</button>'))+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+(p.feed&&p.feed.suites?kv('Suítes',esc(p.feed.suites)):'')+(p.feed&&p.feed.banheiros?kv('Banheiros',esc(p.feed.banheiros)):'')+(p.feed&&p.feed.condominio?kv('Condomínio','R$ '+esc(p.feed.condominio)):'')+(p.feed&&p.feed.ano?kv('Ano de construção',esc(p.feed.ano)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+kv('Cadastrado em',esc(p.dataFmt||'—'))+(p.portalUrl?'<div class="fx ac g2" style="margin-top:12px"><a href="'+esc(p.portalUrl)+'" target="_blank" rel="noopener" class="btn btn-outline sm" style="text-decoration:none">'+icon('external-link',14)+'Ver anúncio no portal</a><details class="im-share" style="position:relative"><summary class="btn btn-outline sm" style="list-style:none;padding:6px 12px;font-size:18px;line-height:1;font-weight:800" title="Mais opções">⋯</summary><div style="position:absolute;top:calc(100% + 6px);right:0;z-index:20;background:var(--surface,#fff);border:1px solid var(--ink200);border-radius:10px;padding:6px;box-shadow:0 10px 28px rgba(0,0,0,.28);min-width:190px"><button class="btn btn-ghost sm" data-action="imovel-compartilhar" data-url="'+esc(p.portalUrl)+'" data-titulo="'+esc(p.rua||'Imóvel')+'" style="width:100%;justify-content:flex-start">'+icon('share-2',14)+'Compartilhar link</button></div></details></div>':'')+(p.feed&&p.feed.descricao?'<div class="fz11 up fw7 t500" style="margin-top:16px;margin-bottom:6px">Descrição do anúncio</div><div class="fz12 t600" style="white-space:pre-line;max-height:180px;overflow:auto;line-height:1.5">'+esc(p.feed.descricao)+'</div>':'')+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+propFichaBtns+'</div>'+(p.pendentes.length?'<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><div class="fx ac g2 fz12 fw7" style="margin-bottom:8px;color:#f59e0b">'+icon('alert-triangle',14)+'Pendências da ficha ('+p.pendentes.length+')</div><div class="fx wrap g2">'+p.pendentes.map(k=>'<span style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600">'+esc(pendLabel(k))+'</span>').join('')+'</div><div class="fz11 t500" style="margin-top:8px">Itens que o cliente marcou como “não tenho agora” ao preencher a ficha.</div></div>':'')+(p.raw&&p.raw.origem==='feed'?dicasImovel:''); }
-  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Locatário PF']);fichaOpts.push(['ficha-pj.html','Locatário PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':'')+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>'); }
+  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Cliente PF']);fichaOpts.push(['ficha-pj.html','Cliente PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':'')+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>'); }
   else if(tab==='docs'){
     const raw=(p.raw&&p.raw.documentos)||{};
     const extra=(p.raw&&p.raw.documentosExtra)||[];
@@ -1352,7 +1405,7 @@ function propDrawer(id){
       + '<button class="btn btn-outline sm" data-action="add-doc" style="width:100%;margin-top:6px">'+icon('plus',15)+'Adicionar documento</button>';
   }
   else { body=negs.length?negs.map(d=>'<button class="fx ac g3 hoverbg" data-deal="'+d.id+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px">'+iconChip('handshake',d.tipo==='Venda'?'info':'ai',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 mono">'+esc(d.code)+'</div><div class="fz11 t500 trunc">'+esc(d.clienteNome)+'</div></div>'+statusPill(d.status)+'</button>').join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum negócio vinculado.</div>'; }
-  return drawerHead(p.rua, esc(p.tipo)+' · '+esc(p.code))
+  return drawerHead(p.rua, (p.tipo||'')+' · '+(p.code||''))   /* drawerHead já escapa o sub — esc() aqui dobrava o & */
    + '<div style="height:150px;background:'+GRAD[(gi<0?0:gi)%GRAD.length]+';position:relative;flex-shrink:0;overflow:hidden">'+(p.capa?'<img src="'+esc(p.capa)+'" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.6),rgba(0,0,0,0) 55%)"></div>':'')+'<span class="mono" style="position:absolute;bottom:12px;left:16px;color:#fff;font-weight:700;font-size:20px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:13px;font-weight:500">/mês</span>':''):'')+'</span><span class="pill" style="position:absolute;top:12px;left:16px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span></div>'
    + '<div class="fx g1" style="padding:2px 16px 0;border-bottom:1px solid var(--ink100);overflow-x:auto">'+tabs.map(t=>'<button class="tab'+(tab===t[0]?' active':'')+'" data-action="itab-'+t[0]+'">'+t[1]+'</button>').join('')+'</div>'
    + '<div class="grow scrolly" style="overflow:auto;padding:18px 20px">'+body+'</div>'
@@ -1470,7 +1523,7 @@ function handleAction(a,el){
   else if(a.indexOf('ptab-')===0){ state.pessoaTab=a.slice(5); openPerson(state.currentPerson); }
   else if(a.indexOf('itab-')===0){ state.imovelTab=a.slice(5); openProp(state.currentProp); }
   else if(a.indexOf('cfgtab-')===0){ state.cfgTab=a.slice(7); RENDERERS.configuracoes($('#root')); refreshIcons(); }
-  else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; const resp=state.respondendo; const payload={negocioId:state.currentDeal, acao:'comentario', texto:txt}; if(resp&&resp.id) payload.respostaDe=resp.id; state.respondendo=null; negAtualizar(payload, resp?'Resposta enviada':'Comentário adicionado').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
+  else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; const resp=state.respondendo; const payload={negocioId:state.currentDeal, acao:'comentario', texto:txt}; if(resp&&resp.id) payload.respostaDe=resp.id; state.respondendo=null; negAtualizar(payload, resp?'Resposta enviada':'Comentário adicionado').then(ok=>{ if(ok===false && resp) state.respondendo=resp; /* falhou: restaura o contexto (o banner segue no DOM, sem re-render) */ }).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
   else if(a==='coment-responder'){ state.respondendo={id:el.dataset.id, nome:el.dataset.nome||'', deal:state.currentDeal}; state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const t=$('#bkComent'); if(t) t.focus(); },60); }
   else if(a==='cancelar-resposta'){ state.respondendo=null; openDeal(state.currentDeal); }
   else if(a==='coment-editar'){ openEditarComent(el.dataset.id, el.dataset.texto||''); }
@@ -1504,6 +1557,54 @@ function openDriveModal(cur){
     +'<input id="drvUrl" class="input" placeholder="https://drive.google.com/…" value="'+esc(cur||'')+'" style="margin-bottom:6px">'
     +'<div id="drvErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
     +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="drive-save">'+icon('check',15)+'Salvar</button></div></div>');
+}
+// ── Campos personalizados + Proposta (pedido Marcelo) ────────────────────────
+// Card "Informações do negócio": selects por tipo, salvos pela ação `campos`.
+function camposCardHTML(d){
+  const c=d.campos||{}; const ehVenda=d.tipo==='Venda';
+  const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado');   // encerrado = leitura (o servidor recusaria o Salvar)
+  const sel=(id,cur,opts)=>'<select id="'+id+'" class="input nsh"'+(enc?' disabled':'')+' style="width:100%">'+opts.map(o=>'<option value="'+o[0]+'"'+(cur===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+  const SN=[['','Selecione…'],['sim','Sim'],['nao','Não']];
+  const CRV=[['','Selecione…'],['parcela1','1ª parcela'],['parcela2','2ª parcela'],['total','Recebido total']];
+  const campo=(rot,inner)=>'<div class="grow" style="min-width:170px"><div class="fz11 fw6 t700 up" style="margin-bottom:4px">'+rot+'</div>'+inner+'</div>';
+  const linha = ehVenda
+    ? campo('Possui parceria?', sel('cpParceria', c.parceria||'', SN)) + campo('Comissão recebida', sel('cpComRec', c.comissaoRecebida||'', CRV))
+    : campo('Possui administração?', sel('cpAdm', c.administracao||'', SN)) + campo('Possui parceria?', sel('cpParceria', c.parceria||'', SN)) + campo('Comissão recebida?', sel('cpComRec', c.comissaoRecebida||'', SN));
+  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Informações do negócio'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="campos-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+linha+'</div></div>';
+}
+// Card "Proposta": inputs por tipo, salvos pela ação `proposta` (texto livre).
+function propostaCardHTML(d){
+  const p=d.proposta||{}; const ehVenda=d.tipo==='Venda';
+  const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado');   // encerrado = leitura (o servidor recusaria o Salvar)
+  const inp=(id,val,ph)=>'<input id="'+id+'" class="input nsh" value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" maxlength="60"'+(enc?' disabled':'')+' style="width:100%">';
+  const dt=(id,val)=>inp(id,val,'dd/mm/aaaa');
+  const campo=(rot,inner)=>'<div class="grow" style="min-width:160px;max-width:240px"><div class="fz11 fw6 t700 up" style="margin-bottom:4px">'+rot+'</div>'+inner+'</div>';
+  const corpo = ehVenda
+    ? campo('Valor do sinal (R$)', inp('ppSinal', p.sinal, 'Ex.: 50.000'))
+      + campo('Sinal pago em', dt('ppSinalData', p.sinalData))
+      + campo('Parcela A (R$)', inp('ppParcelaA', p.parcelaA, 'Ex.: 100.000'))
+      + campo('Parcela A paga em', dt('ppParcelaAData', p.parcelaAData))
+      + campo('Parcela B (R$)', inp('ppParcelaB', p.parcelaB, 'Ex.: 100.000'))
+      + campo('Parcela B paga em', dt('ppParcelaBData', p.parcelaBData))
+      + campo('Possui FGTS?', '<select id="ppFgts" class="input nsh"'+(enc?' disabled':'')+' style="width:100%"><option value=""'+(!p.fgts?' selected':'')+'>Selecione…</option><option value="sim"'+(p.fgts==='sim'?' selected':'')+'>Sim</option><option value="nao"'+(p.fgts==='nao'?' selected':'')+'>Não</option></select>')
+      + campo('Valor do FGTS (R$)', inp('ppFgtsValor', p.fgtsValor, 'Se sim'))
+      + campo('Financiamento (R$)', inp('ppFinanciamento', p.financiamento, 'Ex.: 350.000'))
+    : campo('Início do contrato', dt('ppInicio', p.inicio))
+      + campo('Valor acordado (R$)', inp('ppValorAcordado', p.valorAcordado, 'Ex.: 3.200'))
+      + campo('Prazo do contrato', inp('ppPrazo', p.prazo, 'Ex.: 30 meses'))
+      + campo('Taxa de administração (%)', inp('ppTaxaAdm', p.taxaAdm, 'Padrão 8'));
+  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Proposta'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="proposta-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+corpo+'</div>'+(d.tipo!=='Venda'&&!enc?'<div class="fz11 t500" style="margin-top:10px">Taxa de administração padrão 8% — edite se for negociada.</div>':'')+'</div>';
+}
+// Modal pra editar o % de comissão do negócio (ação `comissao`). Venda: padrão 6%,
+// parceria 3%, negociadas 4/5%. Locação: padrão 100%.
+function openComissaoModal(){
+  const d=DEALS.find(x=>x.id===state.currentDeal)||(DEALS_DOCS||[]).find(x=>x.id===state.currentDeal); if(!d) return;
+  openModal('<div style="padding:20px;max-width:380px"><div class="fz15 fw7 t900" style="margin-bottom:6px">Comissão do negócio</div><div class="fz12 t500" style="margin-bottom:12px">'+(d.tipo==='Venda'?'Padrão 6% — parceria cai pra 3%; negociadas podem ser 4 ou 5%.':'Locação: padrão 100% do valor do aluguel.')+' Digite 0 pra voltar ao padrão.</div>'
+    +'<div class="fz11 fw6 t700 up" style="margin-bottom:4px">Percentual (%)</div>'
+    +'<input id="comPctInp" class="input" inputmode="decimal" maxlength="6" style="margin-bottom:4px">'
+    +'<div id="comPctErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
+    +'<div class="fx g2" style="margin-top:10px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="comissao-salvar">'+icon('check',15)+'Salvar</button></div></div>');
+  const t=document.getElementById('comPctInp'); if(t){ t.value=String(d.comPct||''); t.focus(); t.select(); }
 }
 // Modal pra editar a origem do cliente (ação `origem`). O texto é setado via JS.
 function openOrigemModal(cur){
@@ -1564,8 +1665,9 @@ async function vincularProprietario(imovelId, fichaId, tipo){
   try{
     const r=await fnVincularProp({ imovelId, fichaId, tipo });
     closeModal(); toast('✅ Proprietário vinculado'+((r.data&&r.data.nome)?': '+r.data.nome:'')+'.','check','var(--success)');
-    // recarrega o imóvel no cache (o onSnapshot de imóveis já atualiza; força um reload leve)
-    if(typeof carregarImoveis==='function'){ try{ await carregarImoveis(); }catch(_e){} }
+    // recarrega os caches na hora (sem depender do broadcast) — reabrir o modal
+    // "Proprietário" logo em seguida já mostra o vínculo novo
+    try{ await carregarDados(); if(RENDERERS[state.view] && !state._viewingDeal){ RENDERERS[state.view]($('#root')); refreshIcons(); } }catch(_e){}
   }catch(e){ if(btn){ btn.disabled=false; btn.innerHTML=icon('link',13)+'Vincular'; refreshIcons(); } toast(e.message||'Erro ao vincular','alert-triangle','var(--danger)'); }
 }
 // Menu "+ Novo" do corretor — abre os atalhos (que já existem como ações).
@@ -1679,8 +1781,8 @@ const FICHA_HOST = _fichaStaging ? 'https://remax-smart-hub-staging.web.app' : '
 const FICHAS_CORRETOR = [
   ['ficha-locador.html','Locador','house','info'],
   ['ficha-vendedor.html','Vendedor','key-round','success'],
-  ['ficha-pf.html','Pessoa Física','user','ai'],
-  ['ficha-pj.html','Pessoa Jurídica','building-2','brand'],
+  ['ficha-pf.html','Cliente PF','user','ai'],
+  ['ficha-pj.html','Cliente PJ','building-2','brand'],
   ['ficha-locacao-fiador.html','Locação c/ Fiador','shield','warning'],
   ['ficha-proposta.html','Proposta','file-signature','danger'],
 ];
@@ -2071,7 +2173,9 @@ handleAction = function(a, el){
   if(a==='prop-vincular'){ openVincularProp(el.dataset.imovel, el.dataset.fin||'locacao'); return; }
   if(a==='prop-vincular-do'){ vincularProprietario(el.dataset.imovel, el.dataset.ficha, el.dataset.tipo); return; }
   if(a==='neg-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o negócio '+(el.dataset.codigo||'')+'?\n\nEsta ação é PERMANENTE e não pode ser desfeita. O imóvel volta a Disponível.')) return; const id=state.currentDeal; fnNegExcluir({negocioId:id}).then(()=>{ [DEALS, DEALS_DOCS].forEach(arr=>{ if(Array.isArray(arr)){ const i=arr.findIndex(x=>x&&x.id===id); if(i>=0) arr.splice(i,1); } }); try{ recalcKPI(); }catch(_e){} state._viewingDeal=false; toast('Negócio excluído','trash-2','var(--danger)'); navigate('negocios'); }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
-  if(a==='imovel-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o imóvel "'+(el.dataset.rua||'')+'"?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return; const iid=el.dataset.imovel; fnImovelExcluir({imovelId:iid}).then(()=>{ const idx=PROPERTIES.findIndex(p=>p&&p.id===iid); if(idx>=0) PROPERTIES.splice(idx,1); closeDrawer(); toast('Imóvel excluído','trash-2','var(--danger)'); if(RENDERERS[state.view]){ RENDERERS[state.view]($('#root')); refreshIcons(); } }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
+  if(a==='imovel-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o imóvel "'+(el.dataset.rua||'')+'"?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return; const iid=el.dataset.imovel; fnImovelExcluir({imovelId:iid}).then(()=>{ [PROPERTIES, PROPERTIES_ALL].forEach(arr=>{ if(Array.isArray(arr)){ const idx=arr.findIndex(p=>p&&p.id===iid); if(idx>=0) arr.splice(idx,1); } }); closeDrawer(); toast('Imóvel excluído','trash-2','var(--danger)'); if(RENDERERS[state.view]){ RENDERERS[state.view]($('#root')); refreshIcons(); } }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
+  if(a==='kmove-open'){ openKanbanMovePicker(el.dataset.deal); return; }
+  if(a==='kmove-to'){ closeModal(); kanbanMove(el.dataset.deal, el.dataset.col); return; }
   if(a==='kanban-gerenciar'){ openKanbanGerenciar(); return; }
   if(a==='col-add'){ _colCaptura(); (state._colEdit=state._colEdit||[]).push({id:_colGenId(), label:''}); renderKanbanGerenciar(); return; }
   if(a==='col-rm'){ _colCaptura(); state._colEdit.splice(+el.dataset.i,1); renderKanbanGerenciar(); return; }
@@ -2080,6 +2184,10 @@ handleAction = function(a, el){
   if(a==='col-salvar'){ salvarKanbanColunas(); return; }
   if(a==='ir-comentarios'){ state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const el=$('#bkDealTabs'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60); return; }
   if(a==='drive-sync-real'){ syncNegocioDrive(); return; }
+  if(a==='campos-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value:undefined;}; const campos={}; if($('#cpAdm')) campos.administracao=v('cpAdm'); if($('#cpParceria')) campos.parceria=v('cpParceria'); if($('#cpComRec')) campos.comissaoRecebida=v('cpComRec'); el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'campos', campos}, 'Informações salvas').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
+  if(a==='proposta-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value.trim():undefined;}; const proposta={}; const map={ppInicio:'inicio',ppValorAcordado:'valorAcordado',ppPrazo:'prazo',ppTaxaAdm:'taxaAdm',ppSinal:'sinal',ppSinalData:'sinalData',ppParcelaA:'parcelaA',ppParcelaAData:'parcelaAData',ppParcelaB:'parcelaB',ppParcelaBData:'parcelaBData',ppFgts:'fgts',ppFgtsValor:'fgtsValor',ppFinanciamento:'financiamento'}; Object.entries(map).forEach(([id,k])=>{ const val=v(id); if(val!==undefined) proposta[k]=val; }); el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'proposta', proposta}, 'Proposta salva').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
+  if(a==='comissao-edit'){ openComissaoModal(); return; }
+  if(a==='comissao-salvar'){ const raw=(($('#comPctInp')||{}).value||'').replace(',','.'); const pct=parseFloat(raw); if(!isFinite(pct)||pct<0||pct>100){ const err=$('#comPctErr'); if(err) err.textContent='Digite um percentual entre 0 e 100 (0 volta ao padrão).'; return; } closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'comissao', pct}, pct===0?'Comissão restaurada ao padrão':'Comissão atualizada'); return; }
   if(a==='origem-edit'){ openOrigemModal(el.dataset.origem||''); return; }
   if(a==='origem-salvar'){ const v=(($('#origemInp')||{}).value||'').trim(); closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'origem', origem:v}, 'Origem salva'); return; }
   // Assistente IA do negócio (Gemini): sugere próxima ação + rascunho de mensagem.

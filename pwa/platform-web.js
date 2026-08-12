@@ -299,10 +299,11 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fechar(); });
     // Escolher uma categoria fecha a gaveta (é o que se espera no celular).
     // Cabeçalho de grupo (.nav-group) só abre/fecha a sanfona → NÃO fecha a gaveta.
-    // Item solto (.nav-item) ou filho de grupo (.nav-subitem[data-cat]) navegam → fecham.
+    // Item solto (.nav-item) ou qualquer sub-item que navega (.nav-subitem — tanto
+    // categoria `data-cat` quanto view do Broker `data-locview`) → fecha.
     document.getElementById('navCategorias')?.addEventListener('click', (e) => {
       if (e.target.closest('.nav-group')) return;
-      if (e.target.closest('.nav-item') || e.target.closest('.nav-subitem[data-cat]')) fechar();
+      if (e.target.closest('.nav-item') || e.target.closest('.nav-subitem')) fechar();
     });
   }
 

@@ -67,7 +67,10 @@
   .hub-layout.agenda-oculta,
   .hub-layout.loc-embed {
     grid-template-columns: 1fr;
-    height: calc(100dvh - 52px);
+    /* −52px = topbar; −safe-area = o entalhe do iPhone engorda a topbar (padding-top),
+       e sem descontá-lo o grid passava da tela e, com body overflow:hidden, o rodapé
+       (último card/botão) ficava cortado. Sem notch o env() é 0 → volta a 52px. */
+    height: calc(100dvh - 52px - env(safe-area-inset-top));
   }
 
   /* ── Sidebar vira gaveta deslizante ────────────────────────────────────
@@ -98,6 +101,9 @@
      (family `inherit` no shorthand), então o item cai nos ~13px padrão do botão —
      e é assim que ele aparece no PC. Forçar outro tamanho aqui desalinharia os dois. */
   .nav-item { padding: 9px 10px; }
+  /* Sub-itens da sanfona (categorias e views do Broker) também precisam de alvo de
+     dedo — sem isso ficavam ~30px na gaveta (só o .nav-item tinha ganho respiro). */
+  .nav-subitem { padding-top: 9px; padding-bottom: 9px; }
   /* "Configurações" volta pro rodapé da coluna (no modo tira ia pra direita) */
   .nav-item-fim {
     margin-top: auto; margin-left: 0;
@@ -242,7 +248,7 @@
   /* ── Tabelas que não têm contêiner rolável próprio ─────────────────────
      .users-table (Chamados de Suporte, Fotografia) tem ~700px e estourava a
      PÁGINA inteira — a tela ganhava rolagem lateral. Rola dentro da caixa dela. */
-  #listaChamadosHub, .foto-gerenciar, .admin-table, .loc-tabela-wrap { overflow-x: auto; }
+  #listaChamadosHub, .foto-gerenciar, .admin-table { overflow-x: auto; }
   .users-table { min-width: 520px; }                 /* abaixo disso as colunas viram papa */
 
   /* O padding de 24px é inline no index.html (aba Suporte) — só !important vence. */
@@ -254,7 +260,7 @@
   .admin-layout {
     grid-template-columns: 1fr;
     gap: 12px; padding: 12px 12px 40px;
-    height: calc(100dvh - 52px);
+    height: calc(100dvh - 52px - env(safe-area-inset-top));   /* idem: desconta o entalhe */
   }
   .admin-nav {
     position: static; max-height: none;

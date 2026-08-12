@@ -188,6 +188,11 @@
 #bkRoot .drawer.show{transform:none}
 #bkRoot .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-46%) scale(.98);opacity:0;transition:all .22s cubic-bezier(.2,0,0,1);z-index:70;width:min(640px,94vw);max-height:92vh;overflow:auto;background:#fff;border-radius:16px;box-shadow:0 30px 60px rgba(0,0,0,.25)}
 #bkRoot .modal.show{transform:translate(-50%,-50%) scale(1);opacity:1}
+/* Embutido no Hub, o modal é position:absolute dentro da área central (que já mede
+   100dvh−topbar com overflow:hidden). 92vh é da VIEWPORT inteira → estourava o
+   container no celular e o topo/rodapé do modal (título/✕ e botões) ficavam cortados
+   sem rolar. 86% = do próprio container; o overflow:auto já rola o conteúdo. */
+#bkRoot.bk-embedded .modal{max-height:86%}
 #bkRoot .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;transition:all .25s;z-index:90}
 #bkRoot .toast.show{transform:translateX(-50%);opacity:1}
 #bkRoot .mobilenav{position:fixed;inset-y:0;top:0;left:0;height:100%;width:248px;background:var(--raised);border-right:1px solid var(--bd);z-index:80;transform:translateX(-100%);transition:transform .3s cubic-bezier(.2,0,0,1);display:flex;flex-direction:column;box-shadow:16px 0 40px rgba(0,0,0,.3)}

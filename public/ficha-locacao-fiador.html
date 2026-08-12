@@ -71,7 +71,7 @@ FE.iniciarFicha({
       const tit=(nLoc>1?(i+'º Locador'):'Locador')+(nome?' · '+nome:'');
       arr.push({heading:'👤 Documentos do '+tit});
       arr.push({key:'p'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',            badge:'obrig'});
-      arr.push({key:'p'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço',   badge:'obrig'});
+      arr.push({key:'p'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço',   badge:'opc'});
       arr.push({key:'p'+i+'_renda',    icon:'💰', label:'Comp. de renda (90 dias)',  badge:'opc', nta:true});
       arr.push({key:'p'+i+'_civil',    icon:'📋', label:'Estado civil',              badge:'opc', ni:true, nta:true});
     }
@@ -80,7 +80,7 @@ FE.iniciarFicha({
       const tit=(st.numFiador>1?(ordF[i-1]+' Fiador'):'Fiador')+(nome?' · '+nome:'');
       arr.push({heading:'👤 Documentos do '+tit});
       arr.push({key:'f'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',          badge:'obrig'});
-      arr.push({key:'f'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço', badge:'obrig'});
+      arr.push({key:'f'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço', badge:'opc'});
       arr.push({key:'f'+i+'_civil',    icon:'📋', label:'Estado civil',            badge:'opc', ni:true, nta:true});
     }
     arr.push({heading:'🏠 Documentos do imóvel dado em garantia'});

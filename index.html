@@ -5,7 +5,7 @@
     <title>REMAX Smart Hub</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="broker.css">
-    <script>/* aplica o tema salvo antes de pintar, pra não piscar */try{if(localStorage.getItem('hub_tema')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
+    <script>/* aplica o tema salvo antes de pintar, pra não piscar — CLARO é o padrão; escuro só se a pessoa escolheu */try{if(localStorage.getItem('hub_tema')!=='dark')document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}</script>
   </head>
   <body class="hub-body">
     <header class="topbar">
