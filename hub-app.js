@@ -334,7 +334,7 @@ const CATEGORIAS = [
   // branch cat.locacoes.
   { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true },
   { id: 'recrutamento', nome: 'Recrutamento', icone: ICN.recrutamento, recrutamento: true, soGestor: true },
-  { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true, webOculto: true },
+  { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },   // aparece no celular (pedido 2026-08-13): agendamento + Drive são iframes/links, funcionam na web
   { id: 'reuniao',      nome: 'Reuniões',        icone: ICN.reuniao, reuniao: true, webOculto: true },
   { id: 'sala_reuniao', nome: 'Reserva de Sala', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
   { id: 'ia',           nome: 'SMART IA',        icone: ICN.ia, ia: true, webOculto: true },
