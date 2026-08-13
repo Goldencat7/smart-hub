@@ -1382,7 +1382,12 @@ function propDrawer(id){
   // Só oferece o botão se o imóvel TEM corretor: o merge no backend exige ficha do mesmo
   // dono (anti-injeção) — sem dono conhecido a ficha viraria um card duplicado, não o
   // preenchimento deste. Imóvel legado sem dono usa o fluxo normal do Cadastro.
-  const propFichaBtns=(_semDono&&p.corretor)?'<div class="fz11 t500" style="margin-top:10px;margin-bottom:6px">Sem proprietário — envie a ficha pra ele preencher os dados:</div><div class="fx wrap g2">'+_fichasProp.map(f=>'<button class="btn btn-outline sm" data-action="prop-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div>':'';
+  // Vincular ficha JÁ cadastrada (não depende de corretor — a ficha traz o dono dela);
+  // Copiar ficha nova só com corretor (o merge no backend exige ficha do mesmo dono).
+  const _finBtn=_fr||'locacao';
+  const _vincBtn=_semDono?'<button class="btn btn-outline sm" data-action="prop-vincular" data-imovel="'+esc(p.id)+'" data-fin="'+esc(_finBtn)+'" style="width:100%;margin-bottom:8px">'+icon('link',14)+'Vincular uma ficha já existente</button>':'';
+  const _copyBtns=(_semDono&&p.corretor)?'<div class="fx wrap g2">'+_fichasProp.map(f=>'<button class="btn btn-outline sm" data-action="prop-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div>':'';
+  const propFichaBtns=_semDono?('<div class="fz11 t500" style="margin-top:10px;margin-bottom:6px">Sem proprietário — vincule uma ficha já cadastrada'+(p.corretor?' ou envie uma nova pra ele preencher':'')+':</div>'+_vincBtn+_copyBtns):'';
   // "Qualidade do cadastro" (estilo iList): nota calculada + o que falta preencher.
   const _q=imQualidade(p); const _falta=_q.falta; const _pct=_q.pct; const _corPct=qualCor(_pct);
   const _feedHint=(p.raw&&p.raw.origem==='feed'&&_falta.length)?'<div class="fz11 t400" style="margin-top:8px">Esses itens se corrigem no anúncio do portal (sincroniza no dia seguinte).</div>':'';
