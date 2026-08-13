@@ -205,10 +205,14 @@ function criarJanelaPrincipal() {
     if (/^https:\/\/firebasestorage\.googleapis\.com\//i.test(url)) {
       shell.openExternal(url);
     } else if (/^https?:\/\//i.test(url)) {
+      // Sessão ISOLADA e efêmera (não a default do Hub) + trava de permissões: um link
+      // de terceiro (banner/aviso) não ganha câmera/mic/GPS/clipboard sem prompt, nem
+      // divide sessão/cookies com o Hub. Sem preload = sem ponte hubApi exposta.
       const w = new BrowserWindow({
         width: 1200, height: 800, autoHideMenuBar: true,
-        webPreferences: { devTools: DEVTOOLS_HABILITADO }
+        webPreferences: { partition: 'externo-links', devTools: DEVTOOLS_HABILITADO }
       });
+      travarPermissoesDeTerceiros(w.webContents.session);
       w.loadURL(url).catch(() => {});
     }
     return { action: 'deny' };

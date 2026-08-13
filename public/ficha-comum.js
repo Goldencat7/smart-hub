@@ -239,7 +239,7 @@ export function atualizarProgresso(){
   const campos=document.querySelectorAll('[data-key]');
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(pendentes.has(k)||naoExiste.has(k)||(valores[k]&&(''+valores[k]).trim())) ok++; });
-  _docs().forEach(d=>{ if(!d.key) return; total++; if(pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });
+  _docs().forEach(d=>{ if(!d.key) return; total++; if(d.badge==='opc'||pendentes.has(d.key)||naoExiste.has(d.key)||arquivos[d.key]||docsExistentes[d.key]) ok++; });  // doc opcional não trava o 100%
   const pct=total?Math.round(ok/total*100):0;
   const bar=document.getElementById('progressFill'); if(bar) bar.style.width=pct+'%';
   if(CFG.aoAtualizar) CFG.aoAtualizar();
@@ -320,8 +320,9 @@ function wireEventos(){
 }
 
 // data-civil select já tratado por /civil$/. Para selects normais (im_tipo etc.) o input já cobre.
-function aplicarValores(dados){
+function aplicarValores(dados, pend){
   Object.entries(dados||{}).forEach(([k,val])=>{ valores[k]=val; if(val==='Não existe') naoExiste.add(k); });
+  (pend||[]).forEach(k=>pendentes.add(k));   // restaura "não tenho agora" salvos — senão somem no re-save da edição
 }
 
 async function enviar(e){
@@ -342,13 +343,14 @@ async function enviar(e){
   // e sem "não tenho agora": confirma com o cliente e registra como
   // pendência — antes passavam em silêncio e a ficha chegava "sem
   // pendências" faltando tudo.
+  const _campoInp = f => f.querySelector('[data-key]') || f.querySelector('[data-radio]');   // radio (data-radio) também conta como campo obrigatório
+  const _campoK = inp => inp.dataset.key || inp.dataset.radio;
   const camposFaltando = [...document.querySelectorAll('#formFicha .field')].filter(f => {
     if(!f.querySelector('.badge-obrig') || !f.offsetParent) return false; // só visíveis
-    const inp = f.querySelector('[data-key]'); if(!inp) return false;
-    const k = inp.dataset.key;
+    const inp = _campoInp(f); if(!inp) return false;
+    const k = _campoK(inp);
     return !(valores[k] && (''+valores[k]).trim()) && !pendentes.has(k) && !naoExiste.has(k);
-  }).map(f => ({ k: f.querySelector('[data-key]').dataset.key,
-                 label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || f.querySelector('[data-key]').dataset.key }));
+  }).map(f => { const inp=_campoInp(f); const k=_campoK(inp); return { k, label: (f.querySelector('label')?.childNodes[0]?.textContent || '').trim() || k }; });
   const docsFaltando = _docs().filter(d => d.key && d.badge==='obrig'
     && !arquivos[d.key] && !docsExistentes[d.key] && !pendentes.has(d.key) && !naoExiste.has(d.key));
   if(camposFaltando.length || docsFaltando.length){
@@ -377,7 +379,7 @@ async function enviar(e){
     for(const k of docsKeys){
       const _p=`fichas/${CFG.tipo}/${fichaId}/${k}`;
       try{ await uploadBytes(ref(storage,_p),arquivos[k],{contentType:arquivos[k].type||undefined,contentDisposition:'inline; filename="'+k+'.'+_extDoc(arquivos[k])+'"'}); caminhosDocs[k]=_p; }
-      catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); falhasUpload.push(((CFG.docs||[]).find(d=>d.key===k)||{}).label||k); }
+      catch(err){ console.warn('Upload falhou:',k,err.message); pendentes.add(k); falhasUpload.push((_docs().find(d=>d.key===k)||{}).label||k); }  // _docs(): CFG.docs pode ser FUNÇÃO (pj/fiador) — .find direto travava o envio
       fill.style.width=Math.round((++n/docsKeys.length)*100)+'%';
     }
   }
@@ -442,12 +444,12 @@ export async function iniciarFicha(cfg){
     document.getElementById('barraCorretor').style.display = origemHub ? 'none':'flex';
     const b=document.getElementById('badgeModo'); b.style.display='inline'; b.textContent='Revisão';
     document.getElementById('introTexto').style.display='none'; document.getElementById('btnSubmit').style.display='none';
-    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); aplicarValores(f.dados); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender();
-      if((f.pendentes||[]).length && !CFG.semResumoPendencias){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={}; (CFG.docs||[]).forEach(d=>{_nomesPend[d.key]=d.label;}); document.querySelectorAll('[data-campo]').forEach(cb=>{const lbl=cb.closest('.field-header')?.querySelector('label'); if(lbl){const t=lbl.cloneNode(true); t.querySelectorAll('span').forEach(s=>s.remove()); _nomesPend[cb.dataset.campo]=t.textContent.trim();}}); document.querySelectorAll('[data-doc-campo]').forEach(cb=>{if(!_nomesPend[cb.dataset.docCampo]){const lbl=cb.closest('.doc-wrapper')?.querySelector('.doc-label'); if(lbl){const t=lbl.cloneNode(true); t.querySelectorAll('span').forEach(s=>s.remove()); _nomesPend[cb.dataset.docCampo]=t.textContent.trim();}}}); document.getElementById('listaPendencias').innerHTML=f.pendentes.map(p=>`<li>${escHtml(_nomesPend[p]||p)}</li>`).join(''); } }catch(e){ mostrarErro('Erro: '+e.message); }
+    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); aplicarValores(f.dados, f.pendentes); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender();
+      if((f.pendentes||[]).length && !CFG.semResumoPendencias){ document.getElementById('resumoPendencias').style.display='block'; const _nomesPend={}; _docs().forEach(d=>{_nomesPend[d.key]=d.label;}); document.querySelectorAll('[data-campo]').forEach(cb=>{const lbl=cb.closest('.field-header')?.querySelector('label'); if(lbl){const t=lbl.cloneNode(true); t.querySelectorAll('span').forEach(s=>s.remove()); _nomesPend[cb.dataset.campo]=t.textContent.trim();}}); document.querySelectorAll('[data-doc-campo]').forEach(cb=>{if(!_nomesPend[cb.dataset.docCampo]){const lbl=cb.closest('.doc-wrapper')?.querySelector('.doc-label'); if(lbl){const t=lbl.cloneNode(true); t.querySelectorAll('span').forEach(s=>s.remove()); _nomesPend[cb.dataset.docCampo]=t.textContent.trim();}}}); document.getElementById('listaPendencias').innerHTML=f.pendentes.map(p=>`<li>${escHtml(_nomesPend[p]||p)}</li>`).join(''); } }catch(e){ mostrarErro('Erro: '+e.message); }
   } else if(CFG._modo==='edicao' && CFG._idFicha){
     const b=document.getElementById('badgeModo'); b.style.display='inline'; b.textContent='Edição';
     document.getElementById('btnSubmit').textContent='Salvar alterações';
-    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); if(!origemHub&&f.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(f.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${escHtml(f.observacaoCorretor)}</p>`; } aplicarValores(f.dados); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender(); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
+    try{ const snap=await getDoc(doc(db,'fichas',CFG._idFicha)); if(!snap.exists()){ mostrarErro('Ficha não encontrada.'); return; } const f=snap.data(); if(!origemHub&&f.status!=='aguardando_edicao_cliente'){ mostrarErro('Este link não está mais ativo. Peça um novo link ao seu corretor.'); return; } if(f.observacaoCorretor){ document.getElementById('introTexto').innerHTML=`<p>📝 <strong>Observação do corretor:</strong> ${escHtml(f.observacaoCorretor)}</p>`; } aplicarValores(f.dados, f.pendentes); Object.entries(f.documentos||{}).forEach(([k,url])=>{ docsExistentes[k]=url; }); if(cfg.aoCarregar) cfg.aoCarregar(f); rerender(); }catch(e){ mostrarErro('Erro ao carregar: '+e.message); }
   } else {
     params.forEach((val, key) => { if(key.startsWith('pre_')) valores[key.slice(4)] = val; });
     // Ficha aberta pelo imóvel (&imovelId=): já traz o bloco "Imóvel de interesse"

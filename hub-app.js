@@ -1630,7 +1630,9 @@ async function carregarHome() {
     });
   });
 }
+let perfilOk = false;   // getMeuPerfil carregou? Bloqueia salvar por cima de campos vazios se falhou.
 async function carregarPerfil() {
+  perfilOk = false;
   fotoPendente = null;
   cfgNome.value = '';
   cfgEmail.value = '';
@@ -1648,8 +1650,10 @@ async function carregarPerfil() {
     if (cfgCreci) cfgCreci.value = r.data.creci || '';
     if (cfgCpf) cfgCpf.value = r.data.cpf || '';
     setFoto(r.data.photo || '');
+    perfilOk = true;
   } catch (e) {
     console.warn('Perfil:', e);
+    mostrarMsgCfg('Não foi possível carregar seu perfil agora. Recarregue antes de salvar.', false);
   }
 }
 
@@ -1729,6 +1733,9 @@ cfgFileInput.addEventListener('change', () => {
 
 cfgSalvar.addEventListener('click', async () => {
   cfgSalvar.disabled = true;
+  // Se o perfil não carregou (cold start/rede), NÃO salvar — senão gravaria nome/telefone/
+  // CRECI/CPF vazios por cima dos dados reais.
+  if (!perfilOk) { mostrarMsgCfg('Seu perfil não carregou — recarregue a página antes de salvar.', false); cfgSalvar.disabled = false; return; }
   const payload = { displayName: cfgNome.value, telefone: cfgWhatsapp.value };
   if (cfgCreci) payload.creci = cfgCreci.value;
   if (cfgCpf) payload.cpf = cfgCpf.value;
@@ -4611,7 +4618,7 @@ function wireDetalheImovel(cont, imovelId, imovelData) {
   });
   const fichasListaEl = cont.querySelector('.fichas-imovel-lista');
   if (fichasListaEl) {
-    const TIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', fianca:'Fiança', locador:'Locador', locacao_fiador:'Locação c/ Fiador' };
+    const TIPO_LABEL = { pf:'Cliente PF', pj:'Cliente PJ', fianca:'Fiança', locador:'Locador', locacao_fiador:'Locação c/ Fiador' };
     const STATUS_LABEL = { aguardando_corretor:'Aguardando revisão', aguardando_edicao_cliente:'Aguardando cliente', enviado_admin:'Enviado ao admin', correcao_solicitada:'Correção solicitada', finalizado:'Finalizado' };
     const STATUS_COR = { aguardando_corretor:'#b45309', aguardando_edicao_cliente:'#6366f1', enviado_admin:'#16a34a', correcao_solicitada:'#DC1C2E', finalizado:'#6b7280' };
     locListarFichasImovel({ imovelId }).then(res => {
@@ -7028,16 +7035,16 @@ const FICHAS_CONFIG = [
   },
   {
     key: 'pf',
-    nome: 'Ficha Cadastral (Pessoa Física)',
-    desc: 'Cadastro de pessoa física',
+    nome: 'Cliente PF',
+    desc: 'Cadastro de cliente pessoa física',
     arquivo: 'ficha-pf.html',
     grupo: 'locacao',
     geraLink: true, temAnalise: true, temFirebase: true
   },
   {
     key: 'pj',
-    nome: 'Ficha Cadastral (Pessoa Jurídica)',
-    desc: 'Cadastro de pessoa jurídica',
+    nome: 'Cliente PJ',
+    desc: 'Cadastro de cliente pessoa jurídica',
     arquivo: 'ficha-pj.html',
     grupo: 'locacao',
     geraLink: true, temAnalise: true, temFirebase: true
@@ -7081,7 +7088,7 @@ const FICHAS_CONFIG = [
 // pilha de sanfonas por tipo. Corretor vê as suas; admin ("Broker") vê todas,
 // com coluna e filtro de corretor. Tudo client-side sobre os callables que já
 // existiam — busca as 7 fichas (locador + 6 tipos) em paralelo e filtra local.
-const CAD_TIPO_LABEL = { locador:'Locador', pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação com Fiador', vendedor:'Vendedor', proposta:'Proposta', fianca:'Fiança' };
+const CAD_TIPO_LABEL = { locador:'Locador', pf:'Cliente PF', pj:'Cliente PJ', locacao_fiador:'Locação com Fiador', vendedor:'Vendedor', proposta:'Proposta', fianca:'Fiança' };
 const CAD_TIPO_ICO   = { locador:'👤', pf:'🧍', pj:'🏢', locacao_fiador:'🤝', vendedor:'🏷️', proposta:'📄', fianca:'🛡️' };
 const CAD_CORES = ['#0052CC','#C8001A','#4ade80','#8b7cf6','#fbbf24','#0ea5e9','#ec4899'];
 // Ícones dos KPIs (SVG branco, badge com cor sólida). Feather-style.

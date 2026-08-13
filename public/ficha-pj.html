@@ -64,7 +64,7 @@ FE.iniciarFicha({
       arr.push({heading:'👤 Documentos do '+tit});
       arr.push({key:'s'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',              badge:'obrig'});
       arr.push({key:'s'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço',     badge:'opc'});
-      arr.push({key:'s'+i+'_civil',    icon:'📋', label:'Comprovante de estado civil', badge:'opc', ni:true, nta:true});
+      arr.push({key:'s'+i+'_civildoc', icon:'📋', label:'Comprovante de estado civil', badge:'opc', ni:true, nta:true});  // _civildoc: não colidir com o campo s{i}_civil (Estado civil)
     }
     return arr;
   },

@@ -72,8 +72,8 @@ FE.iniciarFicha({
       arr.push({heading:'👤 Documentos do '+tit});
       arr.push({key:'p'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',            badge:'obrig'});
       arr.push({key:'p'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço',   badge:'opc'});
-      arr.push({key:'p'+i+'_renda',    icon:'💰', label:'Comp. de renda (90 dias)',  badge:'opc', nta:true});
-      arr.push({key:'p'+i+'_civil',    icon:'📋', label:'Estado civil',              badge:'opc', ni:true, nta:true});
+      arr.push({key:'p'+i+'_rendadoc', icon:'💰', label:'Comp. de renda (90 dias)',  badge:'opc', nta:true});          // _rendadoc: não colidir com o campo p{i}_renda
+      arr.push({key:'p'+i+'_civildoc', icon:'📋', label:'Estado civil',              badge:'opc', ni:true, nta:true});  // _civildoc: não colidir com o campo p{i}_civil
     }
     for(let i=1;i<=st.numFiador;i++){
       const nome=(FE.v('f'+i+'_nome')||'').trim();
@@ -81,7 +81,7 @@ FE.iniciarFicha({
       arr.push({heading:'👤 Documentos do '+tit});
       arr.push({key:'f'+i+'_rgcpf',    icon:'🪪', label:'RG, CPF ou CNH',          badge:'obrig'});
       arr.push({key:'f'+i+'_endereco', icon:'🏠', label:'Comprovante de endereço', badge:'opc'});
-      arr.push({key:'f'+i+'_civil',    icon:'📋', label:'Estado civil',            badge:'opc', ni:true, nta:true});
+      arr.push({key:'f'+i+'_civildoc', icon:'📋', label:'Estado civil',            badge:'opc', ni:true, nta:true});  // _civildoc: não colidir com o campo f{i}_civil
     }
     arr.push({heading:'🏠 Documentos do imóvel dado em garantia'});
     arr.push({key:'g_iptu',     icon:'📄', label:'Nº contribuinte IPTU', badge:'opc', ni:true, nta:true});

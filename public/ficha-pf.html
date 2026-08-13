@@ -304,7 +304,7 @@ function atualizarProgresso(){
   let total=0, ok=0;
   campos.forEach(el=>{ total++; const k=el.dataset.key; if(isPend(k) || (valores[k]&&(''+valores[k]).trim())) ok++; });
   // documentos obrigatórios contam também
-  ['rgcpf','compEndereco','compRenda','compEstadoCivil'].concat(docsExtraList().filter(d=>d.key).map(d=>d.key)).forEach(k=>{ total++; if(isPend(k)||arquivos[k]||docsExistentes[k]) ok++; });
+  [{k:'rgcpf',op:false},{k:'compEndereco',op:true},{k:'compRenda',op:false},{k:'compEstadoCivil',op:true}].concat(docsExtraList().filter(d=>d.key).map(d=>({k:d.key,op:d.badge==='opc'}))).forEach(({k,op})=>{ total++; if(op||isPend(k)||arquivos[k]||docsExistentes[k]) ok++; });  // doc opcional não trava o 100%
   const pct = total? Math.round(ok/total*100):0;
   const bar = document.getElementById('progressFill'); if(bar) bar.style.width = pct+'%';
 }

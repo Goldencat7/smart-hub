@@ -637,6 +637,7 @@ function loc_montarImovel(dados) {
   const v = k => dados[k] || '';
   return {
     tipo: v('im_tipo'), referencia: v('im_ref'),
+    matricula: v('im_matricula'), cartorio: v('im_cartorio'),   // p/ o contrato de representação (venda)
     endereco: { cep: v('im_cep'), logradouro: v('im_endereco'), numero: v('im_numero'), complemento: v('im_complemento'), bairro: v('im_bairro'), cidade: v('im_cidade'), estado: v('im_estado') },
     condominio: v('im_condominio'), admCondominial: v('im_admcond'), admContato: v('im_admcontato'),
     iptu: v('im_iptu'), valorCondominio: v('im_valorcond'), contribuinteIptu: v('im_contribuinte'),
@@ -3737,7 +3738,8 @@ exports.gerarContratoVenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLI
   setF(im.classificacaoFiscal, imovel.contribuinteIptu);
   setF(im.valor, imovel.valorAnuncio || imovel.valorProposta);
   setF(im.observacoes, (imovel.administracao && imovel.administracao.observacoes) || '');
-  // matrícula/cartório: não capturamos hoje → ficam em branco
+  setF(im.matricula, imovel.matricula || '');
+  setF(im.cartorio, imovel.cartorio || '');
 
   setF(CONTRATO_CAMPOS.corretor.nome, corretor.nome);
   setF(CONTRATO_CAMPOS.corretor.creci, corretor.creci);
@@ -4921,7 +4923,10 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
   if (im.fichaId) fichaIds.push(im.fichaId);
   // Interessado do negócio: por negocioId (o índice envelhece com remoções — invariante 2026-07-28).
   const lista = Array.isArray(im.interessados) ? im.interessados : [];
-  const inter = lista.find(i => i && i.negocioId === ref.id) || lista[n.interessadoIndex] || null;
+  // SÓ por negocioId — o fallback por índice (n.interessadoIndex) envelhece com remoções
+  // e, em negócio cancelado (negocioId zerado no interessado), pegaria a PESSOA ERRADA,
+  // subindo docs (CPF/RG) de outro cliente pra esta pasta. Invariante _interessadoConfere.
+  const inter = lista.find(i => i && i.negocioId === ref.id) || null;
   if (inter && inter.fichaId && !fichaIds.includes(inter.fichaId)) fichaIds.push(inter.fichaId);
   for (const fid of fichaIds) {
     let fSnap = await db.collection('fichas').doc(fid).get(); let col = 'fichas';
@@ -4945,6 +4950,8 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
   let enviados = 0, jaExistiam = 0, falhas = 0, removidos = 0;
   const atuais = [];              // [{id, nome}] de tudo que DEVE estar na pasta agora
   const desejados = new Set();    // nomes desejados (p/ decidir o que remover)
+  const anteriores = (n.driveSync && Array.isArray(n.driveSync.arquivos)) ? n.driveSync.arquivos : [];
+  const antPorNome = new Map(anteriores.filter(a => a && a.id).map(a => [a.nome, a.id]));
   for (const it of itens) {
     const nomeArq = it.buf ? it.nomePdf : it.nome;
     desejados.add(nomeArq);
@@ -4955,13 +4962,17 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
                         : await _driveUpload(token, it.nome, pastaImovel, it.url);
       if (up && up.id) atuais.push({ id: up.id, nome: nomeArq });
       enviados++;
-    } catch (e) { falhas++; console.error('driveSyncNegocio upload', (e && e.message) || e); }
+    } catch (e) {
+      falhas++; console.error('driveSyncNegocio upload', (e && e.message) || e);
+      // Falha transitória num arquivo JÁ registrado antes: preserva o id, senão ele
+      // vira órfão não-gerenciável (o robô perderia o id pra removê-lo depois).
+      if (antPorNome.has(nomeArq)) atuais.push({ id: antPorNome.get(nomeArq), nome: nomeArq });
+    }
   }
   // 5) REMOÇÃO SEGURA: só os arquivos que o robô registrou numa sync ANTERIOR
   // (n.driveSync.arquivos) e que não estão mais no negócio. Nunca toca em arquivo
   // que a pessoa colocou na pasta manualmente (esses nunca entram em driveSync).
   // Vai pra LIXEIRA (trashed) — recuperável, não é exclusão definitiva.
-  const anteriores = (n.driveSync && Array.isArray(n.driveSync.arquivos)) ? n.driveSync.arquivos : [];
   for (const a of anteriores) {
     if (!a || !a.id || desejados.has(a.nome)) continue;
     try { await _driveApi(token, 'files/' + a.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); removidos++; }
@@ -6124,11 +6135,14 @@ exports.listarFichasTipo = onCall(async (req) => {
 exports.listarFichasInteressaveis = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const uid = auth.uid;
-  const isAdm = !!auth.token.admin;
+  // Gestor/administrativo VÊEM TODAS as fichas (regra de ouro) — o picker de interessado
+  // do negócio precisa achar a ficha de QUALQUER corretor. Antes checava só `admin`, então
+  // um gestor não-admin só via as próprias e as fichas dos outros "sumiam" no seletor.
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const TIPOS = ['pf', 'pj', 'locacao_fiador', 'proposta', 'fianca'];
   const col = db.collection('fichas');
   let docs;
-  if (isAdm) {
+  if (veTudo) {
     const snaps = await Promise.all(TIPOS.map(t => col.where('tipo', '==', t).limit(60).get()));
     docs = snaps.flatMap(s => s.docs);
   } else {
@@ -6168,13 +6182,13 @@ exports.listarFichasProprietario = onCall(async (req) => {
   if (querVend) {
     // vendedor: coleção `fichas`, tipo='vendedor'. Sem índice composto: veTudo filtra por tipo;
     // corretor filtra por corretorUid e checa o tipo em memória.
-    const snap = veTudo ? await db.collection('fichas').where('tipo', '==', 'vendedor').limit(100).get()
-                        : await db.collection('fichas').where('corretorUid', '==', auth.uid).limit(150).get();
+    const snap = veTudo ? await db.collection('fichas').where('tipo', '==', 'vendedor').limit(300).get()
+                        : await db.collection('fichas').where('corretorUid', '==', auth.uid).limit(500).get();  // corretor: filtra vendedor em memória — limite alto pra não perder as de venda entre muitas fichas
     for (const d of snap.docs) if (veTudo || d.data().tipo === 'vendedor') push(d, 'vendedor');
   }
   if (querLoc) {
-    const snap = veTudo ? await db.collection('fichas_locador').limit(100).get()
-                        : await db.collection('fichas_locador').where('corretorUid', '==', auth.uid).limit(100).get();
+    const snap = veTudo ? await db.collection('fichas_locador').limit(300).get()
+                        : await db.collection('fichas_locador').where('corretorUid', '==', auth.uid).limit(300).get();
     for (const d of snap.docs) push(d, 'locador');
   }
   return out.sort((a, b) => (b.criadoEm || '').localeCompare(a.criadoEm || ''));
@@ -6260,7 +6274,10 @@ exports.negocioExcluir = onCall(async (req) => {
       for (let i = 0; i < lista.length; i++) { if (lista[i] && lista[i].negocioId === negocioId) { lista[i] = { ...lista[i], status: 'aprovado', negocioId: null }; mudou = true; } }
       const up = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
       if (mudou) up.interessados = lista;
-      if (im.situacao === 'em_negociacao') up.situacao = 'disponivel';
+      // Excluir o negócio devolve o imóvel a Disponível — inclusive quando estava
+      // 'concluido' (Vendido/Alugado), limpando a tag final; senão o imóvel ficava
+      // "Vendido" sem negócio nenhum e sem caminho na UI pra limpar.
+      if (im.situacao && im.situacao !== 'disponivel') { up.situacao = 'disponivel'; up.tagFinal = admin.firestore.FieldValue.delete(); up.concluidoEm = admin.firestore.FieldValue.delete(); }
       tx.set(imRef, up, { merge: true });
     });
   }
@@ -7787,7 +7804,11 @@ function _recSerializar(id, d) {
 exports.recrutamentoWebhook = onRequest({ secrets: [RECRUTAMENTO_SECRET] }, async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).json({ ok: false });
-    if ((req.get('x-recrutamento-secret') || '') !== RECRUTAMENTO_SECRET.value()) return res.status(401).json({ ok: false });
+    // Secret vazio/não-configurado NÃO pode autorizar (senão '' !== '' liberaria geral);
+    // comparação timing-safe, igual ao botReceberAchados.
+    const segRec = req.get('x-recrutamento-secret') || '';
+    const espRec = RECRUTAMENTO_SECRET.value() || '';
+    if (!espRec || segRec.length !== espRec.length || !crypto.timingSafeEqual(Buffer.from(segRec), Buffer.from(espRec))) return res.status(401).json({ ok: false });
     const b = req.body || {};
     const nome = _txt(b.nome, 160);
     if (!nome) return res.status(400).json({ ok: false, erro: 'nome obrigatório' });

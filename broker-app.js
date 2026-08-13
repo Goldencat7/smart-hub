@@ -63,7 +63,7 @@ async function carregarKanbanCols(){ try{ const r=await fnKanbanGet(); state.kan
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
 const fnSugAcao     = call('negocioSugerirAcao');   // IA (Gemini): próxima ação + rascunho de mensagem do negócio
-const FTIPO_LABEL = { pf:'Pessoa Física', pj:'Pessoa Jurídica', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
+const FTIPO_LABEL = { pf:'Cliente PF', pj:'Cliente PJ', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
 const fnRoster    = call('listarPessoas');    // usuários do Auth {uid,nome}
@@ -100,7 +100,7 @@ let ACTIVITY = [];
 const ROOT = () => document.getElementById('bkRoot');
 const $ = (s) => ROOT() ? ROOT().querySelector(s) : null;
 const person = id => PEOPLE.find(p=>p.id===id) || {nome:'—', tipos:[], docs:[], obs:'—', cpf:'—', email:'—', tel:'—', cidade:'—', desde:'—'};
-const prop = id => PROPERTIES.find(p=>p.id===id) || {rua:'—', bairro:'', cidade:'', code:'', tipo:'', preco:0, finalidade:'', docs:[]};
+const prop = id => (PROPERTIES_ALL||PROPERTIES).find(p=>p.id===id) || {rua:'—', bairro:'', cidade:'', code:'', tipo:'', preco:0, finalidade:'', docs:[]};  // ALL: abrir imóvel arquivado não pode cair no placeholder vazio
 function brl(n){ n=Number(n)||0; if(n>=1000000) return 'R$ '+(n/1000000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'M'; if(n>=10000) return 'R$ '+Math.round(n/1000)+'k'; return 'R$ '+n.toLocaleString('pt-BR'); }
 function brlFull(n){ return 'R$ '+(Number(n)||0).toLocaleString('pt-BR'); }
 // Valores de imóvel (valorAnuncio/valorComissao) são TEXTO LIVRE no backend
@@ -192,7 +192,7 @@ const STATUS = {
 };
 function pill(txt,variant){ return '<span class="pill '+(variant||'neutral')+'"><span class="dot"></span>'+esc(txt)+'</span>'; }
 function statusPill(s){ return pill(s, STATUS[s]||'neutral'); }
-function avatar(nome,size=36,bg='var(--brand)',foto){ if(foto) return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background-image:url('+foto+');background-size:cover;background-position:center"></span>'; return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background:'+bg+';font-size:'+(size<30?10:12)+'px">'+esc(ini(nome))+'</span>'; }
+function avatar(nome,size=36,bg='var(--brand)',foto){ if(foto) return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background-image:url('+esc(foto)+');background-size:cover;background-position:center"></span>'; return '<span class="avatar" style="width:'+size+'px;height:'+size+'px;background:'+bg+';font-size:'+(size<30?10:12)+'px">'+esc(ini(nome))+'</span>'; }
 const TINT = { info:['#EFF4FF','#1D4ED8'], success:['#ECFDF3','#15803D'], warning:['#FFFAEB','#B45309'], danger:['#FEF2F2','#B91C1C'], ai:['#F5F0FF','#6D28D9'], brand:['#EFF4FF','#2563EB'] };
 function iconChip(ico,variant,size=40){ const t=TINT[variant]||TINT.brand; return '<span class="iconchip" style="width:'+size+'px;height:'+size+'px;background:'+t[0]+';color:'+t[1]+'">'+icon(ico,size>34?20:16)+'</span>'; }
 const COR_PALETA = ['#2563EB','#7C3AED','#DB2777','#0EA5E9','#16A34A','#F59E0B','#9333EA','#0D9488'];
@@ -785,7 +785,7 @@ function kanbanCardInfo(d){
   if(d.tipo==='Locação' && c.administracao) linhas.push(['Administração', _snLabel(c.administracao)]);
   if(c.parceria) linhas.push(['Parceria', _snLabel(c.parceria)]);
   if(c.comissaoRecebida) linhas.push(['Comissão recebida', _CR_LABEL[c.comissaoRecebida]||c.comissaoRecebida]);
-  if(p.inicio) linhas.push(['Início do contrato', p.inicio]);
+  if(p.inicio){ const m=String(p.inicio).match(/^(\d{4})-(\d{2})-(\d{2})$/); linhas.push(['Início do contrato', m?(m[3]+'/'+m[2]+'/'+m[1]):p.inicio]); }  // ISO→dd/mm/aaaa
   if(!linhas.length) return '';
   return '<div style="margin-top:8px;padding-top:7px;border-top:1px dashed var(--ink200)">'
     + linhas.map(l=>'<div class="fx ac jb fz11" style="padding:1px 0"><span class="t500">'+esc(l[0])+'</span><span class="fw7 t900">'+esc(l[1])+'</span></div>').join('')+'</div>';
@@ -1247,7 +1247,10 @@ async function openInteressadoPicker(imovelId){
   // venda+locação/legado ⇒ ambos. E marca as fichas que já são interessadas deste imóvel.
   const im = (typeof prop==='function' ? prop(imovelId) : null) || {};
   const fin = im.finalidadeRaw || 'locacao';
-  const TIPOS_LOCA=['pf','pj','locacao_fiador','fianca'], TIPOS_VEN=['proposta'];
+  // Comprador (venda) pode ser Proposta de compra OU Pessoa Física/Jurídica — nem sempre
+  // há proposta formal no estágio de interessado, e o corretor costuma cadastrar o comprador
+  // como pf/pj. Sem isso, a ficha do comprador "sumia" do seletor num imóvel de venda.
+  const TIPOS_LOCA=['pf','pj','locacao_fiador','fianca'], TIPOS_VEN=['proposta','pf','pj'];
   const permitidos = fin==='venda' ? TIPOS_VEN : (fin==='locacao' ? TIPOS_LOCA : TIPOS_VEN.concat(TIPOS_LOCA));
   const jaAdicionadas = new Set((im.interessados||[]).map(it=>it.fichaId).filter(Boolean));
   openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Adicionar interessado</div><div class="fz12 t500" style="margin-bottom:14px">Escolha uma ficha do Cadastro'+(fin==='venda'?' (comprador)':fin==='locacao'?' (locatário)':' (locatário ou comprador)')+'. Ela entra como “Em análise”.</div><div id="intPickList" class="fz13 t500" style="max-height:52vh;overflow:auto">Carregando fichas…</div><div class="fx" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Fechar</button></div></div>');
@@ -1488,6 +1491,7 @@ function wireEvents(root){
   root.addEventListener('dragleave', e=>{ const col=e.target.closest('[data-kdrop]'); if(col && !col.contains(e.relatedTarget)) col.classList.remove('kcol-over'); });
   root.addEventListener('drop', e=>{ const col=e.target.closest('[data-kdrop]'); if(!col) return; e.preventDefault(); col.classList.remove('kcol-over'); const id=state._dragDeal; state._dragDeal=null; if(id) kanbanMove(id, col.dataset.kdrop); });
   root.addEventListener('input', e=>{
+    if(e.target.matches('[data-money]')){ e.target.value=_maskMoeda(e.target.value); return; }  // máscara R$ ao digitar
     // Busca do topbar (só visível na janela standalone; no Hub o topbar é escondido):
     // roteia pra busca da tela ativa em vez de ficar inerte.
     if(e.target.id==='globalSearch'){ globalFilter(e.target.value); return; }
@@ -1523,7 +1527,7 @@ function handleAction(a,el){
   else if(a.indexOf('ptab-')===0){ state.pessoaTab=a.slice(5); openPerson(state.currentPerson); }
   else if(a.indexOf('itab-')===0){ state.imovelTab=a.slice(5); openProp(state.currentProp); }
   else if(a.indexOf('cfgtab-')===0){ state.cfgTab=a.slice(7); RENDERERS.configuracoes($('#root')); refreshIcons(); }
-  else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; const resp=state.respondendo; const payload={negocioId:state.currentDeal, acao:'comentario', texto:txt}; if(resp&&resp.id) payload.respostaDe=resp.id; state.respondendo=null; negAtualizar(payload, resp?'Resposta enviada':'Comentário adicionado').then(ok=>{ if(ok===false && resp) state.respondendo=resp; /* falhou: restaura o contexto (o banner segue no DOM, sem re-render) */ }).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
+  else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; const resp=state.respondendo; const payload={negocioId:state.currentDeal, acao:'comentario', texto:txt}; if(resp&&resp.id) payload.respostaDe=resp.id; state.respondendo=null; if(ta) ta.value=''; /* limpa ANTES: senão o restore de rascunho do negAtualizar re-injeta o texto já enviado = comentário duplicado */ negAtualizar(payload, resp?'Resposta enviada':'Comentário adicionado').then(ok=>{ if(ok===false){ const t2=$('#bkComent'); if(t2) t2.value=txt; if(resp) state.respondendo=resp; } /* falhou: devolve o texto e o contexto */ }).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
   else if(a==='coment-responder'){ state.respondendo={id:el.dataset.id, nome:el.dataset.nome||'', deal:state.currentDeal}; state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const t=$('#bkComent'); if(t) t.focus(); },60); }
   else if(a==='cancelar-resposta'){ state.respondendo=null; openDeal(state.currentDeal); }
   else if(a==='coment-editar'){ openEditarComent(el.dataset.id, el.dataset.texto||''); }
@@ -1531,7 +1535,7 @@ function handleAction(a,el){
   else if(a==='tag-preset'){ _addTag(el.dataset.tag); }
   else if(a==='tag-add'){ const inp=$('#bkTagInput'); _addTag(inp?inp.value:''); }
   else if(a==='tag-remove'){ _saveTags(_curDealTags().filter(x=>x!==el.dataset.tag)); }
-  else if(a==='tarefa-add'){ const tx=$('#bkTarefaTxt'), pz=$('#bkTarefaPrazo'); const texto=tx?tx.value.trim():''; if(!texto){ toast('Descreva a tarefa','alert-triangle','var(--warning)'); return; } negAtualizar({negocioId:state.currentDeal, acao:'tarefa', texto, prazo:pz?pz.value:''}, 'Tarefa adicionada'); }
+  else if(a==='tarefa-add'){ const tx=$('#bkTarefaTxt'), pz=$('#bkTarefaPrazo'); const texto=tx?tx.value.trim():''; if(!texto){ toast('Descreva a tarefa','alert-triangle','var(--warning)'); return; } const prazo=pz?pz.value:''; if(tx) tx.value=''; if(pz) pz.value=''; /* limpa ANTES (mesmo motivo do add-coment) */ negAtualizar({negocioId:state.currentDeal, acao:'tarefa', texto, prazo}, 'Tarefa adicionada').then(ok=>{ if(ok===false){ const t2=$('#bkTarefaTxt'); if(t2) t2.value=texto; } }); }
   else if(a==='tarefa-check'){ negAtualizar({negocioId:state.currentDeal, acao:'tarefa_check', tarefaId:el.dataset.tid, feito:el.dataset.feito==='1'}); }
   else if(a==='tarefa-rm'){ if(!confirm('Remover esta tarefa?')) return; negAtualizar({negocioId:state.currentDeal, acao:'tarefa_rm', tarefaId:el.dataset.tid}); }
   else if(a==='abrir-termos'){ const url=FICHA_HOST+'/termos.html'; if(window.hubApi&&window.hubApi.abrirFicha){ window.hubApi.abrirFicha(url,'Termos de Uso'); } else { window.open(url,'_blank'); } }
@@ -1573,26 +1577,39 @@ function camposCardHTML(d){
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Informações do negócio'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="campos-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+linha+'</div></div>';
 }
 // Card "Proposta": inputs por tipo, salvos pela ação `proposta` (texto livre).
+// Máscara de moeda "R$ 2.500" / "R$ 2.500,50" (milhar automático). Idempotente: reaplica
+// sobre o próprio valor já formatado (o strip tira o "R$" e os pontos antes de refazer).
+function _maskMoeda(v){
+  v = String(v).replace(/[^\d,]/g, '');
+  if(!v) return '';
+  const parts = v.split(',');
+  const ints = (parts[0].replace(/^0+(?=\d)/, '') || '0').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return 'R$ ' + ints + (v.indexOf(',') >= 0 ? (',' + parts.slice(1).join('').slice(0, 2)) : '');
+}
 function propostaCardHTML(d){
   const p=d.proposta||{}; const ehVenda=d.tipo==='Venda';
   const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado');   // encerrado = leitura (o servidor recusaria o Salvar)
-  const inp=(id,val,ph)=>'<input id="'+id+'" class="input nsh" value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" maxlength="60"'+(enc?' disabled':'')+' style="width:100%">';
-  const dt=(id,val)=>inp(id,val,'dd/mm/aaaa');
+  const dis=enc?' disabled':'';
+  // Data nativa (sem digitar a barra); converte valor antigo dd/mm/aaaa pra ISO do input.
+  const _iso=v=>{ if(!v)return''; if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v; const m=String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m?m[3]+'-'+m[2]+'-'+m[1]:''; };
+  const dtN=(id,val)=>'<input id="'+id+'" type="date" class="input nsh" value="'+esc(_iso(val))+'"'+dis+' style="width:100%">';
+  const money=(id,val,ph)=>'<input id="'+id+'" class="input nsh" data-money value="'+esc(val?_maskMoeda(val):'')+'" placeholder="'+esc(ph||'')+'" inputmode="decimal" maxlength="22"'+dis+' style="width:100%">';  // R$ automático (máscara delegada)
+  const unidade=(id,val,ph,un)=>'<div class="fx ac"><input id="'+id+'" class="input nsh" value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" inputmode="decimal" maxlength="12"'+dis+' style="width:100%;border-radius:8px 0 0 8px;border-right:none"><span class="nsh" style="padding:0 12px;align-self:stretch;display:flex;align-items:center;background:var(--ink100);border:1px solid var(--ink200);border-radius:0 8px 8px 0;color:var(--ink600);font-size:13px;white-space:nowrap">'+un+'</span></div>';
   const campo=(rot,inner)=>'<div class="grow" style="min-width:160px;max-width:240px"><div class="fz11 fw6 t700 up" style="margin-bottom:4px">'+rot+'</div>'+inner+'</div>';
   const corpo = ehVenda
-    ? campo('Valor do sinal (R$)', inp('ppSinal', p.sinal, 'Ex.: 50.000'))
-      + campo('Sinal pago em', dt('ppSinalData', p.sinalData))
-      + campo('Parcela A (R$)', inp('ppParcelaA', p.parcelaA, 'Ex.: 100.000'))
-      + campo('Parcela A paga em', dt('ppParcelaAData', p.parcelaAData))
-      + campo('Parcela B (R$)', inp('ppParcelaB', p.parcelaB, 'Ex.: 100.000'))
-      + campo('Parcela B paga em', dt('ppParcelaBData', p.parcelaBData))
-      + campo('Possui FGTS?', '<select id="ppFgts" class="input nsh"'+(enc?' disabled':'')+' style="width:100%"><option value=""'+(!p.fgts?' selected':'')+'>Selecione…</option><option value="sim"'+(p.fgts==='sim'?' selected':'')+'>Sim</option><option value="nao"'+(p.fgts==='nao'?' selected':'')+'>Não</option></select>')
-      + campo('Valor do FGTS (R$)', inp('ppFgtsValor', p.fgtsValor, 'Se sim'))
-      + campo('Financiamento (R$)', inp('ppFinanciamento', p.financiamento, 'Ex.: 350.000'))
-    : campo('Início do contrato', dt('ppInicio', p.inicio))
-      + campo('Valor acordado (R$)', inp('ppValorAcordado', p.valorAcordado, 'Ex.: 3.200'))
-      + campo('Prazo do contrato', inp('ppPrazo', p.prazo, 'Ex.: 30 meses'))
-      + campo('Taxa de administração (%)', inp('ppTaxaAdm', p.taxaAdm, 'Padrão 8'));
+    ? campo('Valor do sinal (R$)', money('ppSinal', p.sinal, 'Ex.: 50.000'))
+      + campo('Sinal pago em', dtN('ppSinalData', p.sinalData))
+      + campo('Parcela A (R$)', money('ppParcelaA', p.parcelaA, 'Ex.: 100.000'))
+      + campo('Parcela A paga em', dtN('ppParcelaAData', p.parcelaAData))
+      + campo('Parcela B (R$)', money('ppParcelaB', p.parcelaB, 'Ex.: 100.000'))
+      + campo('Parcela B paga em', dtN('ppParcelaBData', p.parcelaBData))
+      + campo('Possui FGTS?', '<select id="ppFgts" class="input nsh"'+dis+' style="width:100%"><option value=""'+(!p.fgts?' selected':'')+'>Selecione…</option><option value="sim"'+(p.fgts==='sim'?' selected':'')+'>Sim</option><option value="nao"'+(p.fgts==='nao'?' selected':'')+'>Não</option></select>')
+      + campo('Valor do FGTS (R$)', money('ppFgtsValor', p.fgtsValor, 'Se sim'))
+      + campo('Financiamento (R$)', money('ppFinanciamento', p.financiamento, 'Ex.: 350.000'))
+    : campo('Início do contrato', dtN('ppInicio', p.inicio))
+      + campo('Valor acordado (R$)', money('ppValorAcordado', p.valorAcordado, 'Ex.: 2.500'))
+      + campo('Prazo do contrato', unidade('ppPrazo', p.prazo, 'Ex.: 30', 'meses'))
+      + campo('Taxa de administração', unidade('ppTaxaAdm', p.taxaAdm, '8', '%'));
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Proposta'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="proposta-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+corpo+'</div>'+(d.tipo!=='Venda'&&!enc?'<div class="fz11 t500" style="margin-top:10px">Taxa de administração padrão 8% — edite se for negociada.</div>':'')+'</div>';
 }
 // Modal pra editar o % de comissão do negócio (ação `comissao`). Venda: padrão 6%,
@@ -1935,7 +1952,7 @@ function pintarPerfil(){
   const foto=p.photo||'';
   const campo=(id,label,val,ph,extra)=>'<div><label class="lbl">'+label+'</label><input id="'+id+'" class="input" value="'+esc(val||'')+'" placeholder="'+(ph||'')+'" '+(extra||'')+'></div>';
   box.innerHTML='<div class="split-r">'
-    + '<div class="card" style="padding:22px;text-align:center">'+(foto?'<span class="avatar" style="width:88px;height:88px;background-image:url('+foto+');background-size:cover;background-position:center;margin:0 auto"></span>':avatar(p.displayName||state.meuNome,88,'var(--brand)'))+'<div class="fz18 fw7 t900" style="margin-top:12px">'+esc(p.displayName||state.meuNome)+'</div><div class="fz13 t500">'+roleLabel()+' · REMAX SMART</div><div class="fz12 t500" style="margin-top:8px">'+esc(p.email||'')+'</div></div>'
+    + '<div class="card" style="padding:22px;text-align:center">'+(foto?'<span class="avatar" style="width:88px;height:88px;background-image:url('+esc(foto)+');background-size:cover;background-position:center;margin:0 auto"></span>':avatar(p.displayName||state.meuNome,88,'var(--brand)'))+'<div class="fz18 fw7 t900" style="margin-top:12px">'+esc(p.displayName||state.meuNome)+'</div><div class="fz13 t500">'+roleLabel()+' · REMAX SMART</div><div class="fz12 t500" style="margin-top:8px">'+esc(p.email||'')+'</div></div>'
     + '<div class="card" style="padding:22px"><div class="fz12 up fw7 t500" style="margin-bottom:14px">Meus dados</div><div class="gd" style="grid-template-columns:1fr 1fr;gap:14px">'
       + campo('pfTel','Telefone / WhatsApp',p.telefone,'(11) 90000-0000')
       + campo('pfCreci','CRECI',p.creci,'Ex.: 123456-F')
@@ -2173,7 +2190,7 @@ handleAction = function(a, el){
   if(a==='prop-vincular'){ openVincularProp(el.dataset.imovel, el.dataset.fin||'locacao'); return; }
   if(a==='prop-vincular-do'){ vincularProprietario(el.dataset.imovel, el.dataset.ficha, el.dataset.tipo); return; }
   if(a==='neg-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o negócio '+(el.dataset.codigo||'')+'?\n\nEsta ação é PERMANENTE e não pode ser desfeita. O imóvel volta a Disponível.')) return; const id=state.currentDeal; fnNegExcluir({negocioId:id}).then(()=>{ [DEALS, DEALS_DOCS].forEach(arr=>{ if(Array.isArray(arr)){ const i=arr.findIndex(x=>x&&x.id===id); if(i>=0) arr.splice(i,1); } }); try{ recalcKPI(); }catch(_e){} state._viewingDeal=false; toast('Negócio excluído','trash-2','var(--danger)'); navigate('negocios'); }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
-  if(a==='imovel-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o imóvel "'+(el.dataset.rua||'')+'"?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return; const iid=el.dataset.imovel; fnImovelExcluir({imovelId:iid}).then(()=>{ [PROPERTIES, PROPERTIES_ALL].forEach(arr=>{ if(Array.isArray(arr)){ const idx=arr.findIndex(p=>p&&p.id===iid); if(idx>=0) arr.splice(idx,1); } }); closeDrawer(); toast('Imóvel excluído','trash-2','var(--danger)'); if(RENDERERS[state.view]){ RENDERERS[state.view]($('#root')); refreshIcons(); } }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
+  if(a==='imovel-excluir'){ if(!confirm('Tem certeza que deseja EXCLUIR o imóvel "'+(el.dataset.rua||'')+'"?\n\nEsta ação é PERMANENTE e não pode ser desfeita.')) return; const iid=el.dataset.imovel; fnImovelExcluir({imovelId:iid}).then(()=>{ [PROPERTIES, PROPERTIES_ALL].forEach(arr=>{ if(Array.isArray(arr)){ const idx=arr.findIndex(p=>p&&p.id===iid); if(idx>=0) arr.splice(idx,1); } }); closeDrawer(); state._viewingDeal=false; /* a lista substitui o detalhe; sem isso o realtime fica travado */ toast('Imóvel excluído','trash-2','var(--danger)'); if(RENDERERS[state.view]){ RENDERERS[state.view]($('#root')); refreshIcons(); } }).catch(e=>toast(e.message||'Erro ao excluir','alert-triangle','var(--danger)')); return; }
   if(a==='kmove-open'){ openKanbanMovePicker(el.dataset.deal); return; }
   if(a==='kmove-to'){ closeModal(); kanbanMove(el.dataset.deal, el.dataset.col); return; }
   if(a==='kanban-gerenciar'){ openKanbanGerenciar(); return; }
@@ -2213,7 +2230,7 @@ handleAction = function(a, el){
   if(a==='alterar-valor'){ openAlterarValor(el.dataset.imovel); return; }
   if(a==='alterar-valor-save'){ salvarNovoValor(el.dataset.imovel); return; }
   if(a==='int-add-open'){ openInteressadoPicker(el.dataset.imovel); return; }
-  if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const tipo=(f.tipo==='proposta')?'comprador':'locatario'; el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
+  if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const _imf=(typeof prop==='function'?prop(imovelId):null)||{}; const _fin=_imf.finalidadeRaw||''; const tipo = _fin==='venda' ? 'comprador' : _fin==='locacao' ? 'locatario' : (f.tipo==='proposta'?'comprador':'locatario'); /* papel vem da finalidade do imóvel, não do tipo da ficha */ el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-remover'){ if(!confirm('Remover este interessado do imóvel?'))return; const imovelId=el.dataset.imovel, idx=+el.dataset.idx; el.disabled=true; fnInteressado({imovelId, acao:'remover', index:idx, esperaNome:el.dataset.nome||'', esperaFichaId:el.dataset.fid||''}).then(async()=>{ toast('Interessado removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-aprovar'){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='int-reprovar'){ if(confirm('Reprovar este interessado?')){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'reprovado', 'Interessado reprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); } return; }

@@ -257,8 +257,41 @@ async function baixarFeed() {
 
   const alvo = limite > 0 ? listings.slice(0, limite) : listings;
   console.log(`\n🚚 Importando ${alvo.length}${limite ? ` (amostra de ${listings.length})` : ''} imóveis para ${projectId} (feed de ${publishDate})...`);
-  let criados = 0, atualizados = 0;
+  let criados = 0, atualizados = 0, enriquecidos = 0;
   const vistos = new Set();
+
+  // Casamento por ENDEREÇO com imóveis de CAPTAÇÃO (que vieram por ficha, sem
+  // feedListingId): quando um anúncio do feed é o MESMO imóvel de um card de captação,
+  // a gente ENRIQUECE o card existente (fotos/anúncio do portal) em vez de duplicar —
+  // o dono/ficha/documentos/valor do Hub NUNCA são tocados. Chave = rua|número|cidade
+  // normalizados; complemento diferente (quando ambos têm) = unidade diferente, não casa.
+  const normEnd = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const chaveEndereco = (e) => {
+    if (!e) return '';
+    const rua = normEnd(e.logradouro), n = normEnd(e.numero), cid = normEnd(e.cidade);
+    return (rua && n && cid) ? `${rua}|${n}|${cid}` : '';   // sem os 3, não casa (evita falso positivo)
+  };
+  const complementoOk = (a, b) => { const ca = normEnd(a), cb = normEnd(b); return !(ca && cb && ca !== cb); };
+  // Só grava o BLOCO DO PORTAL — nunca dono/ficha/valor/endereço/status do Hub.
+  const enriquecerPortal = (ref, m, now, primeira) => ref.set({
+    feedListingId: m.feedListingId, feedDados: m.feedDados, feedAtivo: true,
+    atualizadoEm: now, feedSyncEm: now,
+    ...(primeira ? {
+      feedVinculadoEm: now,
+      timeline: admin.firestore.FieldValue.arrayUnion({ texto: 'Anúncio do portal vinculado a este imóvel (mesmo endereço)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }),
+    } : {}),
+  }, { merge: true });
+
+  // Índice dos cards de captação (sem feedListingId) por endereço normalizado.
+  const idxCaptacao = new Map();   // chaveEndereco -> { ref, complemento }
+  const todosImoveis = await db.collection('imoveis').get();
+  for (const d of todosImoveis.docs) {
+    const data = d.data();
+    if (data.feedListingId) continue;               // já ligado ao feed → dedup por feedListingId cobre
+    const k = chaveEndereco(data.endereco);
+    if (k && !idxCaptacao.has(k)) idxCaptacao.set(k, { ref: d.ref, complemento: (data.endereco || {}).complemento });
+  }
+
   for (const L of alvo) {
     const email = txt((L.ContactInfo || {}).Email).toLowerCase();
     const corretor = await resolver(email);
@@ -268,33 +301,49 @@ async function baixarFeed() {
 
     const snap = await db.collection('imoveis').where('feedListingId', '==', m.feedListingId).limit(1).get();
     const now = admin.firestore.FieldValue.serverTimestamp();
-    if (snap.empty) {
-      // NOVO: nasce completo, disponível, na esteira se for locação
-      await db.collection('imoveis').add({
-        ...m,
-        situacao: 'disponivel', arquivado: false, feedAtivo: true,
-        ...(m.finalidade !== 'venda' ? { status: 'recebido' } : {}),
-        interessados: [], pendentes: [],
-        timeline: [{ texto: 'Imóvel importado do portal (feed RE/MAX)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }],
-        criadoEm: now, atualizadoEm: now, feedSyncEm: now,
-      });
-      criados++;
-    } else {
-      // EXISTE: atualiza SÓ os campos do portal — não toca em interessados/negócios/
-      // proprietário/status/situacao (do Hub). Se tinha sido arquivado por SAIR do
-      // portal e voltou, desarquiva (não mexe em arquivamento manual do gestor).
-      const atual = snap.docs[0].data();
-      const voltou = atual.arquivado === true && atual.arquivadoMotivo === 'Saiu do portal';
-      await snap.docs[0].ref.set({
-        finalidade: m.finalidade, tipo: m.tipo, valorAnuncio: m.valorAnuncio,
-        endereco: m.endereco, dormitorios: m.dormitorios, vagas: m.vagas, area: m.area,
-        iptu: m.iptu, corretorUid: m.corretorUid, corretorNome: m.corretorNome,
-        feedDados: m.feedDados, feedAtivo: true,
-        ...(voltou ? { arquivado: false, arquivadoMotivo: admin.firestore.FieldValue.delete(), voltouAoPortalEm: now } : {}),
-        atualizadoEm: now, feedSyncEm: now,
-      }, { merge: true });
-      atualizados++;
+    if (!snap.empty) {
+      const ref = snap.docs[0].ref, atual = snap.docs[0].data();
+      if (atual.origem !== 'feed') {
+        // Card de CAPTAÇÃO já vinculado ao portal (re-sync): só o bloco do portal, preserva o dono/ficha.
+        await enriquecerPortal(ref, m, now, false);
+        atualizados++;
+      } else {
+        // EXISTE (imóvel do feed): atualiza SÓ os campos do portal — não toca em interessados/
+        // negócios/proprietário/status/situacao. Se saiu do portal e voltou, desarquiva.
+        const voltou = atual.arquivado === true && atual.arquivadoMotivo === 'Saiu do portal';
+        await ref.set({
+          finalidade: m.finalidade, tipo: m.tipo, valorAnuncio: m.valorAnuncio,
+          endereco: m.endereco, dormitorios: m.dormitorios, vagas: m.vagas, area: m.area,
+          iptu: m.iptu, corretorUid: m.corretorUid, corretorNome: m.corretorNome,
+          feedDados: m.feedDados, feedAtivo: true,
+          ...(voltou ? { arquivado: false, arquivadoMotivo: admin.firestore.FieldValue.delete(), voltouAoPortalEm: now } : {}),
+          atualizadoEm: now, feedSyncEm: now,
+        }, { merge: true });
+        atualizados++;
+      }
+      continue;
     }
+
+    // Não achou pelo feedListingId: antes de criar, existe uma CAPTAÇÃO no mesmo endereço?
+    const k = chaveEndereco(m.endereco);
+    const cand = k ? idxCaptacao.get(k) : null;
+    if (cand && complementoOk((m.endereco || {}).complemento, cand.complemento)) {
+      await enriquecerPortal(cand.ref, m, now, true);   // enriquece a captação, sem duplicar
+      idxCaptacao.delete(k);                             // um card só por anúncio
+      enriquecidos++;
+      continue;
+    }
+
+    // NOVO: nasce completo, disponível, na esteira se for locação
+    await db.collection('imoveis').add({
+      ...m,
+      situacao: 'disponivel', arquivado: false, feedAtivo: true,
+      ...(m.finalidade !== 'venda' ? { status: 'recebido' } : {}),
+      interessados: [], pendentes: [],
+      timeline: [{ texto: 'Imóvel importado do portal (feed RE/MAX)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }],
+      criadoEm: now, atualizadoEm: now, feedSyncEm: now,
+    });
+    criados++;
   }
 
   // Imóveis do feed que sumiram (vendidos/despublicados): marca, NÃO apaga.
@@ -316,6 +365,6 @@ async function baixarFeed() {
     }
   }
 
-  console.log(`✅ Pronto: ${criados} criados, ${atualizados} atualizados, ${sumidos} marcados como fora do portal.`);
+  console.log(`✅ Pronto: ${criados} criados, ${atualizados} atualizados, ${enriquecidos} enriquecidos (mesmo endereço, sem duplicar), ${sumidos} marcados como fora do portal.`);
   process.exit(0);
 })().catch((e) => { console.error('Erro na importação:', e && e.message || e); process.exit(1); });
