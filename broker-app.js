@@ -251,19 +251,28 @@ function chkPct(cl){ if(!cl||!cl.length) return 0; const f=cl.filter(x=>x.feito)
 // Checklist NOVO (2026-08): venda usa compromisso_*; locação usa contrato_assinado.
 // As chaves antigas (contrato_emitido/aprovado) ficam pros negócios já criados.
 function clicksignDe(cl){ cl=cl||[]; const f=k=>cl.find(x=>x.key===k&&x.feito); if(f('contrato_assinado')||f('compromisso_assinado')) return 'Concluído'; if(f('contrato_emitido')||f('contrato_aprovado')||f('compromisso_emitido')||f('compromisso_aprovado')) return 'Enviado'; return '—'; }
+// Valor total da PROPOSTA (o que o comprador paga): soma do sinal + parcelas + FGTS +
+// financiamento. Vira a base da comissão quando informado (pedido do Marcelo: imóvel 340k,
+// proposta 330k ⇒ comissão sobre 330k). Vazio (0) ⇒ cai no valor do imóvel, como antes.
+function _propostaTotal(p){ if(!p) return 0; return ['sinal','parcelaA','parcelaB','fgtsValor','financiamento'].reduce((s,k)=>s+parseMoney(p[k]||0),0); }
 function mapNegocio(n){
   // PROPERTIES_ALL (não PROPERTIES): imóvel ARQUIVADO após concluir a venda ainda
   // precisa dar preço/comissão ao negócio — senão KPIs e "Minhas Comissões" zeravam.
   const im = (PROPERTIES_ALL||[]).find(p=>p.id===n.imovelId);
-  const preco = im ? im.preco : 0;
+  const precoImovel = im ? im.preco : 0;
   const tipo = n.tipo==='venda' ? 'Venda' : 'Locação';
+  // Base da comissão = VALOR DA PROPOSTA quando informado; senão, valor do imóvel (como antes).
+  const totalProposta = _propostaTotal(n.proposta);
+  const usaProposta = totalProposta > 0;
+  const preco = usaProposta ? totalProposta : precoImovel;
   // % de comissão: editável por negócio (n.comissaoPct — venda com parceria cai pra 3%,
   // negociadas 4/5%); padrão venda 6%, locação 100%. O valor do feed (valorComissao)
-  // só vale quando NÃO há % editado.
+  // só vale quando NÃO há % editado E não há proposta informada.
   const pctPadrao = tipo==='Venda' ? 6 : 100;
   const comPct = (isFinite(n.comissaoPct) && n.comissaoPct>0) ? n.comissaoPct : pctPadrao;
   const comBruto = (im&&im.raw&&im.raw.valorComissao) ? parseMoney(im.raw.valorComissao) : 0;
-  const comValor = (n.comissaoPct ? preco*comPct/100 : (comBruto || preco*pctPadrao/100));
+  const comValor = usaProposta ? (preco*comPct/100)
+                 : (n.comissaoPct ? preco*comPct/100 : (comBruto || preco*pctPadrao/100));
   const rel = relData(n.atualizadoEm || n.criadoEm);
   return {
     id: n.id, raw: n,
@@ -274,7 +283,7 @@ function mapNegocio(n){
     imovelId: n.imovelId, imovelResumo: n.imovelResumo||'', cidade: n.cidade||'',
     clienteNome: n.clienteNome||'—', clienteContato: n.clienteContato||'',
     valor: preco, comPct, comValor, comStatus:'Prevista',
-    comDoFeed: (!n.comissaoPct && !!comBruto),   // valor veio do feed — o rótulo não pode dizer "(6%)"
+    comDoFeed: (!usaProposta && !n.comissaoPct && !!comBruto),   // valor veio do feed — o rótulo não pode dizer "(6%)"
     criado: (n.criadoEm||'').slice(0,10).split('-').reverse().join('/'), criadoEm: n.criadoEm||'',
     prox: n.proximaAcao || 'Sem próxima ação definida',
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
@@ -1496,7 +1505,7 @@ function wireEvents(root){
   root.addEventListener('dragleave', e=>{ const col=e.target.closest('[data-kdrop]'); if(col && !col.contains(e.relatedTarget)) col.classList.remove('kcol-over'); });
   root.addEventListener('drop', e=>{ const col=e.target.closest('[data-kdrop]'); if(!col) return; e.preventDefault(); col.classList.remove('kcol-over'); const id=state._dragDeal; state._dragDeal=null; if(id) kanbanMove(id, col.dataset.kdrop); });
   root.addEventListener('input', e=>{
-    if(e.target.matches('[data-money]')){ e.target.value=_maskMoeda(e.target.value); return; }  // máscara R$ ao digitar
+    if(e.target.matches('[data-money]')){ e.target.value=_maskMoeda(e.target.value); _syncPropostaTotal(); return; }  // máscara R$ ao digitar + soma do total da proposta
     // Busca do topbar (só visível na janela standalone; no Hub o topbar é escondido):
     // roteia pra busca da tela ativa em vez de ficar inerte.
     if(e.target.id==='globalSearch'){ globalFilter(e.target.value); return; }
@@ -1591,6 +1600,9 @@ function _maskMoeda(v){
   const ints = (parts[0].replace(/^0+(?=\d)/, '') || '0').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return 'R$ ' + ints + (v.indexOf(',') >= 0 ? (',' + parts.slice(1).join('').slice(0, 2)) : '');
 }
+// Recalcula o "Valor total" da proposta ao vivo (soma dos campos de moeda da venda) — é a
+// base da comissão. No-op se o campo #ppTotal não estiver na tela (ex.: proposta de locação).
+function _syncPropostaTotal(){ const el=document.getElementById('ppTotal'); if(!el) return; let s=0; ['ppSinal','ppParcelaA','ppParcelaB','ppFgtsValor','ppFinanciamento'].forEach(id=>{ const e=document.getElementById(id); if(e) s+=parseMoney(e.value||0); }); el.value = s>0 ? _maskMoeda(String(s)) : ''; }
 function propostaCardHTML(d){
   const p=d.proposta||{}; const ehVenda=d.tipo==='Venda';
   const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado');   // encerrado = leitura (o servidor recusaria o Salvar)
@@ -1601,6 +1613,7 @@ function propostaCardHTML(d){
   const money=(id,val,ph)=>'<input id="'+id+'" class="input nsh" data-money value="'+esc(val?_maskMoeda(val):'')+'" placeholder="'+esc(ph||'')+'" inputmode="decimal" maxlength="22"'+dis+' style="width:100%">';  // R$ automático (máscara delegada)
   const unidade=(id,val,ph,un)=>'<div class="fx ac"><input id="'+id+'" class="input nsh" value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" inputmode="decimal" maxlength="12"'+dis+' style="width:100%;border-radius:8px 0 0 8px;border-right:none"><span class="nsh" style="padding:0 12px;align-self:stretch;display:flex;align-items:center;background:var(--ink100);border:1px solid var(--ink200);border-radius:0 8px 8px 0;color:var(--ink600);font-size:13px;white-space:nowrap">'+un+'</span></div>';
   const campo=(rot,inner)=>'<div class="grow" style="min-width:160px;max-width:240px"><div class="fz11 fw6 t700 up" style="margin-bottom:4px">'+rot+'</div>'+inner+'</div>';
+  const _totProp=_propostaTotal(p); const _totFmt=_totProp>0?_maskMoeda(String(_totProp)):'';
   const corpo = ehVenda
     ? campo('Valor do sinal (R$)', money('ppSinal', p.sinal, 'Ex.: 50.000'))
       + campo('Sinal pago em', dtN('ppSinalData', p.sinalData))
@@ -1611,11 +1624,12 @@ function propostaCardHTML(d){
       + campo('Possui FGTS?', '<select id="ppFgts" class="input nsh"'+dis+' style="width:100%"><option value=""'+(!p.fgts?' selected':'')+'>Selecione…</option><option value="sim"'+(p.fgts==='sim'?' selected':'')+'>Sim</option><option value="nao"'+(p.fgts==='nao'?' selected':'')+'>Não</option></select>')
       + campo('Valor do FGTS (R$)', money('ppFgtsValor', p.fgtsValor, 'Se sim'))
       + campo('Financiamento (R$)', money('ppFinanciamento', p.financiamento, 'Ex.: 350.000'))
+      + campo('Valor total da proposta (R$)', '<input id="ppTotal" class="input nsh" value="'+esc(_totFmt)+'" readonly placeholder="Soma automática" title="Sinal + parcelas + FGTS + financiamento — base da comissão" style="width:100%;font-weight:700;background:var(--ink100)">')
     : campo('Início do contrato', dtN('ppInicio', p.inicio))
       + campo('Valor acordado (R$)', money('ppValorAcordado', p.valorAcordado, 'Ex.: 2.500'))
       + campo('Prazo do contrato', unidade('ppPrazo', p.prazo, 'Ex.: 30', 'meses'))
       + campo('Taxa de administração', unidade('ppTaxaAdm', p.taxaAdm, '8', '%'));
-  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Proposta'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="proposta-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+corpo+'</div>'+(d.tipo!=='Venda'&&!enc?'<div class="fz11 t500" style="margin-top:10px">Taxa de administração padrão 8% — edite se for negociada.</div>':'')+'</div>';
+  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Proposta'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="proposta-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+corpo+'</div>'+(!enc?'<div class="fz11 t500" style="margin-top:10px">'+(d.tipo!=='Venda'?'Taxa de administração padrão 8% — edite se for negociada.':'O <b>valor total</b> é a soma automática (sinal + parcelas + FGTS + financiamento) e é a base do cálculo da comissão.')+'</div>':'')+'</div>';
 }
 // Modal pra editar o % de comissão do negócio (ação `comissao`). Venda: padrão 6%,
 // parceria 3%, negociadas 4/5%. Locação: padrão 100%.
