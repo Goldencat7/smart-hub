@@ -1,0 +1,13 @@
+{
+  "name": "smart-hub",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "//": "Ambiente de dev na nuvem (GitHub Codespaces) — pra trabalhar do tablet com o notebook desligado. NAO builda o .exe (isso exige Windows); tudo o resto (codigo, functions, PWA, git) roda aqui.",
+  "postCreateCommand": "ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci && (cd functions && (npm ci || npm install)) && npm i -g firebase-tools && (npm i -g @anthropic-ai/claude-code || true)",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  }
+}
