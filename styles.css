@@ -76,7 +76,12 @@
    propósito (pedido do Nathan) — eles casam com [class*="card"] acima, então
    revertemos as variáveis pro tom escuro. O ícone (.card-icon) já é #fff próprio. */
 :root[data-theme="light"] .hub-card,
-:root[data-theme="light"] .ia-card {
+:root[data-theme="light"] .hub-card [class*="card"],
+:root[data-theme="light"] .ia-card,
+:root[data-theme="light"] .ia-card [class*="card"] {
+  /* os FILHOS (.card-title/.card-desc/.card-icon…) também casam com [class*="card"]
+     da regra clara acima e re-recebiam texto escuro DENTRO do card escuro (apps
+     ilegíveis no modo claro) — por isso o revert cobre card E descendentes. */
   --surface: #1d222d;
   --bg: #0f1115;
   --text-primary: #f5f7fa;

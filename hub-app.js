@@ -7592,11 +7592,22 @@ function salvarVistos(set) {
   try { localStorage.setItem(`notif_vistos_${currentUid}`, JSON.stringify([...set])); }
   catch {}
 }
+// "Limpar notificações": ids escondidos do painel (por usuário). Diferente de "visto"
+// (que só apaga a bolinha): limpo SOME da lista. Ficha nova (id novo) volta a aparecer.
+function getLimpas() {
+  try { return new Set(JSON.parse(localStorage.getItem(`notif_limpas_${currentUid}`) || '[]')); }
+  catch { return new Set(); }
+}
+function salvarLimpas(set) {
+  try { localStorage.setItem(`notif_limpas_${currentUid}`, JSON.stringify([...set])); }
+  catch {}
+}
 
 async function atualizarNotifFichas() {
   try {
     const res = await contarNotifFichas();
-    notifDados = res.data?.items || [];
+    const limpas = getLimpas();
+    notifDados = (res.data?.items || []).filter(n => !(n.id && limpas.has(n.id)));
     const vistos = getVistos();
     const naoVistos = notifDados.filter(n => n.id && !vistos.has(n.id));
     if (naoVistos.length > 0) {
@@ -7735,6 +7746,18 @@ function renderNotifPanel() {
   });
 }
 
+// Limpar notificações: esconde as atuais do painel (localStorage por usuário) e
+// zera badge + bolinhas da sidebar. Fichas novas (ids novos) voltam a notificar.
+document.getElementById('btnNotifLimpar')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const limpas = getLimpas(); const vistos = getVistos();
+  notifDados.forEach(n => { if (n.id) { limpas.add(n.id); vistos.add(n.id); } });
+  salvarLimpas(limpas); salvarVistos(vistos);
+  notifDados = [];
+  renderNotifPanel();
+  notifBadge.hidden = true;
+  FICHAS_CONFIG.forEach(f => { const dot = document.getElementById('dot-' + f.key); if (dot) dot.hidden = true; });
+});
 btnNotif.addEventListener('click', (e) => {
   e.stopPropagation();
   const abrindo = notifPanel.hidden;
