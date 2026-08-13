@@ -786,6 +786,13 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
         }
       }
     }
+    // Fichas de proprietário NÃO geram mais imóvel (v1.0.158): os imóveis vêm do iList
+    // e a ficha só é PLUGADA num imóvel existente — via o bloco &imovelId= acima ou o
+    // picker "vincular ficha existente" (carteiraVincularProprietario). Ficha solta sem
+    // imóvel legado ⇒ nada nasce; ela fica só disponível no listarFichasProprietario, e as
+    // pessoas (PII) são criadas na HORA do vínculo, não aqui.
+    // Legado: um imoveis/{fichaId} criado ANTES desta mudança segue atualizado no reenvio.
+    if (!existente.exists) return;
     // Pessoas (locadores) — ids determinísticos p/ idempotência
     const locadorIds = [];
     const p1 = loc_montarPessoa(dados, LOC_KEYS_1);
@@ -816,17 +823,9 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       documentos: after.documentos || {}, pendentes: after.pendentes || [],
       atualizadoEm: ts()
     };
-    if (existente.exists) {
-      await imovelRef.set(base, { merge: true });          // preserva status + criadoEm + numeroProtocolo + situacao
-    } else {
-      // Carteira: todo imóvel nasce Disponível; ficha do locador ⇒ finalidade locação.
-      const numeroProtocolo = await proximoNumeroProtocolo();
-      await imovelRef.set({
-        ...base, status: 'recebido', finalidade: 'locacao', situacao: 'disponivel', arquivado: false, numeroProtocolo,
-        timeline: [{ texto: 'Imóvel criado a partir da ficha do locador', porNome: 'Sistema', em: admin.firestore.Timestamp.now() }],
-        criadoEm: ts()
-      });
-    }
+    // existente.exists garantido pela guarda acima — só atualiza o card LEGADO
+    // (merge preserva status + criadoEm + numeroProtocolo + situacao). Nunca cria um novo.
+    await imovelRef.set(base, { merge: true });
   } catch (e) {
     await logErro('onFichaLocadorEnviadaAdmin', e, { fichaId });
   }
@@ -882,6 +881,10 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
         }
       }
     }
+    // Ficha do vendedor NÃO gera mais imóvel (v1.0.158): imóveis vêm do iList; a ficha só
+    // é plugada num imóvel existente. Legado: card criado antes desta mudança segue
+    // atualizado no reenvio. Ficha solta nova ⇒ nada nasce (fica no listarFichasProprietario).
+    if (!existente.exists) return;
     const base = {
       ...loc_montarImovel(dados),
       corretorUid: after.corretorUid, corretorNome: after.corretorNome || '',
@@ -891,16 +894,8 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
       documentos: after.documentos || {}, pendentes: after.pendentes || [],
       atualizadoEm: ts()
     };
-    if (existente.exists) {
-      await imovelRef.set(base, { merge: true });   // preserva criadoEm + numeroProtocolo + situacao/finalidade
-    } else {
-      const numeroProtocolo = await proximoNumeroProtocolo();
-      await imovelRef.set({
-        ...base, finalidade: 'venda', situacao: 'disponivel', arquivado: false, numeroProtocolo,
-        timeline: [{ texto: 'Imóvel criado a partir da ficha do vendedor', porNome: 'Sistema', em: admin.firestore.Timestamp.now() }],
-        criadoEm: ts()
-      });
-    }
+    // existente.exists garantido pela guarda acima — só atualiza o card LEGADO, nunca cria.
+    await imovelRef.set(base, { merge: true });
   } catch (e) {
     await logErro('onFichaVendedorEnviadaAdmin', e, { fichaId });
   }
@@ -6210,9 +6205,22 @@ exports.carteiraVincularProprietario = onCall(async (req) => {
   // OUTRO corretor (PII + docs com token) num imóvel próprio e leria tudo.
   const veTudoFicha = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   if (!veTudoFicha && f.corretorUid && f.corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Essa ficha pertence a outro corretor.');
-  // 1 ficha ↔ 1 imóvel: revincular repontaria pessoas/{fichaId}_loc* e corromperia o vínculo original.
+  // 1 ficha ↔ 1 imóvel. Exceção: se a ficha só está presa no PRÓPRIO imóvel-fantasma dela
+  // (o card que a trigger auto-gerava, id == fichaId, hoje descontinuado) e esse fantasma está
+  // PRISTINO (disponível, sem interessados), a gente MOVE a ficha pro imóvel do iList e apaga o
+  // fantasma. Num imóvel REAL (id != fichaId) ou num fantasma em uso, mantém a trava — mover à
+  // força repontaria pessoas/{fichaId}_loc* e corromperia o vínculo original.
   const jaUsada = await db.collection('imoveis').where('fichaId', '==', fichaId).limit(1).get();
-  if (!jaUsada.empty && jaUsada.docs[0].id !== String(d.imovelId)) throw new HttpsError('failed-precondition', 'Essa ficha já está vinculada a outro imóvel.');
+  let fantasmaParaApagar = null;
+  if (!jaUsada.empty && jaUsada.docs[0].id !== String(d.imovelId)) {
+    const holder = jaUsada.docs[0];
+    const im0 = holder.data() || {};
+    const ehFantasma = holder.id === fichaId;   // card auto-gerado pela própria ficha
+    const temInteressados = Array.isArray(im0.interessados) && im0.interessados.length > 0;
+    const emUso = (im0.situacao && im0.situacao !== 'disponivel') || temInteressados;
+    if (!ehFantasma || emUso) throw new HttpsError('failed-precondition', 'Essa ficha já está vinculada a outro imóvel.');
+    fantasmaParaApagar = holder.id;
+  }
   const dados = f.dados || {};
   const porNome = await _nomeDoUid(auth.uid);
   const ts = () => admin.firestore.FieldValue.serverTimestamp();
@@ -6248,7 +6256,12 @@ exports.carteiraVincularProprietario = onCall(async (req) => {
     if (pa.nome) await db.collection('pessoas').doc(`${fichaId}_loc1`).set({ ...pa, corretorUid: donoUid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true });
     if (dados.loc2_nome) await db.collection('pessoas').doc(`${fichaId}_loc2`).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: donoUid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true });
   }
-  await registrarAudit(auth, 'imovel_vincular_proprietario', { tipo: 'imovel', id: d.imovelId }, { fichaId, tipoFicha: tipo });
+  // Move concluída: apaga o imóvel-fantasma (o card auto-gerado). NÃO apagar pessoas por
+  // fichaId — os docs {fichaId}_loc* são os MESMOS que acabamos de repontar pro imóvel novo.
+  if (fantasmaParaApagar && fantasmaParaApagar !== String(d.imovelId)) {
+    await db.collection('imoveis').doc(fantasmaParaApagar).delete().catch(() => {});
+  }
+  await registrarAudit(auth, 'imovel_vincular_proprietario', { tipo: 'imovel', id: d.imovelId }, { fichaId, tipoFicha: tipo, movidoDeFantasma: fantasmaParaApagar || null });
   await _bumpBroadcast('imovelSeq');
   return { ok: true, nome };
 });
