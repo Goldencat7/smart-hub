@@ -761,9 +761,13 @@ exports.onFichaLocadorEnviadaAdmin = onDocumentWritten({ document: 'fichas_locad
       if (alvoSnap.exists) {
         const im = alvoSnap.data();
         const donoOk = !!im.corretorUid && !!after.corretorUid && im.corretorUid === after.corretorUid;
-        const semOutraFicha = !im.fichaId || im.fichaId === fichaId;
-        if (donoOk && semOutraFicha) {
-          if (im.fichaId === fichaId && !mudou) return;
+        // Vínculo JÁ estabelecido (picker "vincular ficha existente", que valida posse) conta
+        // como dono ok — sem isso, ficha de corretor A vinculada pelo GESTOR a imóvel de B
+        // não sincronizava no reenvio do cliente. Não é injeção: só entra quem já está vinculado.
+        const jaVinculada = im.fichaId === fichaId;
+        const semOutraFicha = !im.fichaId || jaVinculada;
+        if ((donoOk || jaVinculada) && semOutraFicha) {
+          if (jaVinculada && !mudou) return;
           const pa = loc_montarPessoa(dados, LOC_KEYS_1);
           const ids = [];
           const a1 = `${fichaId}_loc1`;
@@ -864,9 +868,11 @@ exports.onFichaVendedorEnviadaAdmin = onDocumentWritten({ document: 'fichas/{fic
       if (alvoSnap.exists) {
         const im = alvoSnap.data();
         const donoOk = !!im.corretorUid && !!after.corretorUid && im.corretorUid === after.corretorUid;
-        const semOutraFicha = !im.fichaId || im.fichaId === fichaId;
-        if (donoOk && semOutraFicha) {
-          if (im.fichaId === fichaId && !mudou) return;
+        // Igual ao locador: vínculo já estabelecido (picker) conta como dono ok no reenvio.
+        const jaVinculada = im.fichaId === fichaId;
+        const semOutraFicha = !im.fichaId || jaVinculada;
+        if ((donoOk || jaVinculada) && semOutraFicha) {
+          if (jaVinculada && !mudou) return;
           const novaVinc = im.fichaId !== fichaId;
           await alvoRef.set({
             fichaId, fichaTipo: 'vendedor',
@@ -6264,6 +6270,10 @@ exports.carteiraVincularProprietario = onCall(async (req) => {
     if (pa.nome) await db.collection('pessoas').doc(`${fichaId}_loc1`).set({ ...pa, corretorUid: donoUid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true });
     if (dados.loc2_nome) await db.collection('pessoas').doc(`${fichaId}_loc2`).set({ ...loc_montarPessoa(dados, LOC_KEYS_2), corretorUid: donoUid, fichaId, imovelId: d.imovelId, atualizadoEm: ts() }, { merge: true });
   }
+  // Grava o vínculo NA FICHA também: o trigger de reenvio só sincroniza o imóvel
+  // vinculado quando a ficha carrega `imovelId` — sem isso, o cliente corrigia a
+  // ficha depois do vínculo e o imóvel ficava com os dados velhos em silêncio.
+  await db.collection(col).doc(fichaId).set({ imovelId: String(d.imovelId) }, { merge: true });
   // Move concluída: apaga o imóvel-fantasma (o card auto-gerado). NÃO apagar pessoas por
   // fichaId — os docs {fichaId}_loc* são os MESMOS que acabamos de repontar pro imóvel novo.
   if (fantasmaParaApagar && fantasmaParaApagar !== String(d.imovelId)) {
