@@ -1889,6 +1889,14 @@ exports.negocioAtualizar = onCall(async (req) => {
       const prop = { ...(n.proposta || {}) };
       for (const k of KEYS) if (k in pIn) prop[k] = _txt(pIn[k], 60);
       up.proposta = prop;
+      // Taxa de comissão editada NO PRÓPRIO card da proposta (pedido Marcelo): % por negócio,
+      // salva no mesmo clique. Só entra quando o cliente manda `comissaoPct`; 0/vazio limpa o
+      // override e volta ao padrão (venda 6% / locação 100%). Mesma regra da ação `comissao`.
+      if ('comissaoPct' in d) {
+        const pct = Number(d.comissaoPct);
+        if (!isFinite(pct) || pct < 0 || pct > 100) throw new HttpsError('invalid-argument', 'Percentual de comissão inválido (use um número entre 0 e 100).');
+        up.comissaoPct = pct === 0 ? admin.firestore.FieldValue.delete() : pct;
+      }
       anota('Proposta atualizada');
     } else if (d.acao === 'status') {
       if (!ehGestor) throw new HttpsError('permission-denied', 'Mudar status é decisão do broker.');
