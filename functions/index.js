@@ -1852,6 +1852,26 @@ exports.negocioAtualizar = onCall(async (req) => {
       if (url && !/^https:\/\//i.test(url)) throw new HttpsError('invalid-argument', 'Link inválido (precisa começar com https://).');
       up.driveUrl = url;
       anota(url ? 'Pasta do Google Drive vinculada' : 'Pasta do Google Drive removida');
+    } else if (d.acao === 'drive_destino') {
+      // Pasta-MÃE no Drive onde o robô deve criar a pasta DESTE negócio: o corretor
+      // cola o link (de uma pasta que o robô acessa como Editor) e o sync usa esse
+      // destino em vez do mapa corretor→pasta. Vazio = limpar (volta ao mapa).
+      if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
+      const url = _txt(d.url, 500);
+      if (!url) {
+        up.driveDestinoUrl = admin.firestore.FieldValue.delete();
+        up.driveDestinoId = admin.firestore.FieldValue.delete();
+        anota('Pasta destino do Drive removida (volta ao padrão)');
+      } else {
+        const fid = _driveFolderIdDeLink(url);
+        if (!fid) throw new HttpsError('invalid-argument', 'Link inválido — cole o link de uma PASTA do Google Drive (…/drive/folders/…).');
+        // Exige https:// (ou id puro) — o _driveFolderIdDeLink casa "/folders/<id>" em
+        // QUALQUER string, então sem isso um "javascript:…/folders/…" seria persistido.
+        if (!/^https:\/\//i.test(url) && !/^[A-Za-z0-9_-]{15,}$/.test(url)) throw new HttpsError('invalid-argument', 'Link inválido (precisa começar com https://).');
+        up.driveDestinoUrl = url;
+        up.driveDestinoId = fid;
+        anota('Pasta destino do Drive definida');
+      }
     } else if (d.acao === 'origem') {
       // De onde veio o cliente (lead source) — o corretor responsável preenche na mão.
       if (!ehGestor && !ehAdm && !ehResponsavel) throw new HttpsError('permission-denied', 'Sem permissão.');
@@ -2048,6 +2068,10 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Enviar documentos é do gestor ou do administrativo.');
   if (['concluido', 'cancelado'].includes(snap.data().status)) throw new HttpsError('failed-precondition', 'Negócio encerrado — não aceita novos documentos.');
   const categoria = NEGOCIO_DOC_CATEGORIAS.includes(d.categoria) ? d.categoria : 'outro';
+  // Destino no DRIVE ao sincronizar (junto da categoria, não no lugar dela): em qual
+  // subpasta da pasta do negócio o robô guarda este doc. Chaves neutras — na locação
+  // os rótulos viram Locador/Locatário no cliente. Sem escolha → Outros.
+  const driveDestino = ['vendedor', 'comprador', 'imovel', 'outros'].includes(d.driveDestino) ? d.driveDestino : 'outros';
   const nome = _txt(d.nome, 160) || 'documento';
   // Normaliza o mime (caixa + parâmetros tipo ";charset=") ANTES de validar — é ISSO
   // que fecha o bypass: "image/SVG+XML" e "image/svg+xml;charset=utf-8" viravam
@@ -2073,7 +2097,7 @@ exports.negocioAnexarDoc = onCall(async (req) => {
   });
   const url = `https://firebasestorage.googleapis.com/v0/b/${FICHA_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${token}`;
   const porNome = await _nomeDoUid(auth.uid);
-  const entrada = { id: docId, nome, categoria, url, path, tamanho: buf.length, mime, porUid: auth.uid, porNome, em: admin.firestore.Timestamp.now() };
+  const entrada = { id: docId, nome, categoria, driveDestino, url, path, tamanho: buf.length, mime, porUid: auth.uid, porNome, em: admin.firestore.Timestamp.now() };
 
   try {
     await db.runTransaction(async (tx) => {
@@ -4794,6 +4818,19 @@ exports.onFichaLocadorDriveSync = onDocumentWritten({ document: 'fichas_locador/
 // nos 15 GB dela — resolvendo a cota 0 do service account.
 const DRIVE_ROBO_ROOT_PADRAO = '1-0dJYva2LtFbebZLSfwxMdFzKqdlY1Yh'; // "02 - Corretores" (trocável em drive_robot/config.rootId)
 
+// Extrai o ID de pasta de um link do Google Drive ("…/drive/folders/<id>",
+// "…?id=<id>" ou o id colado puro). null se não reconhecer o formato.
+function _driveFolderIdDeLink(url) {
+  const s = String(url || '').trim();
+  if (!s) return null;
+  let m = s.match(/\/folders\/([A-Za-z0-9_-]{10,})/);
+  if (m) return m[1];
+  m = s.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
+  if (m) return m[1];
+  if (/^[A-Za-z0-9_-]{15,}$/.test(s)) return s;   // a pessoa colou só o id
+  return null;
+}
+
 async function _driveRoboToken() {
   const snap = await db.collection('drive_robot').doc('config').get();
   if (!snap.exists || !snap.data().refreshToken) throw new HttpsError('failed-precondition', 'Robô do Drive não conectado — conecte em Meu Perfil (admin).');
@@ -4909,35 +4946,60 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
   const n = snap.data();
   const ehDono = n.corretorUid === auth.uid;
   if (!ehGestor && !ehAdm && !ehDono) throw new HttpsError('permission-denied', 'Sem acesso a este negócio.');
-  // 1) pasta do corretor (pelo mapa)
-  const mapaSnap = await db.collection('drive_robot').doc('mapa').get();
-  const mapa = mapaSnap.exists ? (mapaSnap.data() || {}) : {};
-  const pastaCorretor = mapa[n.corretorUid];
-  if (!pastaCorretor) throw new HttpsError('failed-precondition', 'O corretor deste negócio ainda não tem pasta no Drive. Peça ao admin pra mapear em Meu Perfil → Mapear pastas.');
+  // 1) pasta-MÃE: o LINK colado no negócio (driveDestino) vence; sem ele, cai no
+  //    mapa corretor→pasta (fluxo antigo, mantido como fallback).
+  let pastaMae = n.driveDestinoId || _driveFolderIdDeLink(n.driveDestinoUrl || '');
+  if (!pastaMae) {
+    const mapaSnap = await db.collection('drive_robot').doc('mapa').get();
+    const mapa = mapaSnap.exists ? (mapaSnap.data() || {}) : {};
+    pastaMae = mapa[n.corretorUid];
+  }
+  if (!pastaMae) throw new HttpsError('failed-precondition', 'Defina a pasta do Drive deste negócio (botão "Pasta destino" — cole o link) ou peça ao admin pra mapear a pasta do corretor em Meu Perfil → Mapear pastas.');
   const token = await _driveRoboToken();
-  // 2) subpasta do imóvel: "endereço - Locação|Venda (NG-código)"
+  const im = (await db.collection('imoveis').doc(n.imovelId).get()).data() || {};
+  // 2) pasta do negócio dentro da mãe: "endereço - Locação|Venda (NG-código · iList <id>)"
+  //    — os DOIS códigos, identificados (pedido do Nathan); sem feed, fica só o NG.
   const tipoLabel = n.tipo === 'venda' ? 'Venda' : 'Locação';
-  const nomeImovel = _driveSanitizar((n.imovelResumo || 'Imovel') + ' - ' + tipoLabel + ' (' + (n.codigo || (n.imovelId || '').slice(0, 6)) + ')');
+  const codigos = [n.codigo || (n.imovelId || '').slice(0, 6)];
+  if (im.feedListingId) codigos.push('iList ' + im.feedListingId);
+  const nomeImovel = _driveSanitizar((n.imovelResumo || 'Imovel') + ' - ' + tipoLabel + ' (' + codigos.join(' · ') + ')');
   let pastaImovel;
-  try { pastaImovel = await _driveFindOrCreateFolder(token, nomeImovel, pastaCorretor); }
-  catch (e) { throw new HttpsError('failed-precondition', 'Não consegui criar a pasta do imóvel — confirme que a pasta do corretor está compartilhada com o robô como Editor. (' + ((e && e.message) || e) + ')'); }
-  // 3) reúne os arquivos: docs do negócio + fichas vinculadas (anexos + PDF)
-  const itens = []; // { nome, url } (baixa da Storage) OU { nomePdf, buf } (PDF gerado)
+  try { pastaImovel = await _driveFindOrCreateFolder(token, nomeImovel, pastaMae); }
+  catch (e) { throw new HttpsError('failed-precondition', 'Não consegui criar a pasta do negócio — confirme que a pasta destino está compartilhada com o robô como Editor. (' + ((e && e.message) || e) + ')'); }
+  // 2b) subpastas fixas por papel (pedido do Nathan): venda = Vendedor/Comprador;
+  //     locação = Locador/Locatário; + Imóvel e Outros. Chaves internas NEUTRAS
+  //     (vendedor/comprador/imovel/outros) — só o rótulo muda por tipo.
+  const ehVenda = n.tipo === 'venda';
+  const SUB_LABEL = { vendedor: ehVenda ? 'Vendedor' : 'Locador', comprador: ehVenda ? 'Comprador' : 'Locatário', imovel: 'Imóvel', outros: 'Outros' };
+  const subPastas = {};
+  try { for (const k of Object.keys(SUB_LABEL)) subPastas[k] = await _driveFindOrCreateFolder(token, SUB_LABEL[k], pastaImovel); }
+  catch (e) { throw new HttpsError('failed-precondition', 'Não consegui criar as subpastas (Vendedor/Comprador/Imóvel/Outros) — confirme o acesso do robô à pasta. (' + ((e && e.message) || e) + ')'); }
+  // 3) reúne os arquivos com o DESTINO de cada um:
+  //    docs do negócio → subpasta escolhida no upload (padrão Outros);
+  //    ficha do proprietário → Vendedor/Locador (anexos do IMÓVEL dentro dela → Imóvel);
+  //    ficha do interessado → Comprador/Locatário.
+  const itens = []; // { nome, url, dest } (baixa da Storage) OU { nomePdf, buf, dest } (PDF gerado)
   for (const doc of (n.documentos || [])) {
     if (doc && typeof doc.url === 'string' && /^https?:/.test(doc.url) && urlStoragePermitida(doc.url))
-      itens.push({ nome: _driveSanitizar(((doc.categoria && doc.categoria !== 'outro') ? doc.categoria + ' - ' : '') + (doc.nome || 'documento')), url: doc.url });
+      itens.push({
+        nome: _driveSanitizar(((doc.categoria && doc.categoria !== 'outro') ? doc.categoria + ' - ' : '') + (doc.nome || 'documento')),
+        url: doc.url,
+        dest: SUB_LABEL[doc.driveDestino] ? doc.driveDestino : 'outros',
+      });
   }
-  const im = (await db.collection('imoveis').doc(n.imovelId).get()).data() || {};
-  const fichaIds = [];
-  if (im.fichaId) fichaIds.push(im.fichaId);
+  const fichaRefs = [];
+  if (im.fichaId) fichaRefs.push({ fid: im.fichaId, papel: 'vendedor' }); // proprietário (vendedor/locador)
   // Interessado do negócio: por negocioId (o índice envelhece com remoções — invariante 2026-07-28).
   const lista = Array.isArray(im.interessados) ? im.interessados : [];
   // SÓ por negocioId — o fallback por índice (n.interessadoIndex) envelhece com remoções
   // e, em negócio cancelado (negocioId zerado no interessado), pegaria a PESSOA ERRADA,
   // subindo docs (CPF/RG) de outro cliente pra esta pasta. Invariante _interessadoConfere.
   const inter = lista.find(i => i && i.negocioId === ref.id) || null;
-  if (inter && inter.fichaId && !fichaIds.includes(inter.fichaId)) fichaIds.push(inter.fichaId);
-  for (const fid of fichaIds) {
+  if (inter && inter.fichaId && !fichaRefs.some(x => x.fid === inter.fichaId)) fichaRefs.push({ fid: inter.fichaId, papel: 'comprador' });
+  // Anexos da ficha do PROPRIETÁRIO que na verdade são do IMÓVEL (matrícula, IPTU…)
+  // vão pra subpasta Imóvel; o resto (RG/CPF, renda…) fica na pasta da pessoa.
+  const CAMPO_IMOVEL = /matricul|iptu|escritur|conta|energia|agua|gas|condominio|habite|planta|foto/i;
+  for (const { fid, papel } of fichaRefs) {
     let fSnap = await db.collection('fichas').doc(fid).get(); let col = 'fichas';
     if (!fSnap.exists) { fSnap = await db.collection('fichas_locador').doc(fid).get(); col = 'fichas_locador'; }
     if (!fSnap.exists) continue;
@@ -4945,45 +5007,58 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
     const nomeP = _driveSanitizar((f.dados && (f.dados.nome || f.dados.razaoSocial || f.dados.nomeCompleto)) || 'Ficha');
     for (const [campo, url] of Object.entries(f.documentos || {})) {
       if (typeof url === 'string' && /^https?:/.test(url) && urlStoragePermitida(url))
-        itens.push({ nome: _driveSanitizar('Ficha ' + nomeP + ' - ' + campo), url });
+        itens.push({ nome: _driveSanitizar('Ficha ' + nomeP + ' - ' + campo), url, dest: (papel === 'vendedor' && CAMPO_IMOVEL.test(campo)) ? 'imovel' : papel });
     }
     try {
       const tipoF = col === 'fichas_locador' ? 'locador' : (f.tipo || 'ficha');
       const label = _LABEL_FICHA[tipoF] || 'Ficha';
       const pdfBuf = await gerarPdfFicha(f, label);
-      itens.push({ nomePdf: _driveSanitizar('Ficha ' + label + ' - ' + nomeP) + '.pdf', buf: pdfBuf });
+      itens.push({ nomePdf: _driveSanitizar('Ficha ' + label + ' - ' + nomeP) + '.pdf', buf: pdfBuf, dest: papel });
     } catch (e) { console.error('driveSyncNegocio pdf', (e && e.message) || e); }
   }
-  // 4) sobe (dedup por nome já existente na pasta) e registra o ID de cada arquivo
-  // DESEJADO — a lista `atuais` vira a base de remoção da PRÓXIMA sync.
+  // 4) sobe cada arquivo NA SUBPASTA dele (dedup por nome dentro da subpasta) e
+  // registra o ID — a lista `atuais` vira a base de remoção da PRÓXIMA sync.
+  // A chave de controle é "dest/nome": arquivos registrados por versão antiga (chave
+  // sem "dest/") não batem com nenhuma desejada → são movidos pra lixeira e resobem
+  // já organizados nas subpastas (migração automática do layout antigo).
   let enviados = 0, jaExistiam = 0, falhas = 0, removidos = 0;
-  const atuais = [];              // [{id, nome}] de tudo que DEVE estar na pasta agora
-  const desejados = new Set();    // nomes desejados (p/ decidir o que remover)
+  const atuais = [];              // [{id, nome: "dest/arquivo"}] de tudo que DEVE existir agora
+  const desejados = new Set();    // chaves desejadas (p/ decidir o que remover)
   const anteriores = (n.driveSync && Array.isArray(n.driveSync.arquivos)) ? n.driveSync.arquivos : [];
   const antPorNome = new Map(anteriores.filter(a => a && a.id).map(a => [a.nome, a.id]));
+  // Pasta do negócio MUDOU (trocaram o link destino): os registros antigos apontam
+  // pra pasta velha — remove todos de lá (lixeira) e sobe tudo fresco na nova.
+  const pastaMudou = !!(n.driveSync && n.driveSync.pastaId && n.driveSync.pastaId !== pastaImovel);
   for (const it of itens) {
     const nomeArq = it.buf ? it.nomePdf : it.nome;
-    desejados.add(nomeArq);
+    const destKey = subPastas[it.dest] ? it.dest : 'outros';
+    const pastaDest = subPastas[destKey];
+    const chave = destKey + '/' + nomeArq;
+    desejados.add(chave);
     try {
-      const existe = await _driveAcharArquivo(token, nomeArq, pastaImovel);
-      if (existe) { jaExistiam++; atuais.push({ id: existe.id, nome: nomeArq }); continue; }
-      const up = it.buf ? await _driveUploadBuffer(token, it.nomePdf, pastaImovel, it.buf, 'application/pdf')
-                        : await _driveUpload(token, it.nome, pastaImovel, it.url);
-      if (up && up.id) atuais.push({ id: up.id, nome: nomeArq });
+      const existe = await _driveAcharArquivo(token, nomeArq, pastaDest);
+      if (existe) { jaExistiam++; atuais.push({ id: existe.id, nome: chave }); continue; }
+      const up = it.buf ? await _driveUploadBuffer(token, it.nomePdf, pastaDest, it.buf, 'application/pdf')
+                        : await _driveUpload(token, it.nome, pastaDest, it.url);
+      if (up && up.id) atuais.push({ id: up.id, nome: chave });
       enviados++;
     } catch (e) {
       falhas++; console.error('driveSyncNegocio upload', (e && e.message) || e);
       // Falha transitória num arquivo JÁ registrado antes: preserva o id, senão ele
       // vira órfão não-gerenciável (o robô perderia o id pra removê-lo depois).
-      if (antPorNome.has(nomeArq)) atuais.push({ id: antPorNome.get(nomeArq), nome: nomeArq });
+      if (!pastaMudou && antPorNome.has(chave)) atuais.push({ id: antPorNome.get(chave), nome: chave });
     }
   }
   // 5) REMOÇÃO SEGURA: só os arquivos que o robô registrou numa sync ANTERIOR
-  // (n.driveSync.arquivos) e que não estão mais no negócio. Nunca toca em arquivo
-  // que a pessoa colocou na pasta manualmente (esses nunca entram em driveSync).
+  // (n.driveSync.arquivos) e que não estão mais no negócio — ou TODOS os antigos,
+  // se a pasta destino mudou (estão no lugar velho). Nunca toca em arquivo que a
+  // pessoa colocou na pasta manualmente (esses nunca entram em driveSync).
   // Vai pra LIXEIRA (trashed) — recuperável, não é exclusão definitiva.
-  for (const a of anteriores) {
-    if (!a || !a.id || desejados.has(a.nome)) continue;
+  // SÓ remove se NENHUM upload falhou nesta rodada: com falha, o conjunto `desejados`/
+  // re-upload está incompleto e poderíamos lixeirar um doc que só falhou em resubir
+  // (sumiria do Drive até a próxima sync limpa). Com falha, adia a limpeza.
+  if (falhas === 0) for (const a of anteriores) {
+    if (!a || !a.id || (!pastaMudou && desejados.has(a.nome))) continue;
     try { await _driveApi(token, 'files/' + a.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); removidos++; }
     catch (e) { console.error('driveSyncNegocio remove', (e && e.message) || e); }
   }
@@ -6740,6 +6815,12 @@ function _feedMapear(L, corretor) {
 // ETag/Last-Modified do feed; se não mudou desde a última sync, retorna semNovidade
 // SEM baixar os ~2.2MB nem reprocessar — assim cliques repetidos do botão ficam baratos.
 async function _rodarSyncFeed({ manual = false } = {}) {
+  // Só PRODUÇÃO puxa o feed (é o feed real da RE/MAX): no staging isso poluiria os
+  // dados de teste com centenas de imóveis caindo no gestor. O agendado já tinha
+  // guarda; o callable manual (público) não tinha — fecha aqui pros dois caminhos.
+  if (process.env.GCLOUD_PROJECT !== 'remax-smart-hub') {
+    return { semNovidade: true, foraDeProducao: true, publishDate: '', criados: 0, atualizados: 0, sumidos: 0, falhas: 0, total: 0 };
+  }
   const metaRef = db.collection('_feed_meta').doc('imoveis');
   let etag = '', lastMod = '';
   try {
@@ -6753,6 +6834,10 @@ async function _rodarSyncFeed({ manual = false } = {}) {
   }
     const resp = await fetch(FEED_IMOVEIS_URL);
     if (!resp.ok) throw new Error('Feed HTTP ' + resp.status);
+    // Se o HEAD não deu ETag/Last-Modified, aproveita os do próprio GET (o feed tem os
+    // dois) — senão o carimbo salvaria vazio e o próximo run refaria o sync inteiro à toa.
+    if (!etag) etag = resp.headers.get('etag') || '';
+    if (!lastMod) lastMod = resp.headers.get('last-modified') || '';
     const xml = await resp.text();
     const { XMLParser } = require('fast-xml-parser');
     const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', trimValues: true, parseTagValue: false });
@@ -6785,13 +6870,17 @@ async function _rodarSyncFeed({ manual = false } = {}) {
         const snap = await db.collection('imoveis').where('feedListingId', '==', m.feedListingId).limit(1).get();
         const now = admin.firestore.FieldValue.serverTimestamp();
         if (snap.empty) {
-          await db.collection('imoveis').add({
+          // ID DETERMINÍSTICO (feed_<listingId>): o callable manual é público, então
+          // dois cliques simultâneos (ou clique + cron às 8h) rodavam o loop em paralelo
+          // e o `add()` criava DOIS docs pro mesmo anúncio — duplicado que nunca era
+          // limpo. Com id fixo + set(merge), as duas gravações caem no MESMO doc.
+          await db.collection('imoveis').doc('feed_' + m.feedListingId).set({
             ...m, situacao: 'disponivel', arquivado: false, feedAtivo: true,
             ...(m.finalidade !== 'venda' ? { status: 'recebido' } : {}),
             interessados: [], pendentes: [],
             timeline: [{ texto: 'Imóvel importado do portal (feed RE/MAX)', porNome: 'Sync do portal', em: admin.firestore.Timestamp.now() }],
             criadoEm: now, atualizadoEm: now, feedSyncEm: now,
-          });
+          }, { merge: true });
           criados++;
         } else {
           // Se tinha sido arquivado POR TER SAÍDO do portal e agora voltou, desarquiva
@@ -6835,8 +6924,13 @@ async function _rodarSyncFeed({ manual = false } = {}) {
     // pelo broadcast — que TODO cliente lê (o listener direto da coleção `imoveis` pode
     // ser negado no `list` pro gestor e falhar calado; o broadcast é o caminho garantido).
     if (criados || atualizados || sumidos) await _bumpBroadcast('imovelSeq');
-    // Carimbo de frescor pro próximo run: guarda ETag/Last-Modified + PublishDate do feed.
-    await metaRef.set({ etag, lastModified: lastMod, publishDate, total: listings.length, criados, atualizados, sumidos, falhas, syncEm: admin.firestore.FieldValue.serverTimestamp(), manual }, { merge: true });
+    // Carimbo de frescor pro próximo run — mas o ETag/Last-Modified SÓ é gravado quando
+    // NÃO houve falha: se gravasse com falhas, a próxima passada (e todo clique manual)
+    // veria "sem novidade" e os anúncios que falharam nunca reprocessariam até o CONTEÚDO
+    // do feed mudar. Sem carimbar o etag, o próximo run refaz e retenta os que falharam.
+    const carimbo = { publishDate, total: listings.length, criados, atualizados, sumidos, falhas, syncEm: admin.firestore.FieldValue.serverTimestamp(), manual };
+    if (falhas === 0) { carimbo.etag = etag; carimbo.lastModified = lastMod; }
+    await metaRef.set(carimbo, { merge: true });
     console.log(`Sync feed OK: ${criados} criados, ${atualizados} atualizados, ${sumidos} fora do portal, ${falhas} falhas.`);
     if (falhas) await logErro('sincronizarFeedImoveis', new Error(`${falhas} anúncio(s) falharam no sync (ver logs de warning)`));
   return { semNovidade: false, publishDate, criados, atualizados, sumidos, falhas, total: listings.length };

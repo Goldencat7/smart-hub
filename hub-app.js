@@ -637,11 +637,15 @@ function carregarBroker() {
   if (window.Broker) return Promise.resolve();
   if (brokerCarregando) return brokerCarregando;
   brokerCarregando = (async () => {
-    // CSS do Broker (escopado em #bkRoot — não afeta o resto do Hub)
+    // CSS do Broker (escopado em #bkRoot — não afeta o resto do Hub). Espera o load
+    // pra o Broker não montar sem estilo (flash) se o JS vier do cache antes do CSS.
     if (!document.getElementById('broker-css')) {
-      const l = document.createElement('link');
-      l.id = 'broker-css'; l.rel = 'stylesheet'; l.href = 'broker.css';
-      document.head.appendChild(l);
+      await new Promise((res) => {
+        const l = document.createElement('link');
+        l.id = 'broker-css'; l.rel = 'stylesheet'; l.href = 'broker.css';
+        l.onload = res; l.onerror = res;
+        document.head.appendChild(l);
+      });
     }
     // lucide (script clássico → define window.lucide). Falha de rede não impede o Broker.
     if (!window.lucide) {
@@ -673,19 +677,29 @@ function locSubItens() {
   return nav.filter(n => n.id !== 'agenda' && n.id !== 'perfil');
 }
 
+// Restaura o layout do Hub depois do Broker embutido: desmonta (se montado), esconde
+// e LIMPA o #bkRoot (tira o "Carregando…" órfão) e tira as classes de tela cheia.
+// Idempotente — pode chamar mesmo se o Broker nunca montou (ex.: saiu no meio do load,
+// ou o load falhou), o que é justamente o que conserta o layout quebrado.
+function restaurarLayoutBroker() {
+  if (brokerMontado && window.Broker && window.Broker.unmount) { try { window.Broker.unmount(); } catch (_e) { /* nada */ } }
+  brokerMontado = false;
+  const bk = document.getElementById('bkRoot'); if (bk) { bk.hidden = true; bk.innerHTML = ''; }
+  hubMainHead.hidden = false;
+  hubMain.classList.remove('hub-main--broker');
+  hubLayout.classList.remove('loc-embed');
+}
+
 // ─── Render central (cards filtrados) ────────────────────────────────────
 function renderCentro() {
   const cat = CATEGORIAS.find(c => c.id === categoriaAtiva);
   tituloCategoria.textContent = cat.nome;
 
-  // Saiu do "Meus Negócios" embutido → desmonta o Broker e restaura o layout do Hub.
-  if (!cat.locacoes && brokerMontado) {
-    if (window.Broker && window.Broker.unmount) window.Broker.unmount();
-    brokerMontado = false;
-    const bk = document.getElementById('bkRoot'); if (bk) bk.hidden = true;
-    hubMainHead.hidden = false;
-    hubMain.classList.remove('hub-main--broker');
-    hubLayout.classList.remove('loc-embed');
+  // Saiu do "Meus Negócios" embutido → restaura o layout do Hub. Não depende de
+  // `brokerMontado`: se a pessoa saiu DURANTE o "Carregando…" (mount ainda não rolou)
+  // ou o load falhou, as classes/bkRoot continuam aplicados — detecta pela classe.
+  if (!cat.locacoes && (brokerMontado || hubMain.classList.contains('hub-main--broker'))) {
+    restaurarLayoutBroker();
   }
 
   secaoConfig.hidden = true;
@@ -907,6 +921,11 @@ function renderCentro() {
       }
       return;
     }
+
+    // Chegou aqui = o Broker NÃO carregou (brokerFalhou) → telas antigas de fallback.
+    // Limpa o layout de tela cheia + o "Carregando…" órfão, senão o fallback renderiza
+    // por baixo do casco do Broker (sem cabeçalho/padding).
+    restaurarLayoutBroker();
 
     if (!locSub) {
       // Grade inicial: cards dos sub-apps (Painel e Imóveis). A aba Locação

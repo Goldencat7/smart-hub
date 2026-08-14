@@ -293,6 +293,7 @@ function mapNegocio(n){
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
+    driveDestinoUrl: n.driveDestinoUrl||'',   // pasta-mãe onde o robô cria a pasta deste negócio
     arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
     colunaId: n.colunaId||'', origem: n.origem||'',   // kanban Modelo 2 + origem do cliente
     campos: n.campos||{}, proposta: n.proposta||{},   // campos personalizados + proposta (Marcelo)
@@ -539,19 +540,25 @@ async function carregarRoster(){
 // Query casa com as regras: imóveis (gestor/adm=tudo, corretor=os seus); negócios
 // (gestor=tudo, corretor=os seus; administrativo NÃO lê negócio cru → sem listener).
 let _rtTimer = null;
+// Seguro re-renderizar a tela agora? NÃO se a pessoa está no meio de algo — drawer/
+// modal aberto, detalhe de negócio aberto, ou digitando num input/select (o texto
+// sobrevive via state, mas foco e scroll se perderiam no meio da palavra).
+function _podeRenavegar(){
+  if(!ROOT() || ROOT().hidden) return false;
+  const overlay = ($('#drawer') && $('#drawer').classList.contains('show'))
+               || ($('#modal') && $('#modal').classList.contains('show'));
+  const ae = document.activeElement;
+  const digitando = ae && ROOT().contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
+  return !(overlay || state._viewingDeal || digitando);
+}
 function _rtOnChange(){
   clearTimeout(_rtTimer);
   _rtTimer = setTimeout(async () => {
     try {
       await carregarDados();
-      if(!ROOT() || ROOT().hidden) return;
-      const overlay = ($('#drawer') && $('#drawer').classList.contains('show'))
-                   || ($('#modal') && $('#modal').classList.contains('show'));
-      // Também não re-renderiza com um input/select em foco (busca, filtros): o texto
-      // sobreviveria (vem do state) mas o FOCO e o scroll se perderiam no meio da palavra.
-      const ae = document.activeElement;
-      const digitando = ae && ROOT().contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName);
-      if(overlay || state._viewingDeal || digitando) return;   // não re-renderiza por cima do que a pessoa faz
+      // _feedSyncing: durante o sync manual do portal, não re-renderiza (soltaria o
+      // botão "Buscando…" no meio); o próprio sync re-renderiza ao terminar.
+      if(state._feedSyncing || !_podeRenavegar()) return;
       navigate(state.view);
     } catch(_e){ /* silencioso */ }
   }, 1500);
@@ -973,8 +980,11 @@ function dealDocsCardHTML(d, podeSubir){
   const docs = (d.raw && d.raw.documentos) || [];
   const encerrado = d.statusRaw==='concluido' || d.statusRaw==='cancelado';
   const addBtn = (podeSubir && !encerrado) ? '<button class="btn btn-outline sm nsh" data-action="deal-doc-add">'+icon('upload',15)+'Anexar</button>' : '';
+  // Rótulo da subpasta do Drive deste doc (doc antigo sem driveDestino não mostra nada).
+  const _destLabel=(k)=>{ const v=d.tipo==='Venda'; return ({vendedor:v?'Vendedor':'Locador', comprador:v?'Comprador':'Locatário', imovel:'Imóvel', outros:'Outros'})[k]||''; };
   const rows = docs.length ? docs.map(x=>{
-    const meta=[DOC_CAT_LABEL[x.categoria]||'', docFmtTam(x.tamanho), relData(x.em)].filter(Boolean).join(' · ');
+    const dl=_destLabel(x.driveDestino);
+    const meta=[DOC_CAT_LABEL[x.categoria]||'', dl?('Drive: '+dl):'', docFmtTam(x.tamanho), relData(x.em)].filter(Boolean).join(' · ');
     const baixar='<a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',15)+'</a>';
     const rem = podeSubir ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(d.id)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>' : '';
     return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)">'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500 trunc">'+esc(meta)+'</div></div><div class="fx ac g1 nsh">'+baixar+rem+'</div></div>';
@@ -1029,7 +1039,7 @@ function openDeal(id){
         + (imv.capa ? '<img src="'+esc(imv.capa)+'" alt="" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex:none">' : '<span class="ifx ac jc nsh" style="width:60px;height:60px;border-radius:8px;background:var(--ink100)">'+icon('building-2',24,'t400')+'</span>')
         + '<div class="mw0" style="text-align:left"><div class="fz13 fw6 t900 trunc">'+esc(imv.tipo||'Imóvel')+'</div><div class="fz12 t500 trunc">'+esc(imv.code||'')+'</div><div class="fz11 c-inf fw6" style="margin-top:2px">Ver imóvel ›</div></div>'
         + '</button>' : '')
-    + '<div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+(d.comDoFeed?'':d.comPct+'% · ')+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'')+'<button class="btn btn-primary sm" data-action="drive-sync-real" title="Cria a pasta do imóvel no Drive do corretor e envia os documentos + fichas">'+icon('refresh-cw',15)+'Sincronizar Drive</button>'+'<button class="btn btn-outline sm" data-action="ir-comentarios">'+icon('message-square',15)+'Comentários</button><button class="btn btn-outline sm" data-action="prop-info">'+icon('user-round',15)+'Proprietário</button></div></div>'
+    + '<div class="tright nsh"><div class="fz12 t500">Valor do negócio</div><div class="mono fw7 t900" style="font-size:24px;margin-top:2px">'+brlFull(d.valor)+(d.tipo==='Locação'?'<span class="fz13 t500">/mês</span>':'')+'</div><div class="fz13 c-suc fw6" style="margin-top:4px">Comissão '+(d.comDoFeed?'':d.comPct+'% · ')+brlFull(d.comValor)+'</div></div></div><div class="fx g2 wrap" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--ink100)">'+(d.driveUrl?'<a class="btn btn-outline sm" href="'+esc(d.driveUrl)+'" target="_blank" rel="noopener">'+icon('folder-open',15)+'Abrir Drive</a>':'')+'<button class="btn btn-primary sm" data-action="drive-sync-real" title="Cria a pasta do negócio no Drive (com subpastas '+(d.tipo==='Venda'?'Vendedor/Comprador':'Locador/Locatário')+'/Imóvel/Outros) e envia os documentos + fichas">'+icon('refresh-cw',15)+'Sincronizar Drive</button>'+(d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-outline sm" data-action="drive-destino-edit" title="'+(d.driveDestinoUrl?'Pasta destino definida — clique pra ver/alterar':'Cole o link da pasta do Drive onde o robô deve guardar este negócio')+'">'+icon('folder-cog',15)+(d.driveDestinoUrl?'Pasta destino ✓':'Definir pasta destino')+'</button>':'')+'<button class="btn btn-outline sm" data-action="ir-comentarios">'+icon('message-square',15)+'Comentários</button><button class="btn btn-outline sm" data-action="prop-info">'+icon('user-round',15)+'Proprietário</button></div></div>'
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? dealTagsCardHTML(d) : '')
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + camposCardHTML(d)
@@ -1109,9 +1119,10 @@ function fmtPublish(s){ try{ const [dt,tm]=String(s).split('T'); const [,mo,da]=
 // Botão "Atualizar do portal": força a sync do feed do iList agora. O backend checa
 // primeiro se o feed mudou (ETag) — se não mudou, avisa "sem novidade" sem reprocessar.
 async function sincronizarFeedPortal(btn){
-  if(btn){ btn.disabled=true; btn.innerHTML=icon('loader',15)+'Buscando…'; }
+  if(btn){ btn.disabled=true; btn.innerHTML=icon('loader',15)+'Buscando…'; refreshIcons(); }
   toast('Buscando novidades do portal…','refresh-cw');
-  const restaura=()=>{ if(btn){ btn.disabled=false; btn.innerHTML=icon('refresh-cw',15)+'Atualizar do portal'; } };
+  const restaura=()=>{ if(btn){ btn.disabled=false; btn.innerHTML=icon('refresh-cw',15)+'Atualizar do portal'; refreshIcons(); } };
+  state._feedSyncing=true;   // segura o re-render do tempo real enquanto sincroniza
   try{
     const r = await fnFeedSync({});
     const d = r.data || {};
@@ -1128,11 +1139,27 @@ async function sincronizarFeedPortal(btn){
     const resumo = partes.length ? ('✅ '+partes.join(' · ')) : '✅ Carteira já estava em dia.';
     await carregarDados();          // recarrega imóveis+negócios do servidor
     toast(resumo,'check-circle-2','var(--success)');
-    navigate(state.view);           // re-renderiza a tela atual com a carteira nova
+    // Só re-renderiza se a pessoa não estiver no meio de algo (drawer/modal/detalhe/
+    // input). Se estiver, restaura o botão — o toast já avisou o resultado.
+    if(_podeRenavegar()) navigate(state.view); else restaura();
   }catch(e){
     toast(e.message||'Erro ao atualizar do portal','alert-triangle','var(--danger)');
     restaura();
+  }finally{
+    state._feedSyncing=false;
   }
+}
+
+// Modal "Pasta destino no Drive": o corretor cola o link da pasta-mãe onde o robô
+// deve criar a pasta DESTE negócio (precisa estar compartilhada com o robô como
+// Editor). Vazio = volta ao padrão (pasta do corretor mapeada pelo admin).
+function openDriveDestino(){
+  const d = DEALS.find(x=>x.id===state.currentDeal) || (DEALS_DOCS||[]).find(x=>x.id===state.currentDeal) || {};
+  openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:6px">Pasta destino no Drive</div>'
+    +'<div class="fz12 t500" style="margin-bottom:12px;line-height:1.5">Cole o link da pasta do Drive onde o robô deve criar a pasta deste negócio (ex.: a sua pasta de '+(d.tipo==='Venda'?'venda':'locação')+'). Ela precisa estar compartilhada com o robô como Editor. Deixe vazio pra voltar ao padrão (pasta do corretor mapeada pelo admin).</div>'
+    +'<input id="ddUrl" class="input" placeholder="https://drive.google.com/drive/folders/…" value="'+esc(d.driveDestinoUrl||'')+'" style="margin-bottom:6px">'
+    +'<div id="ddErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
+    +'<div class="fx g2" style="margin-top:10px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="drive-destino-save">'+icon('check',15)+'Salvar</button></div></div>');
 }
 
 // Sincroniza os documentos + fichas do negócio pro Drive do corretor (via robô).
@@ -2084,12 +2111,21 @@ function openDocUpload(preDealId){
   if(!deals.length){ toast('Não há negócio ativo para anexar documento','alert-triangle','var(--danger)'); return; }
   const opts = deals.map(d=>'<option value="'+esc(d.id)+'"'+(d.id===preDealId?' selected':'')+'>'+esc((d.code||'—')+' · '+(d.clienteNome||''))+'</option>').join('');
   const cats = [['contrato','Contrato'],['proposta','Proposta'],['cliente','Documentação do cliente'],['outro','Outro']].map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
+  // Destino no DRIVE (subpasta da pasta do negócio ao Sincronizar). Rótulos por tipo:
+  // venda = Vendedor/Comprador; locação = Locador/Locatário. Chaves neutras no servidor.
+  const _destinoOpts = (dealId)=>{ const dd=deals.find(x=>x.id===dealId)||deals[0]; const v=!dd||dd.tipo==='Venda';
+    return [['outros','Outros'],['comprador',v?'Comprador':'Locatário'],['vendedor',v?'Vendedor':'Locador'],['imovel','Imóvel']]
+      .map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join(''); };
   openModal('<div style="padding:20px"><div class="fz15 fw7 t900" style="margin-bottom:14px">Enviar documento</div>'
     +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Negócio</div><select id="docDeal" class="input" style="margin-bottom:12px">'+opts+'</select>'
     +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Categoria</div><select id="docCat" class="input" style="margin-bottom:12px">'+cats+'</select>'
+    +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Pasta no Drive <span class="t500">(onde o robô guarda ao Sincronizar)</span></div><select id="docDrive" class="input" style="margin-bottom:12px">'+_destinoOpts(preDealId)+'</select>'
     +'<div class="fz12 fw6 t700" style="margin-bottom:4px">Arquivo <span class="t500">(PDF, imagem ou documento, até 20MB)</span></div><input id="docFile" type="file" accept="'+_DOC_ACCEPT+'" class="input" style="margin-bottom:6px">'
     +'<div id="docErr" class="fz12" style="color:#dc2626;min-height:16px"></div>'
     +'<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="doc-upload-send">'+icon('upload',15)+'Enviar</button></div></div>');
+  // Trocou o negócio no seletor → re-rotula o destino (Vendedor/Comprador ↔ Locador/Locatário).
+  const selDeal=$('#docDeal');
+  if(selDeal) selDeal.addEventListener('change',()=>{ const s=$('#docDrive'); if(s){ const atual=s.value; s.innerHTML=_destinoOpts(selDeal.value); s.value=atual; if(!s.value) s.value='outros'; } });
 }
 
 /* ---- Clicksign (administrativo) — status vem do checklist REAL dos negócios ---- */
@@ -2259,6 +2295,17 @@ handleAction = function(a, el){
   if(a==='col-salvar'){ salvarKanbanColunas(); return; }
   if(a==='ir-comentarios'){ state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const el=$('#bkDealTabs'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60); return; }
   if(a==='drive-sync-real'){ syncNegocioDrive(); return; }
+  if(a==='drive-destino-edit'){ openDriveDestino(); return; }
+  if(a==='drive-destino-save'){
+    const url=(($('#ddUrl')||{}).value||'').trim(); const errEl=$('#ddErr');
+    // Validação leve aqui (o servidor extrai/valida o id de verdade): tem que parecer
+    // link de pasta do Drive — pega link de ARQUIVO colado por engano.
+    if(url && !/drive\.google\.com/.test(url)){ if(errEl) errEl.textContent='Cole um link do Google Drive (…/drive/folders/…).'; return; }
+    if(url && /\/file\//.test(url)){ if(errEl) errEl.textContent='Esse é o link de um ARQUIVO — cole o link da PASTA (…/drive/folders/…).'; return; }
+    el.disabled=true; if(errEl) errEl.textContent='Salvando…';
+    negAtualizar({negocioId:state.currentDeal, acao:'drive_destino', url}, url?'Pasta destino definida':'Pasta destino removida (padrão)').then(ok=>{ if(ok!==false) closeModal(); else if(errEl) errEl.textContent=''; }).finally(()=>{ try{el.disabled=false;}catch(_e){} });
+    return;
+  }
   if(a==='campos-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value:undefined;}; const campos={}; if($('#cpAdm')) campos.administracao=v('cpAdm'); if($('#cpParceria')) campos.parceria=v('cpParceria'); if($('#cpComRec')) campos.comissaoRecebida=v('cpComRec'); el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'campos', campos}, 'Informações salvas').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='proposta-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value.trim():undefined;}; const proposta={}; const map={ppInicio:'inicio',ppValorAcordado:'valorAcordado',ppPrazo:'prazo',ppTaxaAdm:'taxaAdm',ppSinal:'sinal',ppSinalData:'sinalData',ppParcelaA:'parcelaA',ppParcelaAData:'parcelaAData',ppParcelaB:'parcelaB',ppParcelaBData:'parcelaBData',ppFgts:'fgts',ppFgtsValor:'fgtsValor',ppFinanciamento:'financiamento'}; Object.entries(map).forEach(([id,k])=>{ const val=v(id); if(val!==undefined) proposta[k]=val; }); const payload={negocioId:state.currentDeal, acao:'proposta', proposta}; const cp=$('#ppComPct'); if(cp){ const raw=(cp.value||'').replace('%','').replace(',','.').trim(); const pct=raw===''?0:parseFloat(raw); if(!isFinite(pct)||pct<0||pct>100){ toast('Taxa de comissão inválida — use um número entre 0 e 100.','alert-triangle','var(--danger)'); return; } payload.comissaoPct=pct; } el.disabled=true; negAtualizar(payload, 'Proposta salva').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='comissao-edit'){ openComissaoModal(); return; }
@@ -2298,6 +2345,9 @@ handleAction = function(a, el){
   if(a==='deal-doc-add'){ openDocUpload(state.currentDeal); return; }
   if(a==='doc-upload-send'){
     const dealId=($('#docDeal')||{}).value, cat=($('#docCat')||{}).value, errEl=$('#docErr');
+    // Captura o destino do Drive AGORA (síncrono): se lido só no rd.onload, um Cancelar
+    // no meio da leitura do arquivo esvazia o modal e cairia em 'outros' em silêncio.
+    const dest=(($('#docDrive')||{}).value)||'outros';
     const f=($('#docFile')||{}).files && $('#docFile').files[0];
     if(!f){ if(errEl) errEl.textContent='Escolha um arquivo.'; return; }
     if(f.size>20*1024*1024){ if(errEl) errEl.textContent='Arquivo acima de 20MB.'; return; }
@@ -2308,7 +2358,7 @@ handleAction = function(a, el){
     const rd=new FileReader();
     rd.onload=async()=>{ try{
         const b64=String(rd.result||'').split(',')[1]||'';
-        await fnAnexarDoc({negocioId:dealId, categoria:cat, nome:f.name, mime:f.type||'application/octet-stream', base64:b64});
+        await fnAnexarDoc({negocioId:dealId, categoria:cat, driveDestino:dest, nome:f.name, mime:f.type||'application/octet-stream', base64:b64});
         toast('Documento enviado','check'); closeModal(); await carregarDados(); if(state.view==='documentos') navigate('documentos'); else if(state.currentDeal && state._viewingDeal) openDeal(state.currentDeal);
       }catch(e){ if(errEl) errEl.textContent=e.message||'Erro ao enviar'; try{el.disabled=false;}catch(_e){} } };
     rd.onerror=()=>{ if(errEl) errEl.textContent='Falha ao ler o arquivo.'; try{el.disabled=false;}catch(_e){} };
