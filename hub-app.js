@@ -537,12 +537,14 @@ function renderSidebar() {
   // Chevron (SVG) da seção — gira via classe .fechado no CSS.
   const CHEV = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
   // Monta a sidebar seguindo SIDEBAR_LAYOUT. `rodape:true` (Suporte/TI + Meu Perfil)
-  // vai pro rodapé (#sbFoot), o resto pro nav rolável.
+  // vai pro rodapé (#sbFoot), o resto pro nav rolável. O 'config' (Meu Perfil) NÃO
+  // vira item de texto — vira o BLOCO DE CONTA (avatar+nome+cargo), spec ref 11.
   let html = '', footHtml = '';
   for (const entry of SIDEBAR_LAYOUT) {
     if (entry.item) {
       const c = catDe(entry.item);
       if (!podeVer(c)) continue;
+      if (entry.item === 'config') continue;          // Meu Perfil → bloco de conta (abaixo)
       if (entry.rodape) footHtml += itemHtml(c); else html += itemHtml(c);
     } else if (entry.grupo) {
       const filhos = entry.filhos.map(catDe).filter(podeVer);
@@ -567,11 +569,19 @@ function renderSidebar() {
     }
   }
   navCategorias.innerHTML = html;
-  // Rodapé: Suporte/TI + Meu Perfil + versão (lida do #appVersion da topbar).
+  // Rodapé: Suporte/TI + bloco de conta (avatar+nome+cargo → Meu Perfil) + versão.
   const sbFoot = document.getElementById('sbFoot');
   if (sbFoot) {
     const ver = (document.getElementById('appVersion')?.textContent || '').trim();
-    sbFoot.innerHTML = footHtml + (ver ? `<div class="sb-ver">${ver} · ${ehWeb() ? 'web' : 'desktop'}</div>` : '');
+    const accNome = formatarNome(auth.currentUser?.displayName) || auth.currentUser?.email || 'Usuário';
+    const accIni = (accNome.trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('') || 'U').toUpperCase();
+    const accCargo = isAdmin ? 'Admin · REMAX SMART' : 'REMAX SMART';
+    const accHtml = `
+      <button class="sb-acc" data-cat="config" data-tip="Meu Perfil">
+        <span class="sb-acc-av">${escapeHtml(accIni)}</span>
+        <span class="sb-acc-meta"><span class="sb-acc-nome">${escapeHtml(accNome)}</span><span class="sb-acc-cargo">${escapeHtml(accCargo)}</span></span>
+      </button>`;
+    sbFoot.innerHTML = footHtml + accHtml + (ver ? `<div class="sb-ver">${ver} · ${ehWeb() ? 'web' : 'desktop'}</div>` : '');
   }
 
   // Grupos: abrir/fechar a sanfona.
