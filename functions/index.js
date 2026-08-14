@@ -5016,25 +5016,21 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
       itens.push({ nomePdf: _driveSanitizar('Ficha ' + label + ' - ' + nomeP) + '.pdf', buf: pdfBuf, dest: papel });
     } catch (e) { console.error('driveSyncNegocio pdf', (e && e.message) || e); }
   }
-  // 4) sobe cada arquivo NA SUBPASTA dele (dedup por nome dentro da subpasta) e
-  // registra o ID — a lista `atuais` vira a base de remoção da PRÓXIMA sync.
-  // A chave de controle é "dest/nome": arquivos registrados por versão antiga (chave
-  // sem "dest/") não batem com nenhuma desejada → são movidos pra lixeira e resobem
-  // já organizados nas subpastas (migração automática do layout antigo).
-  let enviados = 0, jaExistiam = 0, falhas = 0, removidos = 0;
-  const atuais = [];              // [{id, nome: "dest/arquivo"}] de tudo que DEVE existir agora
-  const desejados = new Set();    // chaves desejadas (p/ decidir o que remover)
+  // 4) SÓ ADITIVO (pedido do Nathan: "não é pra excluir"). Sobe cada arquivo na
+  // subpasta dele, PULANDO os que já existem lá (dedup por nome). O robô NUNCA
+  // remove/lixeira nada — nem o que ele mesmo subiu antes, nem o que a pessoa pôs
+  // na pasta. Se um doc sai do negócio ou você troca a pasta destino, o arquivo
+  // antigo simplesmente FICA onde está (não é apagado). Guarda os ids só pra registro.
+  let enviados = 0, jaExistiam = 0, falhas = 0;
+  const removidos = 0;           // aditivo: nunca remove (mantido no retorno por compat)
+  const atuais = [];             // [{id, nome:"dest/arquivo"}] do que está na pasta agora
   const anteriores = (n.driveSync && Array.isArray(n.driveSync.arquivos)) ? n.driveSync.arquivos : [];
   const antPorNome = new Map(anteriores.filter(a => a && a.id).map(a => [a.nome, a.id]));
-  // Pasta do negócio MUDOU (trocaram o link destino): os registros antigos apontam
-  // pra pasta velha — remove todos de lá (lixeira) e sobe tudo fresco na nova.
-  const pastaMudou = !!(n.driveSync && n.driveSync.pastaId && n.driveSync.pastaId !== pastaImovel);
   for (const it of itens) {
     const nomeArq = it.buf ? it.nomePdf : it.nome;
     const destKey = subPastas[it.dest] ? it.dest : 'outros';
     const pastaDest = subPastas[destKey];
     const chave = destKey + '/' + nomeArq;
-    desejados.add(chave);
     try {
       const existe = await _driveAcharArquivo(token, nomeArq, pastaDest);
       if (existe) { jaExistiam++; atuais.push({ id: existe.id, nome: chave }); continue; }
@@ -5044,23 +5040,8 @@ exports.driveSyncNegocio = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIEN
       enviados++;
     } catch (e) {
       falhas++; console.error('driveSyncNegocio upload', (e && e.message) || e);
-      // Falha transitória num arquivo JÁ registrado antes: preserva o id, senão ele
-      // vira órfão não-gerenciável (o robô perderia o id pra removê-lo depois).
-      if (!pastaMudou && antPorNome.has(chave)) atuais.push({ id: antPorNome.get(chave), nome: chave });
+      if (antPorNome.has(chave)) atuais.push({ id: antPorNome.get(chave), nome: chave }); // preserva registro
     }
-  }
-  // 5) REMOÇÃO SEGURA: só os arquivos que o robô registrou numa sync ANTERIOR
-  // (n.driveSync.arquivos) e que não estão mais no negócio — ou TODOS os antigos,
-  // se a pasta destino mudou (estão no lugar velho). Nunca toca em arquivo que a
-  // pessoa colocou na pasta manualmente (esses nunca entram em driveSync).
-  // Vai pra LIXEIRA (trashed) — recuperável, não é exclusão definitiva.
-  // SÓ remove se NENHUM upload falhou nesta rodada: com falha, o conjunto `desejados`/
-  // re-upload está incompleto e poderíamos lixeirar um doc que só falhou em resubir
-  // (sumiria do Drive até a próxima sync limpa). Com falha, adia a limpeza.
-  if (falhas === 0) for (const a of anteriores) {
-    if (!a || !a.id || (!pastaMudou && desejados.has(a.nome))) continue;
-    try { await _driveApi(token, 'files/' + a.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); removidos++; }
-    catch (e) { console.error('driveSyncNegocio remove', (e && e.message) || e); }
   }
   await ref.set({ driveSync: { pastaId: pastaImovel, arquivos: atuais, em: admin.firestore.FieldValue.serverTimestamp() } }, { merge: true });
   const link = `https://drive.google.com/drive/folders/${pastaImovel}`;
