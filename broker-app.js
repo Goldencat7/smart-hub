@@ -50,6 +50,7 @@ const fnImovelExcluir=call('carteiraExcluirImovel'); // gestor: exclui imóvel
 const fnKanbanGet   = call('kanbanColunasGet');     // colunas customizáveis do quadro
 const fnKanbanSalvar= call('kanbanColunasSalvar');  // gestor: salva colunas
 const fnMoverColuna = call('negocioMoverColuna');   // gestor: move card de coluna (Modelo 2)
+const fnFeedSync    = call('sincronizarFeedAgora');  // botão "Atualizar do portal" (feed iList) sob demanda
 // Kanban Modelo 2 (Trello): colunas do quadro = config editável; cada negócio tem
 // `colunaId` (posição), separado do status. Sem colunaId → deriva do status (migração).
 const KANBAN_COLUNAS_PADRAO = [
@@ -1101,6 +1102,39 @@ async function negAtualizar(payload, okMsg){
   } catch(e){ toast(e.message||'Erro', 'alert-triangle', 'var(--danger)'); return false; }
 }
 
+// Carimbo do portal "2026-08-14T09:22:42" → "14/08 09:22" (mostrado como está, sem
+// converter fuso — é o horário que o próprio feed publicou).
+function fmtPublish(s){ try{ const [dt,tm]=String(s).split('T'); const [,mo,da]=dt.split('-'); return da+'/'+mo+(tm?(' '+tm.slice(0,5)):''); }catch(_e){ return ''; } }
+
+// Botão "Atualizar do portal": força a sync do feed do iList agora. O backend checa
+// primeiro se o feed mudou (ETag) — se não mudou, avisa "sem novidade" sem reprocessar.
+async function sincronizarFeedPortal(btn){
+  if(btn){ btn.disabled=true; btn.innerHTML=icon('loader',15)+'Buscando…'; }
+  toast('Buscando novidades do portal…','refresh-cw');
+  const restaura=()=>{ if(btn){ btn.disabled=false; btn.innerHTML=icon('refresh-cw',15)+'Atualizar do portal'; } };
+  try{
+    const r = await fnFeedSync({});
+    const d = r.data || {};
+    if(d.semNovidade){
+      toast('O portal não gerou novidade'+(d.publishDate?(' desde '+fmtPublish(d.publishDate)):'')+' — nada novo pra trazer.','info');
+      restaura();
+      return;
+    }
+    const partes=[];
+    if(d.criados) partes.push(d.criados+' novo'+(d.criados>1?'s':''));
+    if(d.atualizados) partes.push(d.atualizados+' atualizado'+(d.atualizados>1?'s':''));
+    if(d.sumidos) partes.push(d.sumidos+' fora do portal');
+    if(d.falhas) partes.push(d.falhas+' falha'+(d.falhas>1?'s':''));
+    const resumo = partes.length ? ('✅ '+partes.join(' · ')) : '✅ Carteira já estava em dia.';
+    await carregarDados();          // recarrega imóveis+negócios do servidor
+    toast(resumo,'check-circle-2','var(--success)');
+    navigate(state.view);           // re-renderiza a tela atual com a carteira nova
+  }catch(e){
+    toast(e.message||'Erro ao atualizar do portal','alert-triangle','var(--danger)');
+    restaura();
+  }
+}
+
 // Sincroniza os documentos + fichas do negócio pro Drive do corretor (via robô).
 // Cria a pasta "endereço (NG-código)" na pasta do corretor e sobe os arquivos.
 // Ao terminar, salva o link da pasta como driveUrl do negócio (aparece "Abrir Drive").
@@ -1378,7 +1412,7 @@ RENDERERS.imoveis=function(host){
     : t==='Todos' ? _ativosC.length
     : t==='Venda' ? _ativosC.filter(p=>p.finalidadeRaw==='venda'||p.finalidadeRaw==='venda_locacao').length
     : _ativosC.filter(p=>p.finalidadeRaw==='locacao'||p.finalidadeRaw==='venda_locacao').length;
-  host.innerHTML=pageHead(hTitulo('Imóveis'),'Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','<button class="btn btn-primary sm" data-action="novo-imovel-manual" title="Cadastrar imóvel que veio de fora (sem ficha)">'+icon('plus',15)+'Novo imóvel</button>')
+  host.innerHTML=pageHead(hTitulo('Imóveis'),'Carteira de imóveis da imobiliária — reutilizáveis entre negócios.','<button class="btn btn-outline sm" data-action="feed-sync" title="Buscar imóveis novos/atualizados do portal (iList) agora, sem esperar a sincronização automática">'+icon('refresh-cw',15)+'Atualizar do portal</button><button class="btn btn-primary sm" data-action="novo-imovel-manual" title="Cadastrar imóvel que veio de fora (sem ficha)">'+icon('plus',15)+'Novo imóvel</button>')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:16px"><div class="fx ac g2 wrap">'+fs.map(t=>'<button class="chip'+(state.imoveisFiltro===t?' active':'')+'" data-action="imotipo" data-v="'+t+'">'+t+' <span class="mono" style="opacity:.6;font-weight:700;font-size:11px">'+_contFin(t)+'</span></button>').join('')+'</div><div class="fx ac g2 wrap"><div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(260px,55vw)">'+icon('search',16,'tmut')+'<input data-input="imoveisBusca" value="'+esc(state.imoveisBusca||'')+'" placeholder="Buscar imóvel…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div><button data-action="imosort" title="Ordenar por data de cadastro" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;font-family:var(--sans);cursor:pointer;white-space:nowrap">'+icon(state.imoveisSort==='antigo'?'arrow-up':'arrow-down',15)+(state.imoveisSort==='antigo'?'Mais antigos':'Mais novos')+'</button>'+(state.role==='broker'?corrSelectFrom('imocorr',state.imoveisCorretor,PROPERTIES_ALL.map(p=>[p.corretor,p.corretorNome])):'')+mesSelect()+'<div class="fx" style="background:var(--raised);border:1px solid var(--bd);border-radius:8px;padding:3px"><button class="seg'+(state.imoveisView==='cards'?" active":"")+'" data-action="imoview" data-v="cards" style="color:'+(state.imoveisView==='cards'?'':'var(--ondarkmuted)')+'">'+icon('layout-grid',15)+'</button><button class="seg'+(state.imoveisView==='tabela'?" active":"")+'" data-action="imoview" data-v="tabela" style="color:'+(state.imoveisView==='tabela'?'':'var(--ondarkmuted)')+'">'+icon('list',15)+'</button></div></div></div>'
   + '<div id="imoveisList">'+imoveisList()+'</div>';
 };
@@ -1530,6 +1564,7 @@ function handleAction(a,el){
   else if(a==='negvercancelados'){ state.negVerCancelados=!state.negVerCancelados; if(state.negVerCancelados) state.negVerArquivados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
+  else if(a==='feed-sync'){ sincronizarFeedPortal(el); }
   else if(a==='mobilenav') openMobileNav();
   else if(a==='mobilenav-close') closeMobileNav();
   else if(a==='close-drawer') closeDrawer();

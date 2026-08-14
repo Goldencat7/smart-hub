@@ -385,6 +385,8 @@ let locSub = null;              // sub-app aberto dentro da aba Locação (null 
 let locSanfonaAberta = false;   // "Meus Negócios" expandido na sidebar (sanfona)
 let locBrokerView = 'dashboard';// tela ativa do Broker embutido (sub-item da sanfona)
 let brokerMontado = false;      // Broker já montado (embutido) na área central
+let brokerCarregando = null;    // Promise do lazy-load do Broker (null = ainda não pedido)
+let brokerFalhou = false;       // lazy-load tentou e não definiu window.Broker → cai no fallback
 let termoBusca = '';
 let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
@@ -627,6 +629,36 @@ function ativarCategoria(id) {
   }
 }
 
+// Lazy-load do Broker: broker.css + vendor/lucide.min.js + broker-app.js só entram
+// quando "Meus Negócios" abre pela 1ª vez (antes vinham no index.html e pesavam a
+// abertura de TODO mundo, mesmo quem nunca usa a aba). Idempotente — a 2ª chamada
+// devolve a mesma Promise; resolve mesmo se lucide falhar (sem ícone não trava o Broker).
+function carregarBroker() {
+  if (window.Broker) return Promise.resolve();
+  if (brokerCarregando) return brokerCarregando;
+  brokerCarregando = (async () => {
+    // CSS do Broker (escopado em #bkRoot — não afeta o resto do Hub)
+    if (!document.getElementById('broker-css')) {
+      const l = document.createElement('link');
+      l.id = 'broker-css'; l.rel = 'stylesheet'; l.href = 'broker.css';
+      document.head.appendChild(l);
+    }
+    // lucide (script clássico → define window.lucide). Falha de rede não impede o Broker.
+    if (!window.lucide) {
+      await new Promise((res) => {
+        const s = document.createElement('script');
+        s.src = 'vendor/lucide.min.js';
+        s.onload = res; s.onerror = res;
+        document.body.appendChild(s);
+      });
+    }
+    // módulo ES do Broker → define window.Broker ao avaliar
+    try { await import('./broker-app.js'); } catch (e) { console.error('Falha ao carregar o Broker:', e); }
+    if (!window.Broker) brokerFalhou = true;   // degrada pras telas antigas (fallback)
+  })();
+  return brokerCarregando;
+}
+
 // Papel na Gestão de Locações → Broker/Corretor/Administrativo. Fonte ÚNICA: a
 // claim `locRole` (via locMeuPerfil). gestor→Broker, administrativo→Admin, resto→Corretor.
 // (A antiga permissão `loc_gestao` foi removida — ver CLAUDE.md.)
@@ -833,6 +865,22 @@ function renderCentro() {
     appsGrid.hidden = true;
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
+
+    // Lazy-load: 1ª vez que abre "Meus Negócios", baixa o módulo do Broker e
+    // mostra um "carregando" enquanto isso; ao terminar, re-renderiza pra montar.
+    // Se o load falhar (brokerFalhou), NÃO repete — segue pras telas antigas (fallback).
+    if (!window.Broker && !brokerFalhou) {
+      hubMainHead.hidden = true;
+      hubMain.classList.add('hub-main--broker');
+      hubLayout.classList.add('loc-embed');
+      const bk = document.getElementById('bkRoot');
+      if (bk && bk.parentElement !== hubMain) hubMain.appendChild(bk);
+      if (bk) { bk.hidden = false; bk.innerHTML = '<div style="padding:48px;text-align:center;color:var(--text-muted);font-size:14px">Carregando…</div>'; }
+      carregarBroker().then(() => {
+        if (categoriaAtiva === 'locacoes') { renderSidebar(); renderCentro(); }
+      });
+      return;
+    }
 
     if (window.Broker && typeof window.Broker.mount === 'function') {
       const bk = document.getElementById('bkRoot');

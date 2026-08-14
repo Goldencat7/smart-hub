@@ -6734,16 +6734,30 @@ function _feedMapear(L, corretor) {
     },
   };
 }
-exports.sincronizarFeedImoveis = onSchedule({ schedule: '0 5 * * *', timeZone: TZ, timeoutSeconds: 540, memory: '512MiB' }, async () => {
-  const projectId = process.env.GCLOUD_PROJECT;
-  if (projectId !== 'remax-smart-hub') { console.log(`Sync feed ignorado: ${projectId} não é produção.`); return; }
+// Corpo do sync, compartilhado pelo agendado (8h/14h) e pelo botão manual. Devolve
+// { criados, atualizados, sumidos, falhas, publishDate, semNovidade, total } e JOGA
+// exceção em falha (quem chama trata). Checagem de frescor primeiro: um HEAD lê o
+// ETag/Last-Modified do feed; se não mudou desde a última sync, retorna semNovidade
+// SEM baixar os ~2.2MB nem reprocessar — assim cliques repetidos do botão ficam baratos.
+async function _rodarSyncFeed({ manual = false } = {}) {
+  const metaRef = db.collection('_feed_meta').doc('imoveis');
+  let etag = '', lastMod = '';
   try {
+    const head = await fetch(FEED_IMOVEIS_URL, { method: 'HEAD' });
+    if (head.ok) { etag = head.headers.get('etag') || ''; lastMod = head.headers.get('last-modified') || ''; }
+  } catch (_e) { /* HEAD indisponível → segue pro GET normal */ }
+  const metaSnap = await metaRef.get();
+  const meta = metaSnap.exists ? metaSnap.data() : null;
+  if (meta && (etag || lastMod) && ((etag && meta.etag === etag) || (!etag && lastMod && meta.lastModified === lastMod))) {
+    return { semNovidade: true, publishDate: meta.publishDate || '', criados: 0, atualizados: 0, sumidos: 0, falhas: 0, total: meta.total || 0 };
+  }
     const resp = await fetch(FEED_IMOVEIS_URL);
     if (!resp.ok) throw new Error('Feed HTTP ' + resp.status);
     const xml = await resp.text();
     const { XMLParser } = require('fast-xml-parser');
     const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', trimValues: true, parseTagValue: false });
     const doc = parser.parse(xml);
+    const publishDate = _feedTxt(doc.ListingDataFeed && doc.ListingDataFeed.Header && doc.ListingDataFeed.Header.PublishDate);
     const listings = _feedArr(doc.ListingDataFeed && doc.ListingDataFeed.Listings && doc.ListingDataFeed.Listings.Listing);
     if (!listings.length) throw new Error('Feed vazio / não parseou');
 
@@ -6821,11 +6835,30 @@ exports.sincronizarFeedImoveis = onSchedule({ schedule: '0 5 * * *', timeZone: T
     // pelo broadcast — que TODO cliente lê (o listener direto da coleção `imoveis` pode
     // ser negado no `list` pro gestor e falhar calado; o broadcast é o caminho garantido).
     if (criados || atualizados || sumidos) await _bumpBroadcast('imovelSeq');
+    // Carimbo de frescor pro próximo run: guarda ETag/Last-Modified + PublishDate do feed.
+    await metaRef.set({ etag, lastModified: lastMod, publishDate, total: listings.length, criados, atualizados, sumidos, falhas, syncEm: admin.firestore.FieldValue.serverTimestamp(), manual }, { merge: true });
     console.log(`Sync feed OK: ${criados} criados, ${atualizados} atualizados, ${sumidos} fora do portal, ${falhas} falhas.`);
     if (falhas) await logErro('sincronizarFeedImoveis', new Error(`${falhas} anúncio(s) falharam no sync (ver logs de warning)`));
-  } catch (e) {
-    await logErro('sincronizarFeedImoveis', e);
-  }
+  return { semNovidade: false, publishDate, criados, atualizados, sumidos, falhas, total: listings.length };
+}
+
+// Agendado: 8h e 14h (Brasília). O feed regenera de manhã (~6h), então às 5h a sync
+// pegava o feed VELHO do dia; movido pra 8h ela já pega as novidades do dia sozinha,
+// e a passada das 14h cobre uma eventual regeneração à tarde. Só roda em produção.
+exports.sincronizarFeedImoveis = onSchedule({ schedule: '0 8,14 * * *', timeZone: TZ, timeoutSeconds: 540, memory: '512MiB' }, async () => {
+  const projectId = process.env.GCLOUD_PROJECT;
+  if (projectId !== 'remax-smart-hub') { console.log(`Sync feed ignorado: ${projectId} não é produção.`); return; }
+  try { await _rodarSyncFeed({ manual: false }); }
+  catch (e) { await logErro('sincronizarFeedImoveis', e); }
+});
+
+// Manual: botão "Atualizar do portal" na tela Imóveis (qualquer corretor logado). A
+// checagem de frescor no _rodarSyncFeed evita reprocessar quando o feed não mudou —
+// então vários corretores clicando não pesam (só o 1º após uma foto nova faz trabalho).
+exports.sincronizarFeedAgora = onCall(async (req) => {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Faça login pra atualizar o portal.');
+  try { return await _rodarSyncFeed({ manual: true }); }
+  catch (e) { await logErro('sincronizarFeedAgora', e); throw new HttpsError('internal', e.message || 'Falha ao sincronizar o feed.'); }
 });
 
 // ─── Relatório diário de SAÚDE ────────────────────────────────────────────────

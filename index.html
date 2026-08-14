@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>REMAX Smart Hub</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="broker.css">
     <script>/* aplica o tema salvo antes de pintar, pra não piscar — CLARO é o padrão; escuro só se a pessoa escolheu */try{if(localStorage.getItem('hub_tema')!=='dark')document.documentElement.dataset.theme='light';}catch(e){document.documentElement.dataset.theme='light';}</script>
   </head>
   <body class="hub-body">
@@ -544,11 +543,12 @@
     </dialog>
 
     <!-- Broker (visão nova da Gestão de Locações) — overlay tela cheia, montado
-         pelo hub-app.js quando o gestor abre a aba Locação. Ver broker-app.js. -->
+         pelo hub-app.js quando o gestor abre a aba Locação. Ver broker-app.js.
+         broker.css, vendor/lucide.min.js e broker-app.js são carregados SOB DEMANDA
+         (lazy) pelo carregarBroker() do hub-app.js só quando "Meus Negócios" abre —
+         mantém a abertura do Hub leve pra quem não usa a aba. -->
     <div id="bkRoot" hidden></div>
 
     <script type="module" src="hub-app.js"></script>
-    <script src="vendor/lucide.min.js"></script>
-    <script type="module" src="broker-app.js"></script>
   </body>
 </html>
