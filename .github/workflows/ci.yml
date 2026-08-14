@@ -97,11 +97,11 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
-      - name: Instalar Java 17 (o emulador do Firestore é um programa Java)
+      - name: Instalar Java 21 (o emulador do Firestore é um programa Java; firebase-tools exige 21+)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Instalar dependências
         # Pula o binário do Electron (~100 MB) — os testes de regra não precisam dele.
