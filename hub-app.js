@@ -551,13 +551,15 @@ function renderSidebar() {
     } else if (entry.grupo) {
       const filhos = entry.filhos.map(catDe).filter(podeVer);
       if (!filhos.length) continue;   // grupo sem filho visível não aparece
-      // RECOLHIDA: sem cabeçalho de seção — cada filho vira um ícone solto no rail
-      // (eles têm ícone real), pra NADA ficar inacessível no modo só-ícone (spec §5).
+      // RECOLHIDA: o grupo vira UM ícone só (o ícone da seção). Clicar expande a barra
+      // e abre a seção (handler do data-grupo) — nada fica inacessível, sem virar um
+      // paredão de ícones. `.ativo` se a tela aberta é filha desta seção.
       if (sbRecolhida) {
-        html += filhos.map(f => `
-        <button class="nav-item ${f.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${f.id}" data-tip="${f.nome}">
-          <span class="nav-icone">${f.icone}</span><span class="nav-label">${f.nome}</span>
-        </button>`).join('');
+        const temAtiva = filhos.some(f => f.id === categoriaAtiva);
+        html += `
+        <button class="nav-item ${temAtiva ? 'ativo' : ''}" data-grupo="${entry.grupo}" data-tip="${entry.nome}">
+          <span class="nav-icone">${entry.icone || ''}</span><span class="nav-label">${entry.nome}</span>
+        </button>`;
         continue;
       }
       // Aberto = SÓ o que está em gruposAbertos. Ao navegar pra uma tela de dentro,
@@ -595,10 +597,18 @@ function renderSidebar() {
     sbFoot.innerHTML = footHtml + accHtml + (ver ? `<div class="sb-ver">${ver} · ${ehWeb() ? 'web' : 'desktop'}</div>` : '');
   }
 
-  // Grupos: abrir/fechar a sanfona.
+  // Grupos: abrir/fechar a sanfona. RECOLHIDO: o ícone da seção EXPANDE a barra e
+  // abre a seção (senão os filhos ficariam inacessíveis no modo só-ícone).
   navCategorias.querySelectorAll('[data-grupo]').forEach(b => {
     b.addEventListener('click', () => {
       const g = b.dataset.grupo;
+      if (sbRecolhida) {
+        sbRecolhida = false;
+        try { localStorage.setItem('hub_sb_recolhida', '0'); } catch (_e) { /* nada */ }
+        gruposAbertos.add(g);
+        renderSidebar();
+        return;
+      }
       if (gruposAbertos.has(g)) gruposAbertos.delete(g); else gruposAbertos.add(g);
       renderSidebar();
     });
