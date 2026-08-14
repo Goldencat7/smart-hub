@@ -257,71 +257,189 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
 .hub-layout {
   display: grid;
-  grid-template-columns: 180px 1fr 300px;
+  grid-template-columns: 240px 1fr 300px;
   gap: 0;
   height: calc(100vh - 46px);
   overflow: hidden;
+  transition: grid-template-columns 160ms ease;
 }
+/* sidebar recolhida (só ícones) */
+.hub-layout.sb-recolhida { grid-template-columns: 64px 1fr 300px; }
 
-/* ── Sidebar ─────────────────────────────────────────────────────── */
+/* ── Sidebar (design "SMART HUB v2" — réplica do mockup, theme-aware) ──────
+   Navy + creme no escuro; clareia no modo claro. Nav rolável com seções
+   retráteis (cabeçalho MAIÚSCULO + chevron + contador + trilho de indentação)
+   + rodapé (Suporte/TI + Meu Perfil + versão). Barra VERMELHA no item ativo.
+   Os data-cat/data-grupo/data-locview continuam iguais — só o visual muda. */
 .sidebar {
-  padding: 12px 8px 20px;
-  border-right: 1px solid var(--navy-dark);
-  background: var(--navy-deep);
+  --sb-text:      #F7F5EE;
+  --sb-idle:      rgba(247,245,238,.68);
+  --sb-hover:     rgba(247,245,238,.95);
+  --sb-active:    #F7F5EE;
+  --sb-label:     rgba(247,245,238,.56);
+  --sb-hover-bg:  rgba(255,255,255,.05);
+  --sb-active-bg: rgba(255,255,255,.09);
+  --sb-hairline:  rgba(247,245,238,.09);
+  --sb-accent:    #FF1200;
+  --sb-badge-bg:  rgba(255,255,255,.10);
+  --sb-bg:        #000E35;
+  --sb-bg-deep:   #00091F;
+  padding: 0;
+  border-right: 1px solid var(--sb-hairline);
+  background: var(--sb-bg);
+  color: var(--sb-text);
   display: flex; flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   min-height: 0;
 }
-
-.sidebar-nav { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; }
-
-.nav-item-fim {
-  margin-top: auto;
-  border-top: 1px solid var(--navy-dark);
-  padding-top: 10px;
+:root[data-theme="light"] .sidebar {
+  --sb-text:      #14203A;
+  --sb-idle:      rgba(20,32,58,.70);
+  --sb-hover:     rgba(20,32,58,.96);
+  --sb-active:    #000E35;
+  --sb-label:     rgba(20,32,58,.55);
+  --sb-hover-bg:  rgba(0,14,53,.05);
+  --sb-active-bg: rgba(0,14,53,.08);
+  --sb-hairline:  rgba(0,14,53,.10);
+  --sb-accent:    #C8001A;
+  --sb-badge-bg:  rgba(0,14,53,.07);
+  --sb-bg:        #F4F2EA;
+  --sb-bg-deep:   #ECEAE0;
 }
 
+/* topo: só o botão de recolher (a marca REMAX fica na topbar do Hub) */
+.sb-top {
+  flex: 0 0 auto; height: 38px;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 10px; border-bottom: 1px solid var(--sb-hairline);
+}
+.sb-toggle {
+  width: 30px; height: 30px; display: grid; place-items: center;
+  background: none; border: 0; border-radius: 6px;
+  color: var(--sb-idle); cursor: pointer; font-size: 15px; line-height: 1;
+  transition: background 150ms, color 150ms;
+}
+.sb-toggle:hover { background: var(--sb-hover-bg); color: var(--sb-hover); }
+
+.sidebar-nav {
+  flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto; overflow-x: hidden;
+  padding: 10px 10px 16px;
+  scrollbar-width: thin; scrollbar-color: rgba(247,245,238,.16) transparent;
+}
+.sidebar-nav::-webkit-scrollbar { width: 6px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(247,245,238,.16); border-radius: 3px; }
+
+/* item (solto ou sanfona "Meus Negócios") */
 .nav-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px;
-  background: transparent; color: var(--text-nav-inactive);
-  border: none; border-left: 2px solid transparent; border-radius: var(--radius-card);
-  cursor: pointer; font: 500 11px/1.3 inherit; text-align: left;
+  display: flex; align-items: center; gap: 11px;
+  height: 38px; padding: 0 10px;
+  background: transparent; color: var(--sb-idle);
+  border: 0; border-radius: 7px;
+  cursor: pointer; font: 400 13.5px/1 inherit; text-align: left;
+  white-space: nowrap; position: relative;
   transition: background 150ms ease, color 150ms ease;
 }
-.nav-item:hover { background: rgba(255,255,255,0.07); color: #DDE4EC; }
-.nav-item.ativo { background: var(--blue); color: #fff; border-left-color: rgba(255,255,255,0.3); }
-
+.nav-item:hover { background: var(--sb-hover-bg); color: var(--sb-hover); }
+.nav-item.ativo { background: var(--sb-active-bg); color: var(--sb-active); font-weight: 500; }
+.nav-item.ativo::before {
+  content: ""; position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 3px; border-radius: 0 2px 2px 0; background: var(--sb-accent);
+}
 .nav-icone {
   display: flex; align-items: center; justify-content: center;
-  width: 19px; height: 19px; flex-shrink: 0;
+  width: 18px; height: 18px; flex-shrink: 0; opacity: .9;
 }
-.nav-icone svg { width: 19px; height: 19px; }
-.nav-label  { flex: 1; }
-.acc-notif-dot { width: 8px; height: 8px; border-radius: 50%; background: #DC1C2E; flex-shrink: 0; }
+.nav-icone svg { width: 18px; height: 18px; }
+.nav-item.ativo .nav-icone { opacity: 1; }
+.nav-label  { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.acc-notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--sb-accent); flex-shrink: 0; }
+.nav-badge {
+  margin-left: auto; font-size: 10.5px; font-weight: 500;
+  padding: 2px 6px; border-radius: 20px;
+  background: var(--sb-badge-bg); color: var(--sb-hover);
+}
 
-/* ── Sanfona "Meus Negócios" (sub-itens do Broker embutido) ─────────── */
-.nav-caret { margin-left: auto; font-size: 10px; opacity: .7; transition: transform .15s; }
-.nav-subwrap { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px; }
-.nav-subitem {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px 6px 20px; width: 100%; text-align: left;
-  background: transparent; color: var(--text-nav-inactive);
-  border: none; border-left: 2px solid transparent; border-radius: var(--radius-card);
-  font-family: inherit; font-size: 12px; cursor: pointer;
+/* ── seção retrátil (grupo-sanfona) — cabeçalho maiúsculo, sem ícone ── */
+.nav-group {
+  width: 100%; display: flex; align-items: center; gap: 11px;
+  height: 34px; padding: 0 8px 0 10px; margin-top: 12px;
+  background: none; border: 0; border-radius: 7px; cursor: pointer;
+  color: var(--sb-label); font-family: inherit;
+  font-size: 11px; font-weight: 500; letter-spacing: .11em; text-transform: uppercase;
+  white-space: nowrap; transition: color 150ms, background 150ms;
 }
-.nav-subitem:hover { background: rgba(255,255,255,0.07); color: #DDE4EC; }
-.nav-subitem.ativo { color: #fff; background: rgba(255,255,255,0.10); border-left-color: var(--blue); font-weight: 600; }
+.nav-group:hover { color: var(--sb-hover); background: var(--sb-hover-bg); }
+/* ícone da seção = MESMO estilo/tamanho dos itens (herda .nav-icone: 18px, opacity .9) */
+.nav-group .nav-label { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.nav-group .nav-caret { width: 14px; margin-left: 6px; opacity: .85; order: 3; transition: transform 150ms ease; }
+.nav-group.fechado .nav-caret { transform: rotate(-90deg); }
+.nav-sec-count {
+  margin-left: auto; font-size: 10px; font-weight: 500; letter-spacing: 0;
+  padding: 1px 6px; border-radius: 20px;
+  background: var(--sb-badge-bg); color: var(--sb-label);
+  opacity: 0; transition: opacity 150ms;   /* reserva o espaço; visível só quando fechada */
+}
+.nav-group.fechado .nav-sec-count { opacity: 1; }
+
+/* sub-itens: trilho de indentação à esquerda */
+.nav-caret { font-size: 10px; opacity: .8; }
+.nav-subwrap {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 4px 19px; padding-left: 7px;
+  border-left: 1px solid var(--sb-hairline);
+}
+.nav-subitem {
+  display: flex; align-items: center; gap: 11px;
+  height: 36px; padding: 0 10px; width: 100%; text-align: left;
+  background: transparent; color: var(--sb-idle);
+  border: 0; border-radius: 7px;
+  font-family: inherit; font-size: 13px; cursor: pointer;
+  white-space: nowrap; position: relative;
+  transition: background 150ms, color 150ms;
+}
+.nav-subitem:hover { background: var(--sb-hover-bg); color: var(--sb-hover); }
+.nav-subitem.ativo { color: var(--sb-active); background: var(--sb-active-bg); font-weight: 500; }
+.nav-subitem.ativo::before {
+  content: ""; position: absolute; left: -8px; top: 7px; bottom: 7px;
+  width: 3px; border-radius: 0 2px 2px 0; background: var(--sb-accent);
+}
 .nav-sub-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: .55; }
-/* Itens de TOPO da sidebar (grupos-sanfona + itens soltos) em azul + negrito; os
-   sub-itens (com bolinha, indentados) ficam no tom normal. O item ATIVO mantém o
-   texto branco sobre o fundo azul. Azul claro pra ler no fundo navy. */
-.nav-group .nav-caret { transition: none; }
-.nav-item .nav-label { font-weight: 700; }
-.nav-item:not(.ativo) .nav-label,
-.nav-item:not(.ativo) .nav-icone,
-.nav-item:not(.ativo) .nav-caret { color: #5b9bf0; }
+
+/* ── rodapé ───────────────────────────────────────────────────────── */
+.sb-foot {
+  flex: 0 0 auto; padding: 8px 10px 8px;
+  border-top: 1px solid var(--sb-hairline); background: var(--sb-bg-deep);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.sb-foot:empty { display: none; }
+.sb-ver { font-size: 10px; color: var(--sb-label); padding: 6px 10px 2px; letter-spacing: .03em; }
+
+/* ── modo recolhido (só ícones + tooltip) ─────────────────────────── */
+.sidebar.recolhida .nav-item { justify-content: center; padding: 0; gap: 0; }
+.sidebar.recolhida .nav-item .nav-label,
+.sidebar.recolhida .nav-badge,
+.sidebar.recolhida .nav-item .nav-caret,
+.sidebar.recolhida .sb-ver { display: none; }
+.sidebar.recolhida .nav-group {
+  height: 1px; padding: 0; margin: 12px 12px; overflow: hidden;
+  background: var(--sb-hairline); pointer-events: none; text-indent: -999px;
+}
+.sidebar.recolhida .nav-group .nav-caret,
+.sidebar.recolhida .nav-sec-count { display: none; }
+.sidebar.recolhida .nav-subwrap { margin-left: 0; padding-left: 0; border-left: 0; }
+.sidebar.recolhida .nav-subitem { justify-content: center; padding: 0; gap: 0; }
+.sidebar.recolhida .nav-subitem .nav-sub-dot { display: none; }
+.sidebar.recolhida .nav-subitem span:not(.nav-sub-dot) { display: none; }
+/* tooltip no recolhido */
+.sidebar.recolhida .nav-item[data-tip]:hover::after,
+.sidebar.recolhida .nav-subitem[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  background: var(--sb-bg-deep); color: var(--sb-text);
+  border: 1px solid var(--sb-hairline); padding: 6px 10px; border-radius: 6px;
+  font-size: 12px; white-space: nowrap; z-index: 60; pointer-events: none;
+}
 
 /* Dashboard (tela inicial) — placeholder "em breve". */
 .home-placeholder {
@@ -1696,11 +1814,21 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .loc-voltar:hover { background: var(--navy-dark); color: var(--text); }
 
 @media (max-width: 720px) {
-  .hub-layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--navy-dark); padding: 10px 12px; }
-  .sidebar-nav { flex-direction: row; overflow-x: auto; gap: 4px; }
-  .nav-item { white-space: nowrap; }
-  .nav-item-fim { margin-top: 0; margin-left: auto; border-top: none; padding-top: 8px; }
+  .hub-layout, .hub-layout.sb-recolhida { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--sb-hairline); }
+  .sb-top, .sb-foot { display: none; }                 /* recolher/rodapé só no desktop */
+  .sidebar-nav { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 4px; padding: 8px 12px; align-items: center; }
+  .nav-item, .nav-subitem { white-space: nowrap; height: 34px; flex: 0 0 auto; }
+  .nav-item.ativo::before, .nav-subitem.ativo::before { display: none; }
+  /* seção vira um "chip" clicável na horizontal (mantém a navegação por grupo) */
+  .nav-group {
+    height: 34px; margin: 0; padding: 0 12px; flex: 0 0 auto;
+    font-size: 12px; letter-spacing: .04em; text-transform: none;
+    color: var(--sb-idle); background: var(--sb-hover-bg);
+  }
+  .nav-group .nav-caret { margin-left: 4px; }
+  .nav-sec-count { display: none; }
+  .nav-subwrap { flex-direction: row; margin: 0; padding: 0; border-left: 0; gap: 4px; }
   .hub-main { padding: 14px 14px 24px; }
   .cal-grade .cal-dia { min-height: 40px; }
   .topbar { padding: 0 12px; }

@@ -1044,6 +1044,7 @@ function openDeal(id){
   + '<div class="card" style="padding:22px 24px;margin-bottom:16px"><div class="fx ac jb wrap g2"><div class="up fz13 fw7 t800">Etapas do processo</div><div class="fx ac g3"><span class="fz12 t500">Próxima: <strong class="t900">'+esc(d.prox)+'</strong></span>'+((d.checklist||[]).some(x=>!x.feito)&&d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-primary sm nsh" data-action="concluir-proxima">'+icon('check',15)+'Concluir etapa</button>':'')+'</div></div><div style="margin-top:18px">'+renderStepper(d)+'</div></div>'
   + camposCardHTML(d)
   + propostaCardHTML(d)
+  + distribuicaoCardHTML(d)
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? iaCardHTML() : '')
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',15)+'Excluir</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800 fx ac jb" style="margin-bottom:12px"><span>Negócio encerrado</span><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',14)+'Excluir</button></div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
@@ -1579,7 +1580,11 @@ function wireEvents(root){
     else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); }
     else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); }
   });
-  root.addEventListener('change', e=>{ const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } });
+  root.addEventListener('change', e=>{
+    // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
+    // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
+    if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
+    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
 }
 function handleAction(a,el){
@@ -1650,8 +1655,9 @@ function camposCardHTML(d){
   const SN=[['','Selecione…'],['sim','Sim'],['nao','Não']];
   const CRV=[['','Selecione…'],['parcela1','1ª parcela'],['parcela2','2ª parcela'],['total','Recebido total']];
   const campo=(rot,inner)=>'<div class="grow" style="min-width:170px"><div class="fz11 fw6 t700 up" style="margin-bottom:4px">'+rot+'</div>'+inner+'</div>';
+  const inp=(id,val,ph)=>'<input id="'+id+'" class="input nsh"'+(enc?' disabled':'')+' value="'+esc(val||'')+'" placeholder="'+esc(ph||'')+'" maxlength="120" style="width:100%">';
   const linha = ehVenda
-    ? campo('Possui parceria?', sel('cpParceria', c.parceria||'', SN)) + campo('Comissão recebida', sel('cpComRec', c.comissaoRecebida||'', CRV))
+    ? campo('Possui parceria?', sel('cpParceria', c.parceria||'', SN)) + campo('Imobiliária parceira (nome)', inp('cpParceiraNome', c.imobiliariaParceira, 'Se houver parceria')) + campo('Possui referenciamento?', sel('cpRef', c.referenciamento||'', SN)) + campo('Comissão recebida', sel('cpComRec', c.comissaoRecebida||'', CRV))
     : campo('Possui administração?', sel('cpAdm', c.administracao||'', SN)) + campo('Possui parceria?', sel('cpParceria', c.parceria||'', SN)) + campo('Comissão recebida?', sel('cpComRec', c.comissaoRecebida||'', SN));
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Informações do negócio'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="campos-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+linha+'</div></div>';
 }
@@ -1697,6 +1703,34 @@ function propostaCardHTML(d){
     + campo('Taxa de comissão (%)', unidade('ppComPct', (d.comPct!=null?String(d.comPct):''), ehVenda?'6':'100', '%'));
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2" style="margin-bottom:12px"><div class="up fz12 fw7 t800">Proposta'+(enc?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(enc?'':'<button class="btn btn-primary sm nsh" data-action="proposta-salvar">'+icon('check',14)+'Salvar</button>')+'</div><div class="fx g3 wrap">'+corpo+'</div>'+(!enc?'<div class="fz11 t500" style="margin-top:10px">'+(d.tipo!=='Venda'?'A comissão da locação é calculada sobre o <b>Valor acordado</b> (o aluguel negociado). Taxa de administração padrão 8% — edite se for negociada.':'O <b>valor total</b> é a soma automática (sinal + parcelas + FGTS + financiamento) e é a base do cálculo da comissão.')+'</div>':'')+'</div>';
 }
+// Card "Distribuição da comissão" (venda): mostra em R$ quanto vai pra cada parte.
+// Base = "parte REMAX" = comValor (taxa × valor; com parceria a taxa cai pra 3%).
+// A imobiliária parceira leva a MESMA metade (50/50 da comissão do cliente); o
+// referenciamento = 12,5% da comissão TOTAL do cliente e sai da REMAX Smart (o
+// corretor recebe os 45% cheios — decisão do Nathan). Corretor % = repasse dele (45/40).
+function distribuicaoCardHTML(d){
+  if(d.tipo!=='Venda' || !(d.comValor>0)) return '';
+  const c=d.campos||{};
+  const V=d.valor||0;
+  const parteRemax=d.comValor||0;
+  const temParceria=c.parceria==='sim';
+  const temRef=c.referenciamento==='sim';
+  const comParceira=temParceria ? parteRemax : 0;   // parceira = mesma metade que a REMAX
+  const comTotal=parteRemax+comParceira;             // comissão do cliente (bruta)
+  const ref=temRef ? comTotal*0.125 : 0;
+  const corPct=repassePct(d.corretor);               // 0,45 ou 0,40 (por corretor)
+  const corretorV=parteRemax*corPct;
+  const remaxV=parteRemax*(1-corPct)-ref;
+  const fp=x=> V>0 ? (Math.round(x/V*1000)/10).toString().replace('.',',') : '0';
+  const row=(rot,sub,val,forte)=>'<div class="fx ac jb g2" style="padding:9px 0;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz13 '+(forte?'fw7 t900':'fw6 t800')+' trunc">'+rot+'</div>'+(sub?'<div class="fz11 t500 trunc">'+sub+'</div>':'')+'</div><div class="mono fw7 '+(forte?'t900':'t800')+' nsh">'+brlFull(val)+'</div></div>';
+  let linhas=row('Comissão total (cliente)', fp(comTotal)+'% · '+brlFull(V), comTotal, true);
+  if(temParceria) linhas+=row('Imobiliária parceira'+(c.imobiliariaParceira?' — '+esc(c.imobiliariaParceira):''), fp(comParceira)+'% do valor', comParceira);
+  linhas+=row('Corretor'+(d.corretorNome?' — '+esc(d.corretorNome):''), Math.round(corPct*100)+'% da parte REMAX', corretorV);
+  linhas+=row('REMAX Smart', Math.round((1-corPct)*100)+'% da parte REMAX'+(temRef?' − referenciamento':''), remaxV);
+  if(temRef) linhas+=row('Taxa de referenciamento', '12,5% dos '+fp(comTotal)+'% totais', ref);
+  return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:6px">Distribuição da comissão</div>'+linhas+'<div class="fz11 t400" style="margin-top:8px">Cálculo automático a partir do valor da proposta, da parceria e do referenciamento. Valor estimado — vale o acerto oficial.</div></div>';
+}
+
 // Modal pra editar o % de comissão do negócio (ação `comissao`). Venda: padrão 6%,
 // parceria 3%, negociadas 4/5%. Locação: padrão 100%.
 function openComissaoModal(){
@@ -2306,7 +2340,7 @@ handleAction = function(a, el){
     negAtualizar({negocioId:state.currentDeal, acao:'drive_destino', url}, url?'Pasta destino definida':'Pasta destino removida (padrão)').then(ok=>{ if(ok!==false) closeModal(); else if(errEl) errEl.textContent=''; }).finally(()=>{ try{el.disabled=false;}catch(_e){} });
     return;
   }
-  if(a==='campos-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value:undefined;}; const campos={}; if($('#cpAdm')) campos.administracao=v('cpAdm'); if($('#cpParceria')) campos.parceria=v('cpParceria'); if($('#cpComRec')) campos.comissaoRecebida=v('cpComRec'); el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'campos', campos}, 'Informações salvas').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
+  if(a==='campos-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value:undefined;}; const campos={}; if($('#cpAdm')) campos.administracao=v('cpAdm'); if($('#cpParceria')) campos.parceria=v('cpParceria'); if($('#cpRef')) campos.referenciamento=v('cpRef'); if($('#cpParceiraNome')) campos.imobiliariaParceira=v('cpParceiraNome'); if($('#cpComRec')) campos.comissaoRecebida=v('cpComRec'); el.disabled=true; negAtualizar({negocioId:state.currentDeal, acao:'campos', campos}, 'Informações salvas').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='proposta-salvar'){ const v=id=>{const e=$('#'+id); return e?e.value.trim():undefined;}; const proposta={}; const map={ppInicio:'inicio',ppValorAcordado:'valorAcordado',ppPrazo:'prazo',ppTaxaAdm:'taxaAdm',ppSinal:'sinal',ppSinalData:'sinalData',ppParcelaA:'parcelaA',ppParcelaAData:'parcelaAData',ppParcelaB:'parcelaB',ppParcelaBData:'parcelaBData',ppFgts:'fgts',ppFgtsValor:'fgtsValor',ppFinanciamento:'financiamento'}; Object.entries(map).forEach(([id,k])=>{ const val=v(id); if(val!==undefined) proposta[k]=val; }); const payload={negocioId:state.currentDeal, acao:'proposta', proposta}; const cp=$('#ppComPct'); if(cp){ const raw=(cp.value||'').replace('%','').replace(',','.').trim(); const pct=raw===''?0:parseFloat(raw); if(!isFinite(pct)||pct<0||pct>100){ toast('Taxa de comissão inválida — use um número entre 0 e 100.','alert-triangle','var(--danger)'); return; } payload.comissaoPct=pct; } el.disabled=true; negAtualizar(payload, 'Proposta salva').finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='comissao-edit'){ openComissaoModal(); return; }
   if(a==='comissao-salvar'){ const raw=(($('#comPctInp')||{}).value||'').replace(',','.'); const pct=parseFloat(raw); if(!isFinite(pct)||pct<0||pct>100){ const err=$('#comPctErr'); if(err) err.textContent='Digite um percentual entre 0 e 100 (0 volta ao padrão).'; return; } closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'comissao', pct}, pct===0?'Comissão restaurada ao padrão':'Comissão atualizada'); return; }

@@ -349,18 +349,22 @@ const CATEGORIAS = [
 // { item } = tela solta (usa as flags da CATEGORIAS). { grupo, filhos } = cabeçalho que
 // abre/fecha mostrando os filhos (cada filho é um id de CATEGORIAS). Grupo sem filho
 // visível (permissão) não aparece.
+// Organização estilo "SMART HUB v2" (mockup do Nathan): Dashboard e Meus Negócios
+// soltos no topo; seções retráteis (Captação/Agenda/Equipe/Ferramentas); Marketing,
+// Documentos, Recrutamento e CRM soltos; Suporte/TI e Meu Perfil no RODAPÉ (rodape:true).
 const SIDEBAR_LAYOUT = [
   { item: 'home' },
   { item: 'locacoes' },
+  { grupo: 'g_captacao',     nome: 'Captação',    icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia'] },
+  { grupo: 'g_agenda',       nome: 'Agenda',      icone: ICN.agenda,      filhos: ['agenda', 'reuniao', 'sala_reuniao'] },
+  { item: 'marketing' },
+  { grupo: 'g_equipe',       nome: 'Equipe',      icone: ICN.performance, filhos: ['treinamento', 'performance'] },
+  { grupo: 'g_ferramentas',  nome: 'Ferramentas', icone: ICN.ferramentas, filhos: ['ia', 'whatsapp', 'calculadoras', 'notas', 'clicksign'] },
+  { item: 'documentos' },
   { item: 'recrutamento' },
-  { grupo: 'g_pessoas',        nome: 'Pessoas',        icone: ICN.crm,         filhos: ['crm', 'documentos'] },
-  { grupo: 'g_imoveis',        nome: 'Imóveis',        icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia'] },
-  { grupo: 'g_agenda',         nome: 'Agenda',         icone: ICN.agenda,      filhos: ['agenda', 'reuniao', 'sala_reuniao'] },
-  { item: 'ia' },
-  { grupo: 'g_ferramentas',    nome: 'Ferramentas',    icone: ICN.ferramentas, filhos: ['whatsapp', 'calculadoras', 'notas', 'clicksign'] },
-  { grupo: 'g_desenvolvimento', nome: 'Desenvolvimento', icone: ICN.performance, filhos: ['treinamento', 'marketing', 'performance'] },
-  { item: 'ti' },
-  { item: 'config' },
+  { item: 'crm' },
+  { item: 'ti',     rodape: true },
+  { item: 'config', rodape: true },
 ];
 
 // Web/PWA? O shim web zera o autologin (`hubApi.autologin === false`, `plataforma:'web'`).
@@ -512,7 +516,7 @@ function renderSidebar() {
   // HTML de um item solto (inclui a sanfona própria do "Meus Negócios").
   const itemHtml = c => {
     const btn = `
-    <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''} ${c.config ? 'nav-item-fim' : ''}" data-cat="${c.id}">
+    <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${c.id}" data-tip="${c.nome}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
       ${c.locacoes ? `<span class="nav-caret">${locSanfonaAberta ? '▾' : '▸'}</span>` : ''}
@@ -521,7 +525,7 @@ function renderSidebar() {
       const itens = locSubItens();
       if (itens.length) {
         const subs = itens.map(s => `
-        <button class="nav-subitem ${locBrokerView === s.id ? 'ativo' : ''}" data-locview="${s.id}">
+        <button class="nav-subitem ${locBrokerView === s.id ? 'ativo' : ''}" data-locview="${s.id}" data-tip="${s.label}">
           <span class="nav-sub-dot"></span><span>${s.label}</span>
         </button>`).join('');
         return btn + `<div class="nav-subwrap">${subs}</div>`;
@@ -530,12 +534,16 @@ function renderSidebar() {
     return btn;
   };
 
-  // Monta a sidebar seguindo SIDEBAR_LAYOUT: itens soltos + grupos-sanfona.
-  let html = '';
+  // Chevron (SVG) da seção — gira via classe .fechado no CSS.
+  const CHEV = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  // Monta a sidebar seguindo SIDEBAR_LAYOUT. `rodape:true` (Suporte/TI + Meu Perfil)
+  // vai pro rodapé (#sbFoot), o resto pro nav rolável.
+  let html = '', footHtml = '';
   for (const entry of SIDEBAR_LAYOUT) {
     if (entry.item) {
       const c = catDe(entry.item);
-      if (podeVer(c)) html += itemHtml(c);
+      if (!podeVer(c)) continue;
+      if (entry.rodape) footHtml += itemHtml(c); else html += itemHtml(c);
     } else if (entry.grupo) {
       const filhos = entry.filhos.map(catDe).filter(podeVer);
       if (!filhos.length) continue;   // grupo sem filho visível não aparece
@@ -544,20 +552,27 @@ function renderSidebar() {
       // no cabeçalho consegue FECHAR de verdade (antes o "contém a tela ativa" reabria).
       const aberto = gruposAbertos.has(entry.grupo);
       html += `
-      <button class="nav-item nav-group" data-grupo="${entry.grupo}">
-        <span class="nav-icone">${entry.icone}</span>
+      <button class="nav-item nav-group ${aberto ? '' : 'fechado'}" data-grupo="${entry.grupo}" data-tip="${entry.nome}">
+        <span class="nav-icone">${entry.icone || ''}</span>
         <span class="nav-label">${entry.nome}</span>
-        <span class="nav-caret">${aberto ? '▾' : '▸'}</span>
+        <span class="nav-sec-count">${filhos.length}</span>
+        <span class="nav-caret">${CHEV}</span>
       </button>`;
       if (aberto) {
         html += `<div class="nav-subwrap">` + filhos.map(f => `
-        <button class="nav-subitem ${f.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${f.id}">
+        <button class="nav-subitem ${f.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${f.id}" data-tip="${f.nome}">
           <span class="nav-sub-dot"></span><span>${f.nome}</span>
         </button>`).join('') + `</div>`;
       }
     }
   }
   navCategorias.innerHTML = html;
+  // Rodapé: Suporte/TI + Meu Perfil + versão (lida do #appVersion da topbar).
+  const sbFoot = document.getElementById('sbFoot');
+  if (sbFoot) {
+    const ver = (document.getElementById('appVersion')?.textContent || '').trim();
+    sbFoot.innerHTML = footHtml + (ver ? `<div class="sb-ver">${ver} · ${ehWeb() ? 'web' : 'desktop'}</div>` : '');
+  }
 
   // Grupos: abrir/fechar a sanfona.
   navCategorias.querySelectorAll('[data-grupo]').forEach(b => {
@@ -581,6 +596,31 @@ function renderSidebar() {
       navCategorias.querySelectorAll('[data-locview]').forEach(x => x.classList.toggle('ativo', x.dataset.locview === locBrokerView));
     });
   });
+
+  // Itens do RODAPÉ (Suporte/TI + Meu Perfil) — mesmo comportamento dos itens soltos.
+  const sbFootEl = document.getElementById('sbFoot');
+  if (sbFootEl) sbFootEl.querySelectorAll('[data-cat]').forEach(b => {
+    b.addEventListener('click', () => ativarCategoria(b.dataset.cat));
+  });
+
+  // Botão de recolher (só ícones) — liga UMA vez (o botão é estático no index.html).
+  if (!renderSidebar._recolherLigado) {
+    renderSidebar._recolherLigado = true;
+    const tgl = document.getElementById('sbToggle');
+    const sb = document.querySelector('.sidebar');
+    const layout = document.querySelector('.hub-layout');
+    if (tgl && sb && layout) {
+      const setRecolhida = v => {
+        sb.classList.toggle('recolhida', v);
+        layout.classList.toggle('sb-recolhida', v);
+        tgl.textContent = v ? '»' : '«';
+        tgl.title = v ? 'Expandir menu' : 'Recolher menu';
+        try { localStorage.setItem('hub_sb_recolhida', v ? '1' : '0'); } catch (_e) { /* nada */ }
+      };
+      try { if (localStorage.getItem('hub_sb_recolhida') === '1') setRecolhida(true); } catch (_e) { /* nada */ }
+      tgl.addEventListener('click', () => setRecolhida(!sb.classList.contains('recolhida')));
+    }
+  }
 }
 
 // Abre (no set) o grupo-sanfona que contém uma tela — pra ela aparecer destacada

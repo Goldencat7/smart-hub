@@ -1903,6 +1903,8 @@ exports.negocioAtualizar = onCall(async (req) => {
       const limpo = { ...(n.campos || {}) };
       if ('administracao' in cIn) { if (!SN.includes(cIn.administracao)) throw new HttpsError('invalid-argument', 'Valor inválido em administração.'); limpo.administracao = cIn.administracao; }
       if ('parceria' in cIn) { if (!SN.includes(cIn.parceria)) throw new HttpsError('invalid-argument', 'Valor inválido em parceria.'); limpo.parceria = cIn.parceria; }
+      if ('referenciamento' in cIn) { if (!SN.includes(cIn.referenciamento)) throw new HttpsError('invalid-argument', 'Valor inválido em referenciamento.'); limpo.referenciamento = cIn.referenciamento; }
+      if ('imobiliariaParceira' in cIn) { limpo.imobiliariaParceira = _txt(cIn.imobiliariaParceira, 120); }
       if ('comissaoRecebida' in cIn) { if (!CR.includes(cIn.comissaoRecebida)) throw new HttpsError('invalid-argument', 'Valor inválido em comissão recebida.'); limpo.comissaoRecebida = cIn.comissaoRecebida; }
       up.campos = limpo;
       anota('Campos do negócio atualizados');
