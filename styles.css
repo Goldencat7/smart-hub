@@ -303,8 +303,8 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
   --sb-hairline:  rgba(0,14,53,.10);
   --sb-accent:    #C8001A;
   --sb-badge-bg:  rgba(0,14,53,.07);
-  --sb-bg:        #F4F2EA;
-  --sb-bg-deep:   #ECEAE0;
+  --sb-bg:        #ffffff;   /* mesmo branco dos cards de conteúdo */
+  --sb-bg-deep:   #f4f5f7;   /* rodapé: cinza bem sutil pra separar */
 }
 
 /* topo: só o botão de recolher (a marca REMAX fica na topbar do Hub) */
