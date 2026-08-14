@@ -1361,9 +1361,9 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .rec-fases-wrap { margin-bottom: 12px; }
 .rec-fases-lab { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
 .rec-fases { display: flex; gap: 4px; }
-.rec-fase { flex: 1; border: none; background: transparent; cursor: pointer; font-family: inherit; padding: 0; text-align: center; }
+.rec-fase { flex: 1; min-width: 0; border: none; background: transparent; cursor: pointer; font-family: inherit; padding: 0; text-align: center; }
 .rec-fase-dot { display: block; height: 7px; border-radius: 4px; background: var(--border); margin-bottom: 6px; transition: background .15s; }
-.rec-fase-r { display: block; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.15; }
+.rec-fase-r { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 2.4em; overflow-wrap: anywhere; font-size: 10.5px; font-weight: 600; color: var(--text-muted); line-height: 1.15; }
 .rec-fase:hover .rec-fase-dot { background: var(--blue); }
 .rec-fase:hover .rec-fase-r { color: var(--text-primary); }
 .rec-fase.done .rec-fase-dot { background: rgba(74,222,128,.5); }

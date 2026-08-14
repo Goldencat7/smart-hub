@@ -780,7 +780,7 @@ function updateNegTable(){
 // As colunas vêm da config (kanbanCols()); cada negócio tem colunaId separado do
 // status. Arrastar move a COLUNA (negocioMoverColuna), não o status.
 const KANBAN_CSS ='.kboard{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}'
-  + '.kcol{flex:0 0 250px;background:var(--ink50);border:1px solid var(--ink200);border-radius:12px;display:flex;flex-direction:column;max-height:68vh}'
+  + '.kcol{flex:1 1 230px;min-width:230px;background:var(--ink50);border:1px solid var(--ink200);border-radius:12px;display:flex;flex-direction:column;max-height:68vh}'
   + '.kcol-head{padding:11px 13px;font-size:12px;font-weight:800;color:var(--ink700);text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--ink200)}'
   + '.kcol-body{padding:9px;display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:70px}'
   + '.kcol-over{outline:2px dashed var(--brand);outline-offset:-3px;background:rgba(37,99,235,.06)}'

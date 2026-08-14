@@ -7821,7 +7821,7 @@ function _recSerializar(id, d) {
     rg: d.rg || '', cpf: d.cpf || '', cpfValido: (d.cpfValido === undefined ? null : d.cpfValido), endereco: d.endereco || '', dadosBancarios: d.dadosBancarios || '',
     expImobiliaria: !!d.expImobiliaria, expImobiliariaDesc: d.expImobiliariaDesc || '',
     expVendas: !!d.expVendas, expVendasDesc: d.expVendasDesc || '',
-    maiorSonho: d.maiorSonho || '', opiniaoRemax: d.opiniaoRemax || '', clubeDesejado: d.clubeDesejado || '',
+    maiorSonho: d.maiorSonho || '', opiniaoRemax: d.opiniaoRemax || '', opiniaoRecrutador: d.opiniaoRecrutador || '', clubeDesejado: d.clubeDesejado || '',
     etapa: _recEtapa(d.etapa), status: d.status || 'ativo',
     perfil: d.perfil || '', nota: (d.nota != null ? d.nota : ''), tags: Array.isArray(d.tags) ? d.tags : [],
     origem: d.origem || 'manual',
@@ -7929,7 +7929,7 @@ exports.recrutamentoSalvar = onCall(async (req) => {
   const REC_MAX = {
     nome: 160, email: 160, telefone: 40, telefone2: 40, fonte: 120, rg: 40, cpf: 20,
     endereco: 300, dadosBancarios: 400, perfil: 120, clubeDesejado: 120,
-    expImobiliariaDesc: 2000, expVendasDesc: 2000, maiorSonho: 2000, opiniaoRemax: 2000
+    expImobiliariaDesc: 2000, expVendasDesc: 2000, maiorSonho: 2000, opiniaoRemax: 2000, opiniaoRecrutador: 2000
   };
   Object.keys(REC_MAX).forEach(k => { if (typeof d[k] === 'string') patch[k] = d[k].trim().slice(0, REC_MAX[k]); });
   if (typeof d.expImobiliaria === 'boolean') patch.expImobiliaria = d.expImobiliaria;

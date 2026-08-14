@@ -6460,6 +6460,7 @@ function recDetalheHtml() {
     + campo('Status', statusSel)
     + '<div class="rec-linha2">' + campo('Perfil', inp('perfil')) + campo('Nota', inp('nota')) + '</div>'
     + campo('Tags (separadas por vírgula)', inp('tags'))
+    + campo('Opinião do recrutador', ta('opiniaoRecrutador'))
     + '<div class="rec-card-t" style="margin-top:14px">Histórico</div>'
     + (novo ? '<div class="rec-dim" style="padding:6px 0">Salve o candidato para registrar histórico.</div>'
       : '<div class="rec-add-hist"><input class="rec-input" id="rec_novoHist" placeholder="Registrar uma ação (ligação, reunião…)"><button class="rec-btn sm" data-rec="add-hist">Adicionar</button></div><div class="rec-hists">' + hist + '</div>')
@@ -6488,7 +6489,7 @@ function recColetarPayload() {
     endereco: val('endereco'), dadosBancarios: val('dadosBancarios'),
     expImobiliaria: val('expImobiliaria') === 'sim', expImobiliariaDesc: val('expImobiliariaDesc'),
     expVendas: val('expVendas') === 'sim', expVendasDesc: val('expVendasDesc'),
-    maiorSonho: val('maiorSonho'), opiniaoRemax: val('opiniaoRemax'), clubeDesejado: val('clubeDesejado'),
+    maiorSonho: val('maiorSonho'), opiniaoRemax: val('opiniaoRemax'), opiniaoRecrutador: val('opiniaoRecrutador'), clubeDesejado: val('clubeDesejado'),
     status: val('status'), perfil: val('perfil'), nota: val('nota'),
     tags: val('tags').split(',').map(t => t.trim()).filter(Boolean)
   };
