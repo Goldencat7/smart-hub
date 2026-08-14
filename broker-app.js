@@ -974,19 +974,23 @@ function comentListHTML(cs){
 function _teardownDealRT(){ if(state._dealUnsub){ try{ state._dealUnsub(); }catch(_e){} state._dealUnsub=null; } }
 
 // Card "Documentos deste negócio" no detalhe (anexo rápido). Reusa negocioAnexarDoc:
-// gestor/adm anexam e removem; corretor só vê e baixa (mesma regra da tela Documentos).
+// gestor/adm/corretor responsável anexam; gestor/adm removem qualquer doc, o corretor
+// só remove o que ELE mesmo subiu (o backend também garante isso).
 const DOC_CAT_LABEL = { contrato:'Contrato', proposta:'Proposta', cliente:'Doc. do cliente', outro:'Outro' };
 function dealDocsCardHTML(d, podeSubir){
   const docs = (d.raw && d.raw.documentos) || [];
   const encerrado = d.statusRaw==='concluido' || d.statusRaw==='cancelado';
   const addBtn = (podeSubir && !encerrado) ? '<button class="btn btn-outline sm nsh" data-action="deal-doc-add">'+icon('upload',15)+'Anexar</button>' : '';
+  const gestorAdm = (state.role==='broker'||state.role==='administrativo');
+  const meuUid = (auth.currentUser&&auth.currentUser.uid)||'';
   // Rótulo da subpasta do Drive deste doc (doc antigo sem driveDestino não mostra nada).
   const _destLabel=(k)=>{ const v=d.tipo==='Venda'; return ({vendedor:v?'Vendedor':'Locador', comprador:v?'Comprador':'Locatário', imovel:'Imóvel', outros:'Outros'})[k]||''; };
   const rows = docs.length ? docs.map(x=>{
     const dl=_destLabel(x.driveDestino);
     const meta=[DOC_CAT_LABEL[x.categoria]||'', dl?('Drive: '+dl):'', docFmtTam(x.tamanho), relData(x.em)].filter(Boolean).join(' · ');
     const baixar='<a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',15)+'</a>';
-    const rem = podeSubir ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(d.id)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>' : '';
+    const podeRem = !encerrado && (gestorAdm || x.porUid===meuUid);
+    const rem = podeRem ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(d.id)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>' : '';
     return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)">'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',34)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500 trunc">'+esc(meta)+'</div></div><div class="fx ac g1 nsh">'+baixar+rem+'</div></div>';
   }).join('') : '<div class="fz13 t500" style="padding:12px 0 4px">Nenhum documento anexado a este negócio.</div>';
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2"><span class="up fz12 fw7 t800">Documentos deste negócio</span>'+addBtn+'</div>'+rows+'</div>';
@@ -1048,7 +1052,7 @@ function openDeal(id){
   + (d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? iaCardHTML() : '')
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',15)+'Excluir</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800 fx ac jb" style="margin-bottom:12px"><span>Negócio encerrado</span><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',14)+'Excluir</button></div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
-  + dealDocsCardHTML(d, (state.role==='broker'||state.role==='administrativo'))
+  + dealDocsCardHTML(d, true) /* anexar: gestor/adm/corretor (todos veem só negócio com posse) */
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+'<div class="fx ac jb g2" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz11 t500 up fw6">Origem do cliente</div><div class="fz13 fw6 t900 trunc">'+(d.origem?esc(d.origem):'<span class="t400 fw4">não informada</span>')+'</div></div>'+(d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-ghost sm nsh" data-action="origem-edit" data-origem="'+esc(d.origem||'')+'" title="Editar origem">'+icon('pencil',14)+'</button>':'')+'</div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
@@ -2094,21 +2098,24 @@ function emBreveTela(host,titulo,desc,ico,txt,acoes){
 }
 
 /* ---- Documentos: contratos/propostas/docs dos negócios (dado REAL) ----
-   Fonte: o array `documentos[]` de cada negócio (subido pelo gestor/adm via
-   negocioAnexarDoc). Corretor vê/baixa os dos seus negócios; gestor/adm sobem e
-   removem. Agrupado nas 4 seções do mockup (Contratos, Propostas, Doc. do cliente,
-   Outros). Sem dado falso: vazio mostra estado honesto até alguém anexar. */
+   Fonte: o array `documentos[]` de cada negócio (subido via negocioAnexarDoc).
+   Gestor/adm/corretor sobem docs nos negócios com posse; gestor/adm removem
+   qualquer um, o corretor só o que ele mesmo anexou. Agrupado nas 4 seções do
+   mockup (Contratos, Propostas, Doc. do cliente, Outros). Sem dado falso: vazio
+   mostra estado honesto até alguém anexar. */
 const DOC_SECOES = [['contrato','Contratos','file-text'],['proposta','Propostas','file-signature'],['cliente','Documentação do cliente','id-card'],['outro','Outros','file']];
 function docFmtTam(b){ b=+b||0; if(b<1024) return b+' B'; if(b<1048576) return Math.round(b/1024)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
 function todosDocs(){ const out=[]; DEALS_DOCS.forEach(d=>{ const cancelado=d.statusRaw==='cancelado'; ((d.raw&&d.raw.documentos)||[]).forEach(x=>{ out.push({...x, dealId:d.id, dealCode:d.code, cliente:d.clienteNome, cancelado}); }); }); return out; }
 function docRow(x,podeSubir){
   const meta=[x.dealCode, x.cliente, docFmtTam(x.tamanho), relData(x.em), x.cancelado?'⚠ Negócio cancelado':''].filter(Boolean).join(' · ');
   const baixar='<a class="btn btn-outline sm nsh" href="'+esc(x.url||'')+'" target="_blank" rel="noopener" style="text-decoration:none" title="Baixar">'+icon('download',16)+'</a>';
-  const rem = podeSubir ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(x.dealId)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',16)+'</button>' : '';
+  const gestorAdm = (state.role==='broker'||state.role==='administrativo');
+  const meuUid = (auth.currentUser&&auth.currentUser.uid)||'';
+  const rem = (!x.cancelado && (gestorAdm || x.porUid===meuUid)) ? '<button class="btn btn-ghost sm nsh" data-action="doc-remover" data-deal="'+esc(x.dealId)+'" data-doc="'+esc(x.id)+'" data-nome="'+esc(x.nome||'')+'" title="Remover" style="color:#dc2626">'+icon('trash-2',16)+'</button>' : '';
   return '<div class="fx ac g3" style="padding:13px 20px;border-top:1px solid var(--ink100)">'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',38)+'<div class="grow mw0"><div class="fz14 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500 trunc">'+esc(meta)+'</div></div><div class="fx ac g1 nsh">'+baixar+rem+'</div></div>';
 }
 RENDERERS.documentos = function(host){
-  const podeSubir = (state.role==='broker'||state.role==='administrativo');
+  const podeSubir = true; // gestor/adm/corretor sobem docs nos seus negócios (posse garantida no servidor)
   const docs = todosDocs();
   const btn = podeSubir ? '<button class="btn btn-primary" data-action="doc-upload-open">'+icon('upload',16)+'Enviar documento</button>' : '';
   let corpo='';

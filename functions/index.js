@@ -2066,8 +2066,10 @@ function _mimeDocOk(m) { return _MIME_DOC_OK.has(m); }
 exports.negocioAnexarDoc = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const d = req.data || {};
-  const { ref, snap, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
-  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Enviar documentos é do gestor ou do administrativo.');
+  // Anexa: gestor, administrativo OU o corretor responsável pelo negócio (pedido do
+  // Nathan — o corretor sobe docs no negócio dele). O `_negocioComPosse` já barra quem
+  // não tem acesso ao negócio, então basta ter passado por ele.
+  const { ref, snap } = await _negocioComPosse(d.negocioId, auth);
   if (['concluido', 'cancelado'].includes(snap.data().status)) throw new HttpsError('failed-precondition', 'Negócio encerrado — não aceita novos documentos.');
   const categoria = NEGOCIO_DOC_CATEGORIAS.includes(d.categoria) ? d.categoria : 'outro';
   // Destino no DRIVE ao sincronizar (junto da categoria, não no lugar dela): em qual
@@ -2127,8 +2129,10 @@ exports.negocioAnexarDoc = onCall(async (req) => {
 exports.negocioRemoverDoc = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const d = req.data || {};
+  // Remove: gestor/administrativo tiram QUALQUER doc; o corretor responsável só tira o
+  // que ELE mesmo subiu (porUid) — pra não travar um upload por engano sem poder abrir
+  // mão de docs que o gestor anexou.
   const { ref, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
-  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Remover documentos é do gestor ou do administrativo.');
   const docId = _txt(d.docId, 80);
   const porNome = await _nomeDoUid(auth.uid);
   let removido = null;
@@ -2139,6 +2143,7 @@ exports.negocioRemoverDoc = onCall(async (req) => {
     const idx = lista.findIndex(x => x && x.id === docId);
     if (idx < 0) throw new HttpsError('not-found', 'Documento não encontrado.');
     removido = lista[idx];
+    if (!ehGestor && !ehAdm && removido.porUid !== auth.uid) throw new HttpsError('permission-denied', 'Você só pode remover documentos que você mesmo anexou.');
     lista.splice(idx, 1);
     const tl = Array.isArray(s.data().timeline) ? [...s.data().timeline] : [];
     tl.push({ texto: `Documento removido: ${removido.nome}`, porNome, em: admin.firestore.Timestamp.now() });

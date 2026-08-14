@@ -427,13 +427,12 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 }
 .sidebar.recolhida .nav-group .nav-caret,
 .sidebar.recolhida .nav-sec-count { display: none; }
-.sidebar.recolhida .nav-subwrap { margin-left: 0; padding-left: 0; border-left: 0; }
-.sidebar.recolhida .nav-subitem { justify-content: center; padding: 0; gap: 0; }
-.sidebar.recolhida .nav-subitem .nav-sub-dot { display: none; }
-.sidebar.recolhida .nav-subitem span:not(.nav-sub-dot) { display: none; }
+/* Recolhida: sub-itens (sanfona do Broker + filhos de grupo) não têm ícone,
+   só pontinho+texto — no modo só-ícone virariam linhas vazias. Escondemos a
+   sanfona inteira; pra escolher a sub-tela, expande a barra. */
+.sidebar.recolhida .nav-subwrap { display: none; }
 /* tooltip no recolhido */
-.sidebar.recolhida .nav-item[data-tip]:hover::after,
-.sidebar.recolhida .nav-subitem[data-tip]:hover::after {
+.sidebar.recolhida .nav-item[data-tip]:hover::after {
   content: attr(data-tip);
   position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
   background: var(--sb-bg-deep); color: var(--sb-text);

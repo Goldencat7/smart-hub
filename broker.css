@@ -195,7 +195,7 @@
 #bkRoot.bk-embedded .modal{max-height:86%}
 #bkRoot .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;transition:all .25s;z-index:90}
 #bkRoot .toast.show{transform:translateX(-50%);opacity:1}
-#bkRoot .mobilenav{position:fixed;inset-y:0;top:0;left:0;height:100%;width:248px;background:var(--raised);border-right:1px solid var(--bd);z-index:80;transform:translateX(-100%);transition:transform .3s cubic-bezier(.2,0,0,1);display:flex;flex-direction:column;box-shadow:16px 0 40px rgba(0,0,0,.3)}
+#bkRoot .mobilenav{position:fixed;top:0;left:0;height:100%;width:248px;background:var(--raised);border-right:1px solid var(--bd);z-index:80;transform:translateX(-100%);transition:transform .3s cubic-bezier(.2,0,0,1);display:flex;flex-direction:column;box-shadow:16px 0 40px rgba(0,0,0,.3)}
 #bkRoot .mobilenav.show{transform:none}
 
 @keyframes shimmer{100%{transform:translateX(100%)}}
