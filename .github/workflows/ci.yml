@@ -83,3 +83,36 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           echo "Versão declarada no package.json: $VERSION"
+
+  testes:
+    name: Testes (regras do cofre)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repo
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Instalar Java 17 (o emulador do Firestore é um programa Java)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar dependências
+        # Pula o binário do Electron (~100 MB) — os testes de regra não precisam dele.
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+
+      - name: Instalar Firebase CLI (pro emulators:exec)
+        run: npm install -g firebase-tools
+
+      - name: Rodar testes das regras do Firestore (emulador)
+        # Sobe o emulador do Firestore, roda os testes e derruba. Vermelho aqui = uma
+        # regra do cofre quebrou; o push/PR fica marcado como falho antes de qualquer deploy.
+        run: npm test
