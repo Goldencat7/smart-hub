@@ -372,8 +372,11 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .nav-group:hover { color: var(--sb-hover); background: var(--sb-hover-bg); }
 /* ícone da seção = MESMO estilo/tamanho dos itens (herda .nav-icone: 18px, opacity .9) */
 .nav-group .nav-label { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
-.nav-group .nav-caret { width: 14px; margin-left: 6px; opacity: .85; order: 3; transition: transform 150ms ease; }
+.nav-group .nav-caret { width: 14px; margin-left: 6px; opacity: .85; order: 3; transition: transform 160ms ease; }
 .nav-group.fechado .nav-caret { transform: rotate(-90deg); }
+/* seta do "Meus Negócios" = MESMO chevron SVG dos grupos (padronizado) */
+.nav-caret-loc { display: flex; align-items: center; width: 14px; margin-left: 6px; opacity: .85; transition: transform 160ms ease; }
+.nav-caret-loc.fechado { transform: rotate(-90deg); }
 .nav-sec-count {
   margin-left: auto; font-size: 10px; font-weight: 500; letter-spacing: 0;
   padding: 1px 6px; border-radius: 20px;

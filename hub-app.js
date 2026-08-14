@@ -387,6 +387,8 @@ let categoriaAtiva = 'home';
 const gruposAbertos = new Set();   // ids dos grupos-sanfona da sidebar que estão expandidos
 let locSub = null;              // sub-app aberto dentro da aba Locação (null = grade de cards)
 let locSanfonaAberta = false;   // "Meus Negócios" expandido na sidebar (sanfona)
+let sbRecolhida = false;        // sidebar em modo só-ícone (persistido em localStorage)
+try { sbRecolhida = localStorage.getItem('hub_sb_recolhida') === '1'; } catch (_e) { /* nada */ }
 let locBrokerView = 'dashboard';// tela ativa do Broker embutido (sub-item da sanfona)
 let brokerMontado = false;      // Broker já montado (embutido) na área central
 let brokerCarregando = null;    // Promise do lazy-load do Broker (null = ainda não pedido)
@@ -519,7 +521,7 @@ function renderSidebar() {
     <button class="nav-item ${c.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${c.id}" data-tip="${c.nome}">
       <span class="nav-icone">${c.icone}</span>
       <span class="nav-label">${c.nome}</span>
-      ${c.locacoes ? `<span class="nav-caret">${locSanfonaAberta ? '▾' : '▸'}</span>` : ''}
+      ${c.locacoes ? `<span class="nav-caret nav-caret-loc ${locSanfonaAberta ? '' : 'fechado'}">${CHEV}</span>` : ''}
     </button>`;
     if (c.locacoes && locSanfonaAberta) {
       const itens = locSubItens();
@@ -549,6 +551,15 @@ function renderSidebar() {
     } else if (entry.grupo) {
       const filhos = entry.filhos.map(catDe).filter(podeVer);
       if (!filhos.length) continue;   // grupo sem filho visível não aparece
+      // RECOLHIDA: sem cabeçalho de seção — cada filho vira um ícone solto no rail
+      // (eles têm ícone real), pra NADA ficar inacessível no modo só-ícone (spec §5).
+      if (sbRecolhida) {
+        html += filhos.map(f => `
+        <button class="nav-item ${f.id === categoriaAtiva ? 'ativo' : ''}" data-cat="${f.id}" data-tip="${f.nome}">
+          <span class="nav-icone">${f.icone}</span><span class="nav-label">${f.nome}</span>
+        </button>`).join('');
+        continue;
+      }
       // Aberto = SÓ o que está em gruposAbertos. Ao navegar pra uma tela de dentro,
       // `abrirGrupoDe` adiciona o grupo ao set — então ele abre sozinho, mas o clique
       // no cabeçalho consegue FECHAR de verdade (antes o "contém a tela ativa" reabria).
@@ -614,22 +625,26 @@ function renderSidebar() {
   });
 
   // Botão de recolher (só ícones) — liga UMA vez (o botão é estático no index.html).
+  // O estado vive em `sbRecolhida` (já lido do localStorage no topo). Recolher/expandir
+  // RE-RENDERIZA a sidebar, porque no modo só-ícone os grupos são achatados em ícones
+  // soltos (senão os filhos dos grupos ficariam inacessíveis).
+  const _sbAplicaRecolhida = () => {
+    const sb = document.querySelector('.sidebar');
+    const layout = document.querySelector('.hub-layout');
+    const tgl = document.getElementById('sbToggle');
+    if (sb) sb.classList.toggle('recolhida', sbRecolhida);
+    if (layout) layout.classList.toggle('sb-recolhida', sbRecolhida);
+    if (tgl) { tgl.textContent = sbRecolhida ? '»' : '«'; tgl.title = sbRecolhida ? 'Expandir menu' : 'Recolher menu'; }
+  };
+  _sbAplicaRecolhida();   // reflete o estado atual a cada render
   if (!renderSidebar._recolherLigado) {
     renderSidebar._recolherLigado = true;
     const tgl = document.getElementById('sbToggle');
-    const sb = document.querySelector('.sidebar');
-    const layout = document.querySelector('.hub-layout');
-    if (tgl && sb && layout) {
-      const setRecolhida = v => {
-        sb.classList.toggle('recolhida', v);
-        layout.classList.toggle('sb-recolhida', v);
-        tgl.textContent = v ? '»' : '«';
-        tgl.title = v ? 'Expandir menu' : 'Recolher menu';
-        try { localStorage.setItem('hub_sb_recolhida', v ? '1' : '0'); } catch (_e) { /* nada */ }
-      };
-      try { if (localStorage.getItem('hub_sb_recolhida') === '1') setRecolhida(true); } catch (_e) { /* nada */ }
-      tgl.addEventListener('click', () => setRecolhida(!sb.classList.contains('recolhida')));
-    }
+    if (tgl) tgl.addEventListener('click', () => {
+      sbRecolhida = !sbRecolhida;
+      try { localStorage.setItem('hub_sb_recolhida', sbRecolhida ? '1' : '0'); } catch (_e) { /* nada */ }
+      renderSidebar();   // re-monta (achata grupos no recolhido) e reaplica as classes
+    });
   }
 }
 
