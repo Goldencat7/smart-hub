@@ -15,6 +15,7 @@
     "start": "electron .",
     "lint": "eslint .",
     "test": "firebase emulators:exec --only firestore --project demo-smart-hub \"node --test --test-reporter=spec test/rules/firestore.test.mjs\"",
+    "test:functions": "firebase emulators:exec --only auth,firestore,functions --project demo-smart-hub \"node --test --test-concurrency=1 --test-reporter=spec test/functions/callables.test.mjs\"",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "publish": "electron-builder --publish always",
