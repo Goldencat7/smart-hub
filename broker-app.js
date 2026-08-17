@@ -1602,6 +1602,7 @@ function handleAction(a,el){
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
   else if(a==='feed-sync'){ sincronizarFeedPortal(el); }
   else if(a==='conc-excel'){ concExportarExcel(); }
+  else if(a==='conc-baixar'){ concBaixarPagina(+el.dataset.pag, el.dataset.nome); }
   else if(a==='mobilenav') openMobileNav();
   else if(a==='mobilenav-close') closeMobileNav();
   else if(a==='close-drawer') closeDrawer();
@@ -2178,16 +2179,39 @@ function openDocUpload(preDealId){
    (vendor/, carregados só nesta tela). Saída: nº · condomínio · página no PDF ·
    linha na planilha, + lista de "não encontrados" (nunca CHUTA um pagamento).
    Exporta Excel (2 abas) e PDF (impressão). */
-let _concLibs = null, _concUltimo = null;
+let _concLibs = null, _concUltimo = null, _concPdfFile = null, _concPdfLib = null;
+function _concLoadScript(src){ return new Promise((ok,err)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>err(new Error('não carregou '+src)); document.head.appendChild(s); }); }
 function concCarregarLibs(){
   if(_concLibs) return _concLibs;
-  const load = src => new Promise((ok,err)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>err(new Error('não carregou '+src)); document.head.appendChild(s); });
   _concLibs = (async()=>{
-    if(!window.XLSX) await load('vendor/xlsx.full.min.js');
-    if(!window.pdfjsLib) await load('vendor/pdf.min.js');
+    if(!window.XLSX) await _concLoadScript('vendor/xlsx.full.min.js');
+    if(!window.pdfjsLib) await _concLoadScript('vendor/pdf.min.js');
     if(window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
   })().catch(e=>{ _concLibs=null; throw e; });
   return _concLibs;
+}
+// pdf-lib só é necessário pra RECORTAR uma página no download — carrega sob demanda.
+function concCarregarPdfLib(){
+  if(_concPdfLib) return _concPdfLib;
+  _concPdfLib = (async()=>{ if(!window.PDFLib) await _concLoadScript('vendor/pdf-lib.min.js'); })().catch(e=>{ _concPdfLib=null; throw e; });
+  return _concPdfLib;
+}
+// Recorta a página `pag` do PDF carregado num arquivo próprio e baixa.
+async function concBaixarPagina(pag, nomeBase){
+  if(!_concPdfFile){ toast('Recarregue e cruze os arquivos de novo','alert-triangle','var(--warning)'); return; }
+  try{
+    await concCarregarPdfLib();
+    const { PDFDocument } = window.PDFLib;
+    const src = await PDFDocument.load(await _concPdfFile.arrayBuffer());
+    const out = await PDFDocument.create();
+    const [pagina] = await out.copyPages(src, [pag-1]);
+    out.addPage(pagina);
+    const bytes = await out.save();
+    const nome = (String(nomeBase||'comprovante').replace(/[^\w\- ]+/g,'').trim().slice(0,60) || 'comprovante') + ' - pag ' + pag + '.pdf';
+    const url = URL.createObjectURL(new Blob([bytes], {type:'application/pdf'}));
+    const a = document.createElement('a'); a.href=url; a.download=nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }catch(e){ toast((e&&e.message)||'Erro ao baixar o comprovante','alert-triangle','var(--danger)'); }
 }
 const _concDig  = s => String(s==null?'':s).replace(/\D/g,'');
 const _concNorm = s => String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
@@ -2233,6 +2257,7 @@ async function concCruzar(fileXlsx, filePdf){
   const setMsg = t => { if(msg) msg.textContent=t; };
   if(go) go.disabled=true;
   try{
+    _concPdfFile = filePdf;   // guarda pra baixar páginas individuais depois
     setMsg('Carregando módulos de leitura…'); await concCarregarLibs();
     setMsg('Lendo a planilha…');            const idx = await concLerXlsx(fileXlsx);
     setMsg('Lendo os comprovantes…');       const paginas = await concLerPdf(filePdf, (p,n)=>setMsg('Lendo os comprovantes… '+p+'/'+n));
@@ -2253,9 +2278,10 @@ async function concCruzar(fileXlsx, filePdf){
 function concRenderResultado(){
   const res=$('#concRes'); if(!res||!_concUltimo) return;
   const {achados,faltam,total}=_concUltimo;
-  const ok = achados.map((a,i)=>'<tr><td class="t500">'+(i+1)+'</td><td class="fw6 t900">'+esc(a.nome)+'</td><td class="mono fz12 t700">'+esc(a.num)+'</td><td class="tcenter">'+a.pag+'</td><td class="tcenter">'+a.linha+'</td></tr>').join('')
-    || '<tr><td colspan="5" class="tcenter t500" style="padding:24px">Nenhum comprovante conciliado.</td></tr>';
-  const falt = faltam.map(f=>'<tr><td class="tcenter">'+f.pag+'</td><td class="t700">'+esc(f.favorecido)+'</td><td class="mono fz12 t700">'+esc((f.num||'—').slice(0,24))+'</td></tr>').join('');
+  const btnDl = (pag,nome)=>'<button class="btn btn-outline sm nsh" data-action="conc-baixar" data-pag="'+pag+'" data-nome="'+esc(nome)+'" title="Baixar este comprovante (PDF)">'+icon('download',14)+'Baixar</button>';
+  const ok = achados.map((a,i)=>'<tr><td class="t500">'+(i+1)+'</td><td class="fw6 t900">'+esc(a.nome)+'</td><td class="mono fz12 t700">'+esc(a.num)+'</td><td class="tcenter">'+a.pag+'</td><td class="tcenter">'+a.linha+'</td><td class="tright">'+btnDl(a.pag,a.nome)+'</td></tr>').join('')
+    || '<tr><td colspan="6" class="tcenter t500" style="padding:24px">Nenhum comprovante conciliado.</td></tr>';
+  const falt = faltam.map(f=>'<tr><td class="tcenter">'+f.pag+'</td><td class="t700">'+esc(f.favorecido)+'</td><td class="mono fz12 t700">'+esc((f.num||'—').slice(0,24))+'</td><td class="tright">'+btnDl(f.pag,f.favorecido)+'</td></tr>').join('');
   res.innerHTML =
     '<div class="fx ac g2 wrap" style="margin-bottom:14px">'
     + '<span class="pill success">'+achados.length+' conciliados</span>'
@@ -2263,8 +2289,8 @@ function concRenderResultado(){
     + '<span class="pill neutral">'+total+' comprovantes</span>'
     + '<div style="margin-left:auto"><button class="btn btn-outline sm" data-action="conc-excel">'+icon('file-spreadsheet',15)+'Exportar Excel</button></div>'
     + '</div>'
-    + '<div class="card" style="overflow:hidden;margin-bottom:16px"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:640px"><thead><tr><th>#</th><th>Condomínio</th><th>Código de barras</th><th class="tcenter">Pág. PDF</th><th class="tcenter">Linha planilha</th></tr></thead><tbody>'+ok+'</tbody></table></div></div>'
-    + (faltam.length ? '<div class="fz13 fw7" style="margin:4px 0 8px;color:var(--ondark)">'+icon('alert-triangle',15)+' Não encontrados — conferir manualmente</div><div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:520px"><thead><tr><th class="tcenter">Pág. PDF</th><th>Favorecido</th><th>Código lido</th></tr></thead><tbody>'+falt+'</tbody></table></div></div>' : '');
+    + '<div class="card" style="overflow:hidden;margin-bottom:16px"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:720px"><thead><tr><th>#</th><th>Condomínio</th><th>Código de barras</th><th class="tcenter">Pág. PDF</th><th class="tcenter">Linha planilha</th><th class="tright">Comprovante</th></tr></thead><tbody>'+ok+'</tbody></table></div></div>'
+    + (faltam.length ? '<div class="fz13 fw7" style="margin:4px 0 8px;color:var(--ondark)">'+icon('alert-triangle',15)+' Não encontrados — conferir manualmente</div><div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:600px"><thead><tr><th class="tcenter">Pág. PDF</th><th>Favorecido</th><th>Código lido</th><th class="tright">Comprovante</th></tr></thead><tbody>'+falt+'</tbody></table></div></div>' : '');
   refreshIcons();
 }
 
