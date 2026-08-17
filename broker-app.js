@@ -407,8 +407,8 @@ async function carregarPessoas(){
 /* ============================ UI INFRA ============================ */
 const RENDERERS = {};
 // Configurações e "sair da conta" ficam SÓ no Hub (pedido do Nathan) — não entram aqui.
-const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'} ];
-const CRUMB = { dashboard:['SMART HUB','Dashboard'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], configuracoes:['SMART HUB','Configurações'] };
+const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
+const CRUMB = { dashboard:['SMART HUB','Dashboard'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], conciliacao:['SMART HUB','Conciliação de Malote'], configuracoes:['SMART HUB','Configurações'] };
 
 function renderNav(target){ if(!target) return; target.innerHTML = NAVITEMS.map(n=>'<button class="navitem'+(state.view===n.id?' active':'')+'" data-nav="'+n.id+'">'+icon(n.ico,18)+n.label+'</button>').join(''); }
 function renderBreadcrumb(){ const c=CRUMB[state.view]||['SMART HUB','—']; const b=$('#breadcrumb'); if(b) b.innerHTML='<span class="tmut nowrap">'+c[0]+'</span>'+icon('chevron-right',15,'tmut')+'<span class="tw fw6 trunc">'+c[1]+'</span>'; }
@@ -1601,6 +1601,7 @@ function handleAction(a,el){
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
   else if(a==='feed-sync'){ sincronizarFeedPortal(el); }
+  else if(a==='conc-excel'){ concExportarExcel(); }
   else if(a==='mobilenav') openMobileNav();
   else if(a==='mobilenav-close') closeMobileNav();
   else if(a==='close-drawer') closeDrawer();
@@ -1866,6 +1867,7 @@ const NAV_ROLE = {
     {id:'drive',ico:'hard-drive',label:'Google Drive'},
     {id:'agenda',ico:'calendar',label:'Agenda'},
     {id:'relatorios',ico:'clipboard-list',label:'Relatórios Operacionais'},
+    {id:'conciliacao',ico:'clipboard-check',label:'Conciliação'},
     {id:'perfil',ico:'user',label:'Meu Perfil'},
   ],
 };
@@ -2168,6 +2170,136 @@ function openDocUpload(preDealId){
   const selDeal=$('#docDeal');
   if(selDeal) selDeal.addEventListener('change',()=>{ const s=$('#docDrive'); if(s){ const atual=s.value; s.innerHTML=_destinoOpts(selDeal.value); s.value=atual; if(!s.value) s.value='outros'; } });
 }
+
+/* ---- Conciliação de Malote (gestor + administrativo) ----------------------
+   Cruza os COMPROVANTES bancários (PDF) com a planilha do MALOTE (Excel) pela
+   "Representação numérica do código de barras". 100% NO NAVEGADOR: os arquivos
+   (com dados bancários) NUNCA sobem pro servidor — pdf.js + SheetJS rodam local
+   (vendor/, carregados só nesta tela). Saída: nº · condomínio · página no PDF ·
+   linha na planilha, + lista de "não encontrados" (nunca CHUTA um pagamento).
+   Exporta Excel (2 abas) e PDF (impressão). */
+let _concLibs = null, _concUltimo = null;
+function concCarregarLibs(){
+  if(_concLibs) return _concLibs;
+  const load = src => new Promise((ok,err)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=()=>err(new Error('não carregou '+src)); document.head.appendChild(s); });
+  _concLibs = (async()=>{
+    if(!window.XLSX) await load('vendor/xlsx.full.min.js');
+    if(!window.pdfjsLib) await load('vendor/pdf.min.js');
+    if(window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) window.pdfjsLib.GlobalWorkerOptions.workerSrc='vendor/pdf.worker.min.js';
+  })().catch(e=>{ _concLibs=null; throw e; });
+  return _concLibs;
+}
+const _concDig  = s => String(s==null?'':s).replace(/\D/g,'');
+const _concNorm = s => String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+
+// Planilha → índice { digitos -> {linha, nome} }. Acha as colunas pelo CABEÇALHO
+// (não por posição fixa): "Imóvel/Condomínio", "Linha Digitável", "Código de Barras".
+async function concLerXlsx(file){
+  const wb = XLSX.read(await file.arrayBuffer(), {type:'array'});
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''});
+  if(!aoa.length) throw new Error('Planilha vazia.');
+  const head = (aoa[0]||[]).map(_concNorm);
+  const findCol = (...alts) => head.findIndex(h => alts.some(a => h.includes(a)));
+  const colNome = findCol('imovel','condominio','nome');
+  const colLD   = findCol('linha digitavel','linha digit');
+  const colCB   = findCol('codigo de barras','codigo barras','cod barras');
+  if(colLD<0 && colCB<0) throw new Error('Não achei as colunas "Linha Digitável" / "Código de Barras" na planilha.');
+  const idx = new Map();
+  for(let i=1;i<aoa.length;i++){
+    const r = aoa[i]||[]; const nome = colNome>=0 ? String(r[colNome]||'').trim() : '';
+    [colLD,colCB].forEach(c=>{ if(c<0) return; const d=_concDig(r[c]); if(d.length>=20 && !idx.has(d)) idx.set(d, {linha:i+1, nome}); });
+  }
+  if(!idx.size) throw new Error('Nenhum código de barras válido na planilha.');
+  return idx;
+}
+
+// PDF → por página: número do código de barras + nome do favorecido.
+async function concLerPdf(file, onProg){
+  const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
+  const paginas = [];
+  for(let p=1; p<=pdf.numPages; p++){
+    const tc = await (await pdf.getPage(p)).getTextContent();
+    const txt = tc.items.map(it=>it.str).join(' ').replace(/\s+/g,' ');
+    const mB = txt.match(/barras[:\s]*([0-9][0-9 ]{18,})/i);
+    const mF = txt.match(/favorecido[:\s]*(.+?)\s+(?:CPF|CNPJ|Nome|Valor|$)/i);
+    paginas.push({ pag:p, num:_concDig(mB?mB[1]:''), favorecido:(mF?mF[1]:'').trim() });
+    if(onProg) onProg(p, pdf.numPages);
+  }
+  return paginas;
+}
+
+async function concCruzar(fileXlsx, filePdf){
+  const msg=$('#concMsg'), go=$('#concGo');
+  const setMsg = t => { if(msg) msg.textContent=t; };
+  if(go) go.disabled=true;
+  try{
+    setMsg('Carregando módulos de leitura…'); await concCarregarLibs();
+    setMsg('Lendo a planilha…');            const idx = await concLerXlsx(fileXlsx);
+    setMsg('Lendo os comprovantes…');       const paginas = await concLerPdf(filePdf, (p,n)=>setMsg('Lendo os comprovantes… '+p+'/'+n));
+    const achados=[], faltam=[];
+    paginas.forEach(pg=>{
+      const hit = pg.num && idx.get(pg.num);
+      if(hit) achados.push({ num:pg.num, nome:hit.nome||'(sem nome na planilha)', pag:pg.pag, linha:hit.linha });
+      else    faltam.push({ pag:pg.pag, favorecido:pg.favorecido||'—', num:pg.num });
+    });
+    _concUltimo = { achados, faltam, total:paginas.length };
+    setMsg(''); concRenderResultado();
+    if(!achados.length) toast('Nenhum comprovante casou — confira se os arquivos são do mesmo malote','alert-triangle','var(--warning)');
+  }catch(e){
+    setMsg(''); toast((e&&e.message)||'Erro ao cruzar os arquivos','alert-triangle','var(--danger)');
+  }finally{ if(go) go.disabled=false; }
+}
+
+function concRenderResultado(){
+  const res=$('#concRes'); if(!res||!_concUltimo) return;
+  const {achados,faltam,total}=_concUltimo;
+  const ok = achados.map((a,i)=>'<tr><td class="t500">'+(i+1)+'</td><td class="fw6 t900">'+esc(a.nome)+'</td><td class="mono fz12 t700">'+esc(a.num)+'</td><td class="tcenter">'+a.pag+'</td><td class="tcenter">'+a.linha+'</td></tr>').join('')
+    || '<tr><td colspan="5" class="tcenter t500" style="padding:24px">Nenhum comprovante conciliado.</td></tr>';
+  const falt = faltam.map(f=>'<tr><td class="tcenter">'+f.pag+'</td><td class="t700">'+esc(f.favorecido)+'</td><td class="mono fz12 t700">'+esc((f.num||'—').slice(0,24))+'</td></tr>').join('');
+  res.innerHTML =
+    '<div class="fx ac g2 wrap" style="margin-bottom:14px">'
+    + '<span class="pill success">'+achados.length+' conciliados</span>'
+    + '<span class="pill '+(faltam.length?'warning':'neutral')+'">'+faltam.length+' não encontrados</span>'
+    + '<span class="pill neutral">'+total+' comprovantes</span>'
+    + '<div style="margin-left:auto"><button class="btn btn-outline sm" data-action="conc-excel">'+icon('file-spreadsheet',15)+'Exportar Excel</button></div>'
+    + '</div>'
+    + '<div class="card" style="overflow:hidden;margin-bottom:16px"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:640px"><thead><tr><th>#</th><th>Condomínio</th><th>Código de barras</th><th class="tcenter">Pág. PDF</th><th class="tcenter">Linha planilha</th></tr></thead><tbody>'+ok+'</tbody></table></div></div>'
+    + (faltam.length ? '<div class="fz13 fw7" style="margin:4px 0 8px;color:var(--ondark)">'+icon('alert-triangle',15)+' Não encontrados — conferir manualmente</div><div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:520px"><thead><tr><th class="tcenter">Pág. PDF</th><th>Favorecido</th><th>Código lido</th></tr></thead><tbody>'+falt+'</tbody></table></div></div>' : '');
+  refreshIcons();
+}
+
+function concExportarExcel(){
+  if(!_concUltimo || !window.XLSX) return;
+  const {achados,faltam}=_concUltimo;
+  const wb = XLSX.utils.book_new();
+  const s1 = XLSX.utils.aoa_to_sheet([['#','Condomínio','Código de barras','Página PDF','Linha planilha'], ...achados.map((a,i)=>[i+1,a.nome,a.num,a.pag,a.linha])]);
+  s1['!cols'] = [{wch:5},{wch:44},{wch:50},{wch:12},{wch:14}];  // larguras pra caber o texto
+  XLSX.utils.book_append_sheet(wb, s1, 'Conciliados');
+  const s2 = XLSX.utils.aoa_to_sheet([['Página PDF','Favorecido','Código lido'], ...faltam.map(f=>[f.pag,f.favorecido,f.num])]);
+  s2['!cols'] = [{wch:12},{wch:40},{wch:50}];
+  XLSX.utils.book_append_sheet(wb, s2, 'Não encontrados');
+  XLSX.writeFile(wb, 'conciliacao-malote.xlsx');
+}
+
+RENDERERS.conciliacao = function(host){
+  const inp = 'width:100%;padding:10px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;font-family:var(--sans)';
+  host.innerHTML = pageHead('Conciliação de Malote','Cruza os comprovantes (PDF) com a planilha do malote (Excel) pela representação numérica do código de barras. Os arquivos ficam só no seu computador — nada é enviado ao servidor.','')
+    + '<div class="card" style="padding:20px;margin-bottom:16px;max-width:680px">'
+    +   '<div class="fz13 fw6 t800" style="margin-bottom:8px">1) Planilha do malote (.xlsx)</div>'
+    +   '<input id="concXlsx" type="file" accept=".xlsx,.xls" style="'+inp+'">'
+    +   '<div class="fz13 fw6 t800" style="margin:16px 0 8px">2) Comprovantes (.pdf)</div>'
+    +   '<input id="concPdf" type="file" accept="application/pdf,.pdf" style="'+inp+'">'
+    +   '<div class="fx ac g2" style="margin-top:18px"><button class="btn btn-primary" id="concGo" disabled>'+icon('git-compare',16)+'Cruzar</button><span id="concMsg" class="fz12 tmut"></span></div>'
+    + '</div>'
+    + '<div id="concRes"></div>';
+  const fx=$('#concXlsx'), fp=$('#concPdf'), go=$('#concGo');
+  const upd = () => { if(go) go.disabled = !(fx&&fx.files[0] && fp&&fp.files[0]); };
+  if(fx) fx.addEventListener('change', upd);
+  if(fp) fp.addEventListener('change', upd);
+  if(go) go.addEventListener('click', () => concCruzar(fx.files[0], fp.files[0]));
+  if(_concUltimo) concRenderResultado();
+  refreshIcons();
+};
 
 /* ---- Clicksign (administrativo) — status vem do checklist REAL dos negócios ---- */
 RENDERERS.clicksign = function(host){
