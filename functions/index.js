@@ -101,6 +101,8 @@ const BOT_HOOK_SECRET = defineSecret('BOT_HOOK_SECRET');
 const HUB_CHECKVISTO_SECRET = defineSecret('HUB_CHECKVISTO_SECRET'); // integração CheckVisto (INTEGRACAO-CHECKVISTO.md)
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY'); // Assistente de Leads (IA · Gemini)
 const RECRUTAMENTO_SECRET = defineSecret('RECRUTAMENTO_SECRET'); // webhook do formulário de recrutamento de corretores
+const CLICKSIGN_TOKEN = defineSecret('CLICKSIGN_TOKEN'); // Access Token da API v3 do ClickSign (Configurações → API no painel)
+const CLICKSIGN_HMAC = defineSecret('CLICKSIGN_HMAC');   // segredo HMAC dos webhooks do ClickSign (mesmo painel)
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
@@ -2152,6 +2154,247 @@ exports.negocioRemoverDoc = onCall(async (req) => {
   if (removido && removido.path) { try { await admin.storage().bucket(FICHA_BUCKET).file(removido.path).delete(); } catch (_) { /* arquivo já sumiu */ } }
   await registrarAudit(auth, 'negocio_doc_remover', { tipo: 'negocio', id: ref.id }, { nome: removido && removido.nome });
   return { ok: true };
+});
+
+// ─── Assinatura eletrônica (ClickSign API v3) ────────────────────────────────
+// Envia um documento do negócio pra assinatura, acompanha e marca o checklist
+// sozinho quando fecha. Padrão do projeto: chamada via Cloud Function (o token do
+// ClickSign é secret, nunca vai pro cliente) + status de volta por webhook (igual
+// CheckVisto). Fluxo v3: cria envelope → anexa doc → cria signatário(s) →
+// requisitos (assinar + prova por e-mail) → ativa (running) → notifica. O envelope
+// fecha sozinho (auto_close) quando todos assinam, disparando o evento close.
+//
+// ⚠️ 3 pontos a CONFIRMAR no 1º teste real (produção): (1) a base v3 de produção —
+// se `app.clicksign.com` devolver 404/redirect, setar o env CLICKSIGN_BASE; (2) o
+// header Authorization é o token CRU (sem "Bearer", conforme a doc oficial); (3) o
+// formato do payload do webhook (de onde sai o envelopeId / e-mail do signatário) —
+// o handler procura nos lugares prováveis e loga se não achar, pra ajustar no 1º
+// evento de verdade sem quebrar nada.
+const CLICKSIGN_BASE = process.env.CLICKSIGN_BASE || 'https://app.clicksign.com/api/v3';
+const _emailOk = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim());
+// Qual etapa do checklist "assina sozinha" quando o envelope fecha, por tipo.
+const _clkChkKey = tipo => tipo === 'venda' ? 'compromisso_assinado' : 'contrato_assinado';
+
+async function _clicksignReq(method, path, body) {
+  const resp = await fetch(CLICKSIGN_BASE + path, {
+    method,
+    headers: {
+      'Authorization': CLICKSIGN_TOKEN.value().trim(), // .trim(): espaço/quebra colado no secret invalidava o header
+      'Accept': 'application/vnd.api+json',
+      'Content-Type': 'application/vnd.api+json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const txt = await resp.text();
+  let json = null; try { json = txt ? JSON.parse(txt) : null; } catch (_) { /* corpo não-JSON */ }
+  if (!resp.ok) {
+    const err = json && Array.isArray(json.errors) && json.errors[0];
+    const msg = (err && (err.detail || err.title)) || (txt ? txt.slice(0, 200) : ('HTTP ' + resp.status));
+    throw new HttpsError('internal', 'ClickSign: ' + msg);
+  }
+  return json;
+}
+
+// Envia um documento anexado do negócio pra assinatura. Gestor ou administrativo.
+exports.clicksignEnviar = onCall({ secrets: [CLICKSIGN_TOKEN] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref, snap, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
+  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Só gestor ou administrativo envia para assinatura.');
+  const n = snap.data();
+  if (['concluido', 'cancelado'].includes(n.status)) throw new HttpsError('failed-precondition', 'Negócio encerrado.');
+  if (n.clicksign && n.clicksign.status === 'running') throw new HttpsError('failed-precondition', 'Já existe um envelope em andamento. Cancele antes de enviar outro.');
+
+  // Documento = um dos anexos do negócio (o corretor/gestor anexa antes; ex.: o contrato gerado).
+  const docId = _txt(d.docId, 80);
+  const docs = Array.isArray(n.documentos) ? n.documentos : [];
+  const doc = docs.find(x => x && x.id === docId);
+  if (!doc || !doc.path) throw new HttpsError('invalid-argument', 'Escolha um documento anexado ao negócio.');
+
+  // Signatários digitados na hora (1..15). Nome + e-mail obrigatórios; CPF opcional.
+  const sigsIn = Array.isArray(d.signatarios) ? d.signatarios.slice(0, 15) : [];
+  const signatarios = [];
+  for (const s of sigsIn) {
+    const nome = _txt(s && s.nome, 120);
+    const email = _txt(s && s.email, 160).toLowerCase();
+    if (!nome || !_emailOk(email)) throw new HttpsError('invalid-argument', 'Cada signatário precisa de nome e e-mail válidos.');
+    const cpf = String((s && s.cpf) || '').replace(/\D/g, '').slice(0, 11);
+    signatarios.push({ nome, email, cpf });
+  }
+  if (!signatarios.length) throw new HttpsError('invalid-argument', 'Informe ao menos um signatário.');
+
+  const mensagem = _txt(d.mensagem, 400);
+  const prazoDias = Math.min(90, Math.max(0, parseInt(d.prazoDias, 10) || 0));
+
+  // Baixa o arquivo do Storage e manda em base64 (data URI, exigência do v3).
+  const [buf] = await admin.storage().bucket(FICHA_BUCKET).file(doc.path).download();
+  const mime = _txt(doc.mime, 100).toLowerCase().split(';')[0].trim() || 'application/pdf';
+  const nomeBase = (doc.nome || 'documento').replace(/[^\w.\- ]+/g, '_').slice(0, 120);
+  const filename = /\.\w{2,5}$/.test(nomeBase) ? nomeBase : (nomeBase + '.pdf');
+
+  // 1) Envelope
+  const envAttrs = { name: `${n.codigo || 'Negócio'} — ${doc.nome || 'documento'}`.slice(0, 255), auto_close: true, locale: 'pt-BR' };
+  if (prazoDias > 0) envAttrs.deadline_at = new Date(Date.now() + prazoDias * 86400000).toISOString();
+  const env = await _clicksignReq('POST', '/envelopes', { data: { type: 'envelopes', attributes: envAttrs } });
+  const envelopeId = env && env.data && env.data.id;
+  if (!envelopeId) throw new HttpsError('internal', 'ClickSign não retornou o envelope.');
+
+  // Chave do documento no ClickSign — é por ELA que o webhook acha o negócio (o
+  // payload do webhook é centrado no documento: traz `document.key`, sem envelope id).
+  let clkDocKey = '';
+  try {
+    // 2) Documento
+    const docResp = await _clicksignReq('POST', `/envelopes/${envelopeId}/documents`, {
+      data: { type: 'documents', attributes: { filename, content_base64: `data:${mime};base64,${buf.toString('base64')}` } }
+    });
+    const documentId = docResp && docResp.data && docResp.data.id;
+    if (!documentId) throw new HttpsError('internal', 'ClickSign não aceitou o documento.');
+    clkDocKey = documentId;
+
+    // 3+4) Signatário + requisitos (assinar + prova por e-mail) pra cada um
+    for (const s of signatarios) {
+      const sattrs = { name: s.nome, email: s.email };
+      if (s.cpf.length === 11) { sattrs.has_documentation = true; sattrs.documentation = s.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
+      const sResp = await _clicksignReq('POST', `/envelopes/${envelopeId}/signers`, { data: { type: 'signers', attributes: sattrs } });
+      const signerId = sResp && sResp.data && sResp.data.id;
+      if (!signerId) throw new HttpsError('internal', 'ClickSign não criou o signatário.');
+      s.signerId = signerId;
+      await _clicksignReq('POST', `/envelopes/${envelopeId}/requirements`, {
+        data: { type: 'requirements', attributes: { action: 'agree', role: 'sign' },
+          relationships: { document: { data: { type: 'documents', id: documentId } }, signer: { data: { type: 'signers', id: signerId } } } }
+      });
+      await _clicksignReq('POST', `/envelopes/${envelopeId}/requirements`, {
+        data: { type: 'requirements', attributes: { action: 'provide_evidence', auth: 'email' },
+          relationships: { document: { data: { type: 'documents', id: documentId } }, signer: { data: { type: 'signers', id: signerId } } } }
+      });
+    }
+
+    // 5) Ativa o envelope (dispara o processo de assinatura)
+    await _clicksignReq('PATCH', `/envelopes/${envelopeId}`, { data: { id: envelopeId, type: 'envelopes', attributes: { status: 'running' } } });
+    // 6) Notifica os signatários por e-mail (best-effort — o envelope já está no ar)
+    try {
+      await _clicksignReq('POST', `/envelopes/${envelopeId}/notifications`, { data: { type: 'notifications', attributes: mensagem ? { message: mensagem } : {} } });
+    } catch (_) { /* notificação falhou, mas o envelope está ativo */ }
+  } catch (e) {
+    // Falhou no meio do fluxo: cancela o envelope pra não deixar rascunho pendurado.
+    try { await _clicksignReq('PATCH', `/envelopes/${envelopeId}`, { data: { id: envelopeId, type: 'envelopes', attributes: { status: 'canceled' } } }); } catch (_) { /* nada a desfazer */ }
+    throw e;
+  }
+
+  const porNome = await _nomeDoUid(auth.uid);
+  const agora = new Date().toISOString();
+  const clicksign = {
+    envelopeId, documentKey: clkDocKey, status: 'running', documentoId: doc.id, documentoNome: doc.nome || 'documento',
+    signatarios: signatarios.map(s => ({ nome: s.nome, email: s.email, signerId: s.signerId || '', assinou: false, assinouEm: null })),
+    criadoEm: agora, criadoPorNome: porNome, atualizadoEm: agora,
+  };
+  const tl = Array.isArray(n.timeline) ? [...n.timeline] : [];
+  tl.push({ texto: `Enviado para assinatura (ClickSign): ${clicksign.signatarios.map(s => s.nome).join(', ')}`, porNome, em: admin.firestore.Timestamp.now() });
+  await ref.set({ clicksign, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await registrarAudit(auth, 'clicksign_enviar', { tipo: 'negocio', id: ref.id }, { envelopeId, signatarios: clicksign.signatarios.length });
+  return { ok: true, clicksign };
+});
+
+// Reenvia o e-mail de lembrete aos signatários pendentes.
+exports.clicksignReenviar = onCall({ secrets: [CLICKSIGN_TOKEN] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref, snap, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
+  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Sem permissão.');
+  const cs = snap.data().clicksign;
+  if (!cs || !cs.envelopeId || cs.status !== 'running') throw new HttpsError('failed-precondition', 'Nenhum envelope em andamento.');
+  const mensagem = _txt(d.mensagem, 400);
+  await _clicksignReq('POST', `/envelopes/${cs.envelopeId}/notifications`, { data: { type: 'notifications', attributes: mensagem ? { message: mensagem } : {} } });
+  const porNome = await _nomeDoUid(auth.uid);
+  const tl = Array.isArray(snap.data().timeline) ? [...snap.data().timeline] : [];
+  tl.push({ texto: 'Lembrete de assinatura reenviado (ClickSign)', porNome, em: admin.firestore.Timestamp.now() });
+  await ref.set({ timeline: tl.slice(-300) }, { merge: true });
+  await registrarAudit(auth, 'clicksign_reenviar', { tipo: 'negocio', id: ref.id }, { envelopeId: cs.envelopeId });
+  return { ok: true };
+});
+
+// Cancela o envelope (o documento deixa de poder ser assinado).
+exports.clicksignCancelar = onCall({ secrets: [CLICKSIGN_TOKEN] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const { ref, snap, ehGestor, ehAdm } = await _negocioComPosse(d.negocioId, auth);
+  if (!ehGestor && !ehAdm) throw new HttpsError('permission-denied', 'Sem permissão.');
+  const cs = snap.data().clicksign;
+  if (!cs || !cs.envelopeId) throw new HttpsError('failed-precondition', 'Nenhum envelope neste negócio.');
+  if (cs.status !== 'running') throw new HttpsError('failed-precondition', 'O envelope não está em andamento.');
+  await _clicksignReq('PATCH', `/envelopes/${cs.envelopeId}`, { data: { id: cs.envelopeId, type: 'envelopes', attributes: { status: 'canceled' } } });
+  const porNome = await _nomeDoUid(auth.uid);
+  const tl = Array.isArray(snap.data().timeline) ? [...snap.data().timeline] : [];
+  tl.push({ texto: 'Assinatura cancelada (ClickSign)', porNome, em: admin.firestore.Timestamp.now() });
+  await ref.set({ clicksign: { ...cs, status: 'canceled', atualizadoEm: new Date().toISOString() }, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await registrarAudit(auth, 'clicksign_cancelar', { tipo: 'negocio', id: ref.id }, { envelopeId: cs.envelopeId });
+  return { ok: true };
+});
+
+// Webhook do ClickSign — status de volta sem polling. Valida o HMAC-SHA256 do
+// corpo CRU (header Content-Hmac: sha256=<hex>) com o segredo do painel. Eventos:
+// sign (um signatário assinou), close/auto_close (fechado = todos assinaram →
+// marca o checklist), cancel, deadline.
+exports.clicksignWebhook = onRequest({ secrets: [CLICKSIGN_HMAC] }, async (req, res) => {
+  try {
+    if (req.method !== 'POST') return res.status(405).json({ ok: false });
+    const recebido = String(req.get('Content-Hmac') || '').replace(/^sha256=/i, '').trim();
+    const raw = req.rawBody || Buffer.from(JSON.stringify(req.body || {}));
+    const esperado = crypto.createHmac('sha256', CLICKSIGN_HMAC.value().trim()).update(raw).digest('hex');
+    const ok = recebido.length === esperado.length && crypto.timingSafeEqual(Buffer.from(recebido), Buffer.from(esperado));
+    if (!ok) { console.warn('clicksignWebhook: HMAC NÃO confere — o segredo do painel do ClickSign ≠ CLICKSIGN_HMAC (recebeu header?', !!recebido, ')'); return res.status(401).json({ ok: false }); }
+
+    const b = req.body || {};
+    const evento = String((b.event && b.event.name) || b.type || '').toLowerCase();
+    // O payload do webhook é centrado no DOCUMENTO (traz `document.key`), sem envelope id.
+    // Acha o negócio pela chave do documento; envelope id fica só de fallback defensivo.
+    const docKey = (b.document && (b.document.key || b.document.id)) || '';
+    const envelopeId = (b.data && b.data.id) || (b.envelope && b.envelope.id) || '';
+    console.log('clicksignWebhook:', evento || '(sem evento)', '· doc', docKey || '-');   // enxuto: sem PII do signatário
+    if (!docKey && !envelopeId) { console.log('clicksignWebhook: evento sem chave', evento, JSON.stringify(b).slice(0, 300)); return res.json({ ok: true }); }
+
+    let q = null;
+    if (docKey) q = await db.collection('negocios').where('clicksign.documentKey', '==', docKey).limit(1).get();
+    if ((!q || q.empty) && envelopeId) q = await db.collection('negocios').where('clicksign.envelopeId', '==', envelopeId).limit(1).get();
+    if (!q || q.empty) { console.log('clicksignWebhook: sem negócio p/ docKey', docKey, 'env', envelopeId, evento); return res.json({ ok: true }); }
+    const ref = q.docs[0].ref;
+
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref); if (!s.exists) return;
+      const n = s.data(); const cs = n.clicksign || {};
+      if (!cs.envelopeId) return;
+      const tl = Array.isArray(n.timeline) ? [...n.timeline] : [];
+      const setar = { atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+
+      if (evento === 'sign') {
+        const emailAss = String((b.event && b.event.data && b.event.data.signer && b.event.data.signer.email) || (b.signer && b.signer.email) || '').toLowerCase();
+        cs.signatarios = (cs.signatarios || []).map(x => (emailAss && x.email === emailAss) ? { ...x, assinou: true, assinouEm: new Date().toISOString() } : x);
+        cs.atualizadoEm = new Date().toISOString(); setar.clicksign = cs;
+        tl.push({ texto: `Assinou (ClickSign): ${emailAss || 'signatário'}`, porNome: 'ClickSign', em: admin.firestore.Timestamp.now() });
+      } else if (evento === 'close' || evento === 'auto_close' || evento === 'finish') {
+        cs.status = 'closed'; cs.signatarios = (cs.signatarios || []).map(x => ({ ...x, assinou: true })); cs.atualizadoEm = new Date().toISOString();
+        setar.clicksign = cs;
+        const key = _clkChkKey(n.tipo);
+        const chk = Array.isArray(n.checklist) ? n.checklist.map(x => (x.key === key && !x.feito) ? { ...x, feito: true, feitoPor: 'ClickSign', feitoEm: admin.firestore.Timestamp.now() } : x) : n.checklist;
+        if (chk) setar.checklist = chk;
+        tl.push({ texto: 'Documento assinado por todos (ClickSign)', porNome: 'ClickSign', em: admin.firestore.Timestamp.now() });
+      } else if (evento === 'cancel') {
+        cs.status = 'canceled'; cs.atualizadoEm = new Date().toISOString(); setar.clicksign = cs;
+        tl.push({ texto: 'Envelope cancelado (ClickSign)', porNome: 'ClickSign', em: admin.firestore.Timestamp.now() });
+      } else if (evento === 'deadline') {
+        cs.status = 'deadline'; cs.atualizadoEm = new Date().toISOString(); setar.clicksign = cs;
+        tl.push({ texto: 'Prazo de assinatura expirado (ClickSign)', porNome: 'ClickSign', em: admin.firestore.Timestamp.now() });
+      } else {
+        return; // evento que não nos interessa — não grava nada
+      }
+      setar.timeline = tl.slice(-300);
+      tx.set(ref, setar, { merge: true });
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    await logErro('clicksignWebhook', e, {});
+    return res.status(500).json({ ok: false });
+  }
 });
 
 // ─── Documentos avulsos do IMÓVEL (aba Documentos do imóvel) ──────────────────
@@ -4447,6 +4690,10 @@ const MARKETING_SEED = {
     ]},
     { id: 'prontos', titulo: 'Templates Prontos', emoji: '✅', ordem: 3, aberta: false, templates: [
       { id: 'imovel-escondido', arquivo: 'pronto-imovel-escondido.html', capa: 'marketing/assets/pronto-imovel-escondido-thumb.jpg', descricao: 'Imóvel escondido · método', ordem: 0 }
+    ]},
+    // Cartão de visita: arte deitada (frente/verso) — sanfona em paisagem pra a capa aparecer inteira.
+    { id: 'cartao-visita', titulo: 'Cartão de Visita', emoji: '💳', ordem: 4, aberta: false, formato: 'paisagem', templates: [
+      { id: 'cartao-modelo-1', arquivo: 'cartao-visita-modelo-1.html', capa: 'marketing/assets/cartao-visita-1-thumb.jpg', descricao: 'Cartão de visita · frente e verso · navy', ordem: 0 }
     ]}
   ]
 };
@@ -4454,7 +4701,7 @@ const MARKETING_SEED = {
 // Versão do seed. Ao incrementar, o listarMarketingConfig faz merge das sanfonas/
 // templates NOVOS (por id) na config já salva, sem apagar o que o admin editou.
 // Assim dá pra publicar templates novos só editando o seed + deploy (sem escrita manual no banco).
-const MARKETING_SEED_VERSION = 2;
+const MARKETING_SEED_VERSION = 3;
 
 // Faz merge do seed na config salva: adiciona sanfonas que faltam e, nas que já
 // existem (mesmo id), adiciona templates que faltam. Não remove nem sobrescreve o resto.
@@ -4516,6 +4763,7 @@ exports.salvarMarketingConfig = onCall(async (req) => {
     emoji: String(s.emoji || '').slice(0, 8),
     ordem: Number.isFinite(s.ordem) ? s.ordem : i,
     aberta: !!s.aberta,
+    formato: s.formato === 'paisagem' ? 'paisagem' : '',   // paisagem 16:9 (capa de YouTube); sem isso o salvar apagava o flag
     templates: (Array.isArray(s.templates) ? s.templates : []).map((t, j) => ({
       id: String(t.id || '').slice(0, 60) || `tpl-${Date.now()}-${j}`,
       arquivo: String(t.arquivo || '').slice(0, 500),

@@ -64,6 +64,9 @@ async function carregarKanbanCols(){ try{ const r=await fnKanbanGet(); state.kan
 const fnImovelDocRm = call('carteiraRemoverDoc');   // remove documento avulso do imóvel
 const fnCartSalvar  = call('carteiraSalvarImovel'); // edit: valor/dados do imóvel (posse: dono ou gestor)
 const fnSugAcao     = call('negocioSugerirAcao');   // IA (Gemini): próxima ação + rascunho de mensagem do negócio
+const fnClkEnviar   = call('clicksignEnviar');      // envia um doc do negócio pra assinatura (ClickSign)
+const fnClkReenviar = call('clicksignReenviar');    // reenvia o lembrete de assinatura
+const fnClkCancelar = call('clicksignCancelar');    // cancela o envelope
 const FTIPO_LABEL = { pf:'Cliente PF', pj:'Cliente PJ', locacao_fiador:'Locação c/ Fiador', proposta:'Proposta de compra', fianca:'Fiança' };
 let _intPickCache = {};   // id da ficha -> dados (preenchido ao abrir o seletor de interessado)
 const fnPessoas   = call('pessoasListar');    // criada no functions/index.js (gestor)
@@ -292,6 +295,7 @@ function mapNegocio(n){
     prox: n.proximaAcao || 'Sem próxima ação definida',
     proxData: rel, diasParado: diasEntre(n.atualizadoEm || n.criadoEm),
     clicksign: clicksignDe(n.checklist), progresso: chkPct(n.checklist),
+    clicksignEnv: (n.clicksign && n.clicksign.envelopeId) ? n.clicksign : null,   // envelope REAL da assinatura (ClickSign)
     checklist: n.checklist||[], comentarios: n.comentarios||[], timeline: n.timeline||[], driveUrl: n.driveUrl||'',
     driveDestinoUrl: n.driveDestinoUrl||'',   // pasta-mãe onde o robô cria a pasta deste negócio
     arquivado: n.arquivado===true, motivoCancelamento: n.motivoCancelamento||'',
@@ -407,7 +411,7 @@ async function carregarPessoas(){
 /* ============================ UI INFRA ============================ */
 const RENDERERS = {};
 // Configurações e "sair da conta" ficam SÓ no Hub (pedido do Nathan) — não entram aqui.
-const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
+const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'clicksign',ico:'file-signature',label:'Clicksign'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
 const CRUMB = { dashboard:['SMART HUB','Dashboard'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], conciliacao:['SMART HUB','Conciliação de Malote'], configuracoes:['SMART HUB','Configurações'] };
 
 function renderNav(target){ if(!target) return; target.innerHTML = NAVITEMS.map(n=>'<button class="navitem'+(state.view===n.id?' active':'')+'" data-nav="'+n.id+'">'+icon(n.ico,18)+n.label+'</button>').join(''); }
@@ -727,14 +731,16 @@ function agingBadge(d){
 // ── Etiquetas (tags) do negócio ──────────────────────────────────────────────
 // Cor por matiz: palavras conhecidas ganham cor semântica (quente=vermelho,
 // frio=azul…); as demais derivam um matiz estável do texto. Alpha via hsl 4-valores.
-const TAG_HUE = { quente:0, morno:32, frio:214, urgente:0, prioridade:270, vip:270, alta:0, media:32, ['média']:32, baixa:150 };
+const TAG_HUE = { quente:0, morno:32, frio:214, urgente:0, prioridade:270, vip:270, alta:0, media:32, ['média']:32, baixa:150,
+  // Etiquetas de etapa do negócio (presets novos)
+  ['em andamento']:214, ['aguardando assinaturas']:270, ['pendência']:32, ['pendencia']:32, parado:0, ['contrato assinado']:150, ['processo finalizado']:150 };
 function tagHue(t){ const k=String(t||'').toLowerCase().trim(); if(Object.prototype.hasOwnProperty.call(TAG_HUE,k)) return TAG_HUE[k]; let h=0; for(let i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))>>>0; return h%360; }
 function tagChipHTML(t, removable){
   const H=tagHue(t), fg='hsl('+H+' 70% 64%)', bg='hsl('+H+' 70% 55% / .15)', bd='hsl('+H+' 70% 60% / .40)';
   const x = removable ? '<span data-action="tag-remove" data-tag="'+esc(t)+'" title="Remover" style="margin-left:6px;cursor:pointer;font-weight:800;opacity:.85">×</span>' : '';
   return '<span style="display:inline-flex;align-items:center;background:'+bg+';color:'+fg+';border:1px solid '+bd+';border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;white-space:nowrap">'+esc(t)+x+'</span>';
 }
-const TAG_PRESETS = ['Quente','Morno','Frio','Urgente'];
+const TAG_PRESETS = ['Em andamento','Aguardando assinaturas','Pendência','Parado','Contrato assinado','Processo finalizado'];
 // Card "Etiquetas" no detalhe: chips atuais (removíveis) + presets + campo livre.
 function dealTagsCardHTML(d){
   const tags=d.tags||[];
@@ -996,6 +1002,71 @@ function dealDocsCardHTML(d, podeSubir){
   return '<div class="card" style="padding:18px;margin-bottom:16px"><div class="fx ac jb g2"><span class="up fz12 fw7 t800">Documentos deste negócio</span>'+addBtn+'</div>'+rows+'</div>';
 }
 
+// Card de assinatura eletrônica (ClickSign) no detalhe do negócio. Enviar/reenviar/
+// cancelar são de gestor/administrativo; corretor vê o status. O documento assinado
+// é UM dos anexos do negócio (card Documentos acima); quando o envelope fecha, o
+// checklist (contrato/compromisso assinado) é marcado sozinho pelo webhook.
+function clicksignCardHTML(d){
+  const cs = d.clicksignEnv;
+  const encerrado = d.statusRaw==='concluido' || d.statusRaw==='cancelado';
+  const gestorAdm = (state.role==='broker'||state.role==='administrativo');
+  const head = '<div class="fx ac g2"><span class="ifx ac jc nsh" style="width:34px;height:34px;border-radius:9px;background:var(--ink100)">'+icon('file-signature',18,'info')+'</span><div><div class="up fz12 fw7 t800">Assinatura eletrônica</div><div class="fz11 t500">ClickSign</div></div></div>';
+  const ativo = cs && cs.status==='running';
+  const fechado = cs && cs.status==='closed';
+  let corpo='', acoes='';
+  if(ativo || fechado){
+    const sigs=(cs.signatarios||[]).map(s=>'<div class="fx ac g2" style="padding:8px 0;border-top:1px solid var(--ink100)"><span class="ifx ac jc nsh" style="width:22px;height:22px;border-radius:50%;background:'+(s.assinou?'var(--success)':'#fff')+';border:'+(s.assinou?'none':'2px solid var(--ink300)')+';color:#fff">'+(s.assinou?icon('check',13):icon('clock',13,'t400'))+'</span><div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome)+'</div><div class="fz12 t500 trunc">'+esc(s.email)+'</div></div><span class="fz12 nsh '+(s.assinou?'c-suc fw6':'t500')+'">'+(s.assinou?'Assinou':'Pendente')+'</span></div>').join('');
+    const selo = fechado ? '<span class="pill success">Assinado por todos ✓</span>' : '<span class="pill ai">Aguardando assinaturas</span>';
+    corpo='<div class="fx ac jb g2 wrap" style="margin-top:12px"><div class="fz13 t700 trunc">'+icon('file-text',14,'t400')+' '+esc(cs.documentoNome||'documento')+'</div>'+selo+'</div><div style="margin-top:6px">'+sigs+'</div>';
+    if(gestorAdm && ativo && !encerrado){
+      acoes='<div class="fx g2 wrap" style="margin-top:14px"><button class="btn btn-outline sm" data-action="clk-reenviar">'+icon('mail',15)+'Reenviar lembrete</button><button class="btn btn-outline sm" data-action="clk-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar assinatura</button></div>';
+    }
+  } else {
+    const cancel = cs && cs.status==='canceled';
+    const expirou = cs && cs.status==='deadline';
+    const aviso = cancel ? '<div class="fz12 t500" style="margin-top:8px">O envelope anterior foi cancelado.</div>' : (expirou?'<div class="fz12 t500" style="margin-top:8px">O prazo do envelope anterior expirou.</div>':'');
+    corpo='<div class="fz13 t500" style="margin-top:12px">Envie um documento anexado deste negócio para assinatura. Os signatários recebem por e-mail; quando todos assinam, a etapa do checklist é marcada sozinha.</div>'+aviso;
+    if(gestorAdm && !encerrado){
+      acoes='<div style="margin-top:14px"><button class="btn btn-primary sm" data-action="clk-enviar">'+icon('send',15)+'Enviar para assinatura</button></div>';
+    } else if(!gestorAdm){
+      acoes='<div class="fz12 t500" style="margin-top:12px">Só o gestor ou o administrativo envia para assinatura.</div>';
+    }
+  }
+  return '<div class="card" style="padding:18px;margin-bottom:16px">'+head+corpo+acoes+'</div>';
+}
+
+// Uma linha de signatário no modal de envio (nome + e-mail + CPF opcional).
+function _clkSigRow(){
+  return '<div class="fx g2 wrap clk-sig-row" style="margin-bottom:10px;align-items:center"><input class="input clk-nome" maxlength="120" placeholder="Nome completo (nome e sobrenome)" style="flex:1;min-width:150px"><input class="input clk-email" maxlength="160" placeholder="E-mail" inputmode="email" style="flex:1;min-width:150px"><input class="input clk-cpf nsh" maxlength="14" placeholder="CPF (opcional)" style="width:130px"><button class="btn btn-ghost sm nsh" data-action="clk-sig-rm" title="Remover signatário" style="color:#dc2626">'+icon('x',15)+'</button></div>';
+}
+
+// Modal "Enviar para assinatura": escolhe um documento anexado + digita os signatários.
+function clkEnviarModal(d){
+  const todos = (d.raw && d.raw.documentos) || [];
+  // Só documentos assináveis: PDF ou Word (foto de RG etc. não vai pra assinatura).
+  const docs = todos.filter(x=>x && (x.mime==='application/pdf' || /wordprocessingml|msword/.test(x.mime||'')));
+  if(!docs.length){
+    const temAlgum = todos.length>0;
+    openModal('<div style="padding:20px;max-width:520px;max-height:80vh;overflow-y:auto"><div class="fz16 fw7 t900" style="margin-bottom:6px">Enviar para assinatura</div><div class="fz13 t500" style="margin-bottom:16px">'+(temAlgum?'Nenhum documento em PDF (ou Word) anexado a este negócio. A assinatura precisa de um PDF — anexe o contrato no card "Documentos deste negócio" e volte aqui.':'Este negócio ainda não tem nenhum documento anexado. Anexe o documento (ex.: o contrato em PDF) no card "Documentos deste negócio" e volte aqui.')+'</div><div class="fx je"><button class="btn btn-primary sm" data-action="close-modal">Entendi</button></div></div>');
+    return;
+  }
+  const opts = docs.map((x,i)=>'<label class="fx ac g2" style="padding:9px 11px;border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;cursor:pointer"><input type="radio" name="clkDoc" value="'+esc(x.id)+'"'+(i===0?' checked':'')+'>'+iconChip(x.mime==='application/pdf'?'file-text':'image','info',30)+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(x.nome||'documento')+'</div><div class="fz12 t500">'+esc(DOC_CAT_LABEL[x.categoria]||'')+'</div></div></label>').join('');
+  openModal(
+    '<div style="padding:20px;max-width:520px;max-height:82vh;overflow-y:auto">'
+    + '<div class="fz16 fw7 t900" style="margin-bottom:4px">Enviar para assinatura</div>'
+    + '<div class="fz12 t500" style="margin-bottom:14px">O documento vai para o ClickSign e cada signatário recebe um e-mail para assinar.</div>'
+    + '<div class="fz12 fw7 up t800" style="margin-bottom:8px">Documento</div>'+opts
+    + '<div class="fz12 fw7 up t800" style="margin:16px 0 4px">Signatários</div>'
+    + '<div class="fz11 t500" style="margin-bottom:8px">Use o <b>nome completo</b> (nome e sobrenome) e o <b>e-mail</b> de cada pessoa que vai assinar. O ClickSign recusa nome de uma palavra só.</div>'
+    + '<div id="clkSigs">'+_clkSigRow()+'</div>'
+    + '<button class="btn btn-ghost sm" data-action="clk-sig-add" style="margin-bottom:8px">'+icon('plus',14)+'Adicionar signatário</button>'
+    + '<div class="fz12 fw7 up t800" style="margin:12px 0 6px">Mensagem (opcional)</div><textarea id="clkMsg" class="input" rows="2" maxlength="400" placeholder="Ex.: Segue o contrato para assinatura. Qualquer dúvida, estamos à disposição." style="width:100%"></textarea>'
+    + '<div class="fx ac g2" style="margin-top:12px"><span class="fz12 t500">Prazo (dias, opcional):</span><input id="clkPrazo" type="number" min="1" max="90" class="input nsh" style="max-width:90px" placeholder="—"></div>'
+    + '<div class="fx je g2" style="margin-top:18px"><button class="btn btn-ghost sm" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm" data-action="clk-enviar-go">'+icon('send',15)+'Enviar</button></div>'
+    + '</div>'
+  );
+}
+
 // Card do Assistente IA (Gemini): botão que sugere a próxima ação + rascunho de
 // mensagem ao cliente. SÓ POR CLIQUE (não gasta token sozinho). Some no negócio
 // encerrado. O resultado é injetado em #bkIaBox (ver handleAction 'ia-sugerir').
@@ -1053,6 +1124,7 @@ function openDeal(id){
   + (state.role==='broker' && d.statusRaw!=='concluido' && d.statusRaw!=='cancelado' ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Ações do gestor</div><div class="fx g2 wrap"><button class="btn btn-outline sm" data-action="neg-entregar">'+icon('package',15)+'Entregar p/ Gestão</button><button class="btn btn-success sm" data-action="neg-concluir">'+icon('check',15)+'Concluir</button><button class="btn btn-outline sm" data-action="neg-cancelar" style="color:var(--danger);border-color:var(--danger)">'+icon('x',15)+'Cancelar</button><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',15)+'Excluir</button></div><div class="fz11 t500" style="margin-top:10px">Entregar e Concluir exigem todas as etapas obrigatórias feitas. Cancelar devolve o imóvel a Disponível.</div></div>' : '')
   + (state.role==='broker' && (d.statusRaw==='concluido' || d.statusRaw==='cancelado') ? '<div class="card" style="padding:18px;margin-bottom:16px"><div class="up fz12 fw7 t800 fx ac jb" style="margin-bottom:12px"><span>Negócio encerrado</span><button class="btn btn-ghost sm nsh" data-action="neg-excluir" data-codigo="'+esc(d.code)+'" style="color:var(--danger)" title="Excluir permanentemente">'+icon('trash-2',14)+'Excluir</button></div>'+(d.motivoCancelamento?'<div class="fz13 t700" style="margin-bottom:12px"><span class="t500">Motivo da perda:</span> <strong class="t900">'+esc(d.motivoCancelamento)+'</strong></div>':'')+(d.statusRaw==='concluido' ? '<div class="fx g2 wrap">'+(d.arquivado?'<button class="btn btn-outline sm" data-action="neg-desarquivar">'+icon('archive-restore',15)+'Desarquivar</button>':'<button class="btn btn-outline sm" data-action="neg-arquivar">'+icon('archive',15)+'Arquivar</button>')+'</div><div class="fz11 t500" style="margin-top:10px">Arquivar tira o negócio da lista, mas mantém o histórico e os relatórios.</div>' : '<div class="fz11 t500">Este negócio foi cancelado — o imóvel voltou para Disponível. Continua aqui no histórico e nos relatórios.</div>')+'</div>' : '')
   + dealDocsCardHTML(d, true) /* anexar: gestor/adm/corretor (todos veem só negócio com posse) */
+  + clicksignCardHTML(d) /* assinatura eletrônica (ClickSign) — enviar/reenviar/cancelar */
   + '<div class="split-r">'
     + '<div class="fx col g4">'
       + '<div class="card" style="padding:18px"><div class="up fz12 fw7 t800" style="margin-bottom:12px">Cliente</div><div class="fx ac g3">'+avatar(d.clienteNome,40,'var(--ink800)')+'<div class="mw0"><div class="fz14 fw6 t900 trunc">'+esc(d.clienteNome)+'</div><div class="fz12 t500 trunc">'+esc((cli&&[cli.telefone||cli.contato,cli.email].filter(Boolean).join(' · '))||d.clienteContato||'—')+'</div>'+(cli&&cli.cpf?'<div class="fz12 t500 mono">CPF '+esc(cli.cpf)+'</div>':'')+'</div></div>'+'<div class="fx ac jb g2" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--ink100)"><div class="mw0"><div class="fz11 t500 up fw6">Origem do cliente</div><div class="fz13 fw6 t900 trunc">'+(d.origem?esc(d.origem):'<span class="t400 fw4">não informada</span>')+'</div></div>'+(d.statusRaw!=='concluido'&&d.statusRaw!=='cancelado'?'<button class="btn btn-ghost sm nsh" data-action="origem-edit" data-origem="'+esc(d.origem||'')+'" title="Editar origem">'+icon('pencil',14)+'</button>':'')+'</div>'+(cli&&cli.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(cli.fichaId)+'" data-tipo="'+esc(cli.fichaTipo||'')+'" style="width:100%;margin-top:12px">'+icon('file-text',14)+'Ver ficha do cliente</button>':'')+(foneCli?'<button class="btn btn-ghost sm" data-action="copiar-fone" data-valor="'+esc(foneCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar telefone</button>':'')+(emailCli?'<button class="btn btn-ghost sm" data-action="copiar-email" data-valor="'+esc(emailCli)+'" style="width:100%;margin-top:8px">'+icon('copy',14)+'Copiar e-mail</button>':'')+'</div>'
@@ -1086,6 +1158,10 @@ function openDeal(id){
     }, e=>console.warn('deal rt:', e && e.message));
   }
 }
+
+// Recarrega os dados e reabre o detalhe do negócio (usado após ações que mudam o
+// negócio no servidor mas não devolvem o doc inteiro — ex.: ClickSign enviar/cancelar).
+async function reloadDealDetalhe(id){ await carregarDados(); if(state.currentDeal===id && state._viewingDeal) openDeal(id); }
 
 async function negAtualizar(payload, okMsg){
   try {
@@ -2237,16 +2313,37 @@ async function concLerXlsx(file){
   return idx;
 }
 
-// PDF → por página: número do código de barras + nome do favorecido.
+// Código de barras / linha digitável extraído pelo PADRÃO, não pelo label — assim
+// funciona em qualquer layout de comprovante (Itaú "Identificação no meu
+// comprovante", "Código de barras", "Linha digitável"…). Boleto = 47 dígitos
+// (5·5·5·6·5·6·1·14); concessionária = 48 (4 blocos de 12); barcode bruto = 44.
+// (?<!\d)…(?!\d): fronteira — o padrão só casa um NÚMERO INTEIRO, não uma janela
+// deslocada dentro de um dígito maior (evita concatenar um valor/agência ao boleto
+// e extrair um código de barras errado, sobretudo no fallback "tight").
+const _RE_BOLETO  = /(?<!\d)\d{5}[.\s]?\d{5}[.\s]?\d{5}[.\s]?\d{6}[.\s]?\d{5}[.\s]?\d{6}[.\s]?\d[.\s]?\d{14}(?!\d)/;
+const _RE_CONCESS = /(?<!\d)\d{11,12}[.\s-]?\d{11,12}[.\s-]?\d{11,12}[.\s-]?\d{11,12}(?!\d)/;
+function _concBarcode(txt){
+  // "tight" = junta dígitos separados por espaço/ponto (o pdf.js às vezes quebra os
+  // grupos da linha digitável em itens de texto diferentes → viram "34191 09180…").
+  const tight = txt.replace(/(\d)[ .]+(?=\d)/g, '$1');
+  for(const s of [txt, tight]){
+    const m = s.match(_RE_BOLETO) || s.match(_RE_CONCESS);
+    if(m){ const d = _concDig(m[0]); if(d.length >= 44 && d.length <= 48) return d; }
+  }
+  // Fallback por rótulo, pra formatos que não batam o padrão (pega 20+ dígitos após o label).
+  const mL = txt.match(/(?:c[oó]digo de barras|linha digit\w*|representa[^:]{0,40}|identifica[^:]{0,40})[:\s]*([\d][\d.\s]{18,})/i);
+  return mL ? _concDig(mL[1]) : '';
+}
+
+// PDF → por página: número do código de barras + nome do favorecido/beneficiário.
 async function concLerPdf(file, onProg){
   const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise;
   const paginas = [];
   for(let p=1; p<=pdf.numPages; p++){
     const tc = await (await pdf.getPage(p)).getTextContent();
     const txt = tc.items.map(it=>it.str).join(' ').replace(/\s+/g,' ');
-    const mB = txt.match(/barras[:\s]*([0-9][0-9 ]{18,})/i);
-    const mF = txt.match(/favorecido[:\s]*(.+?)\s+(?:CPF|CNPJ|Nome|Valor|$)/i);
-    paginas.push({ pag:p, num:_concDig(mB?mB[1]:''), favorecido:(mF?mF[1]:'').trim() });
+    const mF = txt.match(/(?:favorecido|benefici[aá]rio|raz[aã]o social)[:\s]*(.+?)\s+(?:CPF|CNPJ|Nome|Valor|Data|Raz[aã]o|Ag[eê]ncia|$)/i);
+    paginas.push({ pag:p, num:_concBarcode(txt), favorecido:(mF?mF[1]:'').trim() });
     if(onProg) onProg(p, pdf.numPages);
   }
   return paginas;
@@ -2327,11 +2424,28 @@ RENDERERS.conciliacao = function(host){
   refreshIcons();
 };
 
-/* ---- Clicksign (administrativo) — status vem do checklist REAL dos negócios ---- */
+/* ---- Clicksign (gestor/administrativo) — assinatura REAL via ClickSign ----
+   Visão geral dos envelopes; enviar/reenviar/cancelar ficam DENTRO de cada negócio
+   (card "Assinatura eletrônica" no detalhe). Aqui é só o panorama + atalho "Abrir". */
 RENDERERS.clicksign = function(host){
-  const map={'—':['Não enviado','neutral'],'Enviado':['Enviado','info'],'Concluído':['Assinado','success']};
-  host.innerHTML=pageHead('Clicksign','Status de assinatura eletrônica dos negócios (a assinatura em si é feita no app do Clicksign).')
-  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:680px"><thead><tr><th>Negócio</th><th>Cliente</th><th>Tipo</th><th>Status</th><th class="tright">Ações</th></tr></thead><tbody>'+(DEALS.length?DEALS.map(d=>{ const s=map[d.clicksign]||['Não enviado','neutral']; return '<tr data-deal="'+d.id+'"><td class="mono fz13 fw6 t900">'+esc(d.code)+'</td><td class="t700">'+esc(d.clienteNome)+'</td><td>'+pill(d.tipo,d.tipo==='Venda'?'info':'ai')+'</td><td>'+pill(s[0],s[1])+'</td><td class="tright"><div class="fx je g1 nsh"><button class="btn btn-outline sm" data-action="clk-open">'+icon('external-link',14)+'Abrir</button><button class="btn btn-outline sm" data-action="clk-resend">'+icon('send',14)+'Reenviar</button></div></td></tr>'; }).join(''):'<tr><td colspan="5" class="tcenter t500" style="padding:24px">Nenhum negócio ainda.</td></tr>')+'</tbody></table></div></div>';
+  const CLK_ST = { running:['Aguardando assinaturas','ai'], closed:['Assinado','success'], canceled:['Cancelado','neutral'], deadline:['Prazo expirado','danger'] };
+  const linhas = DEALS.map(d=>{
+    const st=d.clicksignEnv;
+    const info = st ? (CLK_ST[st.status]||['—','neutral']) : ['Não enviado','neutral'];
+    const ass = st ? (st.signatarios||[]).filter(s=>s.assinou).length : 0;
+    const tot = st ? (st.signatarios||[]).length : 0;
+    const ord = st ? ({running:0,deadline:1,closed:2,canceled:3})[st.status] ?? 4 : 5;
+    return { d, info, ass, tot, ord };
+  }).sort((a,b)=>a.ord-b.ord);
+  const aguardando = linhas.filter(l=>l.d.clicksignEnv && l.d.clicksignEnv.status==='running').length;
+  const assinados  = linhas.filter(l=>l.d.clicksignEnv && l.d.clicksignEnv.status==='closed').length;
+  const tile=(l,v,c)=>'<div class="card" style="padding:16px"><div class="fz13 fw5 t500">'+l+'</div><div style="margin-top:6px;font-size:24px;font-weight:700;color:'+c+'">'+v+'</div></div>';
+  host.innerHTML=pageHead('Clicksign','Assinatura eletrônica dos negócios. Enviar, reenviar e cancelar ficam dentro de cada negócio.')
+  + '<div class="grid3" style="margin-bottom:16px">'+tile('Aguardando assinatura',aguardando,'#7C3AED')+tile('Assinados',assinados,'#16A34A')+tile('Negócios',DEALS.length,'var(--ink900)')+'</div>'
+  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:720px"><thead><tr><th>Negócio</th><th>Cliente</th><th>Tipo</th><th>Assinaturas</th><th>Status</th><th class="tright">Ações</th></tr></thead><tbody>'
+  + (linhas.length?linhas.map(l=>{ const d=l.d; return '<tr data-deal="'+d.id+'" style="cursor:pointer"><td class="mono fz13 fw6 t900">'+esc(d.code)+'</td><td class="t700">'+esc(d.clienteNome)+'</td><td>'+pill(d.tipo,d.tipo==='Venda'?'info':'ai')+'</td><td class="t700">'+(l.tot?(l.ass+'/'+l.tot):'—')+'</td><td>'+pill(l.info[0],l.info[1])+'</td><td class="tright"><button class="btn btn-outline sm nsh" data-action="clk-abrir-neg" data-deal="'+d.id+'">'+icon('arrow-right',14)+'Abrir</button></td></tr>'; }).join(''):'<tr><td colspan="6" class="tcenter t500" style="padding:24px">Nenhum negócio ainda.</td></tr>')
+  + '</tbody></table></div></div>';
+  refreshIcons();
 };
 
 /* ---- Google Drive (administrativo) — sem integração ainda ---- */
@@ -2439,6 +2553,45 @@ handleAction = function(a, el){
     return;
   }
   if(a==='clk-open'){ if(!(window.hubAbrirApp && window.hubAbrirApp('clicksign'))) emBreve('ClickSign é liberado por pessoa no Admin do Hub.'); return; }
+  if(a==='clk-abrir-neg'){ if(el.dataset.deal) openDeal(el.dataset.deal); return; }
+  if(a==='clk-enviar'){ const d=DEALS.find(x=>x.id===state.currentDeal)||(DEALS_DOCS||[]).find(x=>x.id===state.currentDeal); if(d) clkEnviarModal(d); return; }
+  if(a==='clk-sig-add'){ const box=$('#clkSigs'); if(box){ box.insertAdjacentHTML('beforeend', _clkSigRow()); refreshIcons(); } return; }
+  if(a==='clk-sig-rm'){ const row=el.closest('.clk-sig-row'); const box=$('#clkSigs'); if(row&&box&&box.querySelectorAll('.clk-sig-row').length>1) row.remove(); return; }
+  if(a==='clk-enviar-go'){
+    const negocioId=state.currentDeal; if(!negocioId) return;
+    const docSel=document.querySelector('#modal input[name="clkDoc"]:checked'); const docId=docSel?docSel.value:'';
+    if(!docId){ toast('Escolha um documento','alert-triangle','var(--danger)'); return; }
+    const signatarios=[]; let erro='';
+    document.querySelectorAll('#clkSigs .clk-sig-row').forEach(r=>{
+      const nome=(r.querySelector('.clk-nome')||{}).value||''; const email=((r.querySelector('.clk-email')||{}).value||'').trim(); const cpf=(r.querySelector('.clk-cpf')||{}).value||'';
+      if(!nome.trim() && !email) return;   // linha vazia é ignorada
+      // O ClickSign exige NOME COMPLETO (nome + sobrenome) — nome de 1 palavra é recusado lá.
+      if(nome.trim().split(/\s+/).length < 2){ erro='Use o nome completo do signatário (nome e sobrenome).'; return; }
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ erro='E-mail inválido em um dos signatários.'; return; }
+      signatarios.push({nome:nome.trim(), email:email.toLowerCase(), cpf});
+    });
+    if(erro){ toast(erro,'alert-triangle','var(--danger)'); return; }
+    if(!signatarios.length){ toast('Informe ao menos um signatário','alert-triangle','var(--danger)'); return; }
+    const mensagem=((document.querySelector('#clkMsg')||{}).value||'').trim();
+    const prazoDias=parseInt((document.querySelector('#clkPrazo')||{}).value,10)||0;
+    if(el.dataset.busy) return; el.dataset.busy='1'; el.innerHTML=icon('loader-2',15)+'Enviando…'; refreshIcons();
+    fnClkEnviar({negocioId, docId, signatarios, mensagem, prazoDias})
+      .then(()=>{ closeModal(); toast('Enviado para assinatura','file-signature','var(--success)'); return reloadDealDetalhe(negocioId); })
+      .catch(e=>{ el.dataset.busy=''; el.innerHTML=icon('send',15)+'Enviar'; refreshIcons(); toast((e&&e.message)||'Falha ao enviar','alert-triangle','var(--danger)'); });
+    return;
+  }
+  if(a==='clk-reenviar'){
+    const negocioId=state.currentDeal; if(!negocioId) return;
+    if(el.dataset.busy) return; el.dataset.busy='1';
+    fnClkReenviar({negocioId}).then(()=>toast('Lembrete reenviado','mail','var(--success)')).catch(e=>toast((e&&e.message)||'Falha','alert-triangle','var(--danger)')).finally(()=>{ el.dataset.busy=''; });
+    return;
+  }
+  if(a==='clk-cancelar'){
+    const negocioId=state.currentDeal; if(!negocioId) return;
+    if(!confirm('Cancelar a assinatura no ClickSign?\n\nO documento deixa de poder ser assinado. Esta ação não pode ser desfeita.')) return;
+    fnClkCancelar({negocioId}).then(()=>{ toast('Assinatura cancelada','x','var(--danger)'); return reloadDealDetalhe(negocioId); }).catch(e=>toast((e&&e.message)||'Falha','alert-triangle','var(--danger)'));
+    return;
+  }
   if(a==='gerar-contrato'){
     if(typeof window.hubGerarContratoVenda!=='function'){ emBreve('Geração de contrato disponível no Hub.'); return; }
     toast('Gerando contrato…','loader-2','var(--brand)');
@@ -2573,7 +2726,7 @@ handleAction = function(a, el){
   if(a==='neg-arquivar'){ if(confirm('Arquivar este negócio? Ele sai da lista de Negócios, mas continua no histórico e nos relatórios.')) negAtualizar({negocioId:state.currentDeal, acao:'arquivar'}, 'Negócio arquivado'); return; }
   if(a==='neg-desarquivar'){ negAtualizar({negocioId:state.currentDeal, acao:'desarquivar'}, 'Negócio desarquivado'); return; }
   // Ações operacionais de demonstração (administrativo)
-  if(['upload-doc','preview-doc','download-doc','drive-sync','drive-new','clk-resend','reenviar-ficha','alterar-senha','maps','editar','notif'].indexOf(a)>=0){ emBreve('Ação de demonstração — integração em breve.'); return; }
+  if(['upload-doc','preview-doc','download-doc','drive-sync','drive-new','reenviar-ficha','alterar-senha','maps','editar','notif'].indexOf(a)>=0){ emBreve('Ação de demonstração — integração em breve.'); return; }
   return _handleAction(a, el);
 };
 

@@ -3353,6 +3353,7 @@ function renderMarketingGerenciar() {
           </div>
           <input class="mkt-edit-titulo" data-si="${si}" value="${esc(s.titulo || '')}" placeholder="Título da sanfona" style="flex:1;min-width:180px;font-size:13px;font-weight:600;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text-primary)">
           <label class="auth-label-inline" style="font-size:11px"><input type="checkbox" class="mkt-edit-aberta" data-si="${si}" ${s.aberta ? 'checked' : ''}> abre por padrão</label>
+          <label class="auth-label-inline" style="font-size:11px" title="Artes deitadas (ex.: capa de YouTube). Sem marcar = retrato 1080×1440."><input type="checkbox" class="mkt-edit-paisagem" data-si="${si}" ${s.formato === 'paisagem' ? 'checked' : ''}> paisagem (16:9)</label>
           <div style="display:flex;gap:4px">
             <button class="topbar-btn mkt-sanfona-up" data-si="${si}" ${si === 0 ? 'disabled' : ''} title="Subir" style="padding:4px 8px">▲</button>
             <button class="topbar-btn mkt-sanfona-down" data-si="${si}" ${si === mktConfig.sanfonas.length - 1 ? 'disabled' : ''} title="Descer" style="padding:4px 8px">▼</button>
@@ -3429,6 +3430,7 @@ function ligarHandlersGerenciar() {
     opt.closest('.mkt-emoji-pop').style.display = 'none';
   }));
   cont.querySelectorAll('.mkt-edit-aberta').forEach(inp => inp.addEventListener('change', e => { mktConfig.sanfonas[+e.target.dataset.si].aberta = e.target.checked; }));
+  cont.querySelectorAll('.mkt-edit-paisagem').forEach(inp => inp.addEventListener('change', e => { mktConfig.sanfonas[+e.target.dataset.si].formato = e.target.checked ? 'paisagem' : ''; }));
   cont.querySelectorAll('.mkt-edit-desc').forEach(inp => inp.addEventListener('input', e => {
     const si = +e.target.dataset.si, ti = +e.target.dataset.ti;
     mktConfig.sanfonas[si].templates[ti].descricao = e.target.value;

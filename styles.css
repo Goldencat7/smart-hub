@@ -1767,10 +1767,14 @@ body { animation: hubPageIn 160ms ease-out both; }
 /* Faixa em paisagem: artes 16:9 (capa de YouTube). Card mais largo e baixo, senão
    a arte deitada apareceria cortada nas laterais dentro do card retrato. */
 .mkt-prateleira.paisagem .mkt-thumb { aspect-ratio: 16 / 9; }
-.mkt-prateleira.paisagem .mkt-carousel .mkt-card { width: 300px; }
+.mkt-prateleira.paisagem .mkt-carousel .mkt-card { width: 460px; max-width: 82vw; }
 .mkt-prateleira.paisagem.expandida .mkt-carousel {
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
 }
+/* A capa YT aparece INTEIRA (contain, nunca corta) — a arte pode não ser exatamente
+   16:9. O !important vence o object-fit:cover inline do <img>. Fundo navy preenche
+   qualquer sobra sem destoar (a maioria das capas é navy). */
+.mkt-prateleira.paisagem .mkt-thumb img { object-fit: contain !important; background: #0c2749; }
 
 /* "Ver mais": a linha vira grade com tudo à vista; as setas perdem a função. */
 .mkt-prateleira.expandida .mkt-carousel {
