@@ -156,6 +156,7 @@ function criarJanelaPrincipal() {
     width: 1100,
     height: 760,
     show: false, // só mostra depois de maximizar — evita o "pulo" da janela pequena pra cheia
+    backgroundColor: '#0f1115', // fundo escuro (= --bg): sem isso, a troca login↔hub↔admin (loadFile) pisca BRANCO antes do CSS pintar
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#0f1218', symbolColor: '#f5f7fa', height: 45 },

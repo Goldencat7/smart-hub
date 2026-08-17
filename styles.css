@@ -108,6 +108,14 @@ html, body {
 
 body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
+/* Transição suave entre páginas: login/hub/admin são documentos SEPARADos, então cada
+   troca recarrega o documento (loadFile no .exe, location.href na web). O fundo escuro
+   da janela (backgroundColor no main.js) já tira o flash branco; este fade faz o conteúdo
+   ENTRAR suave em vez de "seco". Rápido (160ms) e desligado em prefers-reduced-motion. */
+@keyframes hubPageIn { from { opacity: 0; } to { opacity: 1; } }
+body { animation: hubPageIn 160ms ease-out both; }
+@media (prefers-reduced-motion: reduce) { body { animation: none; } }
+
 /* ── Topbar ──────────────────────────────────────────────────────── */
 .topbar {
   padding: 0 16px;

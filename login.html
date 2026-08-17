@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <title>REMAX Smart Hub — Login</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Pré-carrega o que o Hub vai precisar LOGO APÓS o login: enquanto a pessoa
+         digita a senha, o navegador já baixa/compila o hub-app.js e os módulos do
+         SDK que só o index usa (firestore/functions/storage — app e auth o próprio
+         login já puxa). Quando o login conclui, o Hub abre com tudo morno. -->
+    <link rel="modulepreload" href="hub-app.js">
+    <link rel="modulepreload" href="firebase-env.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-functions.js">
+    <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js">
   </head>
   <body class="auth-body">
     <main class="auth-card">

@@ -2205,6 +2205,36 @@ onAuthStateChanged(auth, async (user) => {
   // Functions, que com cold start levam segundos cada) e as abas por
   // permissão (Locação/ClickSign/Suporte) demoravam a aparecer na sidebar.
   const _extrasP = Promise.all([carregarStatusApps(), carregarBanner()]).catch(() => {});
+
+  // Papel na Gestão de Locações: vem SÓ da claim `locRole` (mesma lógica do servidor
+  // em ehGestorAuth/locMeuPerfil — bootstrap admin conta como gestor). Lê direto do
+  // token (já buscado com getIdTokenResult acima), sem depender de uma Cloud Function:
+  // um cold start / blip na locMeuPerfil rebaixava gestor/administrativo pra visão de
+  // corretor (só dados próprios) até relogar. A claim já está no token, não falha.
+  locRoleAtual = (tokenResult.claims.locRole === 'gestor' || BOOTSTRAP_ADMIN_UIDS.includes(user.uid)) ? 'gestor'
+               : (tokenResult.claims.locRole === 'administrativo' ? 'administrativo' : 'corretor');
+
+  // CACHE OTIMISTA das permissões (por uid): aplica o resultado da ÚLTIMA sessão já
+  // e pinta a tela na hora; a rede revalida logo abaixo e re-renderiza se algo mudou.
+  // Isso é só UI-gating — toda ação real é validada DE NOVO no servidor (regra de
+  // ouro), então o pior caso de um cache velho é um card aparecer/sumir 1-2s depois.
+  const _permCacheKey = 'hub_perm_' + user.uid;
+  try {
+    const c = JSON.parse(localStorage.getItem(_permCacheKey) || 'null');
+    if (c) {
+      appsPermitidos = c.apps || [];
+      temDrivesFotografia = !!c.drives;
+      temPermTI = !!c.ti;
+      temPermMarketing = !!c.mkt;
+      betaLocacoes = !!c.beta;
+      if (c.adm) isAdmin = true;
+    }
+  } catch (_e) { /* sem cache — primeira sessão nesta máquina */ }
+  btnAdmin.hidden = !(isAdmin || temPermTI);
+  renderSidebar();  // pinta JÁ (com o estado da última sessão, ou básico se 1ª vez)
+  renderCentro();   // grid já aparece — status/banner atualizam por trás (_extrasP)
+  carregarPerfil(); // popula o avatar no topo (não bloqueia nada)
+
   try {
     const perm = await getMinhasPermissoes();
     appsPermitidos = perm.data.apps || [];
@@ -2217,23 +2247,36 @@ onAuthStateChanged(auth, async (user) => {
       locacoesPublicado = !!perm.data.locacoesPublicadaEm && v === perm.data.locacoesPublicadaEm;
     } catch (_) { locacoesPublicado = false; }
     if (perm.data.isAdmin) isAdmin = true;
+    // Grava pro cache otimista da PRÓXIMA abertura.
+    try {
+      localStorage.setItem(_permCacheKey, JSON.stringify({
+        apps: appsPermitidos, drives: temDrivesFotografia, ti: temPermTI,
+        mkt: temPermMarketing, beta: betaLocacoes, adm: isAdmin
+      }));
+    } catch (_e) { /* storage cheio — segue sem cache */ }
   } catch (e) {
+    // Rede falhou: MANTÉM o que o cache aplicou (melhor que zerar a UI offline).
     console.warn('Permissões:', e);
-    appsPermitidos = [];
   }
 
   btnAdmin.hidden = !(isAdmin || temPermTI);
-  // Papel na Gestão de Locações: vem SÓ da claim `locRole` (mesma lógica do servidor
-  // em ehGestorAuth/locMeuPerfil — bootstrap admin conta como gestor). Lê direto do
-  // token (já buscado com getIdTokenResult acima), sem depender de uma Cloud Function:
-  // um cold start / blip na locMeuPerfil rebaixava gestor/administrativo pra visão de
-  // corretor (só dados próprios) até relogar. A claim já está no token, não falha.
-  locRoleAtual = (tokenResult.claims.locRole === 'gestor' || BOOTSTRAP_ADMIN_UIDS.includes(user.uid)) ? 'gestor'
-               : (tokenResult.claims.locRole === 'administrativo' ? 'administrativo' : 'corretor');
-  renderSidebar(); // re-render JÁ: com isAdmin/permissões, itens restritos (Locação/ClickSign) aparecem
-  await _extrasP; // status dos apps + banner (afetam só o centro, não a sidebar)
-  renderCentro();
-  carregarPerfil(); // popula o avatar no topo
+  renderSidebar(); // re-render com os dados FRESCOS da rede (ajusta se algo mudou)
+  // Centro: atualiza quando dá — nunca por cima do Broker embutido (descartaria estado).
+  const _renderCentroSeguro = () => { if (!(categoriaAtiva === 'locacoes' && brokerMontado)) renderCentro(); };
+  _renderCentroSeguro();
+  _extrasP.then(_renderCentroSeguro); // status dos apps + banner chegaram → grid atualiza
+
+  // TELEMETRIA leve de abertura: carimba no user_presence (doc que este cliente JÁ
+  // escreve — regra própria por uid, sem function nova) quanto levou do load da página
+  // até a tela pronta, nesta máquina. Só pra diagnosticar "tá lento pra quem?" olhando
+  // o Firestore — falha em silêncio, não bloqueia nada.
+  try {
+    const _ver = (typeof window.__HUB_VERSAO__ === 'string' && window.__HUB_VERSAO__)
+      || (document.getElementById('appVersion')?.textContent || '').replace(/^v/, '') || null;
+    setDoc(doc(db, 'user_presence', user.uid), {
+      boot: { ms: Math.round(performance.now()), v: _ver, plataforma: ehWeb() ? 'web' : 'desktop', em: fsTs() }
+    }, { merge: true }).catch(() => {});
+  } catch (_e) { /* telemetria nunca pode quebrar o boot */ }
 
   // Atualiza os avisos de instabilidade a cada 3 min (sem precisar relogar)
   clearInterval(window.__statusTimer);

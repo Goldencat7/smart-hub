@@ -422,7 +422,7 @@ exports.getModoCofre = onCall(async (req) => {
 });
 
 // Apps restritos que o usuário ATUAL pode ver (admin vê todos)
-exports.getMinhasPermissoes = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
+exports.getMinhasPermissoes = onCall({ minInstances: 1 }, async (req) => {   // QUENTE: libera a interface no login (mais crítica)
   const auth = exigirAutenticado(req);
   const snap = await db.collection('user_access').doc(auth.uid).get();
   const dados = snap.exists ? snap.data() : {};
@@ -3533,7 +3533,7 @@ exports.registrarAcesso = onCall(async (req) => {
 
 // ─── Status dos apps (aviso de instabilidade, sem precisar atualizar o .exe) ──
 // Admin marca um app como instável com uma mensagem; aparece pra todos no Hub.
-exports.listarStatusApps = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
+exports.listarStatusApps = onCall(async (req) => {   // escala a zero (custo): status dos apps não bloqueia a abertura
   exigirAutenticado(req);
   const snap = await db.collection('app_status').where('ativo', '==', true).get();
   const status = {};
@@ -3574,7 +3574,7 @@ exports.listarFotosPerfil = onCall(async (req) => {
   return { fotos };
 });
 
-exports.getMeuPerfil = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
+exports.getMeuPerfil = onCall({ minInstances: 1 }, async (req) => {   // QUENTE: nome/avatar/saudação no login
   const auth = exigirAutenticado(req);
   const userRec = await admin.auth().getUser(auth.uid).catch(() => null);
   const snap = await db.collection('user_profiles').doc(auth.uid).get();
@@ -3848,7 +3848,7 @@ exports.setTreinamentoLink = onCall(async (req) => {
 
 // ─── Banners principais (carrossel — múltiplas imagens, alternam no Hub) ────────
 // Coleção `banners`: cada doc tem { imagem: base64, ordem: number, updatedAt }.
-exports.listarBanners = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
+exports.listarBanners = onCall(async (req) => {   // escala a zero (custo): banners carregam depois, não bloqueiam
   exigirAutenticado(req);
   const snap = await db.collection('banners').orderBy('ordem').get();
   // Modo LEVE ({leve:true}): só id+rev — o timer de 3 min do Hub usa isso pra saber
@@ -4622,7 +4622,7 @@ exports.desconectarGoogleAgenda = onCall(async (req) => {
   return { ok: true };
 });
 
-exports.statusGoogleAgenda = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
+exports.statusGoogleAgenda = onCall(async (req) => {   // escala a zero (custo): status da agenda Google não bloqueia
   const auth = exigirAutenticado(req);
   const snap = await db.collection('google_tokens').doc(auth.uid).get();
   if (!snap.exists) return { conectado: false, email: '' };
@@ -5201,7 +5201,7 @@ exports.editarEvento = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SE
 });
 
 // Lista os eventos do usuário num período (participante, "todos", ou criados por ele)
-exports.listarEventos = onCall({ minInstances: 1 }, async (req) => {   // login: quente pra evitar cold start
+exports.listarEventos = onCall(async (req) => {   // escala a zero (custo): eventos da agenda carregam depois
   const auth = exigirAutenticado(req);
   const { de, ate } = req.data || {};
   const dDe = de ? new Date(de) : new Date();
