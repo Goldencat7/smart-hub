@@ -1546,6 +1546,16 @@ body { animation: hubPageIn 160ms ease-out both; }
 .rec-ck-hist-d { font-weight: 700; }
 @media (max-width: 900px) { .rec-cols-metas { grid-template-columns: 1fr; } }
 
+/* Onboarding no Performance — lista de equipe (gestor) */
+.ponb-equipe { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
+.ponb-linha { display: grid; grid-template-columns: 1fr 200px auto; align-items: center; gap: 16px; text-align: left; padding: 14px 16px; background: var(--card-bg, var(--surface)); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: border-color .15s, transform .05s; }
+.ponb-linha:hover { border-color: var(--primary, #2563eb); }
+.ponb-linha:active { transform: translateY(1px); }
+.ponb-linha-nome { font-weight: 600; }
+.ponb-linha-prog { display: flex; align-items: center; gap: 8px; }
+.ponb-linha-prog .rec-prog-bar { flex: 1; }
+@media (max-width: 720px) { .ponb-linha { grid-template-columns: 1fr; gap: 8px; } }
+
 /* Funil clicável dentro da ficha (mover o candidato de fase com 1 clique) */
 .rec-fases-wrap { margin-bottom: 12px; }
 .rec-fases-lab { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
@@ -1603,7 +1613,7 @@ body { animation: hubPageIn 160ms ease-out both; }
 .banner-noticia .bn-dot { width: 8px; height: 8px; border-radius: 50%; background: #DC1C2E; }
 .banner-noticia .bn-titulo {
   font-size: 19px; font-weight: 700; line-height: 1.3;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .banner-noticia .bn-rodape { font-size: 12.5px; font-weight: 600; color: #c9d4e0; }
 

@@ -8347,6 +8347,98 @@ exports.recrutamentoCheckinSalvar = onCall(async (req) => {
   return { ok: true };
 });
 
+// ═══ Onboarding no Performance (Jornada + Metas fora do Recrutamento) ═════════
+// O corretor vê e preenche a PRÓPRIA Jornada/Metas na aba Performance; o gestor vê
+// todos por lá (a edição do gestor reusa as functions do Recrutamento acima).
+// Ligação corretor↔candidato é AUTOMÁTICA por e-mail: o e-mail do login (token) tem
+// que bater com o e-mail da ficha de candidato que está em "Corretor associado".
+// ⚠️ Estas functions devolvem SÓ nome+jornada+checkins — NUNCA a PII da ficha
+// (CPF/RG/endereço/dados bancários ficam restritos ao gestor, via recrutamentoObter).
+
+// Lê os check-ins de um candidato (mais recente primeiro, até 90) — sem orderBy
+// pra não exigir índice composto (mesma decisão do recrutamentoObter).
+async function _onbCheckins(ref) {
+  const cks = await ref.collection('checkins').limit(400).get();
+  return cks.docs.map(dd => {
+    const cd = dd.data();
+    return { ...cd, data: dd.id, atualizadoEm: (cd.atualizadoEm && cd.atualizadoEm.toDate ? cd.atualizadoEm.toDate().toISOString() : null) };
+  }).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0)).slice(0, 90);
+}
+
+// Acha a ficha de candidato ASSOCIADO do usuário logado, pelo e-mail do token.
+// Compara em minúsculas no servidor (o e-mail da ficha pode ter sido digitado com
+// caixa diferente); associados são poucos, a varredura de 500 é barata.
+async function _onbMeuDoc(req) {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Faça login.');
+  const email = String(req.auth.token.email || '').trim().toLowerCase();
+  if (!email) return null;
+  const q = await db.collection('candidatos').where('etapa', '==', 'associado').limit(500).get();
+  return q.docs.find(d => String(d.data().email || '').trim().toLowerCase() === email) || null;
+}
+
+// (qualquer logado) Minha jornada + meus check-ins. achou:false = sem ficha ligada.
+exports.onboardingMeu = onCall(async (req) => {
+  const doc = await _onbMeuDoc(req);
+  if (!doc) return { ok: true, achou: false };
+  const d = doc.data();
+  return { ok: true, achou: true, candidato: {
+    id: doc.id, nome: _txt(d.nome, 120),
+    jornada: Array.isArray(d.jornada) ? d.jornada : [],
+    checkins: await _onbCheckins(doc.ref)
+  } };
+});
+
+// (qualquer logado) Salva a PRÓPRIA jornada. Mesma validação da versão do gestor.
+exports.onboardingMeuJornada = onCall(async (req) => {
+  const doc = await _onbMeuDoc(req);
+  if (!doc) throw new HttpsError('not-found', 'Sua jornada ainda não foi configurada pelo gestor.');
+  const d = req.data || {};
+  const jornada = Array.isArray(d.jornada) ? [...new Set(d.jornada.filter(x => REC_TAREFAS_SET.has(x)))] : [];
+  await doc.ref.set({ jornada, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _bumpBroadcast('recrutamentoSeq');
+  return { ok: true, jornada };
+});
+
+// (qualquer logado) Salva o PRÓPRIO check-in diário (1 por dia; doc = data).
+exports.onboardingMeuCheckin = onCall(async (req) => {
+  const doc = await _onbMeuDoc(req);
+  if (!doc) throw new HttpsError('not-found', 'Sua jornada ainda não foi configurada pelo gestor.');
+  const d = req.data || {};
+  const data = _txt(d.data, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new HttpsError('invalid-argument', 'data (YYYY-MM-DD) é obrigatória.');
+  const rec = {};
+  REC_CHECKIN_NUM.forEach(k => { rec[k] = Math.max(0, Math.min(9999, parseInt(d[k], 10) || 0)); });
+  REC_CHECKIN_BOOL.forEach(k => { rec[k] = !!d[k]; });
+  rec.melhorAvanco = _txt(d.melhorAvanco, 500);
+  rec.prioridadeAmanha = _txt(d.prioridadeAmanha, 500);
+  rec.porNome = _txt(req.auth.token.name, 80) || 'Corretor';
+  rec.atualizadoEm = admin.firestore.FieldValue.serverTimestamp();
+  await doc.ref.collection('checkins').doc(data).set(rec, { merge: true });
+  await doc.ref.set({ atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _bumpBroadcast('recrutamentoSeq');
+  return { ok: true };
+});
+
+// (gestor) Visão de equipe do Performance: todos os associados com progresso da
+// jornada + data do último check-in. Detalhe/edição reusa recrutamentoObter etc.
+exports.onboardingEquipe = onCall(async (req) => {
+  await exigirGestor(req);
+  const q = await db.collection('candidatos').where('etapa', '==', 'associado').limit(200).get();
+  const itens = [];
+  for (const doc of q.docs) {
+    const d = doc.data();
+    const checkins = await _onbCheckins(doc.ref);
+    itens.push({
+      id: doc.id, nome: _txt(d.nome, 120),
+      jornada: Array.isArray(d.jornada) ? d.jornada : [],
+      ultimoCheckin: checkins.length ? checkins[0].data : null,
+      diasComCheckin: checkins.length
+    });
+  }
+  itens.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+  return { ok: true, itens };
+});
+
 // (gestor) Cria (manual) ou edita um candidato. Mudança de etapa gera histórico automático.
 exports.recrutamentoSalvar = onCall(async (req) => {
   const auth = await exigirGestor(req);

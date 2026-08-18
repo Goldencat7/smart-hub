@@ -55,6 +55,12 @@ coverage
 # PWA gerado (npm run build:pwa monta do zero a partir do código-fonte)
 public/app/
 
+# Telas cruas da "casca fina" (node scripts/build-desktop-shell.js monta do zero)
+public/desktop/
+
+# Casca de teste (loadURL vs loadFile) — só dev, fora do build
+casca-test/
+
 # Firebase
 .firebase/
 firebase-debug.log

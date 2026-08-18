@@ -102,6 +102,11 @@ const recrutamentoHistorico = httpsCallable(fns, 'recrutamentoHistorico');
 const recrutamentoExcluir   = httpsCallable(fns, 'recrutamentoExcluir');
 const recrutamentoJornadaSalvar = httpsCallable(fns, 'recrutamentoJornadaSalvar');
 const recrutamentoCheckinSalvar = httpsCallable(fns, 'recrutamentoCheckinSalvar');
+// Onboarding no Performance (corretor mexe no PRÓPRIO; gestor lista todos)
+const onboardingMeu         = httpsCallable(fns, 'onboardingMeu');
+const onboardingMeuJornada  = httpsCallable(fns, 'onboardingMeuJornada');
+const onboardingMeuCheckin  = httpsCallable(fns, 'onboardingMeuCheckin');
+const onboardingEquipe      = httpsCallable(fns, 'onboardingEquipe');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
@@ -440,6 +445,7 @@ const secaoIA             = document.getElementById('secaoIA');
 const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
 const secaoRecrutamento   = document.getElementById('secaoRecrutamento');
+const secaoPerfOnboarding = document.getElementById('secaoPerfOnboarding');
 const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
 const secaoPainel         = document.getElementById('secaoPainel');
@@ -695,6 +701,7 @@ function ativarCategoria(id) {
   categoriaAtiva = id;
   locSub = null;
   locSanfonaAberta = false;   // sai da sanfona do Broker ao trocar de tela
+  ponbCarregado = false; ponbSel = null; ponbCand = null;  // reentrar no Performance recarrega
   termoBusca = '';
   inputBusca.value = '';
   abrirGrupoDe(id);           // mantém aberto o grupo da tela que abriu
@@ -789,6 +796,7 @@ function renderCentro() {
   secaoCalculadoras.hidden = true;
   secaoNotas.hidden = true;
   secaoRecrutamento.hidden = true;
+  secaoPerfOnboarding.hidden = true;
   secaoImoveis.hidden = true;
   secaoFinanceiro.hidden = true;
   secaoPainel.hidden = true;
@@ -1078,6 +1086,13 @@ function renderCentro() {
   searchWrap.hidden = false;
   secaoDocs.hidden = true;
   appsGrid.hidden = false;
+
+  // Performance: além dos apps, mostra Jornada + Metas (corretor o seu; gestor todos).
+  // A busca re-chama renderCentro a cada tecla — a guarda evita refazer o fetch.
+  if (cat.id === 'performance') {
+    secaoPerfOnboarding.hidden = false;
+    if (!ponbCarregado) carregarPerfOnboarding();
+  }
 
   // Filtra apps da categoria + termo de busca
   const termo = termoBusca.trim().toLowerCase();
@@ -6504,6 +6519,20 @@ let recTab = 'perfil';   // 'perfil' | 'jornada' | 'metas' — abas do detalhe (
 let recCheckinData = '';  // data (YYYY-MM-DD) do check-in em edição na aba Metas (vazio = hoje)
 let recCheckinDirty = false;  // digitou algo no check-in e não salvou — pede confirmação antes de descartar
 
+// ─── Onboarding no Performance (Jornada + Metas fora do Recrutamento) ─────────
+// Corretor vê/edita o SEU (via onboardingMeu*); gestor lista todos (onboardingEquipe)
+// e ao abrir um, reusa as functions do Recrutamento (recrutamentoObter/…Salvar).
+let ponbCarregado = false;   // já buscou nesta entrada no Performance (guarda contra o refetch da busca)
+let ponbGestor = false;      // true = visão de equipe; false = visão pessoal
+let ponbAchou = false;       // (corretor) tem ficha de candidato ligada por e-mail?
+let ponbEquipe = [];         // (gestor) lista dos associados
+let ponbCand = null;         // pessoa aberta (o próprio corretor; ou o associado que o gestor abriu)
+let ponbSel = null;          // (gestor) id do associado aberto — null = mostra a lista
+let ponbTab = 'jornada';     // 'jornada' | 'metas'
+let ponbCkData = '';         // data (YYYY-MM-DD) do check-in em edição (vazio = hoje)
+let ponbCkDirty = false;
+let ponbWired = false;
+
 // Jornada do Corretor — onboarding inicial oficial, agrupado por etapa (espelha
 // REC_TAREFAS_INICIAIS do backend). Cada etapa: [título, objetivo, [[id, label], …]].
 const REC_JORNADA_ETAPAS = [
@@ -6858,6 +6887,201 @@ function recMetasHtml(c) {
     + '<button class="rec-btn primary" data-rec="checkin-salvar" style="margin-top:12px">Salvar check-in</button></div>'
     + '<div class="rec-card"><div class="rec-card-t">Histórico de check-ins</div><div class="rec-ck-hists">' + histCk + '</div></div>'
     + '</div>';
+}
+
+// ═══ Onboarding no Performance (Jornada + Metas) ═════════════════════════════
+// Reusa os builders puros (REC_JORNADA_ETAPAS/REC_CHECKIN_SECOES/recPlacar), mas
+// com estado e handlers PRÓPRIOS (data-po, seção secaoPerfOnboarding) — não mistura
+// com o Recrutamento. Corretor mexe no seu; gestor lista todos e abre cada um.
+async function carregarPerfOnboarding() {
+  ponbCarregado = true;
+  ponbGestor = (locRoleAtual === 'gestor');
+  ponbSel = null; ponbCand = null; ponbTab = 'jornada'; ponbCkData = ''; ponbCkDirty = false;
+  ponbWire();
+  secaoPerfOnboarding.innerHTML = '<div class="rec-msg">Carregando…</div>';
+  try {
+    if (ponbGestor) {
+      const r = await onboardingEquipe();
+      ponbEquipe = (r.data && r.data.itens) || [];
+    } else {
+      const r = await onboardingMeu();
+      ponbAchou = !!(r.data && r.data.achou);
+      ponbCand = ponbAchou ? r.data.candidato : null;
+    }
+    ponbRender();
+  } catch (e) {
+    secaoPerfOnboarding.innerHTML = '<div class="rec-msg rec-erro">Não foi possível carregar a jornada.<br><span class="rec-dim">' + recEsc(e && e.message) + '</span></div>';
+  }
+}
+
+function ponbRender() {
+  // Gestor na lista de equipe
+  if (ponbGestor && !ponbSel) { secaoPerfOnboarding.innerHTML = ponbEquipeHtml(); return; }
+  // Corretor sem ficha ligada
+  if (!ponbGestor && !ponbAchou) {
+    secaoPerfOnboarding.innerHTML = '<div class="rec-wrap"><div class="rec-card" style="max-width:640px">'
+      + '<div class="rec-card-t">Minha Jornada</div>'
+      + '<div class="rec-dim" style="padding:8px 0 2px">Sua jornada ainda não foi configurada. Assim que o gestor ligar sua ficha de corretor, sua Jornada do Corretor e as Metas diárias aparecem aqui.</div>'
+      + '</div></div>';
+    return;
+  }
+  const c = ponbCand || {};
+  const voltar = ponbGestor ? '<button class="rec-btn ghost" data-po="voltar-lista">← Equipe</button>' : '';
+  const titulo = ponbGestor ? recEsc(c.nome || 'Corretor') : 'Minha Jornada';
+  const tabs = '<div class="rec-tabs">'
+    + '<button class="rec-tab' + (ponbTab === 'jornada' ? ' on' : '') + '" data-po="tab" data-t="jornada">Jornada do Corretor</button>'
+    + '<button class="rec-tab' + (ponbTab === 'metas' ? ' on' : '') + '" data-po="tab" data-t="metas">Metas e tarefas</button></div>';
+  const corpo = ponbTab === 'metas' ? ponbMetasHtml(c) : ponbJornadaHtml(c);
+  secaoPerfOnboarding.innerHTML = '<div class="rec-wrap">'
+    + '<div class="rec-head">' + voltar + '</div>'
+    + '<h2 class="rec-titulo">' + titulo + '</h2>' + tabs + corpo + '</div>';
+}
+
+// Lista de equipe (gestor): cada associado com progresso da jornada + último check-in.
+function ponbEquipeHtml() {
+  if (!ponbEquipe.length) return '<div class="rec-wrap"><div class="rec-card" style="max-width:640px"><div class="rec-card-t">Jornada da equipe</div><div class="rec-dim" style="padding:8px 0">Nenhum corretor associado ainda. Fichas em “Corretor associado” no Recrutamento aparecem aqui.</div></div></div>';
+  const total = REC_JORNADA_ETAPAS.reduce((a, e) => a + e[2].length, 0);
+  const linhas = ponbEquipe.map(it => {
+    const n = (it.jornada || []).length;
+    const pct = total ? Math.round(n / total * 100) : 0;
+    const ult = it.ultimoCheckin ? String(it.ultimoCheckin).split('-').reverse().join('/') : '—';
+    return '<button class="ponb-linha" data-po="abrir" data-id="' + recEsc(it.id) + '">'
+      + '<div class="ponb-linha-nome">' + recEsc(it.nome) + '</div>'
+      + '<div class="ponb-linha-prog"><div class="rec-prog-bar"><div class="rec-prog-fill" style="width:' + pct + '%"></div></div><span class="rec-dim">' + n + '/' + total + '</span></div>'
+      + '<div class="ponb-linha-ck rec-dim">Último check-in: ' + ult + '</div></button>';
+  }).join('');
+  return '<div class="rec-wrap"><h2 class="rec-titulo">Jornada da equipe</h2>'
+    + '<div class="rec-dim" style="margin:-6px 0 14px">Clique num corretor para ver/editar a Jornada e as Metas.</div>'
+    + '<div class="ponb-equipe">' + linhas + '</div></div>';
+}
+
+function ponbJornadaHtml(c) {
+  const feitas = new Set(Array.isArray(c.jornada) ? c.jornada : []);
+  const todas = REC_JORNADA_ETAPAS.reduce((a, e) => a.concat(e[2]), []);
+  const total = todas.length, n = todas.filter(t => feitas.has(t[0])).length;
+  const pct = total ? Math.round(n / total * 100) : 0;
+  const secoes = REC_JORNADA_ETAPAS.map((e, i) => {
+    const nf = e[2].filter(t => feitas.has(t[0])).length;
+    const itens = e[2].map(t => '<button class="rec-tarefa' + (feitas.has(t[0]) ? ' on' : '') + '" data-po="jornada-toggle" data-t="' + t[0] + '"><span class="rec-check">' + (feitas.has(t[0]) ? '✓' : '') + '</span><span class="rec-tarefa-lab">' + recEsc(t[1]) + '</span></button>').join('');
+    return '<div class="rec-etapa-j"><div class="rec-etapa-j-h"><div class="mw0"><span class="rec-etapa-num">Etapa ' + (i + 1) + '</span> <span class="rec-etapa-nome">' + recEsc(e[0]) + '</span>'
+      + (e[1] ? '<div class="rec-etapa-obj">' + recEsc(e[1]) + '</div>' : '') + '</div>'
+      + '<span class="rec-etapa-cont' + (nf === e[2].length ? ' full' : '') + '">' + nf + '/' + e[2].length + '</span></div>'
+      + '<div class="rec-tarefas">' + itens + '</div></div>';
+  }).join('');
+  return '<div class="rec-card" style="max-width:760px"><div class="rec-card-t">Jornada do Corretor <span class="rec-dim">— onboarding inicial</span></div>'
+    + '<div class="rec-prog"><div class="rec-prog-bar"><div class="rec-prog-fill" style="width:' + pct + '%"></div></div><div class="rec-prog-txt">' + n + ' de ' + total + ' concluídas · ' + pct + '%</div></div>'
+    + secoes + '</div>';
+}
+
+function ponbMetasHtml(c) {
+  const checkins = Array.isArray(c.checkins) ? c.checkins : [];
+  const hoje = recHojeISO();
+  const dataSel = ponbCkData || hoje;
+  const atual = checkins.find(k => k.data === dataSel) || {};
+  const numInp = id => '<input type="number" min="0" max="9999" class="rec-input rec-num" id="po_ck_' + id + '" value="' + (atual[id] != null ? recEsc(atual[id]) : '') + '">';
+  const boolInp = id => '<label class="rec-simnao"><input type="checkbox" id="po_ck_' + id + '"' + (atual[id] ? ' checked' : '') + '> Sim</label>';
+  const linha = (id, tipo, lab) => '<div class="rec-ck-linha"><span class="rec-ck-lab">' + recEsc(lab) + '</span>' + (tipo === 'b' ? boolInp(id) : numInp(id)) + '</div>';
+  const secoes = REC_CHECKIN_SECOES.map(([titulo, campos]) => '<div class="rec-ck-secao"><div class="rec-ck-secao-t">' + recEsc(titulo) + '</div>' + campos.map(([id, tipo, lab]) => linha(id, tipo, lab)).join('') + '</div>').join('');
+  const placar = recPlacar(atual).map(([l, v]) => '<div class="rec-placar-item"><div class="rec-placar-n">' + v + '</div><div class="rec-placar-l">' + recEsc(l) + '</div></div>').join('');
+  const plan = '<div class="rec-ck-secao"><div class="rec-ck-secao-t">Planejamento do dia seguinte</div>'
+    + '<div class="rec-campo"><label>Qual foi o melhor avanço comercial do seu dia?</label><textarea class="rec-input rec-ta" id="po_ck_melhorAvanco">' + recEsc(atual.melhorAvanco) + '</textarea></div>'
+    + '<div class="rec-campo"><label>Qual é sua prioridade nº 1 para amanhã?</label><textarea class="rec-input rec-ta" id="po_ck_prioridadeAmanha">' + recEsc(atual.prioridadeAmanha) + '</textarea></div></div>';
+  const histCk = checkins.length
+    ? checkins.map(k => { const soma = recPlacar(k).reduce((s, item) => s + item[1], 0); return '<button class="rec-ck-hist' + (k.data === dataSel ? ' on' : '') + '" data-po="checkin-ver" data-d="' + recEsc(k.data) + '"><span class="rec-ck-hist-d">' + recEsc(String(k.data).split('-').reverse().join('/')) + '</span><span class="rec-dim">' + soma + ' pts</span></button>'; }).join('')
+    : '<div class="rec-dim" style="padding:6px 0">Nenhum check-in ainda.</div>';
+  return '<div class="rec-cols rec-cols-metas">'
+    + '<div class="rec-card"><div class="rec-card-t">Check-in do dia <input type="date" class="rec-input rec-ck-data" id="po_ck_data" value="' + recEsc(dataSel) + '" max="' + hoje + '"></div>'
+    + secoes + plan
+    + '<div class="rec-placar"><div class="rec-placar-t">Placar do dia</div><div class="rec-placar-grid" id="ponbPlacarGrid">' + placar + '</div></div>'
+    + '<button class="rec-btn primary" data-po="checkin-salvar" style="margin-top:12px">Salvar check-in</button></div>'
+    + '<div class="rec-card"><div class="rec-card-t">Histórico de check-ins</div><div class="rec-ck-hists">' + histCk + '</div></div></div>';
+}
+
+// Recarrega a pessoa aberta: gestor via recrutamentoObter (traz jornada+checkins);
+// corretor via onboardingMeu.
+async function ponbRecarregarCand() {
+  if (ponbGestor && ponbSel) {
+    const r = await recrutamentoObter({ id: ponbSel });
+    const cd = r.data.candidato || {};
+    ponbCand = { id: cd.id, nome: cd.nome, jornada: cd.jornada || [], checkins: cd.checkins || [] };
+  } else if (!ponbGestor) {
+    const r = await onboardingMeu();
+    ponbAchou = !!(r.data && r.data.achou);
+    ponbCand = ponbAchou ? r.data.candidato : null;
+  }
+}
+
+function ponbWire() {
+  if (ponbWired) return; ponbWired = true;
+  // Placar ao vivo + marca "não salvo" enquanto digita.
+  secaoPerfOnboarding.addEventListener('input', e => {
+    if (e.target.id && e.target.id.indexOf('po_ck_') === 0 && e.target.id !== 'po_ck_data') ponbCkDirty = true;
+    if (e.target.classList && e.target.classList.contains('rec-num')) {
+      const grid = document.getElementById('ponbPlacarGrid'); if (!grid) return;
+      const vals = {};
+      REC_CHECKIN_SECOES.forEach(sec => sec[1].forEach(campo => { const x = document.getElementById('po_ck_' + campo[0]); if (x) vals[campo[0]] = x.value; }));
+      grid.innerHTML = recPlacar(vals).map(item => '<div class="rec-placar-item"><div class="rec-placar-n">' + item[1] + '</div><div class="rec-placar-l">' + recEsc(item[0]) + '</div></div>').join('');
+    }
+  });
+  secaoPerfOnboarding.addEventListener('change', e => {
+    if (e.target.id && e.target.id.indexOf('po_ck_') === 0 && e.target.id !== 'po_ck_data') ponbCkDirty = true;
+    if (e.target.id === 'po_ck_data') {
+      if (ponbCkDirty && !confirm('Você tem alterações não salvas neste check-in. Descartar e trocar o dia?')) { e.target.value = ponbCkData || recHojeISO(); return; }
+      ponbCkDirty = false; ponbCkData = e.target.value; ponbRender();
+    }
+  });
+  secaoPerfOnboarding.addEventListener('click', async e => {
+    const el = e.target.closest('[data-po]'); if (!el) return;
+    const a = el.dataset.po;
+    if (a === 'voltar-lista') {
+      if (ponbCkDirty && !confirm('Você tem alterações não salvas no check-in. Descartar e voltar?')) return;
+      ponbCkDirty = false; ponbSel = null; ponbCand = null; ponbTab = 'jornada'; ponbCkData = ''; ponbRender(); return;
+    }
+    if (a === 'abrir') {
+      ponbSel = el.dataset.id; ponbTab = 'jornada'; ponbCkData = ''; ponbCkDirty = false;
+      secaoPerfOnboarding.innerHTML = '<div class="rec-msg">Abrindo…</div>';
+      try { await ponbRecarregarCand(); ponbRender(); }
+      catch (err) { recToast('Erro ao abrir: ' + (err && err.message), true); ponbSel = null; ponbRender(); }
+      return;
+    }
+    if (a === 'tab') {
+      if (ponbCkDirty && !confirm('Você tem alterações não salvas no check-in. Descartar?')) return;
+      ponbCkDirty = false; ponbTab = el.dataset.t || 'jornada'; ponbCkData = ''; ponbRender(); return;
+    }
+    if (a === 'jornada-toggle') {
+      if (!ponbCand) return;
+      const tid = el.dataset.t;
+      const antes = Array.isArray(ponbCand.jornada) ? [...ponbCand.jornada] : [];
+      const set = new Set(antes);
+      if (set.has(tid)) set.delete(tid); else set.add(tid);
+      ponbCand.jornada = [...set]; ponbRender();  // otimista
+      try {
+        if (ponbGestor) await recrutamentoJornadaSalvar({ id: ponbCand.id, jornada: ponbCand.jornada });
+        else await onboardingMeuJornada({ jornada: ponbCand.jornada });
+      } catch (err) { ponbCand.jornada = antes; ponbRender(); recToast('Erro ao salvar: ' + (err && err.message), true); }
+      return;
+    }
+    if (a === 'checkin-ver') {
+      if (ponbCkDirty && !confirm('Você tem alterações não salvas neste check-in. Descartar e ver outro dia?')) return;
+      ponbCkDirty = false; ponbCkData = el.dataset.d || ''; ponbRender(); return;
+    }
+    if (a === 'checkin-salvar') {
+      if (!ponbCand) return;
+      const dataEl = document.getElementById('po_ck_data');
+      const data = (dataEl && dataEl.value) || recHojeISO();
+      const payload = { data };
+      REC_CHECKIN_SECOES.forEach(sec => sec[1].forEach(campo => { const x = document.getElementById('po_ck_' + campo[0]); if (x) payload[campo[0]] = (campo[1] === 'b') ? x.checked : (parseInt(x.value, 10) || 0); }));
+      ['melhorAvanco', 'prioridadeAmanha'].forEach(id => { const x = document.getElementById('po_ck_' + id); if (x) payload[id] = x.value; });
+      el.disabled = true;
+      try {
+        if (ponbGestor) await recrutamentoCheckinSalvar({ id: ponbCand.id, ...payload });
+        else await onboardingMeuCheckin(payload);
+        recToast('Check-in salvo'); ponbCkDirty = false; ponbCkData = data;
+        await ponbRecarregarCand(); ponbRender();
+      } catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
+      return;
+    }
+  });
 }
 
 function recFasesHtml(atual) {

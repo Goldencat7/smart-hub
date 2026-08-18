@@ -10,6 +10,19 @@ const crypto = require('crypto');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
+// ─── Casca fina (opcional, gated por env CASCA_URL) ─────────────────────────
+// Se CASCA_URL estiver setada, a janela principal carrega as telas do Hosting
+// (loadURL) em vez do disco (loadFile). SEM a env, o comportamento é IDÊNTICO ao
+// de hoje — mudança 100% inerte no .exe normal. É o 1º passo da "casca fina":
+// deploy único (telas no Hosting) mantendo o autologin (camada nativa/preload).
+//   Teste:  $env:CASCA_URL="https://remax-smart-hub-staging.web.app/desktop"; npx electron .
+const CASCA_URL = (process.env.CASCA_URL || '').trim().replace(/\/+$/, '') || null;
+function carregarTela(win, arquivo) {
+  if (!win) return;
+  if (CASCA_URL) return win.loadURL(`${CASCA_URL}/${arquivo}`).catch(err => console.error('[casca] loadURL falhou:', err));
+  return win.loadFile(arquivo);
+}
+
 // ─── Servidor local pros templates de Marketing ─────────────────────────────
 // Os templates são HTMLs auto-empacotados (fontes/scripts em base64 viram blob:
 // em runtime). Sob file://, o blob herda origem "null" e a 1ª tentativa de
@@ -226,11 +239,14 @@ function criarJanelaPrincipal() {
   // externo vai pro navegador do SO. (loadFile do main não passa por will-navigate.)
   janelaPrincipal.webContents.on('will-navigate', (e, url) => {
     if (url.startsWith('file://')) return;
+    // Casca fina: as telas vêm do Hosting sob CASCA_URL/… — liberadas aqui.
+    // (path-scoped em /desktop/; pra produção, apertar pra host exato via URL parse.)
+    if (CASCA_URL && url.startsWith(CASCA_URL + '/')) return;
     e.preventDefault();
     if (/^https?:\/\//i.test(url)) shell.openExternal(url).catch(() => {});
   });
 
-  janelaPrincipal.loadFile('login.html');
+  carregarTela(janelaPrincipal, 'login.html');
 }
 
 app.whenReady().then(() => {
@@ -256,19 +272,19 @@ app.on('window-all-closed', () => {
 
 // ─── Navegação da janela principal ───────────────────────────────────────────
 ipcMain.on('login-concluido', () => {
-  if (janelaPrincipal) janelaPrincipal.loadFile('index.html');
+  carregarTela(janelaPrincipal, 'index.html');
 });
 
 ipcMain.on('voltar-para-login', () => {
-  if (janelaPrincipal) janelaPrincipal.loadFile('login.html');
+  carregarTela(janelaPrincipal, 'login.html');
 });
 
 ipcMain.on('abrir-admin', () => {
-  if (janelaPrincipal) janelaPrincipal.loadFile('admin.html');
+  carregarTela(janelaPrincipal, 'admin.html');
 });
 
 ipcMain.on('voltar-para-hub', () => {
-  if (janelaPrincipal) janelaPrincipal.loadFile('index.html');
+  carregarTela(janelaPrincipal, 'index.html');
 });
 
 // ─── "Meus Negócios" (visão nova do Broker) em janela própria ────────────────
