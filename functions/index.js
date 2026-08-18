@@ -1513,40 +1513,27 @@ const NEGOCIO_STATUS = ['negocio_criado', 'em_andamento', 'aguardando_broker', '
 const NEGOCIO_ATIVO = s => !['concluido', 'cancelado'].includes(s);
 const _chkItem = ([key, label, obrigatoria]) => ({ key, label, obrigatoria, feito: false, feitoPor: '', feitoEm: null });
 const CHECKLIST_NEGOCIO = {
-  // Locação: 7 primeiras obrigatórias (travam Entregar/Concluir e aparecem no stepper).
+  // Locação: nova esteira (2026-08-18, pedido do Nathan) — as 6 etapas são todas
+  // obrigatórias (aparecem no stepper, nessa ordem). As chaves doc_pasta/analise_credito/
+  // contrato_assinado são preservadas (automação/ClickSign marcam por elas).
   locacao: [
-    ['doc_pasta', 'Documentação completa e ficha cadastral no drive', true],
-    ['analise_credito', 'Análise de crédito aprovada', true],
+    ['doc_pasta', 'Documentação completa', true],
+    ['analise_credito', 'Análise de crédito', true],
+    ['definicao_garantia', 'Definição de garantia', true],
     ['contrato_assinado', 'Contrato assinado', true],
-    ['vistoria_assinada', 'Vistoria assinada', true],
-    ['seguro_fianca', 'Seguro fiança emitido', true],
-    ['enel', 'Transferência ENEL', true],
-    ['seguro_incendio', 'Seguro incêndio', true],
-    ['chaves', 'Entrega de chaves', false],
-    ['cadastrar_locacao', 'Cadastrar locação no sistema', false],
-    ['gerar_cobranca', 'Gerar cobrança', false],
-    ['acompanhamento', 'Acompanhamento', false],
-    ['conferir_enel', 'Conferir transferência ENEL', false],
+    ['chaves', 'Entrega de chaves', true],
+    ['processo_finalizado', 'Processo finalizado', true],
   ],
-  // Venda: 7 primeiras obrigatórias.
+  // Venda: nova esteira (2026-08-18, pedido do Nathan) — as 6 etapas são todas
+  // obrigatórias (stepper, nessa ordem). Chaves preservadas p/ automação/ClickSign
+  // (compromisso_assinado = ClickSign de venda; doc_pasta/proposta/compromisso_emitido/certidoes).
   venda: [
-    ['doc_pasta', 'Documentação salva na pasta', true],
-    ['ficha', 'Ficha cadastral preenchida', true],
-    ['proposta', 'Proposta ajustada entre as partes', true],
-    ['compromisso_emitido', 'Compromisso de compra e venda emitido', true],
-    ['certidoes', 'Certidões salvas na pasta', true],
-    ['matricula_atualizada', 'Puxar matrícula atualizada', true],
-    ['compromisso_aprovado', 'Compromisso aprovado pelas partes', true],
-    ['compromisso_assinado', 'Compromisso assinado', false],
-    ['comissao1', '1ª parcela da comissão paga', false],
-    ['comissao2', '2ª parcela da comissão paga', false],
-    ['averbacao', 'Averbação da escritura/financiamento', false],
-    ['matricula_emitida', 'Matrícula atualizada emitida', false],
-    ['chaves', 'Entrega de chaves', false],
-    ['enel', 'Transferência ENEL', false],
-    ['iptu', 'Transferência IPTU', false],
-    ['condominio', 'Transferência titularidade condomínio', false],
-    ['avaliacao', 'Avaliação Google', false],
+    ['doc_pasta', 'Documentação salva', true],
+    ['proposta', 'Proposta ajustada', true],
+    ['compromisso_emitido', 'Contrato emitido', true],
+    ['certidoes', 'Certidões emitidas', true],
+    ['compromisso_assinado', 'Contrato assinado', true],
+    ['processo_finalizado', 'Processo finalizado', true],
   ],
 };
 
@@ -3737,13 +3724,17 @@ exports.listUsers = onCall(async (req) => {
   await exigirAdmin(req);
   const result = await admin.auth().listUsers(1000);
 
-  // Carrega a atividade (último app acessado) de todos de uma vez
+  // Carrega a atividade (último app acessado) e o perfil (clube/comissão) de todos de uma vez
   const atividade = {};
   const actSnap = await db.collection('user_activity').get();
   actSnap.forEach(d => { atividade[d.id] = d.data(); });
+  const perfis = {};
+  const pfSnap = await db.collection('user_profiles').get();
+  pfSnap.forEach(d => { perfis[d.id] = d.data(); });
 
   return result.users.map(u => {
     const a = atividade[u.uid] || {};
+    const p = perfis[u.uid] || {};
     return {
       uid: u.uid,
       email: u.email,
@@ -3753,9 +3744,23 @@ exports.listUsers = onCall(async (req) => {
       createdAt: u.metadata.creationTime,
       lastSignIn: u.metadata.lastSignInTime,
       lastApp: a.lastAppTitulo || null,
-      lastAppAt: a.lastAppAt ? a.lastAppAt.toDate().toISOString() : null
+      lastAppAt: a.lastAppAt ? a.lastAppAt.toDate().toISOString() : null,
+      clube: p.clube || '',        // clube da pessoa (editável no Admin)
+      comissao: p.comissao || ''   // comissão da pessoa (editável no Admin)
     };
   });
+});
+
+// (admin) Grava clube + comissão de uma pessoa (campos do Admin, ao lado do nome).
+exports.adminSetPessoaExtra = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const uid = _txt((req.data || {}).uid, 60);
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  const clube = _txt((req.data || {}).clube, 80);
+  const comissao = _txt((req.data || {}).comissao, 40);
+  await db.collection('user_profiles').doc(uid).set({ clube, comissao }, { merge: true });
+  await registrarAudit(auth, 'admin_pessoa_extra', { tipo: 'user_profiles', id: uid }, { clube, comissao });
+  return { ok: true, clube, comissao };
 });
 
 // Registra o último app que o usuário abriu (chamado pelo Hub ao abrir um app)
@@ -8347,11 +8352,12 @@ exports.recrutamentoCheckinSalvar = onCall(async (req) => {
   return { ok: true };
 });
 
-// ═══ Onboarding no Performance (Jornada + Metas fora do Recrutamento) ═════════
-// O corretor vê e preenche a PRÓPRIA Jornada/Metas na aba Performance; o gestor vê
-// todos por lá (a edição do gestor reusa as functions do Recrutamento acima).
-// Ligação corretor↔candidato é AUTOMÁTICA por e-mail: o e-mail do login (token) tem
-// que bater com o e-mail da ficha de candidato que está em "Corretor associado".
+// ═══ Onboarding no Performance (Jornada + Metas) ═════════════════════════════
+// TODOS os corretores do Hub têm a própria Jornada/Metas; o gestor vê a equipe
+// inteira. A ligação corretor↔ficha é AUTOMÁTICA por e-mail (login == e-mail da
+// ficha de candidato "associado"). Corretor SEM ficha (veterano) ganha uma criada
+// automaticamente no 1º save (marcada `origemAuto:true`; aparece também no
+// Recrutamento como associado — é verdade, ele é um corretor associado).
 // ⚠️ Estas functions devolvem SÓ nome+jornada+checkins — NUNCA a PII da ficha
 // (CPF/RG/endereço/dados bancários ficam restritos ao gestor, via recrutamentoObter).
 
@@ -8365,33 +8371,58 @@ async function _onbCheckins(ref) {
   }).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0)).slice(0, 90);
 }
 
-// Acha a ficha de candidato ASSOCIADO do usuário logado, pelo e-mail do token.
-// Compara em minúsculas no servidor (o e-mail da ficha pode ter sido digitado com
-// caixa diferente); associados são poucos, a varredura de 500 é barata.
-async function _onbMeuDoc(req) {
-  if (!req.auth) throw new HttpsError('unauthenticated', 'Faça login.');
-  const email = String(req.auth.token.email || '').trim().toLowerCase();
-  if (!email) return null;
-  const q = await db.collection('candidatos').where('etapa', '==', 'associado').limit(500).get();
-  return q.docs.find(d => String(d.data().email || '').trim().toLowerCase() === email) || null;
+// True se o usuário do Auth é corretor (não é admin/gestor/administrativo).
+function _ehCorretorUser(u) {
+  const c = u.customClaims || {};
+  return !u.disabled && !c.admin && c.locRole !== 'gestor' && c.locRole !== 'administrativo';
 }
 
-// (qualquer logado) Minha jornada + meus check-ins. achou:false = sem ficha ligada.
+// Acha a ficha "associado" por e-mail (minúsculo). Se `criar` e não achar, cria uma
+// ficha mínima a partir do nome/e-mail dados (veterano sem ficha).
+async function _onbAcharFicha(email, criar, nome) {
+  email = String(email || '').trim().toLowerCase();
+  if (!email) return null;
+  const q = await db.collection('candidatos').where('etapa', '==', 'associado').limit(500).get();
+  let doc = q.docs.find(d => String(d.data().email || '').trim().toLowerCase() === email) || null;
+  if (!doc && criar) {
+    // Doc id DETERMINÍSTICO por e-mail: dois saves simultâneos do mesmo corretor sem
+    // ficha caem no MESMO doc (idempotente) em vez de duplicarem — `add()` não era
+    // atômico (query-then-add). set+merge preserva o que já houver no doc.
+    const key = 'auto-' + crypto.createHash('sha1').update(email).digest('hex').slice(0, 24);
+    const ref = db.collection('candidatos').doc(key);
+    await ref.set({
+      nome: _txt(nome, 120) || email, email: String(email),
+      etapa: 'associado', status: 'ativo', origemAuto: true,
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    doc = await ref.get();
+  }
+  return doc;
+}
+// A ficha do usuário logado (por e-mail). `criar` = cria se não existir.
+async function _onbMeuDoc(req, criar) {
+  if (!req.auth) throw new HttpsError('unauthenticated', 'Faça login.');
+  return _onbAcharFicha(req.auth.token.email, criar, req.auth.token.name);
+}
+
+// (qualquer logado) Minha jornada + check-ins. Sempre editável: se ainda não tem
+// ficha, devolve vazia (id:null) — a ficha nasce no 1º save.
 exports.onboardingMeu = onCall(async (req) => {
-  const doc = await _onbMeuDoc(req);
-  if (!doc) return { ok: true, achou: false };
+  const doc = await _onbMeuDoc(req, false);
+  const nome = _txt(req.auth && req.auth.token && req.auth.token.name, 120) || '';
+  if (!doc) return { ok: true, achou: true, candidato: { id: null, nome, jornada: [], checkins: [] } };
   const d = doc.data();
   return { ok: true, achou: true, candidato: {
-    id: doc.id, nome: _txt(d.nome, 120),
+    id: doc.id, nome: _txt(d.nome, 120) || nome,
     jornada: Array.isArray(d.jornada) ? d.jornada : [],
     checkins: await _onbCheckins(doc.ref)
   } };
 });
 
-// (qualquer logado) Salva a PRÓPRIA jornada. Mesma validação da versão do gestor.
+// (qualquer logado) Salva a PRÓPRIA jornada (cria a ficha se ainda não existe).
 exports.onboardingMeuJornada = onCall(async (req) => {
-  const doc = await _onbMeuDoc(req);
-  if (!doc) throw new HttpsError('not-found', 'Sua jornada ainda não foi configurada pelo gestor.');
+  const doc = await _onbMeuDoc(req, true);
+  if (!doc) throw new HttpsError('failed-precondition', 'Seu login não tem e-mail — fale com o gestor.');
   const d = req.data || {};
   const jornada = Array.isArray(d.jornada) ? [...new Set(d.jornada.filter(x => REC_TAREFAS_SET.has(x)))] : [];
   await doc.ref.set({ jornada, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -8399,10 +8430,10 @@ exports.onboardingMeuJornada = onCall(async (req) => {
   return { ok: true, jornada };
 });
 
-// (qualquer logado) Salva o PRÓPRIO check-in diário (1 por dia; doc = data).
+// (qualquer logado) Salva o PRÓPRIO check-in diário (cria a ficha se não existe).
 exports.onboardingMeuCheckin = onCall(async (req) => {
-  const doc = await _onbMeuDoc(req);
-  if (!doc) throw new HttpsError('not-found', 'Sua jornada ainda não foi configurada pelo gestor.');
+  const doc = await _onbMeuDoc(req, true);
+  if (!doc) throw new HttpsError('failed-precondition', 'Seu login não tem e-mail — fale com o gestor.');
   const d = req.data || {};
   const data = _txt(d.data, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new HttpsError('invalid-argument', 'data (YYYY-MM-DD) é obrigatória.');
@@ -8419,24 +8450,362 @@ exports.onboardingMeuCheckin = onCall(async (req) => {
   return { ok: true };
 });
 
-// (gestor) Visão de equipe do Performance: todos os associados com progresso da
-// jornada + data do último check-in. Detalhe/edição reusa recrutamentoObter etc.
+// (gestor) Visão de equipe: TODOS os corretores do Hub (exclui admin/gestor/adm),
+// cada um casado por e-mail à ficha (jornada + último check-in). Quem não tem ficha
+// aparece como "ainda não iniciou" (temFicha:false) — abre/cria via onboardingCorretor.
 exports.onboardingEquipe = onCall(async (req) => {
   await exigirGestor(req);
-  const q = await db.collection('candidatos').where('etapa', '==', 'associado').limit(200).get();
+  const users = (await admin.auth().listUsers(1000)).users.filter(_ehCorretorUser);
+  // Índice das fichas associadas por e-mail (uma passada só).
+  const cands = await db.collection('candidatos').where('etapa', '==', 'associado').limit(1000).get();
+  const porEmail = {};
+  cands.docs.forEach(d => { const e = String(d.data().email || '').trim().toLowerCase(); if (e && !porEmail[e]) porEmail[e] = d; });
   const itens = [];
-  for (const doc of q.docs) {
-    const d = doc.data();
-    const checkins = await _onbCheckins(doc.ref);
+  for (const u of users) {
+    const email = String(u.email || '').trim().toLowerCase();
+    const doc = email ? porEmail[email] : null;
+    const checkins = doc ? await _onbCheckins(doc.ref) : [];
     itens.push({
-      id: doc.id, nome: _txt(d.nome, 120),
-      jornada: Array.isArray(d.jornada) ? d.jornada : [],
+      uid: u.uid, id: doc ? doc.id : null, temFicha: !!doc,
+      nome: u.displayName || u.email || u.uid, email: u.email || '',
+      jornada: doc && Array.isArray(doc.data().jornada) ? doc.data().jornada : [],
       ultimoCheckin: checkins.length ? checkins[0].data : null,
       diasComCheckin: checkins.length
     });
   }
   itens.sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
   return { ok: true, itens };
+});
+
+// (gestor) Abre a jornada de UM corretor pelo uid — acha ou CRIA a ficha por e-mail.
+// Depois o gestor edita com recrutamentoJornadaSalvar/recrutamentoCheckinSalvar (id).
+exports.onboardingCorretor = onCall(async (req) => {
+  await exigirGestor(req);
+  const uid = _txt((req.data || {}).uid, 60);
+  if (!uid) throw new HttpsError('invalid-argument', 'uid é obrigatório.');
+  const u = await admin.auth().getUser(uid);
+  const doc = await _onbAcharFicha(u.email, true, u.displayName || u.email);
+  if (!doc) throw new HttpsError('failed-precondition', 'Este corretor não tem e-mail cadastrado.');
+  const d = doc.data();
+  return { ok: true, candidato: {
+    id: doc.id, nome: _txt(d.nome, 120),
+    jornada: Array.isArray(d.jornada) ? d.jornada : [],
+    checkins: await _onbCheckins(doc.ref)
+  } };
+});
+
+// ═══ Link do Imóvel (Ferramentas) ════════════════════════════════════════════
+// O corretor cola o link de um anúncio (portal externo) e o Hub gera uma página
+// PRÓPRIA com a marca REMAX Smart + contato do corretor, hospedada no nosso
+// Hosting (/imovel/<id> → rewrite pra linkImovelPage). Extração server-side de
+// og-tags + JSON-LD + fotos de CDN. O id do doc é a credencial do link público
+// (mesmo modelo das fichas). Coleção `link_imoveis` (write só via function).
+
+// Anti-SSRF: a function faz fetch de URL dada pelo usuário — nunca pode alcançar
+// rede interna/metadata. Bloqueia protocolo≠http(s), hosts locais e IP privado
+// (resolvendo o DNS antes). Re-validada a CADA redirect (seguido manualmente).
+function _liIpPrivado(ip) {
+  if (!ip) return true;
+  ip = String(ip).toLowerCase();
+  // IPv4-mapeado em IPv6 (::ffff:1.2.3.4 ou ::ffff:a9fe:a9fe) → reavalia como IPv4,
+  // senão `::ffff:169.254.169.254` furava o filtro e alcançava o metadata do GCP.
+  let m = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (m) ip = m[1];
+  else if ((m = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/))) {
+    const a = parseInt(m[1], 16), b = parseInt(m[2], 16);
+    ip = [(a >> 8) & 255, a & 255, (b >> 8) & 255, b & 255].join('.');
+  }
+  if (ip.includes(':')) return /^(::1?$|f[cd]|fe[89ab])/i.test(ip);    // IPv6 loopback/ULA/link-local
+  const p = ip.split('.').map(Number);
+  if (p.length !== 4 || p.some(x => !Number.isInteger(x) || x < 0 || x > 255)) return true; // malformado = bloqueia
+  return p[0] === 10 || p[0] === 127 || p[0] === 0
+    || (p[0] === 172 && p[1] >= 16 && p[1] <= 31)
+    || (p[0] === 192 && p[1] === 168)
+    || (p[0] === 169 && p[1] === 254);                                  // metadata/link-local
+}
+async function _liChecarUrl(url) {
+  let u;
+  try { u = new URL(url); } catch (_) { throw new HttpsError('invalid-argument', 'Link inválido.'); }
+  if (!/^https?:$/.test(u.protocol)) throw new HttpsError('invalid-argument', 'O link precisa começar com http(s).');
+  const host = u.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal') || /^[\d.:[\]]+$/.test(host) === true && _liIpPrivado(host.replace(/[[\]]/g, ''))) {
+    throw new HttpsError('invalid-argument', 'Endereço não permitido.');
+  }
+  try {
+    const ips = await require('dns').promises.lookup(host, { all: true });
+    if (!ips.length || ips.some(i => _liIpPrivado(i.address))) throw new Error('privado');
+  } catch (_) { throw new HttpsError('invalid-argument', 'Não consegui alcançar este site.'); }
+  return u;
+}
+async function _liFetch(url) {
+  let atual = url;
+  for (let hop = 0; hop < 4; hop++) {
+    await _liChecarUrl(atual);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 15000);
+    let resp;
+    try {
+      resp = await fetch(atual, {
+        redirect: 'manual', signal: ctl.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9'
+        }
+      });
+    } finally { clearTimeout(timer); }
+    if ([301, 302, 303, 307, 308].includes(resp.status)) {
+      const loc = resp.headers.get('location');
+      if (!loc) throw new HttpsError('unavailable', 'O site redirecionou sem destino.');
+      atual = new URL(loc, atual).toString();                            // relativo → absoluto
+      continue;
+    }
+    if (!resp.ok) throw new HttpsError('unavailable', `O site do anúncio recusou a leitura (HTTP ${resp.status}). Alguns portais bloqueiam robôs.`);
+    // Lê no MÁXIMO ~3MB do corpo (por stream), cancelando o resto — um alvo que
+    // despeje centenas de MB dentro dos 15s estouraria a memória se usássemos resp.text().
+    const MAX = 3 * 1024 * 1024;
+    if (!resp.body) return { html: (await resp.text()).slice(0, MAX), urlFinal: atual };
+    const reader = resp.body.getReader();
+    const partes = []; let recebido = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      partes.push(value); recebido += value.length;
+      if (recebido >= MAX) { try { await reader.cancel(); } catch (_) { /* nada */ } break; }
+    }
+    return { html: Buffer.concat(partes).toString('utf8').slice(0, MAX), urlFinal: atual };
+  }
+  throw new HttpsError('unavailable', 'Redirecionamentos demais.');
+}
+
+// Extrai dados do HTML do anúncio: metas OG + JSON-LD (schema.org) + fotos de CDN.
+function _liExtrair(html, urlFinal) {
+  const meta = (prop) => {
+    const re1 = new RegExp('<meta[^>]+(?:property|name)=["\']' + prop + '["\'][^>]*content=["\']([^"\']*)["\']', 'i');
+    const re2 = new RegExp('<meta[^>]+content=["\']([^"\']*)["\'][^>]*(?:property|name)=["\']' + prop + '["\']', 'i');
+    const m = html.match(re1) || html.match(re2);
+    return m ? m[1].trim() : '';
+  };
+  const decode = (s) => String(s || '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/g, ' ');
+  const out = {
+    titulo: decode(meta('og:title') || (html.match(/<title[^>]*>([^<]{5,200})<\/title>/i) || [])[1] || ''),
+    descricao: decode(meta('og:description') || meta('description') || ''),
+    preco: '', endereco: '', quartos: '', banheiros: '', vagas: '', area: '',
+    fotos: []
+  };
+  const addFoto = (u) => {
+    if (!u || typeof u !== 'string') return;
+    u = decode(u.trim());
+    if (!/^https:\/\//i.test(u)) return;
+    if (/\.svg(\?|$)/i.test(u) || /(logo|icon|sprite|avatar|placeholder)/i.test(u)) return;
+    if (!out.fotos.includes(u) && out.fotos.length < 20) out.fotos.push(u);
+  };
+  addFoto(meta('og:image')); addFoto(meta('twitter:image'));
+  // Todas as og:image (portais listam várias)
+  for (const m of html.matchAll(/<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]*content=["']([^"']+)["']/gi)) addFoto(m[1]);
+  // JSON-LD (schema.org): preço, endereço, quartos, fotos
+  for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const raiz = JSON.parse(m[1]);
+      const objs = Array.isArray(raiz) ? raiz : [raiz];
+      const anda = (o) => {
+        if (!o || typeof o !== 'object') return;
+        if (o.name && !out.titulo) out.titulo = decode(String(o.name).slice(0, 200));
+        if (o.description && (!out.descricao || out.descricao.length < 40)) out.descricao = decode(String(o.description).slice(0, 3000));
+        const ofertas = o.offers ? (Array.isArray(o.offers) ? o.offers : [o.offers]) : [];
+        for (const of_ of ofertas) { if (of_ && of_.price && !out.preco) out.preco = String(of_.price); }
+        if (o.address && !out.endereco) {
+          const a = o.address;
+          out.endereco = decode(typeof a === 'string' ? a : [a.streetAddress, a.addressLocality, a.addressRegion].filter(Boolean).join(', '));
+        }
+        if (o.numberOfRooms && !out.quartos) out.quartos = String(o.numberOfRooms.value || o.numberOfRooms);
+        if (o.numberOfBathroomsTotal && !out.banheiros) out.banheiros = String(o.numberOfBathroomsTotal);
+        if (o.floorSize && !out.area) out.area = String(o.floorSize.value || o.floorSize);
+        const imgs = o.image ? (Array.isArray(o.image) ? o.image : [o.image]) : [];
+        for (const im of imgs) addFoto(typeof im === 'string' ? im : (im && im.url));
+        for (const k of Object.keys(o)) if (o[k] && typeof o[k] === 'object') anda(o[k]);
+      };
+      objs.forEach(anda);
+    } catch (_) { /* JSON-LD quebrado — segue */ }
+  }
+  // Fotos de CDNs de imóveis conhecidos (quando og/ld trouxe pouca coisa)
+  if (out.fotos.length < 3) {
+    for (const m of html.matchAll(/https:\/\/[^"'\s\\]+\.(?:jpg|jpeg|png|webp)[^"'\s\\]*/gi)) {
+      const u = m[0];
+      if (/(resizedimgs|zapimoveis|vivareal|olx\.com|imovelweb|chavesnamao|quintoandar|cdn|imgs?\.)/i.test(u)) addFoto(u);
+      if (out.fotos.length >= 20) break;
+    }
+  }
+  // Preço fallback: primeiro "R$ …" plausível no título/descrição/HTML
+  if (!out.preco) {
+    const m = (out.titulo + ' ' + out.descricao).match(/R\$\s?[\d.,]{4,15}/) || html.match(/R\$\s?[\d.]{4,12}(?:,\d{2})?/);
+    if (m) out.preco = m[0];
+  }
+  out.titulo = out.titulo.slice(0, 200);
+  out.descricao = out.descricao.slice(0, 3000);
+  out.portal = (() => { try { return new URL(urlFinal).hostname.replace(/^www\./, ''); } catch (_) { return ''; } })();
+  return out;
+}
+
+// Rate-limit: 40 links novos por corretor por dia (mesma mecânica do _limitarCriacaoFicha).
+async function _liLimitar(uid) {
+  const ref = db.collection('_rate_links').doc(uid);
+  const JANELA_MS = 24 * 3600 * 1000;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const agora = Date.now();
+    let d = snap.exists ? snap.data() : null;
+    if (!d || (agora - (d.inicio || 0)) >= JANELA_MS) d = { inicio: agora, contagem: 0 };
+    if (d.contagem >= 40) throw new HttpsError('resource-exhausted', 'Limite de links por dia atingido. Tente amanhã.');
+    d.contagem += 1;
+    tx.set(ref, d);
+  });
+}
+
+const _liBase = () => `https://${process.env.GCLOUD_PROJECT}.web.app`;
+
+// (logado) Cola o link do anúncio → cria a página REMAX. Devolve {id, url}.
+exports.linkImovelCriar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const urlAnuncio = _txt((req.data || {}).url, 600);
+  if (!urlAnuncio) throw new HttpsError('invalid-argument', 'Cole o link do anúncio.');
+  await _liLimitar(auth.uid);
+  const { html, urlFinal } = await _liFetch(urlAnuncio);
+  const d = _liExtrair(html, urlFinal);
+  if (!d.titulo && !d.fotos.length) {
+    throw new HttpsError('failed-precondition', 'Não consegui ler este anúncio (o site pode bloquear robôs). Tente outro link.');
+  }
+  const ref = await db.collection('link_imoveis').add({
+    ...d, urlOrigem: urlAnuncio, corretorUid: auth.uid, cliques: 0,
+    criadoEm: admin.firestore.FieldValue.serverTimestamp()
+  });
+  await registrarAudit(auth, 'link_imovel_criar', { tipo: 'link_imovel', id: ref.id }, { portal: d.portal });
+  return { ok: true, id: ref.id, url: `${_liBase()}/imovel/${ref.id}`, titulo: d.titulo, fotos: d.fotos.length };
+});
+
+// (logado) Meus links (mais novos primeiro).
+exports.linkImovelListar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const q = await db.collection('link_imoveis').where('corretorUid', '==', auth.uid).limit(200).get();
+  const itens = q.docs.map(s => {
+    const d = s.data();
+    return {
+      id: s.id, titulo: d.titulo || '(sem título)', portal: d.portal || '', preco: d.preco || '',
+      foto: (d.fotos || [])[0] || '', cliques: d.cliques || 0,
+      url: `${_liBase()}/imovel/${s.id}`,
+      criadoEm: d.criadoEm && d.criadoEm.toDate ? d.criadoEm.toDate().toISOString() : null
+    };
+  }).sort((a, b) => String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')));
+  return { ok: true, itens };
+});
+
+// (logado) Excluir um link meu (admin pode excluir de qualquer um).
+exports.linkImovelExcluir = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const id = _txt((req.data || {}).id, 60);
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  const snap = await db.collection('link_imoveis').doc(id).get();
+  if (!snap.exists) return { ok: true };
+  if (snap.data().corretorUid !== auth.uid && !(req.auth.token && req.auth.token.admin)) {
+    throw new HttpsError('permission-denied', 'Este link não é seu.');
+  }
+  await snap.ref.delete();
+  return { ok: true };
+});
+
+// Página PÚBLICA do imóvel (SSR): /imovel/<id> → rewrite do Hosting pra cá.
+// Server-side pra o WhatsApp/redes lerem as og-tags (preview com foto + título).
+// ⚠️ TUDO que sai no HTML passa por _liEsc (dado veio de scraping = não confiável).
+const _liEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+exports.linkImovelPage = onRequest({ region: 'southamerica-east1' }, async (req, res) => {
+  try {
+    const id = String(req.path || '').split('/').filter(Boolean).pop() || '';
+    if (!/^[A-Za-z0-9]{10,40}$/.test(id)) { res.status(404).send('Link inválido.'); return; }
+    const snap = await db.collection('link_imoveis').doc(id).get();
+    if (!snap.exists) { res.status(404).send('<meta charset="utf-8"><title>Imóvel não encontrado</title><p style="font-family:sans-serif;padding:40px">Este link não existe mais.</p>'); return; }
+    const d = snap.data();
+    snap.ref.update({ cliques: admin.firestore.FieldValue.increment(1) }).catch(() => {});
+    const pf = await db.collection('user_profiles').doc(d.corretorUid || '_').get().catch(() => null);
+    const p = (pf && pf.exists) ? pf.data() : {};
+    const rec = await admin.auth().getUser(d.corretorUid).catch(() => null);
+    const corNome = (rec && rec.displayName) || p.displayName || 'Corretor REMAX Smart';
+    // Normaliza o telefone: só dígitos, e evita 55 duplicado se já vier com código do país.
+    const foneRaw = String(p.telefone || '').replace(/\D/g, '');
+    const waNum = foneRaw ? (foneRaw.length >= 12 && foneRaw.startsWith('55') ? foneRaw : '55' + foneRaw) : '';
+    const waTxt = encodeURIComponent(`Olá! Tenho interesse no imóvel: ${d.titulo || ''} — ${_liBase()}/imovel/${id}`);
+    const fotos = (d.fotos || []).slice(0, 20);
+    const chips = [
+      d.quartos ? `🛏 ${_liEsc(d.quartos)} quarto(s)` : '', d.banheiros ? `🚿 ${_liEsc(d.banheiros)} banheiro(s)` : '',
+      d.vagas ? `🚗 ${_liEsc(d.vagas)} vaga(s)` : '', d.area ? `📐 ${_liEsc(d.area)} m²` : ''
+    ].filter(Boolean).map(c => `<span class="chip">${c}</span>`).join('');
+    const precoFmt = (() => {
+      if (!d.preco) return '';
+      const s = String(d.preco).trim();
+      if (s.startsWith('R$')) return s;
+      const n = Number(s);                                   // "500000"/"500000.00" ok; "1.500.000" vira NaN
+      return Number.isFinite(n) && n > 0 ? 'R$ ' + n.toLocaleString('pt-BR') : s;
+    })();
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${_liEsc(d.titulo || 'Imóvel')} · REMAX Smart</title>
+<meta property="og:title" content="${_liEsc(d.titulo || 'Imóvel disponível')}">
+<meta property="og:description" content="${_liEsc((d.descricao || '').slice(0, 200))}">
+${fotos[0] ? `<meta property="og:image" content="${_liEsc(fotos[0])}">` : ''}
+<meta property="og:type" content="website">
+<style>
+*{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+body{background:#f4f6f9;color:#14181f}
+.top{background:#003DA5;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:10px}
+.top b{font-size:16px}.top span{opacity:.75;font-size:12px}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+.hero{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:14px;background:#dde3ec;cursor:pointer}
+.thumbs{display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:4px}
+.thumbs img{width:92px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;flex:none;border:2px solid transparent}
+.thumbs img.on{border-color:#DC1C2E}
+h1{font-size:22px;margin:16px 0 4px}
+.preco{color:#DC1C2E;font-size:26px;font-weight:800;margin:6px 0 10px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{background:#fff;border:1px solid #e3e8ef;border-radius:999px;padding:6px 12px;font-size:13px}
+.end{color:#5b6472;font-size:14px;margin-bottom:12px}
+.desc{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;margin-bottom:16px}
+.cor{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.cor img{width:56px;height:56px;border-radius:50%;object-fit:cover;background:#dde3ec}
+.cor .nm{font-weight:700}.cor .cc{color:#5b6472;font-size:12px}
+.bt{display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:12px 18px;font-weight:700;text-decoration:none;font-size:14px}
+.wa{background:#25D366;color:#fff}.tel{background:#003DA5;color:#fff}
+.foot{color:#8a93a3;font-size:11px;text-align:center;padding:22px 0}
+@media(max-width:600px){h1{font-size:18px}.preco{font-size:22px}}
+</style></head><body>
+<div class="top"><b>REMAX Smart</b><span>· Imóveis</span></div>
+<div class="wrap">
+${fotos[0] ? `<img class="hero" id="hero" src="${_liEsc(fotos[0])}" alt="">` : ''}
+${fotos.length > 1 ? `<div class="thumbs">${fotos.map((f, i) => `<img src="${_liEsc(f)}" data-i="${i}" class="${i === 0 ? 'on' : ''}" alt="">`).join('')}</div>` : ''}
+<h1>${_liEsc(d.titulo || 'Imóvel disponível')}</h1>
+${precoFmt ? `<div class="preco">${_liEsc(precoFmt)}</div>` : ''}
+${d.endereco ? `<div class="end">📍 ${_liEsc(d.endereco)}</div>` : ''}
+${chips ? `<div class="chips">${chips}</div>` : ''}
+${d.descricao ? `<div class="desc">${_liEsc(d.descricao)}</div>` : ''}
+<div class="cor">
+${p.photo ? `<img src="${_liEsc(p.photo)}" alt="">` : ''}
+<div style="flex:1;min-width:140px"><div class="nm">${_liEsc(corNome)}</div><div class="cc">${p.creci ? 'CRECI ' + _liEsc(p.creci) + ' · ' : ''}REMAX Smart</div></div>
+${waNum ? `<a class="bt wa" href="https://wa.me/${_liEsc(waNum)}?text=${waTxt}">💬 Chamar no WhatsApp</a><a class="bt tel" href="tel:+${_liEsc(waNum)}">📞 Ligar</a>` : ''}
+</div>
+<div class="foot">Página gerada pelo Smart Hub · REMAX Smart</div>
+</div>
+<script>
+document.querySelectorAll('.thumbs img').forEach(function(t){t.addEventListener('click',function(){
+  var h=document.getElementById('hero'); if(h){h.src=this.src;}
+  document.querySelectorAll('.thumbs img').forEach(function(x){x.classList.remove('on');}); this.classList.add('on');
+});});
+</script>
+</body></html>`;
+    res.set('Cache-Control', 'public, max-age=300');
+    res.status(200).send(html);
+  } catch (e) {
+    console.error('linkImovelPage:', e && e.message);
+    res.status(500).send('Erro ao carregar a página.');
+  }
 });
 
 // (gestor) Cria (manual) ou edita um candidato. Mudança de etapa gera histórico automático.

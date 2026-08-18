@@ -65,13 +65,24 @@
   .hub-layout,
   .hub-layout.na-agenda,
   .hub-layout.agenda-oculta,
-  .hub-layout.loc-embed {
+  .hub-layout.loc-embed,
+  /* "Recolher a sidebar" é de desktop; no mobile a sidebar é gaveta. Sem citar estes
+     combos aqui, a regra de 2/3 classes do styles.css (grid 0 1fr 300px) GANHARIA e
+     espremeria as telas no celular — mesma pegadinha do na-agenda/loc-embed acima. */
+  .hub-layout.sb-recolhida,
+  .hub-layout.sb-recolhida.na-agenda,
+  .hub-layout.sb-recolhida.agenda-oculta,
+  .hub-layout.sb-recolhida.loc-embed {
     grid-template-columns: 1fr;
     /* −52px = topbar; −safe-area = o entalhe do iPhone engorda a topbar (padding-top),
        e sem descontá-lo o grid passava da tela e, com body overflow:hidden, o rodapé
        (último card/botão) ficava cortado. Sem notch o env() é 0 → volta a 52px. */
     height: calc(100dvh - 52px - env(safe-area-inset-top));
   }
+  /* No mobile a gaveta controla a visibilidade — ignora o estado recolhido do desktop
+     (senão a sidebar sumiria de vez) e não mostra o botão flutuante de reabrir. */
+  .sidebar.recolhida { display: flex; }
+  .sb-expand { display: none; }
 
   /* ── Sidebar vira gaveta deslizante ────────────────────────────────────
      ⚠ O styles.css tem um @media (max-width:720px) ANTIGO (de quando a janela

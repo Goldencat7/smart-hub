@@ -1078,7 +1078,8 @@ function iaCardHTML(){
     + '<div id="bkIaBox"></div></div>';
 }
 
-function openDeal(id){
+function openDeal(id, opts){
+  opts = opts || {};
   // DEALS não tem cancelados (filtrados no load); cai no DEALS_DOCS pra poder abrir
   // um cancelado (ver motivo da perda / arquivar).
   const d=DEALS.find(x=>x.id===id) || (DEALS_DOCS||[]).find(x=>x.id===id); if(!d) return; state.currentDeal=id; state._viewingDeal=true; const tab=state.dealTab||'timeline';
@@ -1107,7 +1108,24 @@ function openDeal(id){
   else if(tab==='tarefas'){ const enc=(d.statusRaw==='concluido'||d.statusRaw==='cancelado'); const ts=(d.tarefas||[]).slice().sort((a,b)=>{ if(a.feito!==b.feito) return a.feito?1:-1; return (a.prazo||'9999-99-99')<(b.prazo||'9999-99-99')?-1:1; }); const rows = ts.length? ts.map(t=>{ const st=prazoStatus(t.prazo); const cor=t.feito?'':(st==='atrasada'?'#ef4444':st==='hoje'?'#f59e0b':''); const prazoTxt = t.prazo? ('<span style="'+(cor?'color:'+cor+';font-weight:700':'')+'">'+(st==='atrasada'?'Atrasada · ':st==='hoje'?'Hoje · ':'')+fmtPrazo(t.prazo)+'</span>') : '<span class="t400">sem prazo</span>'; const chk = enc ? '<span class="ifx ac jc nsh" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(t.feito?icon('check',14):'')+'</span>' : '<button class="ifx ac jc nsh" data-action="tarefa-check" data-tid="'+esc(t.id)+'" data-feito="'+(t.feito?'0':'1')+'" style="width:22px;height:22px;border-radius:6px;background:'+(t.feito?'var(--success)':'#fff')+';border:'+(t.feito?'none':'2px solid var(--ink300)')+';color:#fff;cursor:pointer">'+(t.feito?icon('check',14):'')+'</button>'; const rm = enc ? '' : '<button class="btn btn-ghost sm nsh" data-action="tarefa-rm" data-tid="'+esc(t.id)+'" title="Remover" style="color:#dc2626">'+icon('trash-2',15)+'</button>'; return '<div class="fx ac g3" style="padding:11px 0;border-top:1px solid var(--ink100)">'+chk+'<div class="grow mw0"><div class="fz13 fw6 t900" style="'+(t.feito?'text-decoration:line-through;opacity:.55':'')+'">'+esc(t.texto)+'</div><div class="fz12 t500">'+prazoTxt+'</div></div>'+rm+'</div>'; }).join('') : '<div class="tcenter t500 fz13" style="padding:20px">Nenhuma tarefa ainda.</div>'; const addRow = enc ? '<div class="fz12 t500" style="margin-bottom:14px">Negócio encerrado — tarefas em modo leitura.</div>' : '<div class="fx g2 wrap" style="margin-bottom:14px"><input id="bkTarefaTxt" class="input grow" maxlength="200" placeholder="Nova tarefa (ex.: ligar para o cliente)" style="min-width:180px"><input id="bkTarefaPrazo" type="date" class="input nsh" style="max-width:170px"><button class="btn btn-primary sm nsh" data-action="tarefa-add">'+icon('plus',15)+'Adicionar</button></div>'; tabContent='<div style="padding:20px">'+addRow+'<div>'+rows+'</div></div>'; }
   else { const encCk=(d.statusRaw==='concluido'||d.statusRaw==='cancelado'); tabContent='<div style="padding:16px 20px"><div class="fz13 fw6 t900" style="margin-bottom:10px">Checklist do negócio'+(encCk?' <span class="fz11 t500 fw5">(encerrado — leitura)</span>':'')+'</div>'+(d.checklist||[]).map(x=>'<button class="fx ac g3'+(encCk?'':' hoverbg')+'"'+(encCk?'':' data-chk="'+esc(x.key)+'" data-feito="'+(x.feito?'0':'1')+'"')+' style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:'+(encCk?'default':'pointer')+';margin-bottom:8px"><span class="ifx ac jc nsh" style="width:24px;height:24px;border-radius:6px;background:'+(x.feito?'var(--success)':'#fff')+';border:'+(x.feito?'none':'2px solid var(--ink300)')+';color:#fff">'+(x.feito?icon('check',15):'')+'</span><div class="grow mw0"><div class="fz13 fw6 t900">'+esc(x.label)+(x.obrigatoria?' <span class="pill danger" style="font-size:10px;padding:1px 6px">obrigatória</span>':'')+'</div>'+(x.feito&&x.feitoPor?'<div class="fz11 t500">'+esc(x.feitoPor)+' · '+relData(x.feitoEm)+'</div>':'')+'</div></button>').join('')+'</div>'; }
 
-  const host=$('#root'); host.style.animation='none'; void host.offsetWidth; host.style.animation='';
+  // Troca de aba (Timeline/Tarefas/Comentários/Checklist): re-renderiza SÓ o card das
+  // abas — sem rebuildar a tela, resetar a rolagem ou repetir a animação de entrada.
+  // Mantém viva a assinatura de comentários ao vivo (não passa pelo teardown/setup abaixo).
+  if(opts.tabsOnly){
+    const box=$('#bkDealTabs');
+    if(box){
+      box.innerHTML='<div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent;
+      refreshIcons();
+      if(state.dealTab==='comentarios') state._dealRendCount=(d.comentarios||[]).length;
+      return;
+    }
+  }
+
+  // refresh = atualização NO LUGAR (ação dentro do negócio): sem repetir a animação
+  // de entrada e preservando a rolagem (não "pisca" nem sobe pro topo). Sem refresh
+  // (abrir o negócio de fato) mantém a entrada animada + começa do topo.
+  const host=$('#root'); const _sc=$('#scroller'); const _prevY=(opts.refresh&&_sc)?_sc.scrollTop:0;
+  if(!opts.refresh){ host.style.animation='none'; void host.offsetWidth; host.style.animation=''; }
   host.innerHTML =
     '<button class="btn-dark-ghost" style="margin-bottom:16px" data-nav="negocios">'+icon('arrow-left',15)+'Voltar aos Negócios</button>'
   + '<div class="card" style="padding:22px;margin-bottom:16px"><div class="fx as jb wrap g4"><div class="mw0"><div class="fx ac g2 wrap"><span class="mono fz13 fw7 t900">'+esc(d.code)+'</span><span class="pill '+(d.tipo==='Venda'?'info':'ai')+'">'+d.tipo+'</span>'+statusPill(d.status)+'</div><div class="fz20 fw7 t900" style="margin-top:10px">'+esc(im.rua)+'</div><div class="fx ac g3 wrap fz13 t500" style="margin-top:8px"><span class="fx ac g1">'+icon('map-pin',14,'t400')+esc(im.bairro||d.cidade)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1">'+icon('user',14,'t400')+esc(corr.nome)+'</span><span class="divx" style="height:12px"></span><span class="fx ac g1" title="Data em que o negócio foi gerado">'+icon('calendar',14,'t400')+'Gerado em '+esc(d.criado||relData(d.criadoEm))+'</span></div></div>'
@@ -1133,7 +1151,7 @@ function openDeal(id){
     + '</div>'
     + '<div class="card" id="bkDealTabs" style="overflow:hidden"><div class="fx g1" style="padding:4px 12px 0;border-bottom:1px solid var(--ink100)">'+tabBtn('timeline','Timeline')+tabBtn('tarefas','Tarefas')+tabBtn('comentarios','Comentários')+tabBtn('checklist','Checklist')+'</div>'+tabContent+'</div>'
   + '</div>';
-  const sc=$('#scroller'); if(sc) sc.scrollTop=0; refreshIcons();
+  const sc=$('#scroller'); if(sc) sc.scrollTop=opts.refresh?_prevY:0; refreshIcons();
 
   // Comentários AO VIVO (estilo chat): escuta ESTE negócio e, quando chega comentário
   // novo de outra pessoa, insere só o balão novo — sem re-renderizar (não apaga o que
@@ -1162,7 +1180,7 @@ function openDeal(id){
 
 // Recarrega os dados e reabre o detalhe do negócio (usado após ações que mudam o
 // negócio no servidor mas não devolvem o doc inteiro — ex.: ClickSign enviar/cancelar).
-async function reloadDealDetalhe(id){ await carregarDados(); if(state.currentDeal===id && state._viewingDeal) openDeal(id); }
+async function reloadDealDetalhe(id){ await carregarDados(); if(state.currentDeal===id && state._viewingDeal) openDeal(id, {refresh:true}); }
 
 async function negAtualizar(payload, okMsg){
   try {
@@ -1186,7 +1204,7 @@ async function negAtualizar(payload, okMsg){
         // o openDeal re-renderiza o detalhe inteiro e apagaria rascunho não salvo.
         const drafts={};
         document.querySelectorAll('#root [id^="pp"], #root [id^="cp"], #root #bkComent, #root #bkTarefaTxt').forEach(x=>{ if(x.id&&x.value) drafts[x.id]=x.value; });
-        openDeal(dealId);
+        openDeal(dealId, {refresh:true});
         Object.entries(drafts).forEach(([k,v])=>{ const x=document.getElementById(k); if(x) x.value=v; });
       }
     }
@@ -1690,12 +1708,12 @@ function handleAction(a,el){
   else if(a==='imotipo'){ state.imoveisFiltro=el.dataset.v; RENDERERS.imoveis($('#root')); refreshIcons(); }
   else if(a==='imoview'){ state.imoveisView=el.dataset.v; RENDERERS.imoveis($('#root')); refreshIcons(); }
   else if(a==='imosort'){ state.imoveisSort = state.imoveisSort==='antigo'?'recente':'antigo'; RENDERERS.imoveis($('#root')); refreshIcons(); }
-  else if(a.indexOf('dealtab-')===0){ state.dealTab=a.slice(8); openDeal(state.currentDeal); }
+  else if(a.indexOf('dealtab-')===0){ state.dealTab=a.slice(8); openDeal(state.currentDeal, {tabsOnly:true}); }
   else if(a.indexOf('ptab-')===0){ state.pessoaTab=a.slice(5); openPerson(state.currentPerson); }
   else if(a.indexOf('itab-')===0){ state.imovelTab=a.slice(5); openProp(state.currentProp); }
   else if(a.indexOf('cfgtab-')===0){ state.cfgTab=a.slice(7); RENDERERS.configuracoes($('#root')); refreshIcons(); }
   else if(a==='add-coment'){ const ta=$('#bkComent'); const txt=ta?ta.value.trim():''; if(!txt){ toast('Escreva algo primeiro','alert-triangle','var(--warning)'); return; } el.disabled=true; const resp=state.respondendo; const payload={negocioId:state.currentDeal, acao:'comentario', texto:txt}; if(resp&&resp.id) payload.respostaDe=resp.id; state.respondendo=null; if(ta) ta.value=''; /* limpa ANTES: senão o restore de rascunho do negAtualizar re-injeta o texto já enviado = comentário duplicado */ negAtualizar(payload, resp?'Resposta enviada':'Comentário adicionado').then(ok=>{ if(ok===false){ const t2=$('#bkComent'); if(t2) t2.value=txt; if(resp) state.respondendo=resp; } /* falhou: devolve o texto e o contexto */ }).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); }
-  else if(a==='coment-responder'){ state.respondendo={id:el.dataset.id, nome:el.dataset.nome||'', deal:state.currentDeal}; state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const t=$('#bkComent'); if(t) t.focus(); },60); }
+  else if(a==='coment-responder'){ state.respondendo={id:el.dataset.id, nome:el.dataset.nome||'', deal:state.currentDeal}; state.dealTab='comentarios'; openDeal(state.currentDeal, {tabsOnly:true}); setTimeout(()=>{ const t=$('#bkComent'); if(t) t.focus(); },60); }
   else if(a==='cancelar-resposta'){ state.respondendo=null; openDeal(state.currentDeal); }
   else if(a==='coment-editar'){ openEditarComent(el.dataset.id, el.dataset.texto||''); }
   else if(a==='coment-editar-salvar'){ const t=$('#edComentTxt'); const txt=t?t.value.trim():''; if(!txt){ toast('Escreva algo','alert-triangle','var(--warning)'); return; } el.disabled=true; closeModal(); negAtualizar({negocioId:state.currentDeal, acao:'comentario_editar', comentarioId:el.dataset.id, texto:txt}, 'Comentário editado'); }
@@ -2646,7 +2664,7 @@ handleAction = function(a, el){
   if(a==='col-up'){ _colCaptura(); const i=+el.dataset.i; if(i>0){ const A=state._colEdit; const t=A[i-1]; A[i-1]=A[i]; A[i]=t; } renderKanbanGerenciar(); return; }
   if(a==='col-down'){ _colCaptura(); const i=+el.dataset.i; const A=state._colEdit; if(i<A.length-1){ const t=A[i+1]; A[i+1]=A[i]; A[i]=t; } renderKanbanGerenciar(); return; }
   if(a==='col-salvar'){ salvarKanbanColunas(); return; }
-  if(a==='ir-comentarios'){ state.dealTab='comentarios'; openDeal(state.currentDeal); setTimeout(()=>{ const el=$('#bkDealTabs'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60); return; }
+  if(a==='ir-comentarios'){ state.dealTab='comentarios'; openDeal(state.currentDeal, {tabsOnly:true}); setTimeout(()=>{ const el=$('#bkDealTabs'); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); }, 60); return; }
   if(a==='drive-sync-real'){ syncNegocioDrive(); return; }
   if(a==='drive-destino-edit'){ openDriveDestino(); return; }
   if(a==='drive-destino-save'){

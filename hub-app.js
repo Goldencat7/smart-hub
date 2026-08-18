@@ -107,6 +107,11 @@ const onboardingMeu         = httpsCallable(fns, 'onboardingMeu');
 const onboardingMeuJornada  = httpsCallable(fns, 'onboardingMeuJornada');
 const onboardingMeuCheckin  = httpsCallable(fns, 'onboardingMeuCheckin');
 const onboardingEquipe      = httpsCallable(fns, 'onboardingEquipe');
+const onboardingCorretor    = httpsCallable(fns, 'onboardingCorretor');
+// Link do Imóvel (Ferramentas)
+const linkImovelCriar   = httpsCallable(fns, 'linkImovelCriar');
+const linkImovelListar  = httpsCallable(fns, 'linkImovelListar');
+const linkImovelExcluir = httpsCallable(fns, 'linkImovelExcluir');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
@@ -261,6 +266,7 @@ const ICN = {
   clicksign:   svgIcone('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'),
   ia:          svgIcone('<circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4l1.4-1.4M17 7l1.4-1.4"/>'),
   calculadoras: svgIcone('<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8"/><path d="M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
+  linkimovel: svgIcone('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'),
   notas:        svgIcone('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h4"/>'),
   recrutamento: svgIcone('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>'),
   ti:            svgIcone('<path d="M4 15s1-1 4-1 4 1 4 1"/><circle cx="8" cy="9" r="3"/><path d="M22 19V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v14"/><path d="M16 8h.01M16 12h4"/>'),
@@ -346,6 +352,7 @@ const CATEGORIAS = [
   { id: 'sala_reuniao', nome: 'Reserva de Sala', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
   { id: 'ia',           nome: 'SMART IA',        icone: ICN.ia, ia: true, webOculto: true },
   { id: 'calculadoras', nome: 'Calculadoras',    icone: ICN.calculadoras, calculadoras: true },
+  { id: 'linkimovel',   nome: 'Link do Imóvel',  icone: ICN.linkimovel, linkImovel: true },
   { id: 'notas',        nome: 'Bloco de Notas',  icone: ICN.notas, notas: true },
   { id: 'whatsapp',    nome: 'WhatsApp',     icone: ICN.whatsapp, appDireto: 'whatsapp', webOculto: true },
   { id: 'ti',          nome: 'Suporte / TI',  icone: ICN.ti, ti: true, soTI: true },
@@ -365,7 +372,7 @@ const SIDEBAR_LAYOUT = [
   { grupo: 'g_captacao',     nome: 'Captação',    icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia'] },
   { grupo: 'g_agenda',       nome: 'Agenda',      icone: ICN.agenda,      filhos: ['agenda', 'reuniao', 'sala_reuniao'] },
   { grupo: 'g_equipe',       nome: 'Equipe',      icone: ICN.performance, filhos: ['treinamento', 'performance'] },
-  { grupo: 'g_ferramentas',  nome: 'Ferramentas', icone: ICN.ferramentas, filhos: ['ia', 'whatsapp', 'calculadoras', 'notas', 'clicksign'] },
+  { grupo: 'g_ferramentas',  nome: 'Ferramentas', icone: ICN.ferramentas, filhos: ['ia', 'whatsapp', 'calculadoras', 'linkimovel', 'notas', 'clicksign'] },
   { item: 'marketing' },
   { item: 'documentos' },
   { item: 'recrutamento' },
@@ -446,6 +453,7 @@ const secaoCalculadoras   = document.getElementById('secaoCalculadoras');
 const secaoNotas          = document.getElementById('secaoNotas');
 const secaoRecrutamento   = document.getElementById('secaoRecrutamento');
 const secaoPerfOnboarding = document.getElementById('secaoPerfOnboarding');
+const secaoLinkImovel     = document.getElementById('secaoLinkImovel');
 const secaoImoveis        = document.getElementById('secaoImoveis');
 const secaoFinanceiro     = document.getElementById('secaoFinanceiro');
 const secaoPainel         = document.getElementById('secaoPainel');
@@ -650,19 +658,24 @@ function renderSidebar() {
     const sb = document.querySelector('.sidebar');
     const layout = document.querySelector('.hub-layout');
     const tgl = document.getElementById('sbToggle');
+    const exp = document.getElementById('btnExpandSidebar');
     if (sb) sb.classList.toggle('recolhida', sbRecolhida);
     if (layout) layout.classList.toggle('sb-recolhida', sbRecolhida);
-    if (tgl) { tgl.textContent = sbRecolhida ? '»' : '«'; tgl.title = sbRecolhida ? 'Expandir menu' : 'Recolher menu'; }
+    if (tgl) tgl.title = 'Recolher menu';
+    if (exp) exp.hidden = !sbRecolhida;   // botão flutuante só aparece com a sidebar escondida
+  };
+  const _sbSet = (v) => {
+    sbRecolhida = v;
+    try { localStorage.setItem('hub_sb_recolhida', v ? '1' : '0'); } catch (_e) { /* nada */ }
+    renderSidebar();   // re-monta e reaplica as classes
   };
   _sbAplicaRecolhida();   // reflete o estado atual a cada render
   if (!renderSidebar._recolherLigado) {
     renderSidebar._recolherLigado = true;
     const tgl = document.getElementById('sbToggle');
-    if (tgl) tgl.addEventListener('click', () => {
-      sbRecolhida = !sbRecolhida;
-      try { localStorage.setItem('hub_sb_recolhida', sbRecolhida ? '1' : '0'); } catch (_e) { /* nada */ }
-      renderSidebar();   // re-monta (achata grupos no recolhido) e reaplica as classes
-    });
+    if (tgl) tgl.addEventListener('click', () => _sbSet(!sbRecolhida));   // « esconde a sidebar
+    const exp = document.getElementById('btnExpandSidebar');
+    if (exp) exp.addEventListener('click', () => _sbSet(false));          // » (flutuante) reabre
   }
 }
 
@@ -797,6 +810,7 @@ function renderCentro() {
   secaoNotas.hidden = true;
   secaoRecrutamento.hidden = true;
   secaoPerfOnboarding.hidden = true;
+  secaoLinkImovel.hidden = true;
   secaoImoveis.hidden = true;
   secaoFinanceiro.hidden = true;
   secaoPainel.hidden = true;
@@ -926,6 +940,18 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarCalculadoras();
+    return;
+  }
+
+  // Aba Link do Imóvel (Ferramentas)
+  if (cat.linkImovel) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoLinkImovel.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarLinkImovel();
     return;
   }
 
@@ -1215,7 +1241,7 @@ async function bannerMudou() {
 }
 
 // Tabs que NÃO mostram o banner
-const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'notas', 'locacoes', 'ti']);
+const SEM_BANNER = new Set(['agenda', 'marketing', 'documentos', 'fotografia', 'reuniao', 'sala_reuniao', 'ia', 'calculadoras', 'linkimovel', 'notas', 'locacoes', 'ti']);
 
 function renderBannerEl(banner) {
   if (banner.tipo === 'noticia') {
@@ -6937,18 +6963,21 @@ function ponbRender() {
     + '<h2 class="rec-titulo">' + titulo + '</h2>' + tabs + corpo + '</div>';
 }
 
-// Lista de equipe (gestor): cada associado com progresso da jornada + último check-in.
+// Lista de equipe (gestor): TODOS os corretores do Hub, cada um com progresso da
+// jornada + último check-in. Quem ainda não tem ficha aparece como "ainda não iniciou".
 function ponbEquipeHtml() {
-  if (!ponbEquipe.length) return '<div class="rec-wrap"><div class="rec-card" style="max-width:640px"><div class="rec-card-t">Jornada da equipe</div><div class="rec-dim" style="padding:8px 0">Nenhum corretor associado ainda. Fichas em “Corretor associado” no Recrutamento aparecem aqui.</div></div></div>';
+  if (!ponbEquipe.length) return '<div class="rec-wrap"><div class="rec-card" style="max-width:640px"><div class="rec-card-t">Jornada da equipe</div><div class="rec-dim" style="padding:8px 0">Nenhum corretor encontrado.</div></div></div>';
   const total = REC_JORNADA_ETAPAS.reduce((a, e) => a + e[2].length, 0);
   const linhas = ponbEquipe.map(it => {
     const n = (it.jornada || []).length;
     const pct = total ? Math.round(n / total * 100) : 0;
-    const ult = it.ultimoCheckin ? String(it.ultimoCheckin).split('-').reverse().join('/') : '—';
-    return '<button class="ponb-linha" data-po="abrir" data-id="' + recEsc(it.id) + '">'
+    const ck = it.temFicha
+      ? 'Último check-in: ' + (it.ultimoCheckin ? String(it.ultimoCheckin).split('-').reverse().join('/') : '—')
+      : 'ainda não iniciou';
+    return '<button class="ponb-linha" data-po="abrir" data-uid="' + recEsc(it.uid) + '">'
       + '<div class="ponb-linha-nome">' + recEsc(it.nome) + '</div>'
       + '<div class="ponb-linha-prog"><div class="rec-prog-bar"><div class="rec-prog-fill" style="width:' + pct + '%"></div></div><span class="rec-dim">' + n + '/' + total + '</span></div>'
-      + '<div class="ponb-linha-ck rec-dim">Último check-in: ' + ult + '</div></button>';
+      + '<div class="ponb-linha-ck rec-dim">' + recEsc(ck) + '</div></button>';
   }).join('');
   return '<div class="rec-wrap"><h2 class="rec-titulo">Jornada da equipe</h2>'
     + '<div class="rec-dim" style="margin:-6px 0 14px">Clique num corretor para ver/editar a Jornada e as Metas.</div>'
@@ -7038,10 +7067,13 @@ function ponbWire() {
       ponbCkDirty = false; ponbSel = null; ponbCand = null; ponbTab = 'jornada'; ponbCkData = ''; ponbRender(); return;
     }
     if (a === 'abrir') {
-      ponbSel = el.dataset.id; ponbTab = 'jornada'; ponbCkData = ''; ponbCkDirty = false;
+      ponbTab = 'jornada'; ponbCkData = ''; ponbCkDirty = false;
       secaoPerfOnboarding.innerHTML = '<div class="rec-msg">Abrindo…</div>';
-      try { await ponbRecarregarCand(); ponbRender(); }
-      catch (err) { recToast('Erro ao abrir: ' + (err && err.message), true); ponbSel = null; ponbRender(); }
+      try {
+        const r = await onboardingCorretor({ uid: el.dataset.uid });
+        ponbCand = r.data.candidato; ponbSel = ponbCand.id;
+        ponbRender();
+      } catch (err) { recToast('Erro ao abrir: ' + (err && err.message), true); ponbSel = null; ponbRender(); }
       return;
     }
     if (a === 'tab') {
@@ -7078,6 +7110,114 @@ function ponbWire() {
         else await onboardingMeuCheckin(payload);
         recToast('Check-in salvo'); ponbCkDirty = false; ponbCkData = data;
         await ponbRecarregarCand(); ponbRender();
+      } catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
+      return;
+    }
+  });
+}
+
+// ═══ Link do Imóvel (Ferramentas) ═════════════════════════════════════════════
+// Cola o link de um anúncio → o servidor lê o anúncio e gera uma página REMAX
+// própria (/imovel/<id> no nosso Hosting) com o contato do corretor. Reusa as
+// classes rec-* de estilo. Estado próprio (li*).
+let liLista = [];
+let liWired = false;
+let liUltimo = null;   // link recém-criado (destaque no topo)
+
+async function carregarLinkImovel() {
+  liWire();
+  secaoLinkImovel.innerHTML = '<div class="rec-msg">Carregando…</div>';
+  try {
+    const r = await linkImovelListar();
+    liLista = (r.data && r.data.itens) || [];
+    liRender();
+  } catch (e) {
+    secaoLinkImovel.innerHTML = '<div class="rec-msg rec-erro">Não foi possível carregar.<br><span class="rec-dim">' + recEsc(e && e.message) + '</span></div>';
+  }
+}
+
+function liRender() {
+  const novo = liUltimo
+    ? '<div class="rec-card li-novo"><div class="rec-card-t">✅ Link gerado!</div>'
+      + '<div class="li-url"><input class="rec-input" id="liUrlNova" readonly value="' + recEsc(liUltimo.url) + '"></div>'
+      + '<div class="li-acoes">'
+      + '<button class="rec-btn primary" data-li="copiar" data-url="' + recEsc(liUltimo.url) + '">📋 Copiar link</button>'
+      + '<button class="rec-btn" data-li="abrir" data-url="' + recEsc(liUltimo.url) + '">👁 Ver página</button>'
+      + '<button class="rec-btn" data-li="whats" data-url="' + recEsc(liUltimo.url) + '" data-titulo="' + recEsc(liUltimo.titulo || '') + '">💬 Enviar no WhatsApp</button>'
+      + '</div>'
+      + (liUltimo.fotos === 0 ? '<div class="rec-dim" style="margin-top:8px">⚠ Não achei fotos neste anúncio — a página sai sem galeria.</div>' : '')
+      + '</div>'
+    : '';
+  const linhas = liLista.length ? liLista.map(it =>
+    '<div class="li-linha">'
+    + (it.foto ? '<img class="li-thumb" src="' + recEsc(it.foto) + '" alt="" loading="lazy">' : '<div class="li-thumb li-thumb-vazia">🏠</div>')
+    + '<div class="li-info"><div class="li-titulo">' + recEsc(it.titulo) + '</div>'
+    + '<div class="rec-dim">' + recEsc(it.portal || '') + (it.preco ? ' · ' + recEsc(it.preco) : '') + ' · ' + (it.cliques || 0) + ' visita(s)</div></div>'
+    + '<div class="li-acoes">'
+    + '<button class="rec-btn sm" data-li="copiar" data-url="' + recEsc(it.url) + '">📋 Copiar</button>'
+    + '<button class="rec-btn sm" data-li="abrir" data-url="' + recEsc(it.url) + '">Abrir</button>'
+    + '<button class="rec-btn sm danger" data-li="excluir" data-id="' + recEsc(it.id) + '">Excluir</button>'
+    + '</div></div>'
+  ).join('') : '<div class="rec-dim" style="padding:10px 0">Nenhum link criado ainda. Cole o primeiro anúncio aí em cima. 👆</div>';
+  secaoLinkImovel.innerHTML = '<div class="rec-wrap">'
+    + '<h2 class="rec-titulo">Link do Imóvel</h2>'
+    + '<div class="rec-dim" style="margin:-6px 0 14px">Cole o link de um anúncio (portal, site de parceiro…) e gere uma página com a marca REMAX Smart e o SEU contato — pronta pra mandar pro cliente.</div>'
+    + '<div class="rec-card" style="max-width:760px"><div class="li-form">'
+    + '<input class="rec-input" id="liUrl" placeholder="https://… (link do anúncio)">'
+    + '<button class="rec-btn primary" data-li="gerar" id="liGerar">Gerar link REMAX</button>'
+    + '</div><div class="rec-dim" style="margin-top:8px">A página usa seu nome, CRECI, foto e WhatsApp do Meu Perfil — confira se estão preenchidos.</div></div>'
+    + novo
+    + '<div class="rec-card" style="max-width:760px;margin-top:14px"><div class="rec-card-t">Meus links</div>' + linhas + '</div>'
+    + '</div>';
+}
+
+function liWire() {
+  if (liWired) return; liWired = true;
+  secaoLinkImovel.addEventListener('click', async e => {
+    const el = e.target.closest('[data-li]'); if (!el) return;
+    const a = el.dataset.li;
+    if (a === 'gerar') {
+      const inp = document.getElementById('liUrl');
+      const url = inp ? inp.value.trim() : '';
+      if (!url) { recToast('Cole o link do anúncio.', true); return; }
+      el.disabled = true; el.textContent = 'Lendo o anúncio…';
+      try {
+        const r = await linkImovelCriar({ url });
+        liUltimo = r.data;
+        recToast('Link gerado!');
+        const l = await linkImovelListar(); liLista = (l.data && l.data.itens) || [];
+        liRender();
+      } catch (err) {
+        recToast((err && err.message) || 'Erro ao gerar', true);
+        el.disabled = false; el.textContent = 'Gerar link REMAX';
+      }
+      return;
+    }
+    if (a === 'copiar') {
+      try { await navigator.clipboard.writeText(el.dataset.url); recToast('Link copiado!'); }
+      catch (_e) { const n = document.getElementById('liUrlNova'); if (n) { n.select(); } recToast('Copie o link acima (Ctrl+C).', true); }
+      return;
+    }
+    if (a === 'abrir') {
+      if (window.hubApi && window.hubApi.abrirNoNavegador) window.hubApi.abrirNoNavegador(el.dataset.url);
+      else window.open(el.dataset.url, '_blank');
+      return;
+    }
+    if (a === 'whats') {
+      const txt = encodeURIComponent('Olha esse imóvel: ' + (el.dataset.titulo || '') + '\n' + el.dataset.url);
+      const wa = 'https://wa.me/?text=' + txt;
+      if (window.hubApi && window.hubApi.abrirNoNavegador) window.hubApi.abrirNoNavegador(wa);
+      else window.open(wa, '_blank');
+      return;
+    }
+    if (a === 'excluir') {
+      if (!confirm('Excluir este link? Quem tiver o link antigo vai ver "não existe mais".')) return;
+      el.disabled = true;
+      try {
+        await linkImovelExcluir({ id: el.dataset.id });
+        liLista = liLista.filter(x => x.id !== el.dataset.id);
+        if (liUltimo && liUltimo.id === el.dataset.id) liUltimo = null;
+        liRender(); recToast('Link excluído');
       } catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
       return;
     }

@@ -30,6 +30,7 @@ const listarCodigosConvite  = httpsCallable(fns, 'listarCodigosConvite');
 const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
+const adminSetPessoaExtra = httpsCallable(fns, 'adminSetPessoaExtra');
 const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
 const getModoCofre = httpsCallable(fns, 'getModoCofre');
@@ -1500,12 +1501,17 @@ async function carregarUsuarios() {
     elListaUser.innerHTML = `
       <table class="users-table">
         <thead>
-          <tr><th>Email</th><th>Admin</th><th>Criado</th><th>Último acesso</th><th>Último app</th><th></th></tr>
+          <tr><th>Email</th><th>Clube / Comissão</th><th>Admin</th><th>Criado</th><th>Último acesso</th><th>Último app</th><th></th></tr>
         </thead>
         <tbody>
           ${usuarios.map(u => `
             <tr>
               <td><span class="presence-dot ${presenceMap[u.uid] ? 'online' : 'offline'}" data-uid="${u.uid}" title="${presenceMap[u.uid] ? 'Online' : 'Offline'}"></span> ${u.email ? escHtml(u.email) : '<em>sem email</em>'}</td>
+              <td class="user-extra">
+                <input class="in-clube" data-uid="${u.uid}" value="${escHtml(u.clube || '')}" placeholder="Clube" maxlength="80">
+                <input class="in-comissao" data-uid="${u.uid}" value="${escHtml(u.comissao || '')}" placeholder="Comissão" maxlength="40">
+                <button class="topbar-btn salvar-extra" data-uid="${u.uid}">Salvar</button>
+              </td>
               <td>
                 <input type="checkbox" ${u.isAdmin ? 'checked' : ''} data-uid="${u.uid}" class="toggle-admin">
               </td>
@@ -1539,6 +1545,21 @@ async function carregarUsuarios() {
     });
     elListaUser.querySelectorAll('button[data-perm]').forEach(b => {
       b.addEventListener('click', () => abrirModalPermissoes(b.dataset.perm, b.dataset.email));
+    });
+    // Salvar clube + comissão da pessoa (por linha)
+    elListaUser.querySelectorAll('.salvar-extra').forEach(b => {
+      b.addEventListener('click', async () => {
+        const uid = b.dataset.uid;
+        const clubeEl = elListaUser.querySelector('.in-clube[data-uid="' + uid + '"]');
+        const comEl = elListaUser.querySelector('.in-comissao[data-uid="' + uid + '"]');
+        const orig = b.textContent;
+        b.disabled = true; b.textContent = 'Salvando...';
+        try {
+          await adminSetPessoaExtra({ uid, clube: clubeEl ? clubeEl.value : '', comissao: comEl ? comEl.value : '' });
+          b.textContent = 'Salvo ✓';
+          setTimeout(() => { b.textContent = orig; b.disabled = false; }, 1500);
+        } catch (e) { alert('Erro: ' + e.message); b.textContent = orig; b.disabled = false; }
+      });
     });
   } catch (err) {
     elListaUser.innerHTML = `<p class="erro">Erro: ${err.message}</p>`;

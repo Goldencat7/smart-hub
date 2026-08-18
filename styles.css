@@ -271,8 +271,17 @@ body { animation: hubPageIn 160ms ease-out both; }
   overflow: hidden;
   transition: grid-template-columns 160ms ease;
 }
-/* sidebar recolhida (só ícones) — spec: --sb-w-min 68px */
-.hub-layout.sb-recolhida { grid-template-columns: 68px 1fr 300px; }
+/* Recolher a sidebar = ESCONDER de vez (devolve o espaço pro conteúdo), igual o
+   painel da agenda. Um botão flutuante (.sb-expand) reabre. Vale nos estados de 2
+   colunas também (agenda oculta / na agenda / Broker embutido). */
+/* ⚠️ display:none tira a sidebar do fluxo do GRID — então NÃO deixamos uma coluna 0
+   pra ela (senão o conteúdo cairia na 1ª coluna de 0px = tela em branco). Removemos
+   a coluna: os itens restantes (conteúdo + agenda) preenchem as colunas que sobram. */
+.hub-layout.sb-recolhida { grid-template-columns: 1fr 300px; }
+.hub-layout.sb-recolhida.agenda-oculta,
+.hub-layout.sb-recolhida.na-agenda,
+.hub-layout.sb-recolhida.loc-embed { grid-template-columns: 1fr; }
+.sidebar.recolhida { display: none; }
 
 /* ── Sidebar (design "SMART HUB v2" — réplica do mockup, theme-aware) ──────
    Navy + creme no escuro; clareia no modo claro. Nav rolável com seções
@@ -613,6 +622,17 @@ body { animation: hubPageIn 160ms ease-out both; }
   transition: border-color 150ms ease, color 150ms ease;
 }
 .agenda-expand:hover { border-color: var(--blue); color: var(--blue); }
+
+/* Botão flutuante que reabre a sidebar (espelho do .agenda-expand, na borda esquerda) */
+.sb-expand {
+  position: fixed; top: 80px; left: 0; z-index: 50;
+  width: 20px; height: 40px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 1px solid var(--border); border-left: none;
+  border-radius: 0 5px 5px 0; color: var(--text-muted); cursor: pointer; font-size: 12px;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+.sb-expand:hover { border-color: var(--blue); color: var(--blue); }
 
 /* Relógio */
 .relogio { text-align: center; }
@@ -1125,6 +1145,15 @@ body { animation: hubPageIn 160ms ease-out both; }
 .users-table th, .users-table td {
   padding: 8px 12px; text-align: left; font-size: 11px; border-bottom: 1px solid var(--border);
 }
+/* Clube + Comissão da pessoa (editáveis por linha, com Salvar) */
+.users-table .user-extra { white-space: nowrap; }
+.users-table .user-extra input {
+  width: 110px; padding: 4px 7px; margin-right: 4px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font-size: 11px;
+}
+.users-table .user-extra .in-comissao { width: 80px; }
+.users-table .user-extra input:focus { outline: none; border-color: var(--blue); }
 .users-table th {
   background: var(--bg); color: var(--text-muted); font-weight: 700;
   font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
@@ -1546,12 +1575,28 @@ body { animation: hubPageIn 160ms ease-out both; }
 .rec-ck-hist-d { font-weight: 700; }
 @media (max-width: 900px) { .rec-cols-metas { grid-template-columns: 1fr; } }
 
+/* Link do Imóvel (Ferramentas) */
+.li-form { display: flex; gap: 8px; }
+.li-form .rec-input { flex: 1; }
+@media (max-width: 560px) { .li-form { flex-direction: column; } }
+.li-novo { max-width: 760px; margin-top: 14px; border-color: var(--suc, #16a34a) !important; }
+.li-url { margin: 8px 0; }
+.li-url .rec-input { font-family: monospace; font-size: 12px; }
+.li-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.li-linha { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+.li-linha:first-of-type { border-top: none; }
+.li-thumb { width: 64px; height: 48px; object-fit: cover; border-radius: 8px; flex: none; background: var(--bg); }
+.li-thumb-vazia { display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.li-info { flex: 1; min-width: 0; }
+.li-titulo { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 /* Onboarding no Performance — lista de equipe (gestor) */
 .ponb-equipe { display: flex; flex-direction: column; gap: 10px; max-width: 720px; }
-.ponb-linha { display: grid; grid-template-columns: 1fr 200px auto; align-items: center; gap: 16px; text-align: left; padding: 14px 16px; background: var(--card-bg, var(--surface)); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; transition: border-color .15s, transform .05s; }
-.ponb-linha:hover { border-color: var(--primary, #2563eb); }
+.ponb-linha { display: grid; grid-template-columns: 1fr 200px auto; align-items: center; gap: 16px; text-align: left; padding: 14px 16px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; font: inherit; transition: border-color .15s, transform .05s; }
+.ponb-linha:hover { border-color: var(--blue, #2563eb); }
 .ponb-linha:active { transform: translateY(1px); }
-.ponb-linha-nome { font-weight: 600; }
+.ponb-linha-nome { font-weight: 600; color: var(--text); }
+.ponb-linha-ck { white-space: nowrap; }
 .ponb-linha-prog { display: flex; align-items: center; gap: 8px; }
 .ponb-linha-prog .rec-prog-bar { flex: 1; }
 @media (max-width: 720px) { .ponb-linha { grid-template-columns: 1fr; gap: 8px; } }
