@@ -8563,21 +8563,43 @@ async function _liFetch(url) {
     // failed-precondition (HTTP 400), NÃO unavailable (503): portal que bloqueia robô é
     // falha ESPERADA — 503 vira log ERROR e dispara o alerta de monitoramento por e-mail.
     if (!resp.ok) throw new HttpsError('failed-precondition', `O site do anúncio recusou a leitura (HTTP ${resp.status}). Alguns portais bloqueiam robôs — tente outro link.`);
-    // Lê no MÁXIMO ~3MB do corpo (por stream), cancelando o resto — um alvo que
-    // despeje centenas de MB dentro dos 15s estouraria a memória se usássemos resp.text().
-    const MAX = 3 * 1024 * 1024;
-    if (!resp.body) return { html: (await resp.text()).slice(0, MAX), urlFinal: atual };
-    const reader = resp.body.getReader();
-    const partes = []; let recebido = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      partes.push(value); recebido += value.length;
-      if (recebido >= MAX) { try { await reader.cancel(); } catch (_) { /* nada */ } break; }
-    }
-    return { html: Buffer.concat(partes).toString('utf8').slice(0, MAX), urlFinal: atual };
+    return _liLerCorpo(resp, atual);
   }
   throw new HttpsError('failed-precondition', 'Redirecionamentos demais.');
+}
+
+// Lê o corpo por stream, no MÁXIMO ~3MB (cancela o resto) — evita OOM se o alvo
+// despejar centenas de MB dentro do timeout.
+async function _liLerCorpo(resp, urlFinal) {
+  const MAX = 3 * 1024 * 1024;
+  if (!resp.body) return { html: (await resp.text()).slice(0, MAX), urlFinal };
+  const reader = resp.body.getReader();
+  const partes = []; let recebido = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    partes.push(value); recebido += value.length;
+    if (recebido >= MAX) { try { await reader.cancel(); } catch (_) { /* nada */ } break; }
+  }
+  return { html: Buffer.concat(partes).toString('utf8').slice(0, MAX), urlFinal };
+}
+
+// Fallback pra portais que bloqueiam IP de datacenter (ZAP/VivaReal/OLX): busca via
+// Jina Reader (r.jina.ai), que renderiza e devolve o HTML de uma infra não-bloqueada.
+// Grátis, sem chave. A URL do usuário JÁ passou por _liChecarUrl (anti-SSRF); o fetch
+// real aqui é sempre pro host fixo r.jina.ai, então não reabre SSRF.
+async function _liFetchJina(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 30000);   // renderização pode demorar mais
+  let resp;
+  try {
+    resp = await fetch('https://r.jina.ai/' + url, {
+      signal: ctl.signal,
+      headers: { 'X-Return-Format': 'html', 'Accept': 'text/html', 'User-Agent': 'RemaxSmartHub/1.0' }
+    });
+  } finally { clearTimeout(timer); }
+  if (!resp.ok) throw new HttpsError('failed-precondition', `Não consegui ler este anúncio (leitor externo HTTP ${resp.status}).`);
+  return _liLerCorpo(resp, url);
 }
 
 // Extrai dados do HTML do anúncio: metas OG + JSON-LD (schema.org) + fotos de CDN.
@@ -8600,7 +8622,7 @@ function _liExtrair(html, urlFinal) {
     if (!u || typeof u !== 'string') return;
     u = decode(u.trim());
     if (!/^https:\/\//i.test(u)) return;
-    if (/\.svg(\?|$)/i.test(u) || /(logo|icon|sprite|avatar|placeholder)/i.test(u)) return;
+    if (/\.svg(\?|$)/i.test(u) || /(logo|icon|sprite|avatar|placeholder|badge|_next\/|\/assets\/|app-store|google-play|selo)/i.test(u)) return;
     if (!out.fotos.includes(u) && out.fotos.length < 20) out.fotos.push(u);
   };
   addFoto(meta('og:image')); addFoto(meta('twitter:image'));
@@ -8644,7 +8666,8 @@ function _liExtrair(html, urlFinal) {
     const m = (out.titulo + ' ' + out.descricao).match(/R\$\s?[\d.,]{4,15}/) || html.match(/R\$\s?[\d.]{4,12}(?:,\d{2})?/);
     if (m) out.preco = m[0];
   }
-  out.titulo = out.titulo.slice(0, 200);
+  // Limpa " | Nome do Portal" no fim do título e espaços duplicados.
+  out.titulo = out.titulo.replace(/\s*\|\s*[^|]{1,40}$/, '').replace(/\s{2,}/g, ' ').trim().slice(0, 200);
   out.descricao = out.descricao.slice(0, 3000);
   out.portal = (() => { try { return new URL(urlFinal).hostname.replace(/^www\./, ''); } catch (_) { return ''; } })();
   return out;
@@ -8673,9 +8696,23 @@ exports.linkImovelCriar = onCall(async (req) => {
   const urlAnuncio = _txt((req.data || {}).url, 600);
   if (!urlAnuncio) throw new HttpsError('invalid-argument', 'Cole o link do anúncio.');
   await _liLimitar(auth.uid);
-  const { html, urlFinal } = await _liFetch(urlAnuncio);
-  const d = _liExtrair(html, urlFinal);
-  if (!d.titulo && !d.fotos.length) {
+  await _liChecarUrl(urlAnuncio);   // anti-SSRF na URL do usuário (vale pros dois caminhos)
+  // 1) Tenta o fetch DIRETO (rápido; funciona pros portais que não bloqueiam IP de
+  //    datacenter). 2) Se falhar OU vier vazio, cai no Jina Reader (portais como ZAP/
+  //    VivaReal/OLX bloqueiam o IP do Google, mas o Jina lê de uma infra liberada).
+  let d = null;
+  try {
+    const r1 = await _liFetch(urlAnuncio);
+    d = _liExtrair(r1.html, r1.urlFinal);
+    if (!d.titulo && !d.fotos.length) d = null;   // veio vazio → força o fallback
+  } catch (_e) { d = null; }
+  if (!d) {
+    try {
+      const r2 = await _liFetchJina(urlAnuncio);
+      d = _liExtrair(r2.html, r2.urlFinal);
+    } catch (_e2) { d = null; }
+  }
+  if (!d || (!d.titulo && !d.fotos.length)) {
     throw new HttpsError('failed-precondition', 'Não consegui ler este anúncio (o site pode bloquear robôs). Tente outro link.');
   }
   const ref = await db.collection('link_imoveis').add({
