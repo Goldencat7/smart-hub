@@ -8697,6 +8697,17 @@ async function _liLimitar(uid) {
 
 const _liBase = () => `https://${process.env.GCLOUD_PROJECT}.web.app`;
 
+// Id do link SEM caracteres ambíguos (sem 0/O/1/I/l) — auto-id do Firestore gera
+// I maiúsculo idêntico a l minúsculo na fonte do navegador, e o link dava 404 ao
+// reabrir/digitar. 14 chars deste alfabeto = entropia de sobra.
+function _liGerarId() {
+  const alfa = '23456789abcdefghjkmnpqrstuvwxyz';
+  const b = crypto.randomBytes(14);
+  let s = '';
+  for (let i = 0; i < 14; i++) s += alfa[b[i] % alfa.length];
+  return s;
+}
+
 // (logado) Cola o link do anúncio → cria a página REMAX. Devolve {id, url}.
 exports.linkImovelCriar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
@@ -8722,12 +8733,13 @@ exports.linkImovelCriar = onCall(async (req) => {
   if (!d || (!d.titulo && !d.fotos.length)) {
     throw new HttpsError('failed-precondition', 'Não consegui ler este anúncio (o site pode bloquear robôs). Tente outro link.');
   }
-  const ref = await db.collection('link_imoveis').add({
+  const id = _liGerarId();
+  await db.collection('link_imoveis').doc(id).set({
     ...d, urlOrigem: urlAnuncio, corretorUid: auth.uid, cliques: 0,
     criadoEm: admin.firestore.FieldValue.serverTimestamp()
   });
-  await registrarAudit(auth, 'link_imovel_criar', { tipo: 'link_imovel', id: ref.id }, { portal: d.portal });
-  return { ok: true, id: ref.id, url: `${_liBase()}/imovel/${ref.id}`, titulo: d.titulo, fotos: d.fotos.length };
+  await registrarAudit(auth, 'link_imovel_criar', { tipo: 'link_imovel', id }, { portal: d.portal });
+  return { ok: true, id, url: `${_liBase()}/imovel/${id}`, titulo: d.titulo, fotos: d.fotos.length };
 });
 
 // (logado) Meus links (mais novos primeiro).
