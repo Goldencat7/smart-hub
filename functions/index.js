@@ -8668,7 +8668,14 @@ function _liExtrair(html, urlFinal) {
   }
   // Limpa " | Nome do Portal" no fim do título e espaços duplicados.
   out.titulo = out.titulo.replace(/\s*\|\s*[^|]{1,40}$/, '').replace(/\s{2,}/g, ' ').trim().slice(0, 200);
-  out.descricao = out.descricao.slice(0, 3000);
+  // Descrição: remove CONTATO do anunciante original (telefone/e-mail/CRECI/site) pra
+  // não vazar concorrente na página REMAX. O resto do texto (imóvel) fica.
+  out.descricao = out.descricao
+    .replace(/https?:\/\/\S+/gi, ' ').replace(/\bwww\.[^\s]+/gi, ' ')
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, ' ')
+    .replace(/creci[\s:.º°o/-]*\d[\d./-]*/gi, ' ')
+    .replace(/\(?\d{2}\)?[\s.-]?9?\d{4}[\s.-]?\d{4}/g, ' ')
+    .replace(/\s{2,}/g, ' ').trim().slice(0, 3000);
   out.portal = (() => { try { return new URL(urlFinal).hostname.replace(/^www\./, ''); } catch (_) { return ''; } })();
   return out;
 }
