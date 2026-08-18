@@ -8792,6 +8792,9 @@ exports.linkImovelPage = onRequest({ region: 'southamerica-east1' }, async (req,
       const n = Number(s);                                   // "500000"/"500000.00" ok; "1.500.000" vira NaN
       return Number.isFinite(n) && n > 0 ? 'R$ ' + n.toLocaleString('pt-BR') : s;
     })();
+    const base = _liBase();
+    // Logo real do Hub (mesma do topo do app; arte pra fundo escuro) — servida pelo Hosting.
+    const logoUrl = `${base}/app/logo.png`;
     const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer">
@@ -8802,44 +8805,60 @@ ${fotos[0] ? `<meta property="og:image" content="${_liEsc(fotos[0])}">` : ''}
 <meta property="og:type" content="website">
 <style>
 *{margin:0;box-sizing:border-box;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
-body{background:#f4f6f9;color:#14181f}
-.top{background:#003DA5;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:10px}
-.top b{font-size:16px}.top span{opacity:.75;font-size:12px}
-.wrap{max-width:860px;margin:0 auto;padding:16px}
-.hero{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:14px;background:#dde3ec;cursor:pointer}
-.thumbs{display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:4px}
-.thumbs img{width:92px;height:64px;object-fit:cover;border-radius:8px;cursor:pointer;flex:none;border:2px solid transparent}
-.thumbs img.on{border-color:#DC1C2E}
-h1{font-size:22px;margin:16px 0 4px}
-.preco{color:#DC1C2E;font-size:26px;font-weight:800;margin:6px 0 10px}
-.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-.chip{background:#fff;border:1px solid #e3e8ef;border-radius:999px;padding:6px 12px;font-size:13px}
-.end{color:#5b6472;font-size:14px;margin-bottom:12px}
-.desc{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;margin-bottom:16px}
-.cor{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
-.cor img{width:56px;height:56px;border-radius:50%;object-fit:cover;background:#dde3ec}
-.cor .nm{font-weight:700}.cor .cc{color:#5b6472;font-size:12px}
-.bt{display:inline-flex;align-items:center;gap:8px;border-radius:10px;padding:12px 18px;font-weight:700;text-decoration:none;font-size:14px}
-.wa{background:#25D366;color:#fff}.tel{background:#003DA5;color:#fff}
-.foot{color:#8a93a3;font-size:11px;text-align:center;padding:22px 0}
-@media(max-width:600px){h1{font-size:18px}.preco{font-size:22px}}
+body{background:#eef1f6;color:#14181f}
+.top{background:linear-gradient(120deg,#00091F,#000E35 55%,#003DA5);padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:3px solid #DC1C2E}
+.top img{height:36px;display:block}
+.top span{color:rgba(247,245,238,.72);font-size:12px;letter-spacing:.6px;text-transform:uppercase;font-weight:600;margin-top:2px}
+.wrap{max-width:880px;margin:0 auto;padding:18px 16px 96px}
+.hero-wrap{position:relative}
+.hero{width:100%;aspect-ratio:16/9.5;object-fit:cover;border-radius:16px;background:#dde3ec;cursor:pointer;box-shadow:0 12px 32px rgba(0,20,70,.14)}
+.nfotos{position:absolute;right:12px;bottom:12px;background:rgba(0,5,25,.62);color:#fff;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;backdrop-filter:blur(3px)}
+.thumbs{display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding-bottom:4px}
+.thumbs img{width:96px;height:66px;object-fit:cover;border-radius:10px;cursor:pointer;flex:none;border:2px solid transparent;opacity:.85;transition:opacity .12s}
+.thumbs img:hover{opacity:1}
+.thumbs img.on{border-color:#DC1C2E;opacity:1}
+h1{font-size:24px;line-height:1.25;margin:18px 0 6px;letter-spacing:-.2px}
+.preco{color:#DC1C2E;font-size:30px;font-weight:800;margin:4px 0 12px;letter-spacing:-.5px}
+.end{color:#5b6472;font-size:14px;margin-bottom:14px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.chip{background:#fff;border:1px solid #e3e8ef;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;color:#2a3342;box-shadow:0 2px 6px rgba(0,20,70,.05)}
+.card{background:#fff;border:1px solid #e6eaf1;border-radius:16px;padding:18px 20px;margin-bottom:16px;box-shadow:0 4px 14px rgba(0,20,70,.06)}
+.card-t{font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#8a93a3;margin-bottom:10px}
+.desc{font-size:14.5px;line-height:1.65;white-space:pre-wrap;color:#2a3342}
+.cor{display:flex;gap:16px;align-items:center;flex-wrap:wrap;border-top:3px solid #DC1C2E}
+.cor img{width:64px;height:64px;border-radius:50%;object-fit:cover;background:#dde3ec;border:2px solid #DC1C2E;padding:2px}
+.cor .nm{font-weight:800;font-size:16px}
+.cor .cc{color:#5b6472;font-size:12.5px;margin-top:2px}
+.bt{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:12px;padding:13px 20px;font-weight:700;text-decoration:none;font-size:14px;transition:transform .06s}
+.bt:active{transform:translateY(1px)}
+.wa{background:#25D366;color:#fff;box-shadow:0 6px 16px rgba(37,211,102,.35)}
+.tel{background:#003DA5;color:#fff}
+.foot{color:#9aa3b2;font-size:11px;text-align:center;padding:26px 0 12px}
+.cta-fixa{display:none}
+@media(max-width:640px){
+  h1{font-size:19px}.preco{font-size:24px}
+  .cor .bts{display:none}
+  .cta-fixa{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #e3e8ef;box-shadow:0 -6px 20px rgba(0,20,70,.08)}
+  .cta-fixa .bt{flex:1}
+}
 </style></head><body>
-<div class="top"><b>REMAX Smart</b><span>· Imóveis</span></div>
+<div class="top"><img src="${logoUrl}" alt="REMAX Smart"><span>Imóveis</span></div>
 <div class="wrap">
-${fotos[0] ? `<img class="hero" id="hero" referrerpolicy="no-referrer" src="${_liEsc(fotos[0])}" alt="">` : ''}
+${fotos[0] ? `<div class="hero-wrap"><img class="hero" id="hero" referrerpolicy="no-referrer" src="${_liEsc(fotos[0])}" alt="">${fotos.length > 1 ? `<span class="nfotos">📷 ${fotos.length} fotos</span>` : ''}</div>` : ''}
 ${fotos.length > 1 ? `<div class="thumbs">${fotos.map((f, i) => `<img referrerpolicy="no-referrer" src="${_liEsc(f)}" data-i="${i}" class="${i === 0 ? 'on' : ''}" alt="">`).join('')}</div>` : ''}
 <h1>${_liEsc(d.titulo || 'Imóvel disponível')}</h1>
 ${precoFmt ? `<div class="preco">${_liEsc(precoFmt)}</div>` : ''}
 ${d.endereco ? `<div class="end">📍 ${_liEsc(d.endereco)}</div>` : ''}
 ${chips ? `<div class="chips">${chips}</div>` : ''}
-${d.descricao ? `<div class="desc">${_liEsc(d.descricao)}</div>` : ''}
-<div class="cor">
+${d.descricao ? `<div class="card"><div class="card-t">Sobre o imóvel</div><div class="desc">${_liEsc(d.descricao)}</div></div>` : ''}
+<div class="card cor">
 ${p.photo ? `<img src="${_liEsc(p.photo)}" alt="">` : ''}
-<div style="flex:1;min-width:140px"><div class="nm">${_liEsc(corNome)}</div><div class="cc">${p.creci ? 'CRECI ' + _liEsc(p.creci) + ' · ' : ''}REMAX Smart</div></div>
-${waNum ? `<a class="bt wa" href="https://wa.me/${_liEsc(waNum)}?text=${waTxt}">💬 Chamar no WhatsApp</a><a class="bt tel" href="tel:+${_liEsc(waNum)}">📞 Ligar</a>` : ''}
+<div style="flex:1;min-width:150px"><div class="nm">${_liEsc(corNome)}</div><div class="cc">${p.creci ? 'CRECI ' + _liEsc(p.creci) + ' · ' : ''}REMAX Smart</div></div>
+${waNum ? `<div class="bts" style="display:flex;gap:10px;flex-wrap:wrap"><a class="bt wa" href="https://wa.me/${_liEsc(waNum)}?text=${waTxt}">💬 Chamar no WhatsApp</a><a class="bt tel" href="tel:+${_liEsc(waNum)}">📞 Ligar</a></div>` : ''}
 </div>
 <div class="foot">Página gerada pelo Smart Hub · REMAX Smart</div>
 </div>
+${waNum ? `<div class="cta-fixa"><a class="bt wa" href="https://wa.me/${_liEsc(waNum)}?text=${waTxt}">💬 WhatsApp</a><a class="bt tel" href="tel:+${_liEsc(waNum)}">📞 Ligar</a></div>` : ''}
 <script>
 document.querySelectorAll('.thumbs img').forEach(function(t){t.addEventListener('click',function(){
   var h=document.getElementById('hero'); if(h){h.src=this.src;}
