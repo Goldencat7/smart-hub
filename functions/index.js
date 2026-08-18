@@ -8556,11 +8556,13 @@ async function _liFetch(url) {
     } finally { clearTimeout(timer); }
     if ([301, 302, 303, 307, 308].includes(resp.status)) {
       const loc = resp.headers.get('location');
-      if (!loc) throw new HttpsError('unavailable', 'O site redirecionou sem destino.');
+      if (!loc) throw new HttpsError('failed-precondition', 'O site redirecionou sem destino.');
       atual = new URL(loc, atual).toString();                            // relativo → absoluto
       continue;
     }
-    if (!resp.ok) throw new HttpsError('unavailable', `O site do anúncio recusou a leitura (HTTP ${resp.status}). Alguns portais bloqueiam robôs.`);
+    // failed-precondition (HTTP 400), NÃO unavailable (503): portal que bloqueia robô é
+    // falha ESPERADA — 503 vira log ERROR e dispara o alerta de monitoramento por e-mail.
+    if (!resp.ok) throw new HttpsError('failed-precondition', `O site do anúncio recusou a leitura (HTTP ${resp.status}). Alguns portais bloqueiam robôs — tente outro link.`);
     // Lê no MÁXIMO ~3MB do corpo (por stream), cancelando o resto — um alvo que
     // despeje centenas de MB dentro dos 15s estouraria a memória se usássemos resp.text().
     const MAX = 3 * 1024 * 1024;
@@ -8575,7 +8577,7 @@ async function _liFetch(url) {
     }
     return { html: Buffer.concat(partes).toString('utf8').slice(0, MAX), urlFinal: atual };
   }
-  throw new HttpsError('unavailable', 'Redirecionamentos demais.');
+  throw new HttpsError('failed-precondition', 'Redirecionamentos demais.');
 }
 
 // Extrai dados do HTML do anúncio: metas OG + JSON-LD (schema.org) + fotos de CDN.

@@ -1489,6 +1489,16 @@ async function carregarCodigos() {
   }
 }
 
+// Clubes da imobiliária (dropdown do Admin, ao lado do nome). Ordem = como o Nathan mandou.
+const CLUBES_ADMIN = ['Calça Branca Club', 'Sem Meia Club', 'Producer Club', 'Executive Club', '100% Club', 'Platinum Club'];
+function clubeOpts(atual) {
+  atual = atual || '';
+  // Se o valor salvo não estiver na lista (algo antigo/digitado), mantém como 1ª opção pra não sumir.
+  const lista = (!atual || CLUBES_ADMIN.includes(atual)) ? CLUBES_ADMIN : [atual, ...CLUBES_ADMIN];
+  return '<option value="">— Clube —</option>' +
+    lista.map(c => `<option value="${escHtml(c)}"${c === atual ? ' selected' : ''}>${escHtml(c)}</option>`).join('');
+}
+
 async function carregarUsuarios() {
   elListaUser.innerHTML = '<p class="muted">carregando...</p>';
   try {
@@ -1508,7 +1518,7 @@ async function carregarUsuarios() {
             <tr>
               <td><span class="presence-dot ${presenceMap[u.uid] ? 'online' : 'offline'}" data-uid="${u.uid}" title="${presenceMap[u.uid] ? 'Online' : 'Offline'}"></span> ${u.email ? escHtml(u.email) : '<em>sem email</em>'}</td>
               <td class="user-extra">
-                <input class="in-clube" data-uid="${u.uid}" value="${escHtml(u.clube || '')}" placeholder="Clube" maxlength="80">
+                <select class="in-clube" data-uid="${u.uid}">${clubeOpts(u.clube)}</select>
                 <input class="in-comissao" data-uid="${u.uid}" value="${escHtml(u.comissao || '')}" placeholder="Comissão" maxlength="40">
                 <button class="topbar-btn salvar-extra" data-uid="${u.uid}">Salvar</button>
               </td>

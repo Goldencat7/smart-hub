@@ -1147,13 +1147,15 @@ body { animation: hubPageIn 160ms ease-out both; }
 }
 /* Clube + Comissão da pessoa (editáveis por linha, com Salvar) */
 .users-table .user-extra { white-space: nowrap; }
-.users-table .user-extra input {
-  width: 110px; padding: 4px 7px; margin-right: 4px;
+.users-table .user-extra input,
+.users-table .user-extra select {
+  width: 120px; padding: 4px 7px; margin-right: 4px;
   background: var(--bg); color: var(--text);
   border: 1px solid var(--border); border-radius: 6px; font-size: 11px;
 }
 .users-table .user-extra .in-comissao { width: 80px; }
-.users-table .user-extra input:focus { outline: none; border-color: var(--blue); }
+.users-table .user-extra input:focus,
+.users-table .user-extra select:focus { outline: none; border-color: var(--blue); }
 .users-table th {
   background: var(--bg); color: var(--text-muted); font-weight: 700;
   font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
