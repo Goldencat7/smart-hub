@@ -8299,12 +8299,14 @@ exports.recrutamentoObter = onCall(async (req) => {
   if (!snap.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
   const candidato = _recSerializar(snap.id, snap.data());
   candidato.jornada = Array.isArray(snap.data().jornada) ? snap.data().jornada : [];
-  // Check-ins diários (Metas e tarefas): doc id = data (YYYY-MM-DD), mais recentes primeiro.
-  const cks = await db.collection('candidatos').doc(id).collection('checkins').orderBy('__name__', 'desc').limit(90).get();
+  // Check-ins diários (Metas e tarefas): doc id = data (YYYY-MM-DD). Sem orderBy pra
+  // NÃO exigir índice (ordenar por __name__ desc pede índice composto); a subcoleção
+  // por candidato é pequena — ordena por data (desc) em memória e corta em 90.
+  const cks = await db.collection('candidatos').doc(id).collection('checkins').limit(400).get();
   candidato.checkins = cks.docs.map(dd => {
     const cd = dd.data();
     return { ...cd, data: dd.id, atualizadoEm: (cd.atualizadoEm && cd.atualizadoEm.toDate ? cd.atualizadoEm.toDate().toISOString() : null) };
-  });
+  }).sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0)).slice(0, 90);
   return { ok: true, candidato };
 });
 
