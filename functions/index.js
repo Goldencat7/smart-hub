@@ -8794,6 +8794,7 @@ exports.linkImovelPage = onRequest({ region: 'southamerica-east1' }, async (req,
     })();
     const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
 <title>${_liEsc(d.titulo || 'Imóvel')} · REMAX Smart</title>
 <meta property="og:title" content="${_liEsc(d.titulo || 'Imóvel disponível')}">
 <meta property="og:description" content="${_liEsc((d.descricao || '').slice(0, 200))}">
@@ -8825,8 +8826,8 @@ h1{font-size:22px;margin:16px 0 4px}
 </style></head><body>
 <div class="top"><b>REMAX Smart</b><span>· Imóveis</span></div>
 <div class="wrap">
-${fotos[0] ? `<img class="hero" id="hero" src="${_liEsc(fotos[0])}" alt="">` : ''}
-${fotos.length > 1 ? `<div class="thumbs">${fotos.map((f, i) => `<img src="${_liEsc(f)}" data-i="${i}" class="${i === 0 ? 'on' : ''}" alt="">`).join('')}</div>` : ''}
+${fotos[0] ? `<img class="hero" id="hero" referrerpolicy="no-referrer" src="${_liEsc(fotos[0])}" alt="">` : ''}
+${fotos.length > 1 ? `<div class="thumbs">${fotos.map((f, i) => `<img referrerpolicy="no-referrer" src="${_liEsc(f)}" data-i="${i}" class="${i === 0 ? 'on' : ''}" alt="">`).join('')}</div>` : ''}
 <h1>${_liEsc(d.titulo || 'Imóvel disponível')}</h1>
 ${precoFmt ? `<div class="preco">${_liEsc(precoFmt)}</div>` : ''}
 ${d.endereco ? `<div class="end">📍 ${_liEsc(d.endereco)}</div>` : ''}
