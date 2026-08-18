@@ -139,6 +139,13 @@
             if (prefill.phone) atual.phone = prefill.phone;   // contato na arte
             if (prefill.agent) atual.agent = prefill.agent;   // foto do corretor
             localStorage.setItem(KEY, JSON.stringify(atual));
+            // v6 "A Rede que Vende" usa outra chave e campo de nome (turboNames).
+            const KEY_REDE = 'vendido_rede_editor_v1';
+            let atualRede = {};
+            try { atualRede = JSON.parse(localStorage.getItem(KEY_REDE) || '{}') || {}; } catch (_) {}
+            if (prefill.nome) atualRede.turboNames = prefill.nome;
+            if (prefill.agent) atualRede.agent = prefill.agent;
+            localStorage.setItem(KEY_REDE, JSON.stringify(atualRede));
           } catch (_) { /* localStorage bloqueado: abre sem pré-preencher */ }
         }
         // 2) Demais templates locais: um "preenchedor" injetado lê esta chave
@@ -146,7 +153,8 @@
         // fora — abre em outra origem e não enxerga este localStorage.
         try {
           localStorage.setItem('smarthub_perfil', JSON.stringify({
-            nome: prefill.nome || '', telefone: prefill.phone || '', foto: prefill.agent || ''
+            nome: prefill.nome || '', telefone: prefill.phone || '', foto: prefill.agent || '',
+            email: prefill.email || '', creci: prefill.creci || ''
           }));
         } catch (_) { /* localStorage bloqueado: abre com o demo */ }
       }

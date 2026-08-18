@@ -8160,6 +8160,28 @@ const REC_ETAPA_ROTULO = {
 const REC_ETAPA_LEGADO = { sem_contato: 'primeiro_contato', contato_realizado: 'acompanhamento', desassociado: 'nao_associado' };
 function _recEtapa(e) { return REC_ETAPA_LEGADO[e] || (REC_ETAPAS.includes(e) ? e : 'primeiro_contato'); }
 
+// Jornada do Corretor: tarefas iniciais de onboarding (checklist + barra de progresso).
+// Só aparecem no perfil do candidato quando ele vira "Corretor associado".
+const REC_TAREFAS_INICIAIS = [
+  // Etapa 1 — Identidade e Estrutura
+  'foto_profissional', 'cracha', 'cartao_visita', 'dossie', 'max_center', 'google_workspace',
+  'ferramentas_smart', 'assinatura_email', 'whatsapp_business', 'redes_profissionais', 'padronizar_perfil', 'canais_internos',
+  // Etapa 2 — Imersão REMAX
+  'trilha_01', 'fic', 'cultura_modelo', 'regras_parceria', 'captacao_representacao', 'exclusividade', 'estrutura_comissao', 'papel_corretor',
+  // Etapa 3 — Ferramentas do Corretor
+  'treino_ilist', 'cadastrar_imovel', 'cadastrar_contatos', 'imovel_teste', 'pesquisar_rede', 'treino_buyermatch', 'buyermatch_teste', 'compartilhar_imoveis', 'parcerias_referenciamentos',
+  // Etapa 4 — Formação Comercial
+  'treino_abordagem', 'treino_qualificacao', 'treino_followup', 'treino_captacao', 'treino_visita', 'treino_acm', 'treino_proposta', 'treino_negociacao', 'treino_fechamento', 'sim_comprador', 'sim_proprietario', 'sim_objecoes',
+  // Etapa 5 — Sombra de Campo
+  'sombra_atendimento', 'sombra_visita_comprador', 'sombra_visita_captacao', 'sombra_acm', 'sombra_negociacao', 'reuniao_comercial', 'tour_carteira', 'conhecer_regioes',
+  // Etapa 6 — Captação na Prática
+  'definir_regiao', 'mapear_regioes', 'lista_proprietarios', 'primeiros_contatos', 'agendar_visita_captacao', 'primeiro_estudo', 'acm_acompanhado', 'acm_sozinho', 'primeira_captacao', 'cadastrar_imovel_certo', 'material_divulgacao', 'publicar_imovel', 'primeira_exclusividade'
+];
+const REC_TAREFAS_SET = new Set(REC_TAREFAS_INICIAIS);
+// Check-in diário (Metas e tarefas): campos numéricos + sim/não. 1 registro por dia.
+const REC_CHECKIN_NUM = ['primeirosContatos', 'proprietariosResponderam', 'visitasCaptacaoTentou', 'visitasCaptacaoAgendou', 'acmsApresentou', 'captacoesNovas', 'followUps', 'compradoresFalou', 'compradoresQualificou', 'opcoesEnviou', 'visitasCompradorAgendou', 'visitasCompradorRealizou', 'intencoesProposta', 'propostas', 'stories', 'contatosParceria'];
+const REC_CHECKIN_BOOL = ['negociacaoAmanha', 'postouRedes', 'fezReels'];
+
 // Valida CPF pelo dígito verificador (grátis, offline). Pega digitação errada e CPF
 // falso (ex.: 111.111.111-11). NÃO garante que existe na Receita — só que é bem-formado.
 function _cpfValido(cpf) {
@@ -8275,7 +8297,52 @@ exports.recrutamentoObter = onCall(async (req) => {
   if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
   const snap = await db.collection('candidatos').doc(id).get();
   if (!snap.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
-  return { ok: true, candidato: _recSerializar(snap.id, snap.data()) };
+  const candidato = _recSerializar(snap.id, snap.data());
+  candidato.jornada = Array.isArray(snap.data().jornada) ? snap.data().jornada : [];
+  // Check-ins diários (Metas e tarefas): doc id = data (YYYY-MM-DD), mais recentes primeiro.
+  const cks = await db.collection('candidatos').doc(id).collection('checkins').orderBy('__name__', 'desc').limit(90).get();
+  candidato.checkins = cks.docs.map(dd => {
+    const cd = dd.data();
+    return { ...cd, data: dd.id, atualizadoEm: (cd.atualizadoEm && cd.atualizadoEm.toDate ? cd.atualizadoEm.toDate().toISOString() : null) };
+  });
+  return { ok: true, candidato };
+});
+
+// (gestor) Salva a Jornada do Corretor (ids das tarefas iniciais concluídas).
+exports.recrutamentoJornadaSalvar = onCall(async (req) => {
+  await exigirGestor(req);
+  const d = req.data || {};
+  const id = _txt(d.id, 60);
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  const jornada = Array.isArray(d.jornada) ? [...new Set(d.jornada.filter(x => REC_TAREFAS_SET.has(x)))] : [];
+  const ref = db.collection('candidatos').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
+  await ref.set({ jornada, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _bumpBroadcast('recrutamentoSeq');
+  return { ok: true, jornada };
+});
+
+// (gestor) Salva/atualiza o check-in diário (Metas e tarefas). 1 registro por dia (doc = data).
+exports.recrutamentoCheckinSalvar = onCall(async (req) => {
+  await exigirGestor(req);
+  const d = req.data || {};
+  const id = _txt(d.id, 60);
+  const data = _txt(d.data, 10);   // YYYY-MM-DD
+  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new HttpsError('invalid-argument', 'id e data (YYYY-MM-DD) são obrigatórios.');
+  const cand = await db.collection('candidatos').doc(id).get();
+  if (!cand.exists) throw new HttpsError('not-found', 'Candidato não encontrado.');
+  const rec = {};
+  REC_CHECKIN_NUM.forEach(k => { rec[k] = Math.max(0, Math.min(9999, parseInt(d[k], 10) || 0)); });
+  REC_CHECKIN_BOOL.forEach(k => { rec[k] = !!d[k]; });
+  rec.melhorAvanco = _txt(d.melhorAvanco, 500);
+  rec.prioridadeAmanha = _txt(d.prioridadeAmanha, 500);
+  rec.porNome = _txt(d.porNome, 80) || 'Gestor';
+  rec.atualizadoEm = admin.firestore.FieldValue.serverTimestamp();
+  await db.collection('candidatos').doc(id).collection('checkins').doc(data).set(rec, { merge: true });
+  await db.collection('candidatos').doc(id).set({ atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _bumpBroadcast('recrutamentoSeq');
+  return { ok: true };
 });
 
 // (gestor) Cria (manual) ou edita um candidato. Mudança de etapa gera histórico automático.

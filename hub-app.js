@@ -100,6 +100,8 @@ const recrutamentoObter     = httpsCallable(fns, 'recrutamentoObter');
 const recrutamentoSalvar    = httpsCallable(fns, 'recrutamentoSalvar');
 const recrutamentoHistorico = httpsCallable(fns, 'recrutamentoHistorico');
 const recrutamentoExcluir   = httpsCallable(fns, 'recrutamentoExcluir');
+const recrutamentoJornadaSalvar = httpsCallable(fns, 'recrutamentoJornadaSalvar');
+const recrutamentoCheckinSalvar = httpsCallable(fns, 'recrutamentoCheckinSalvar');
 const adicionarBanner  = httpsCallable(fns, 'adicionarBanner');
 const removerBanner    = httpsCallable(fns, 'removerBanner');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
@@ -3243,7 +3245,9 @@ async function carregarPrefillMkt() {
     mktPrefill = {
       nome: (r.data.displayName || '').trim(),
       phone: formatarTelefone(r.data.telefone),   // telefone formatado → contato na arte
-      agent: r.data.photo || ''                    // foto do corretor (data URL) → foto na arte
+      agent: r.data.photo || '',                   // foto do corretor (data URL) → foto na arte
+      email: (r.data.email || '').trim(),          // usados pelo Cartão de Visita
+      creci: (r.data.creci || '').trim()
     };
   } catch (_) { /* sem perfil: os templates abrem com o padrão de sempre */ }
 }
@@ -6496,6 +6500,133 @@ let recLista = [];
 let recView = 'lista';   // 'lista' | 'detalhe'
 let recCand = null;      // candidato aberto (completo) no detalhe
 let recFiltroEtapa = '', recBusca = '', recFiltroTag = '', recFiltroStatus = '', recWired = false;
+let recTab = 'perfil';   // 'perfil' | 'jornada' | 'metas' — abas do detalhe (só quando associado)
+let recCheckinData = '';  // data (YYYY-MM-DD) do check-in em edição na aba Metas (vazio = hoje)
+let recCheckinDirty = false;  // digitou algo no check-in e não salvou — pede confirmação antes de descartar
+
+// Jornada do Corretor — onboarding inicial oficial, agrupado por etapa (espelha
+// REC_TAREFAS_INICIAIS do backend). Cada etapa: [título, objetivo, [[id, label], …]].
+const REC_JORNADA_ETAPAS = [
+  ['Identidade e Estrutura', 'Agora eu sou um corretor REMAX Smart.', [
+    ['foto_profissional', 'Foto profissional'],
+    ['cracha', 'Crachá'],
+    ['cartao_visita', 'Cartão de visita'],
+    ['dossie', 'Dossiê / cadastro do corretor'],
+    ['max_center', 'Cadastro no Max Center'],
+    ['google_workspace', 'Acesso ao Google Workspace'],
+    ['ferramentas_smart', 'Cadastro e configuração das ferramentas internas da Smart'],
+    ['assinatura_email', 'Criar assinatura profissional de e-mail'],
+    ['whatsapp_business', 'Configurar WhatsApp Business'],
+    ['redes_profissionais', 'Configurar Instagram e demais redes profissionais'],
+    ['padronizar_perfil', 'Padronizar foto, nome, bio e informações de contato'],
+    ['canais_internos', 'Conhecer os canais internos, grupos e onde encontrar documentos/materiais']
+  ]],
+  ['Imersão REMAX', '', [
+    ['trilha_01', 'Completar Trilha 01'],
+    ['fic', 'Realizar FIC'],
+    ['cultura_modelo', 'Conhecer cultura, valores e modelo REMAX'],
+    ['regras_parceria', 'Conhecer regras de parceria entre corretores'],
+    ['captacao_representacao', 'Entender captação / representação'],
+    ['exclusividade', 'Conhecer o conceito de exclusividade'],
+    ['estrutura_comissao', 'Conhecer estrutura de comissão'],
+    ['papel_corretor', 'Entender o papel do corretor dentro do modelo REMAX']
+  ]],
+  ['Ferramentas do Corretor', '', [
+    ['treino_ilist', 'Treinamento de iList'],
+    ['cadastrar_imovel', 'Aprender a cadastrar imóvel'],
+    ['cadastrar_contatos', 'Aprender a cadastrar contatos'],
+    ['imovel_teste', 'Criar um imóvel teste'],
+    ['pesquisar_rede', 'Aprender a pesquisar imóveis da rede'],
+    ['treino_buyermatch', 'Treinamento de Buyer Match'],
+    ['buyermatch_teste', 'Criar um Buyer Match teste'],
+    ['compartilhar_imoveis', 'Aprender a compartilhar imóveis com seus dados'],
+    ['parcerias_referenciamentos', 'Aprender como funcionam parcerias e referenciamentos']
+  ]],
+  ['Formação Comercial', '', [
+    ['treino_abordagem', 'Treinamento de primeira abordagem'],
+    ['treino_qualificacao', 'Treinamento de qualificação de leads'],
+    ['treino_followup', 'Treinamento de follow-up'],
+    ['treino_captacao', 'Treinamento de captação'],
+    ['treino_visita', 'Treinamento de visita'],
+    ['treino_acm', 'Treinamento de ACM'],
+    ['treino_proposta', 'Treinamento de proposta'],
+    ['treino_negociacao', 'Treinamento de negociação'],
+    ['treino_fechamento', 'Treinamento de fechamento'],
+    ['sim_comprador', 'Simulação de atendimento de comprador'],
+    ['sim_proprietario', 'Simulação de abordagem de proprietário'],
+    ['sim_objecoes', 'Simulação de objeções']
+  ]],
+  ['Sombra de Campo', '', [
+    ['sombra_atendimento', 'Acompanhar corretor experiente em atendimento'],
+    ['sombra_visita_comprador', 'Acompanhar uma visita com comprador'],
+    ['sombra_visita_captacao', 'Acompanhar uma visita de captação'],
+    ['sombra_acm', 'Acompanhar apresentação de ACM'],
+    ['sombra_negociacao', 'Acompanhar uma negociação, quando possível'],
+    ['reuniao_comercial', 'Participar de reunião comercial'],
+    ['tour_carteira', 'Fazer tour de imóveis da carteira'],
+    ['conhecer_regioes', 'Conhecer pessoalmente os principais condomínios/regiões de atuação']
+  ]],
+  ['Captação na Prática', '', [
+    ['definir_regiao', 'Definir região inicial de atuação'],
+    ['mapear_regioes', 'Mapear condomínios / regiões'],
+    ['lista_proprietarios', 'Criar lista inicial de proprietários'],
+    ['primeiros_contatos', 'Fazer primeiros contatos de prospecção'],
+    ['agendar_visita_captacao', 'Agendar primeira visita de captação'],
+    ['primeiro_estudo', 'Criar primeiro estudo de mercado'],
+    ['acm_acompanhado', 'Apresentar primeiro ACM acompanhado'],
+    ['acm_sozinho', 'Fazer primeira apresentação de ACM sozinho'],
+    ['primeira_captacao', 'Conseguir primeira captação'],
+    ['cadastrar_imovel_certo', 'Cadastrar o imóvel corretamente'],
+    ['material_divulgacao', 'Produzir material de divulgação'],
+    ['publicar_imovel', 'Publicar o imóvel'],
+    ['primeira_exclusividade', 'Conseguir primeiro imóvel em exclusividade']
+  ]]
+];
+// Check-in diário (Metas e tarefas) — seções → campos. 'n' = número, 'b' = sim/não.
+const REC_CHECKIN_SECOES = [
+  ['Prospecção / Captação', [
+    ['primeirosContatos', 'n', 'Primeiros contatos com proprietários/vendedores'],
+    ['proprietariosResponderam', 'n', 'Proprietários que responderam'],
+    ['visitasCaptacaoTentou', 'n', 'Visitas de captação que tentou agendar'],
+    ['visitasCaptacaoAgendou', 'n', 'Visitas de captação agendadas'],
+    ['acmsApresentou', 'n', 'ACMs apresentados'],
+    ['captacoesNovas', 'n', 'Novas captações']
+  ]],
+  ['Clientes / Follow-up', [
+    ['followUps', 'n', 'Follow-ups feitos'],
+    ['compradoresFalou', 'n', 'Clientes compradores com quem falou'],
+    ['compradoresQualificou', 'n', 'Compradores novos qualificados'],
+    ['opcoesEnviou', 'n', 'Clientes para quem enviou opções'],
+    ['visitasCompradorAgendou', 'n', 'Visitas com compradores agendadas'],
+    ['visitasCompradorRealizou', 'n', 'Visitas com comprador realizadas']
+  ]],
+  ['Negócio', [
+    ['intencoesProposta', 'n', 'Intenções de proposta recebidas'],
+    ['propostas', 'n', 'Propostas apresentadas/recebidas'],
+    ['negociacaoAmanha', 'b', 'Existe negociação que precisa de ação amanhã?']
+  ]],
+  ['Posicionamento', [
+    ['postouRedes', 'b', 'Postou sobre seu trabalho nas redes?'],
+    ['stories', 'n', 'Quantos Stories?'],
+    ['fezReels', 'b', 'Fez Reels/Post/Carrossel?'],
+    ['contatosParceria', 'n', 'Contatos com corretores para parceria']
+  ]]
+];
+// Placar do dia = derivado dos números do check-in.
+function recPlacar(k) {
+  k = k || {};
+  const n = x => parseInt(k[x], 10) || 0;
+  return [
+    ['Novos contatos', n('primeirosContatos')],
+    ['Follow-ups', n('followUps')],
+    ['Visitas agendadas', n('visitasCaptacaoAgendou') + n('visitasCompradorAgendou')],
+    ['Visitas realizadas', n('visitasCompradorRealizou')],
+    ['ACMs apresentados', n('acmsApresentou')],
+    ['Captações', n('captacoesNovas')],
+    ['Propostas', n('propostas')]
+  ];
+}
+function recHojeISO() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
 const recEsc = s => escapeHtml(String(s == null ? '' : s));
 // Valida CPF pelo dígito verificador (mesma regra do backend) — aviso ao vivo.
@@ -6608,6 +6739,15 @@ function recListaHtml() {
 function recDetalheHtml() {
   const c = recCand || {};
   const novo = !c.id;
+  // Abas só aparecem depois que o candidato vira "Corretor associado" (pedido do Marcelo).
+  const ehAssociado = !novo && c.etapa === 'associado';
+  const tab = ehAssociado ? recTab : 'perfil';
+  const cab = (acoes) => '<div class="rec-wrap">'
+    + '<div class="rec-head"><button class="rec-btn ghost" data-rec="voltar">← Voltar</button>' + (acoes || '') + '</div>'
+    + '<h2 class="rec-titulo">' + (novo ? 'Novo candidato' : recEsc(c.nome || 'Candidato')) + '</h2>'
+    + (ehAssociado ? recTabsHtml(tab) : '');
+  if (tab === 'jornada') return cab('') + recJornadaHtml(c) + '</div>';
+  if (tab === 'metas') return cab('') + recMetasHtml(c) + '</div>';
   const inp = (id, ph) => '<input class="rec-input" id="rec_' + id + '" value="' + recEsc(c[id]) + '" placeholder="' + (ph || '') + '">';
   const ta = (id) => '<textarea class="rec-input rec-ta" id="rec_' + id + '">' + recEsc(c[id]) + '</textarea>';
   const simnao = (id) => '<select class="rec-input rec-sel" id="rec_' + id + '"><option value="sim"' + (c[id] ? ' selected' : '') + '>Sim</option><option value="nao"' + (c[id] ? '' : ' selected') + '>Não</option></select>';
@@ -6617,10 +6757,7 @@ function recDetalheHtml() {
     '<div class="rec-hist"><div class="rec-hist-top"><b>' + recEsc(h.porNome || '—') + '</b><span class="rec-dim">' + recDataHora(h.em) + '</span></div><div>' + recEsc(h.texto) + '</div></div>'
   ).join('') || '<div class="rec-dim" style="padding:6px 0">Sem histórico ainda.</div>';
 
-  return '<div class="rec-wrap">'
-    + '<div class="rec-head"><button class="rec-btn ghost" data-rec="voltar">← Voltar</button>'
-    + '<div class="rec-acoes">' + (novo ? '' : '<button class="rec-btn danger" data-rec="excluir">Excluir</button>') + '<button class="rec-btn primary" data-rec="salvar">Salvar</button></div></div>'
-    + '<h2 class="rec-titulo">' + (novo ? 'Novo candidato' : recEsc(c.nome || 'Candidato')) + '</h2>'
+  return cab('<div class="rec-acoes">' + (novo ? '' : '<button class="rec-btn danger" data-rec="excluir">Excluir</button>') + '<button class="rec-btn primary" data-rec="salvar">Salvar</button></div>')
     + '<div class="rec-cols">'
     // Coluna esquerda: dados
     + '<div class="rec-card"><div class="rec-card-t">Dados do candidato</div>'
@@ -6656,6 +6793,73 @@ function recDetalheHtml() {
 
 // Funil clicável dentro da ficha: destaca a fase atual, marca as anteriores como
 // concluídas; clicar move o candidato na hora (handler 'fase').
+// Abas do detalhe (só quando associado): Perfil / Jornada do Corretor / Metas e tarefas.
+function recTabsHtml(tab) {
+  const t = (k, r) => '<button class="rec-tab' + (tab === k ? ' on' : '') + '" data-rec="tab" data-t="' + k + '">' + r + '</button>';
+  return '<div class="rec-tabs">' + t('perfil', 'Perfil') + t('jornada', 'Jornada do Corretor') + t('metas', 'Metas e tarefas') + '</div>';
+}
+
+// Aba "Jornada do Corretor": onboarding oficial agrupado em 6 etapas, com progresso
+// geral no topo + contador por etapa.
+function recJornadaHtml(c) {
+  const feitas = new Set(Array.isArray(c.jornada) ? c.jornada : []);
+  const todas = REC_JORNADA_ETAPAS.reduce((a, e) => a.concat(e[2]), []);
+  const total = todas.length;
+  const n = todas.filter(t => feitas.has(t[0])).length;
+  const pct = total ? Math.round(n / total * 100) : 0;
+  const secoes = REC_JORNADA_ETAPAS.map((e, i) => {
+    const titulo = e[0], objetivo = e[1], tarefas = e[2];
+    const nf = tarefas.filter(t => feitas.has(t[0])).length;
+    const itens = tarefas.map(t => {
+      const on = feitas.has(t[0]);
+      return '<button class="rec-tarefa' + (on ? ' on' : '') + '" data-rec="jornada-toggle" data-t="' + t[0] + '">'
+        + '<span class="rec-check">' + (on ? '✓' : '') + '</span><span class="rec-tarefa-lab">' + recEsc(t[1]) + '</span></button>';
+    }).join('');
+    return '<div class="rec-etapa-j">'
+      + '<div class="rec-etapa-j-h"><div class="mw0"><span class="rec-etapa-num">Etapa ' + (i + 1) + '</span> <span class="rec-etapa-nome">' + recEsc(titulo) + '</span>'
+      + (objetivo ? '<div class="rec-etapa-obj">' + recEsc(objetivo) + '</div>' : '') + '</div>'
+      + '<span class="rec-etapa-cont' + (nf === tarefas.length ? ' full' : '') + '">' + nf + '/' + tarefas.length + '</span></div>'
+      + '<div class="rec-tarefas">' + itens + '</div></div>';
+  }).join('');
+  return '<div class="rec-card" style="max-width:760px">'
+    + '<div class="rec-card-t">Jornada do Corretor <span class="rec-dim">— onboarding inicial</span></div>'
+    + '<div class="rec-prog"><div class="rec-prog-bar"><div class="rec-prog-fill" style="width:' + pct + '%"></div></div>'
+    + '<div class="rec-prog-txt">' + n + ' de ' + total + ' concluídas · ' + pct + '%</div></div>'
+    + secoes + '</div>';
+}
+
+// Aba "Metas e tarefas": check-in diário (1 por dia) + histórico.
+function recMetasHtml(c) {
+  const checkins = Array.isArray(c.checkins) ? c.checkins : [];
+  const hoje = recHojeISO();
+  const dataSel = recCheckinData || hoje;
+  const atual = checkins.find(k => k.data === dataSel) || {};
+  const numInp = (id) => '<input type="number" min="0" max="9999" class="rec-input rec-num" id="rec_ck_' + id + '" value="' + (atual[id] != null ? recEsc(atual[id]) : '') + '">';
+  const boolInp = (id) => '<label class="rec-simnao"><input type="checkbox" id="rec_ck_' + id + '"' + (atual[id] ? ' checked' : '') + '> Sim</label>';
+  const linha = (id, tipo, lab) => '<div class="rec-ck-linha"><span class="rec-ck-lab">' + recEsc(lab) + '</span>' + (tipo === 'b' ? boolInp(id) : numInp(id)) + '</div>';
+  const secoes = REC_CHECKIN_SECOES.map(([titulo, campos]) =>
+    '<div class="rec-ck-secao"><div class="rec-ck-secao-t">' + recEsc(titulo) + '</div>' + campos.map(([id, tipo, lab]) => linha(id, tipo, lab)).join('') + '</div>'
+  ).join('');
+  const placar = recPlacar(atual).map(([l, v]) => '<div class="rec-placar-item"><div class="rec-placar-n">' + v + '</div><div class="rec-placar-l">' + recEsc(l) + '</div></div>').join('');
+  const plan = '<div class="rec-ck-secao"><div class="rec-ck-secao-t">Planejamento do dia seguinte</div>'
+    + '<div class="rec-campo"><label>Qual foi o melhor avanço comercial do seu dia?</label><textarea class="rec-input rec-ta" id="rec_ck_melhorAvanco">' + recEsc(atual.melhorAvanco) + '</textarea></div>'
+    + '<div class="rec-campo"><label>Qual é sua prioridade nº 1 para amanhã?</label><textarea class="rec-input rec-ta" id="rec_ck_prioridadeAmanha">' + recEsc(atual.prioridadeAmanha) + '</textarea></div></div>';
+  const histCk = checkins.length
+    ? checkins.map(k => {
+        const soma = recPlacar(k).reduce((s, item) => s + item[1], 0);
+        return '<button class="rec-ck-hist' + (k.data === dataSel ? ' on' : '') + '" data-rec="checkin-ver" data-d="' + recEsc(k.data) + '">'
+          + '<span class="rec-ck-hist-d">' + recEsc(String(k.data).split('-').reverse().join('/')) + '</span><span class="rec-dim">' + soma + ' pts</span></button>';
+      }).join('')
+    : '<div class="rec-dim" style="padding:6px 0">Nenhum check-in ainda.</div>';
+  return '<div class="rec-cols rec-cols-metas">'
+    + '<div class="rec-card"><div class="rec-card-t">Check-in do dia <input type="date" class="rec-input rec-ck-data" id="rec_ck_data" value="' + recEsc(dataSel) + '" max="' + hoje + '"></div>'
+    + secoes + plan
+    + '<div class="rec-placar"><div class="rec-placar-t">Placar do dia</div><div class="rec-placar-grid" id="recPlacarGrid">' + placar + '</div></div>'
+    + '<button class="rec-btn primary" data-rec="checkin-salvar" style="margin-top:12px">Salvar check-in</button></div>'
+    + '<div class="rec-card"><div class="rec-card-t">Histórico de check-ins</div><div class="rec-ck-hists">' + histCk + '</div></div>'
+    + '</div>';
+}
+
 function recFasesHtml(atual) {
   const cur = REC_ETAPAS.findIndex(([k]) => k === recEtapa(atual));
   return '<div class="rec-fases">' + REC_ETAPAS.map(([k, rot], i) => {
@@ -6694,12 +6898,32 @@ function recWireEvents() {
       else if (_recCpfValido(v)) { av.textContent = '✓ CPF válido'; av.className = 'rec-cpf-aviso ok'; }
       else { av.textContent = '⚠ CPF inválido (confira os números)'; av.className = 'rec-cpf-aviso erro'; }
     }
+    // Qualquer digitação no check-in marca "não salvo" (o rec_ck_data é navegação, não dado).
+    if (e.target.id && e.target.id.indexOf('rec_ck_') === 0 && e.target.id !== 'rec_ck_data') recCheckinDirty = true;
+    // Placar do dia ao vivo enquanto digita os números do check-in.
+    if (e.target.classList && e.target.classList.contains('rec-num')) {
+      const grid = document.getElementById('recPlacarGrid');
+      if (grid) {
+        const vals = {};
+        REC_CHECKIN_SECOES.forEach(sec => sec[1].forEach(campo => { const x = document.getElementById('rec_ck_' + campo[0]); if (x) vals[campo[0]] = x.value; }));
+        grid.innerHTML = recPlacar(vals).map(item => '<div class="rec-placar-item"><div class="rec-placar-n">' + item[1] + '</div><div class="rec-placar-l">' + recEsc(item[0]) + '</div></div>').join('');
+      }
+    }
   });
   secaoRecrutamento.addEventListener('change', e => {
     if (e.target.id === 'recTag') { recFiltroTag = e.target.value; const el = secaoRecrutamento.querySelector('.rec-lista'); if (el) el.innerHTML = recLinhasHtml(); }
     // Descrição da experiência só visível quando "Sim".
     if (e.target.id === 'rec_expImobiliaria') { const w = document.getElementById('rec_wrap_expImobiliariaDesc'); if (w) w.hidden = e.target.value !== 'sim'; }
     if (e.target.id === 'rec_expVendas') { const w = document.getElementById('rec_wrap_expVendasDesc'); if (w) w.hidden = e.target.value !== 'sim'; }
+    // Checkbox do check-in dispara 'change' (não 'input') — marca "não salvo" aqui também.
+    if (e.target.id && e.target.id.indexOf('rec_ck_') === 0 && e.target.id !== 'rec_ck_data') recCheckinDirty = true;
+    if (e.target.id === 'rec_ck_data') {   // troca o dia do check-in
+      if (recCheckinDirty && !confirm('Você tem alterações não salvas neste check-in. Descartar e trocar o dia?')) {
+        e.target.value = recCheckinData || recHojeISO();   // desfaz a troca no input
+        return;
+      }
+      recCheckinDirty = false; recCheckinData = e.target.value; recRender();
+    }
   });
   secaoRecrutamento.addEventListener('click', async e => {
     const el = e.target.closest('[data-rec]'); if (!el) return;
@@ -6724,12 +6948,59 @@ function recWireEvents() {
       } catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
       return;
     }
-    if (a === 'voltar') { carregarRecrutamento(); return; }
+    if (a === 'voltar') {
+      if (recCheckinDirty && !confirm('Você tem alterações não salvas no check-in. Descartar e voltar?')) return;
+      recCheckinDirty = false; carregarRecrutamento(); return;
+    }
     if (a === 'abrir') {
       const id = el.dataset.id;
       secaoRecrutamento.innerHTML = '<div class="rec-msg">Abrindo…</div>';
-      try { const r = await recrutamentoObter({ id }); recCand = r.data.candidato; if (recCand) recCand.etapa = recEtapa(recCand.etapa); recView = 'detalhe'; recRender(); }
+      try { const r = await recrutamentoObter({ id }); recCand = r.data.candidato; if (recCand) recCand.etapa = recEtapa(recCand.etapa); recView = 'detalhe'; recTab = 'perfil'; recCheckinData = ''; recCheckinDirty = false; recRender(); }
       catch (err) { recToast('Erro ao abrir: ' + (err && err.message), true); carregarRecrutamento(); }
+      return;
+    }
+    // Abas do detalhe (só quando associado).
+    if (a === 'tab') {
+      if (recCheckinDirty && !confirm('Você tem alterações não salvas no check-in. Descartar?')) return;
+      recCheckinDirty = false; recTab = el.dataset.t || 'perfil'; recCheckinData = ''; recRender(); return;
+    }
+    // Jornada: marca/desmarca uma tarefa inicial (salva na hora; a barra anda otimista).
+    if (a === 'jornada-toggle') {
+      if (!recCand || !recCand.id) return;
+      const tid = el.dataset.t;
+      const antes = Array.isArray(recCand.jornada) ? [...recCand.jornada] : [];
+      const set = new Set(antes);
+      if (set.has(tid)) set.delete(tid); else set.add(tid);
+      recCand.jornada = [...set];
+      recRender();   // otimista: o ✓ e a barra andam na hora
+      try { await recrutamentoJornadaSalvar({ id: recCand.id, jornada: recCand.jornada }); }
+      catch (err) {
+        // Falhou no servidor: desfaz o toggle na tela — senão o gestor vê o ✓ e acredita que salvou.
+        recCand.jornada = antes; recRender();
+        recToast('Erro ao salvar: ' + (err && err.message), true);
+      }
+      return;
+    }
+    if (a === 'checkin-ver') {
+      if (recCheckinDirty && !confirm('Você tem alterações não salvas neste check-in. Descartar e ver outro dia?')) return;
+      recCheckinDirty = false; recCheckinData = el.dataset.d || ''; recRender(); return;
+    }
+    if (a === 'checkin-salvar') {
+      if (!recCand || !recCand.id) return;
+      const dataEl = document.getElementById('rec_ck_data');
+      const data = (dataEl && dataEl.value) || recHojeISO();
+      const payload = { id: recCand.id, data };
+      REC_CHECKIN_SECOES.forEach(sec => sec[1].forEach(campo => {
+        const x = document.getElementById('rec_ck_' + campo[0]);
+        if (x) payload[campo[0]] = (campo[1] === 'b') ? x.checked : (parseInt(x.value, 10) || 0);
+      }));
+      ['melhorAvanco', 'prioridadeAmanha'].forEach(id => { const x = document.getElementById('rec_ck_' + id); if (x) payload[id] = x.value; });
+      el.disabled = true;
+      try {
+        await recrutamentoCheckinSalvar(payload);
+        recToast('Check-in salvo'); recCheckinDirty = false; recCheckinData = data;
+        const r = await recrutamentoObter({ id: recCand.id }); recCand = r.data.candidato; if (recCand) recCand.etapa = recEtapa(recCand.etapa); recRender();
+      } catch (err) { recToast('Erro: ' + (err && err.message), true); el.disabled = false; }
       return;
     }
     // Mover de fase clicando no funil da ficha: salva na hora (leva junto o que foi

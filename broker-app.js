@@ -829,6 +829,7 @@ function kanbanCard(d, podeArrastar){
     + '<div class="fz13 fw6 t900 trunc" style="margin-top:6px">'+esc(im.rua)+'</div>'
     + '<div class="fz12 t500 trunc">'+esc(d.clienteNome)+'</div>'
     + '<div class="fx ac jb g2" style="margin-top:8px"><span class="mono fw6 t900 fz13">'+brl(d.valor)+'</span><span class="fx ac g1">'+agingBadge(d)+tarefaBadge(d)+'</span></div>'
+    + '<div class="fz11 fw6 c-suc" style="margin-top:3px">Comissão '+brlFull(d.comValor)+'</div>'
     + kanbanCardInfo(d)
     + tags + '</div>';
 }
@@ -845,7 +846,7 @@ function kanbanHTML(){
     const body = cards.length ? cards.map(d=>kanbanCard(d,podeArrastar)).join('') : '<div class="fz12 t400" style="padding:12px;text-align:center">—</div>';
     const dropAttr = podeArrastar ? ' data-kdrop="'+esc(c.id)+'"' : '';
     const total = cards.reduce((s,d)=>s+(d.comValor||0),0);
-    const totalHTML = cards.length ? '<div class="fx ac jb" style="padding:2px 14px 10px"><span class="fz12 fw6 t500">Total comissões</span><span class="mono fw7 c-suc" style="font-size:15px">'+brl(total)+'</span></div>' : '';
+    const totalHTML = cards.length ? '<div class="fx ac jb" style="padding:2px 14px 10px"><span class="fz12 fw6 t500">Total comissões</span><span class="mono fw7 c-suc" style="font-size:15px">'+brlFull(total)+'</span></div>' : '';
     return '<div class="kcol"><div class="kcol-head"><span class="trunc">'+esc(c.label)+'</span><span class="pill neutral">'+cards.length+'</span></div>'+totalHTML+'<div class="kcol-body"'+dropAttr+'>'+body+'</div></div>';
   }).join('');
   const manage = podeArrastar ? '<button class="btn btn-outline sm" data-action="kanban-gerenciar" style="margin-bottom:10px">'+icon('settings-2',14)+'Gerenciar colunas</button>' : '';

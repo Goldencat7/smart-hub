@@ -432,7 +432,7 @@ ipcMain.on('abrir-template', async (_e, payload) => {
   // Guardamos o id numa variável: no 'closed' o webContents já foi destruído e
   // ler w.webContents.id lá estoura "Object has been destroyed".
   const wcId = w.webContents.id;
-  if (prefill && (prefill.nome || prefill.phone || prefill.agent)) {
+  if (prefill && (prefill.nome || prefill.phone || prefill.agent || prefill.email || prefill.creci)) {
     _templatePrefill.set(wcId, prefill);
     w.on('closed', () => _templatePrefill.delete(wcId));
   }

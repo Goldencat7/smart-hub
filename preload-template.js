@@ -21,6 +21,15 @@ try {
     if (prefill.agent) atual.agent = prefill.agent;   // foto do corretor
     window.localStorage.setItem(KEY, JSON.stringify(atual));
 
+    // 1b) Vendido v6 "A Rede que Vende" usa OUTRA chave (vendido_rede_editor_v1) e
+    // outro campo de nome (turboNames) — sem semear aqui, esse template não puxava.
+    const KEY_REDE = 'vendido_rede_editor_v1';
+    let atualRede = {};
+    try { atualRede = JSON.parse(window.localStorage.getItem(KEY_REDE) || '{}') || {}; } catch (_) {}
+    if (prefill.nome)  atualRede.turboNames = prefill.nome;
+    if (prefill.agent) atualRede.agent = prefill.agent;
+    window.localStorage.setItem(KEY_REDE, JSON.stringify(atualRede));
+
     // 2) Demais templates: um "preenchedor" injetado no HTML lê esta chave genérica
     // (nome/telefone/foto) e preenche os campos. Assim novos templates só precisam
     // do preenchedor, sem mexer aqui. Ver o <script> injetado em cada template.
@@ -28,7 +37,9 @@ try {
       window.localStorage.setItem('smarthub_perfil', JSON.stringify({
         nome: prefill.nome || '',
         telefone: prefill.phone || '',
-        foto: prefill.agent || ''
+        foto: prefill.agent || '',
+        email: prefill.email || '',
+        creci: prefill.creci || ''
       }));
     } catch (_) { /* storage indisponível: template abre com o demo */ }
   }

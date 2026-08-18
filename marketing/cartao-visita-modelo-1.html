@@ -19,6 +19,7 @@
   </noscript>
 </head>
 <body>
+<script>/*SMARTHUB_PREFILL_CV*/(function(){try{var P=JSON.parse(localStorage.getItem("smarthub_perfil")||"{}");var K="cv-remax-smart:v2:";function seed(k,v){if(v&&!localStorage.getItem(K+k))localStorage.setItem(K+k,v);}if(P.nome){var p=String(P.nome).trim().split(/\s+/);var pri=p.shift()||"";seed("nome",pri);if(p.length)seed("sobrenome",p.join(" "));}if(P.telefone)seed("telefone",P.telefone);if(P.email)seed("email",P.email);if(P.creci){var c=String(P.creci).trim();seed("creci",/creci/i.test(c)?c:("CRECI "+c));}}catch(e){}})();</script>
   <div id="__bundler_thumbnail">
   <svg xmlns="http://www.w3.org/2000/svg" sc-camel-view-box="0 0 120 120">
     <rect width="120" height="120" fill="#0C2749"></rect>

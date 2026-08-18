@@ -300,20 +300,9 @@ body { animation: hubPageIn 160ms ease-out both; }
   overflow: hidden;
   min-height: 0;
 }
-:root[data-theme="light"] .sidebar {
-  --sb-text:      #14203A;
-  --sb-idle:      rgba(20,32,58,.70);
-  --sb-hover:     rgba(20,32,58,.96);
-  --sb-active:    #000E35;
-  --sb-label:     rgba(20,32,58,.55);
-  --sb-hover-bg:  rgba(0,14,53,.05);
-  --sb-active-bg: rgba(0,14,53,.08);
-  --sb-hairline:  rgba(0,14,53,.10);
-  --sb-accent:    #C8001A;
-  --sb-badge-bg:  rgba(0,14,53,.07);
-  --sb-bg:        #ffffff;   /* mesmo branco dos cards de conteúdo */
-  --sb-bg-deep:   #f4f5f7;   /* rodapé: cinza bem sutil pra separar */
-}
+/* A barra lateral é SEMPRE escura (navy), inclusive no modo claro — pedido do Nathan.
+   Por isso NÃO há override de `.sidebar` para [data-theme="light"]: ela herda os
+   tokens escuros definidos em `.sidebar` acima, ficando idêntica nos dois temas. */
 
 /* topo: só o botão de recolher (a marca REMAX fica na topbar do Hub) */
 .sb-top {
@@ -1507,6 +1496,56 @@ body { animation: hubPageIn 160ms ease-out both; }
 .rec-card-t { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--text-primary); margin-bottom: 10px; }
 .rec-campo { margin-bottom: 11px; }
 .rec-campo label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 4px; }
+
+/* ── Abas do detalhe (Perfil / Jornada / Metas) ── */
+.rec-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; }
+.rec-tab { border: none; background: none; color: var(--text-muted); font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 9px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.rec-tab:hover { color: var(--text-primary); }
+.rec-tab.on { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ── Jornada do Corretor (checklist + progresso) ── */
+.rec-prog { margin-bottom: 16px; }
+.rec-prog-bar { height: 9px; border-radius: 5px; background: var(--border); overflow: hidden; }
+.rec-prog-fill { height: 100%; background: var(--success, #4ade80); border-radius: 5px; transition: width .25s ease; }
+.rec-prog-txt { font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-top: 6px; }
+.rec-etapa-j { margin-bottom: 18px; }
+.rec-etapa-j-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.rec-etapa-num { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--blue); }
+.rec-etapa-nome { font-size: 13.5px; font-weight: 700; color: var(--text-primary); }
+.rec-etapa-obj { font-size: 12px; font-style: italic; color: var(--text-muted); margin-top: 2px; }
+.rec-etapa-cont { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; }
+.rec-etapa-cont.full { color: #fff; background: var(--success, #4ade80); border-color: transparent; }
+.rec-tarefas { display: flex; flex-direction: column; gap: 6px; }
+.rec-tarefa { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--border); background: var(--bg); border-radius: 9px; padding: 10px 12px; cursor: pointer; font-family: inherit; color: var(--text-primary); font-size: 13.5px; transition: border-color .15s, background .15s; }
+.rec-tarefa:hover { border-color: var(--blue); }
+.rec-tarefa .rec-check { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--border); display: grid; place-items: center; font-size: 13px; color: #fff; }
+.rec-tarefa.on { border-color: rgba(74,222,128,.5); }
+.rec-tarefa.on .rec-check { background: var(--success, #4ade80); border-color: transparent; }
+.rec-tarefa.on .rec-tarefa-lab { color: var(--text-muted); }
+
+/* ── Metas e tarefas (check-in diário) ── */
+.rec-cols-metas { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+.rec-ck-data { width: auto; display: inline-block; margin-left: 8px; padding: 5px 8px; font-size: 12.5px; }
+.rec-ck-secao { margin-bottom: 14px; }
+.rec-ck-secao-t { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--blue); margin-bottom: 8px; }
+.rec-ck-linha { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--border); }
+.rec-ck-linha:first-of-type { border-top: none; }
+.rec-ck-lab { font-size: 13px; color: var(--text-primary); flex: 1; }
+.rec-num { width: 78px; flex: 0 0 auto; text-align: center; padding: 6px 8px; }
+.rec-simnao { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-primary); white-space: nowrap; cursor: pointer; }
+.rec-placar { margin-top: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
+.rec-placar-t { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--text-primary); margin-bottom: 10px; }
+.rec-placar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; }
+.rec-placar-item { background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 10px 8px; text-align: center; }
+.rec-placar-n { font-size: 22px; font-weight: 800; color: var(--blue); line-height: 1; }
+.rec-placar-l { font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
+.rec-ck-hists { display: flex; flex-direction: column; gap: 6px; }
+.rec-ck-hist { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border); background: var(--bg); border-radius: 8px; padding: 8px 11px; cursor: pointer; font-family: inherit; color: var(--text-primary); font-size: 12.5px; }
+.rec-ck-hist:hover { border-color: var(--blue); }
+.rec-ck-hist.on { border-color: var(--blue); background: var(--blue-light, rgba(0,82,204,.08)); }
+.rec-ck-hist-d { font-weight: 700; }
+@media (max-width: 900px) { .rec-cols-metas { grid-template-columns: 1fr; } }
+
 /* Funil clicável dentro da ficha (mover o candidato de fase com 1 clique) */
 .rec-fases-wrap { margin-bottom: 12px; }
 .rec-fases-lab { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
