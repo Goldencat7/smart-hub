@@ -108,6 +108,7 @@ const onboardingMeuJornada  = httpsCallable(fns, 'onboardingMeuJornada');
 const onboardingMeuCheckin  = httpsCallable(fns, 'onboardingMeuCheckin');
 const onboardingEquipe      = httpsCallable(fns, 'onboardingEquipe');
 const onboardingCorretor    = httpsCallable(fns, 'onboardingCorretor');
+const onboardingPainelDia   = httpsCallable(fns, 'onboardingPainelDia');
 // Link do Imóvel (Ferramentas)
 const linkImovelCriar   = httpsCallable(fns, 'linkImovelCriar');
 const linkImovelListar  = httpsCallable(fns, 'linkImovelListar');
@@ -1252,9 +1253,19 @@ function renderBannerEl(banner) {
       banner.titulo = n.titulo; banner.fonte = n.fonte || ''; banner.link = n.link;
     }
     return `<div class="banner-noticia" role="link" tabindex="0" title="Abrir a notícia no navegador">
-      <div class="bn-tag"><span class="bn-dot"></span>Notícia do dia · imóveis</div>
-      <div class="bn-titulo">${escapeHtml(banner.titulo || '')}</div>
-      <div class="bn-rodape">${banner.fonte ? escapeHtml(banner.fonte) + ' · ' : ''}ler a matéria →</div>
+      <div class="bn-textura" aria-hidden="true"></div>
+      <div class="bn-jornal" aria-hidden="true">📰</div>
+      <div class="bn-corpo">
+        <div class="bn-masthead">
+          <span class="bn-tag"><span class="bn-dot"></span>Notícias do mercado imobiliário</span>
+          <span class="bn-selo">Atualizado hoje</span>
+        </div>
+        <div class="bn-titulo">${escapeHtml(banner.titulo || '')}</div>
+        <div class="bn-rodape">
+          ${banner.fonte ? `<span class="bn-fonte">${escapeHtml(banner.fonte)}</span>` : ''}
+          <span class="bn-cta">Ler a matéria completa →</span>
+        </div>
+      </div>
     </div>`;
   }
   if (banner.tipo === 'video') {
@@ -6549,7 +6560,8 @@ let recCheckinDirty = false;  // digitou algo no check-in e não salvou — pede
 // Corretor vê/edita o SEU (via onboardingMeu*); gestor lista todos (onboardingEquipe)
 // e ao abrir um, reusa as functions do Recrutamento (recrutamentoObter/…Salvar).
 let ponbCarregado = false;   // já buscou nesta entrada no Performance (guarda contra o refetch da busca)
-let ponbGestor = false;      // true = visão de equipe; false = visão pessoal
+let ponbGestor = false;      // true = visão de equipe (gestor); false = visão pessoal
+let ponbAdmin = false;       // administrativo: só o Painel do dia (acompanhamento de envios)
 let ponbAchou = false;       // (corretor) tem ficha de candidato ligada por e-mail?
 let ponbEquipe = [];         // (gestor) lista dos associados
 let ponbCand = null;         // pessoa aberta (o próprio corretor; ou o associado que o gestor abriu)
@@ -6558,6 +6570,11 @@ let ponbTab = 'jornada';     // 'jornada' | 'metas'
 let ponbCkData = '';         // data (YYYY-MM-DD) do check-in em edição (vazio = hoje)
 let ponbCkDirty = false;
 let ponbWired = false;
+let ponbGView = 'equipe';     // gestor sem corretor aberto: 'equipe' (lista) | 'painel' (Painel do dia)
+let ponbPainel = null;        // dados carregados do Painel do dia (onboardingPainelDia)
+let ponbPainelData = '';      // data YYYY-MM-DD do painel (vazio = ontem)
+let ponbPainelCorr = 'Todos'; // filtro por corretor no painel
+let ponbPainelLoading = false;
 
 // Jornada do Corretor — onboarding inicial oficial, agrupado por etapa (espelha
 // REC_TAREFAS_INICIAIS do backend). Cada etapa: [título, objetivo, [[id, label], …]].
@@ -6922,11 +6939,15 @@ function recMetasHtml(c) {
 async function carregarPerfOnboarding() {
   ponbCarregado = true;
   ponbGestor = (locRoleAtual === 'gestor');
+  ponbAdmin = (locRoleAtual === 'administrativo');
   ponbSel = null; ponbCand = null; ponbTab = 'jornada'; ponbCkData = ''; ponbCkDirty = false;
+  ponbGView = 'equipe'; ponbPainel = null; ponbPainelData = ''; ponbPainelCorr = 'Todos'; ponbPainelLoading = false;
   ponbWire();
   secaoPerfOnboarding.innerHTML = '<div class="rec-msg">Carregando…</div>';
   try {
-    if (ponbGestor) {
+    if (ponbAdmin) {
+      /* administrativo: nada a pré-carregar — o Painel do dia carrega sob demanda no ponbRender abaixo */
+    } else if (ponbGestor) {
       const r = await onboardingEquipe();
       ponbEquipe = (r.data && r.data.itens) || [];
     } else {
@@ -6941,8 +6962,22 @@ async function carregarPerfOnboarding() {
 }
 
 function ponbRender() {
-  // Gestor na lista de equipe
-  if (ponbGestor && !ponbSel) { secaoPerfOnboarding.innerHTML = ponbEquipeHtml(); return; }
+  // Administrativo: SÓ o Painel do dia (acompanhamento de envios) — sem editar a equipe.
+  if (ponbAdmin) {
+    secaoPerfOnboarding.innerHTML = '<div class="rec-wrap">' + ponbPainelHtml() + '</div>';
+    if (!ponbPainel && !ponbPainelLoading) carregarPonbPainel(ponbPainelData || _ontemISO());
+    return;
+  }
+  // Gestor sem corretor aberto: alterna entre a lista de Equipe e o Painel do dia.
+  if (ponbGestor && !ponbSel) {
+    const toggle = '<div class="rec-tabs" style="margin-bottom:14px">'
+      + '<button class="rec-tab' + (ponbGView === 'equipe' ? ' on' : '') + '" data-po="gview" data-v="equipe">Equipe</button>'
+      + '<button class="rec-tab' + (ponbGView === 'painel' ? ' on' : '') + '" data-po="gview" data-v="painel">Painel do dia</button></div>';
+    const corpo = ponbGView === 'painel' ? ponbPainelHtml() : ponbEquipeHtml();
+    secaoPerfOnboarding.innerHTML = '<div class="rec-wrap">' + toggle + corpo + '</div>';
+    if (ponbGView === 'painel' && !ponbPainel && !ponbPainelLoading) carregarPonbPainel(ponbPainelData || _ontemISO());
+    return;
+  }
   // Corretor sem ficha ligada
   if (!ponbGestor && !ponbAchou) {
     secaoPerfOnboarding.innerHTML = '<div class="rec-wrap"><div class="rec-card" style="max-width:640px">'
@@ -6966,7 +7001,7 @@ function ponbRender() {
 // Lista de equipe (gestor): TODOS os corretores do Hub, cada um com progresso da
 // jornada + último check-in. Quem ainda não tem ficha aparece como "ainda não iniciou".
 function ponbEquipeHtml() {
-  if (!ponbEquipe.length) return '<div class="rec-wrap"><div class="rec-card" style="max-width:640px"><div class="rec-card-t">Jornada da equipe</div><div class="rec-dim" style="padding:8px 0">Nenhum corretor encontrado.</div></div></div>';
+  if (!ponbEquipe.length) return '<div class="rec-card" style="max-width:640px"><div class="rec-card-t">Jornada da equipe</div><div class="rec-dim" style="padding:8px 0">Nenhum corretor encontrado.</div></div>';
   const total = REC_JORNADA_ETAPAS.reduce((a, e) => a + e[2].length, 0);
   const linhas = ponbEquipe.map(it => {
     const n = (it.jornada || []).length;
@@ -6979,50 +7014,151 @@ function ponbEquipeHtml() {
       + '<div class="ponb-linha-prog"><div class="rec-prog-bar"><div class="rec-prog-fill" style="width:' + pct + '%"></div></div><span class="rec-dim">' + n + '/' + total + '</span></div>'
       + '<div class="ponb-linha-ck rec-dim">' + recEsc(ck) + '</div></button>';
   }).join('');
-  return '<div class="rec-wrap"><h2 class="rec-titulo">Jornada da equipe</h2>'
-    + '<div class="rec-dim" style="margin:-6px 0 14px">Clique num corretor para ver/editar a Jornada e as Metas.</div>'
-    + '<div class="ponb-equipe">' + linhas + '</div></div>';
+  return '<h2 class="rec-titulo">Jornada da equipe</h2>'
+    + '<div class="rec-dim" style="margin:-6px 0 14px">Clique num corretor para marcar a Jornada e acompanhar os check-ins (o check-in é preenchido pelo próprio corretor).</div>'
+    + '<div class="ponb-equipe">' + linhas + '</div>';
+}
+
+// Painel do dia (gestor): atividades do time num dia — quem enviou, totais e por corretor.
+function _ontemISO() { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+async function carregarPonbPainel(data) {
+  ponbPainelLoading = true; ponbPainelData = data;
+  try {
+    const r = await onboardingPainelDia({ data });
+    ponbPainel = r.data || { itens: [], totais: {}, boolTotais: {} };
+  } catch (e) {
+    ponbPainel = { _erro: (e && e.message) || 'erro', itens: [], totais: {}, boolTotais: {} };
+  }
+  ponbPainelLoading = false;
+  // só re-renderiza se ainda estou no painel (gestor no modo painel, ou administrativo)
+  if (ponbAdmin || (ponbGestor && !ponbSel && ponbGView === 'painel')) ponbRender();
+}
+function ponbPainelHtml() {
+  const hoje = recHojeISO();
+  const dataSel = ponbPainelData || _ontemISO();
+  const dataBr = String(dataSel).split('-').reverse().join('/');
+  const P = ponbPainel;
+  const hora = iso => { if (!iso) return ''; try { return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } catch (_) { return ''; } };
+  // Cabeçalho: data sempre; filtro por corretor só no modo gestor.
+  const filtroCorr = ponbAdmin ? '' : ('<select class="rec-input" id="ponb_pd_corr" style="width:auto">'
+    + ['Todos'].concat((P && P.itens ? P.itens.map(i => i.nome) : [])).map(n => '<option value="' + recEsc(n) + '"' + (ponbPainelCorr === n ? ' selected' : '') + '>' + recEsc(n === 'Todos' ? 'Todos os corretores' : n) + '</option>').join('') + '</select>');
+  const cab = '<h2 class="rec-titulo">Painel do dia</h2>'
+    + '<div class="rec-dim" style="margin:-6px 0 14px">' + (ponbAdmin ? 'Acompanhe quem enviou o check-in do dia e quem ainda falta.' : 'Atividades do time no dia. Troque a data ou filtre por corretor.') + '</div>'
+    + '<div class="fx ac g2 wrap" style="margin-bottom:14px">'
+    + '<label class="rec-dim" style="font-size:12px">Dia <input type="date" class="rec-input" id="ponb_pd_data" value="' + recEsc(dataSel) + '" max="' + hoje + '" style="width:auto"></label>'
+    + filtroCorr + '</div>';
+  if (!P) return cab + '<div class="rec-msg">Carregando…</div>';
+  if (P._erro) return cab + '<div class="rec-msg rec-erro">Não foi possível carregar.<br><span class="rec-dim">' + recEsc(P._erro) + '</span></div>';
+  const itens = P.itens || [];
+
+  // Resumo (para os dois modos): enviaram / pendentes / participação.
+  const enviaram = P.enviaram || 0, totalC = P.total || itens.length, pend = P.pendentes || (totalC - enviaram);
+  const pct = totalC ? Math.round(enviaram / totalC * 100) : 0;
+  const resumo = '<div class="rec-placar" style="margin-bottom:16px"><div class="rec-placar-grid">'
+    + '<div class="rec-placar-item"><div class="rec-placar-n">' + enviaram + '</div><div class="rec-placar-l">Enviaram</div></div>'
+    + '<div class="rec-placar-item"><div class="rec-placar-n">' + pend + '</div><div class="rec-placar-l">Pendentes</div></div>'
+    + '<div class="rec-placar-item"><div class="rec-placar-n">' + pct + '%</div><div class="rec-placar-l">Participação</div></div>'
+    + '</div></div>';
+
+  // ── Modo ADMINISTRATIVO: acompanhamento (pendentes + enviaram), sem totais de venda.
+  if (ponbAdmin) {
+    const pendentes = itens.filter(i => !i.enviou);
+    const enviados = itens.filter(i => i.enviou);
+    const linhaP = pendentes.length
+      ? pendentes.map(i => '<div class="ponb-linha" style="cursor:default"><div class="ponb-linha-nome">' + recEsc(i.nome) + '</div><div class="rec-dim" style="text-align:right">' + (i.temFicha ? 'não enviou' : 'sem ficha') + '</div></div>').join('')
+      : '<div class="rec-dim" style="padding:12px 0">Todos enviaram no dia ' + recEsc(dataBr) + '.</div>';
+    const linhaE = enviados.length
+      ? enviados.map(i => '<div class="ponb-linha" style="cursor:default"><div class="ponb-linha-nome">' + recEsc(i.nome) + '</div><div class="ponb-linha-ck rec-dim">' + recEsc(hora(i.atualizadoEm)) + (i.porNome && i.porNome !== i.nome ? ' · por ' + recEsc(i.porNome) : '') + '</div><div style="text-align:right;color:var(--success);font-weight:700">✓</div></div>').join('')
+      : '<div class="rec-dim" style="padding:12px 0">Ninguém enviou ainda neste dia.</div>';
+    const pendCard = '<div class="rec-card"><div class="rec-card-t">Precisam enviar (' + pendentes.length + ')</div><div class="ponb-equipe">' + linhaP + '</div></div>';
+    const envCard = '<div class="rec-card" style="margin-top:14px"><div class="rec-card-t">Enviaram (' + enviados.length + ')</div><div class="ponb-equipe">' + linhaE + '</div></div>';
+    return cab + resumo + '<div class="rec-cols rec-cols-metas">' + pendCard + envCard + '</div>';
+  }
+
+  // ── Modo GESTOR: totais do time + por corretor com pontos.
+  const filtro = ponbPainelCorr && ponbPainelCorr !== 'Todos';
+  const vis = filtro ? itens.filter(i => i.nome === ponbPainelCorr) : itens;
+  const pts = m => recPlacar(m || {}).reduce((s, x) => s + x[1], 0);
+
+  const baseNum = filtro && vis[0] ? vis[0].metrics : (P.totais || {});
+  const baseBool = filtro && vis[0] ? null : (P.boolTotais || {});
+  const secoesTot = REC_CHECKIN_SECOES.map(sec => {
+    const linhas = sec[1].map(campo => {
+      const id = campo[0], tipo = campo[1], lab = campo[2];
+      let val;
+      if (tipo === 'b') val = filtro && vis[0] ? (vis[0].bools && vis[0].bools[id] ? 'Sim' : 'Não') : ((baseBool && baseBool[id]) || 0);
+      else val = (baseNum && baseNum[id]) || 0;
+      return '<div class="rec-ck-linha"><span class="rec-ck-lab">' + recEsc(lab) + '</span><span class="rec-num" style="font-weight:700">' + recEsc(val) + '</span></div>';
+    }).join('');
+    return '<div class="rec-ck-secao"><div class="rec-ck-secao-t">' + recEsc(sec[0]) + '</div>' + linhas + '</div>';
+  }).join('');
+  const totCard = '<div class="rec-card"><div class="rec-card-t">' + (filtro ? 'Atividades de ' + recEsc(ponbPainelCorr) : 'Totais do time no dia ' + recEsc(dataBr)) + '</div>' + secoesTot + '</div>';
+
+  // Por corretor: quem enviou, quem enviou por (porNome) e pontos
+  const linhasC = vis.map(i => {
+    const st = i.enviou
+      ? '<span style="color:var(--success);font-weight:700">✓ enviou</span>' + (i.porNome && i.porNome !== i.nome ? ' <span class="rec-dim">(por ' + recEsc(i.porNome) + ')</span>' : '')
+      : (i.temFicha ? '<span class="rec-dim">pendente</span>' : '<span class="rec-dim">sem ficha</span>');
+    return '<div class="ponb-linha" style="cursor:default">'
+      + '<div class="ponb-linha-nome">' + recEsc(i.nome) + '</div>'
+      + '<div class="ponb-linha-ck">' + st + '</div>'
+      + '<div class="rec-dim" style="text-align:right;font-weight:700">' + (i.enviou ? pts(i.metrics) + ' pts' : '—') + '</div></div>';
+  }).join('') || '<div class="rec-dim" style="padding:12px 0">Nenhum corretor.</div>';
+  const corrCard = '<div class="rec-card" style="margin-top:14px"><div class="rec-card-t">Por corretor</div><div class="ponb-equipe">' + linhasC + '</div></div>';
+
+  return cab + resumo + '<div class="rec-cols rec-cols-metas">' + totCard + corrCard + '</div>';
 }
 
 function ponbJornadaHtml(c) {
+  const ro = !ponbGestor;   // corretor só VÊ; quem marca a Jornada é a gestão
   const feitas = new Set(Array.isArray(c.jornada) ? c.jornada : []);
   const todas = REC_JORNADA_ETAPAS.reduce((a, e) => a.concat(e[2]), []);
   const total = todas.length, n = todas.filter(t => feitas.has(t[0])).length;
   const pct = total ? Math.round(n / total * 100) : 0;
   const secoes = REC_JORNADA_ETAPAS.map((e, i) => {
     const nf = e[2].filter(t => feitas.has(t[0])).length;
-    const itens = e[2].map(t => '<button class="rec-tarefa' + (feitas.has(t[0]) ? ' on' : '') + '" data-po="jornada-toggle" data-t="' + t[0] + '"><span class="rec-check">' + (feitas.has(t[0]) ? '✓' : '') + '</span><span class="rec-tarefa-lab">' + recEsc(t[1]) + '</span></button>').join('');
+    const itens = e[2].map(t => ro
+      ? '<div class="rec-tarefa ro' + (feitas.has(t[0]) ? ' on' : '') + '"><span class="rec-check">' + (feitas.has(t[0]) ? '✓' : '') + '</span><span class="rec-tarefa-lab">' + recEsc(t[1]) + '</span></div>'
+      : '<button class="rec-tarefa' + (feitas.has(t[0]) ? ' on' : '') + '" data-po="jornada-toggle" data-t="' + t[0] + '"><span class="rec-check">' + (feitas.has(t[0]) ? '✓' : '') + '</span><span class="rec-tarefa-lab">' + recEsc(t[1]) + '</span></button>').join('');
     return '<div class="rec-etapa-j"><div class="rec-etapa-j-h"><div class="mw0"><span class="rec-etapa-num">Etapa ' + (i + 1) + '</span> <span class="rec-etapa-nome">' + recEsc(e[0]) + '</span>'
       + (e[1] ? '<div class="rec-etapa-obj">' + recEsc(e[1]) + '</div>' : '') + '</div>'
       + '<span class="rec-etapa-cont' + (nf === e[2].length ? ' full' : '') + '">' + nf + '/' + e[2].length + '</span></div>'
       + '<div class="rec-tarefas">' + itens + '</div></div>';
   }).join('');
   return '<div class="rec-card" style="max-width:760px"><div class="rec-card-t">Jornada do Corretor <span class="rec-dim">— onboarding inicial</span></div>'
+    + (ro ? '<div class="rec-dim" style="margin:2px 0 10px">👁 Somente leitura — a Jornada é acompanhada e marcada pela gestão.</div>' : '')
     + '<div class="rec-prog"><div class="rec-prog-bar"><div class="rec-prog-fill" style="width:' + pct + '%"></div></div><div class="rec-prog-txt">' + n + ' de ' + total + ' concluídas · ' + pct + '%</div></div>'
     + secoes + '</div>';
 }
 
 function ponbMetasHtml(c) {
+  const ro = ponbGestor;   // gestor só VÊ; quem preenche o check-in é o próprio corretor
+  const dis = ro ? ' disabled' : '';
   const checkins = Array.isArray(c.checkins) ? c.checkins : [];
   const hoje = recHojeISO();
   const dataSel = ponbCkData || hoje;
   const atual = checkins.find(k => k.data === dataSel) || {};
-  const numInp = id => '<input type="number" min="0" max="9999" class="rec-input rec-num" id="po_ck_' + id + '" value="' + (atual[id] != null ? recEsc(atual[id]) : '') + '">';
-  const boolInp = id => '<label class="rec-simnao"><input type="checkbox" id="po_ck_' + id + '"' + (atual[id] ? ' checked' : '') + '> Sim</label>';
+  const numInp = id => '<input type="number" min="0" max="9999" class="rec-input rec-num" id="po_ck_' + id + '" value="' + (atual[id] != null ? recEsc(atual[id]) : '') + '"' + dis + '>';
+  const boolInp = id => '<label class="rec-simnao"><input type="checkbox" id="po_ck_' + id + '"' + (atual[id] ? ' checked' : '') + dis + '> Sim</label>';
   const linha = (id, tipo, lab) => '<div class="rec-ck-linha"><span class="rec-ck-lab">' + recEsc(lab) + '</span>' + (tipo === 'b' ? boolInp(id) : numInp(id)) + '</div>';
   const secoes = REC_CHECKIN_SECOES.map(([titulo, campos]) => '<div class="rec-ck-secao"><div class="rec-ck-secao-t">' + recEsc(titulo) + '</div>' + campos.map(([id, tipo, lab]) => linha(id, tipo, lab)).join('') + '</div>').join('');
   const placar = recPlacar(atual).map(([l, v]) => '<div class="rec-placar-item"><div class="rec-placar-n">' + v + '</div><div class="rec-placar-l">' + recEsc(l) + '</div></div>').join('');
   const plan = '<div class="rec-ck-secao"><div class="rec-ck-secao-t">Planejamento do dia seguinte</div>'
-    + '<div class="rec-campo"><label>Qual foi o melhor avanço comercial do seu dia?</label><textarea class="rec-input rec-ta" id="po_ck_melhorAvanco">' + recEsc(atual.melhorAvanco) + '</textarea></div>'
-    + '<div class="rec-campo"><label>Qual é sua prioridade nº 1 para amanhã?</label><textarea class="rec-input rec-ta" id="po_ck_prioridadeAmanha">' + recEsc(atual.prioridadeAmanha) + '</textarea></div></div>';
+    + '<div class="rec-campo"><label>Qual foi o melhor avanço comercial do seu dia?</label><textarea class="rec-input rec-ta" id="po_ck_melhorAvanco"' + (ro ? ' readonly' : '') + '>' + recEsc(atual.melhorAvanco) + '</textarea></div>'
+    + '<div class="rec-campo"><label>Qual é sua prioridade nº 1 para amanhã?</label><textarea class="rec-input rec-ta" id="po_ck_prioridadeAmanha"' + (ro ? ' readonly' : '') + '>' + recEsc(atual.prioridadeAmanha) + '</textarea></div></div>';
   const histCk = checkins.length
     ? checkins.map(k => { const soma = recPlacar(k).reduce((s, item) => s + item[1], 0); return '<button class="rec-ck-hist' + (k.data === dataSel ? ' on' : '') + '" data-po="checkin-ver" data-d="' + recEsc(k.data) + '"><span class="rec-ck-hist-d">' + recEsc(String(k.data).split('-').reverse().join('/')) + '</span><span class="rec-dim">' + soma + ' pts</span></button>'; }).join('')
     : '<div class="rec-dim" style="padding:6px 0">Nenhum check-in ainda.</div>';
+  // Aviso do topo: corretor = como registrar; gestor = somente leitura.
+  const aviso = ro
+    ? '<div style="margin:2px 0 12px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);font-size:12px;color:var(--text-muted)">👁 Somente leitura — o próprio corretor preenche o check-in. Use a data ou o histórico ao lado para ver outros dias.</div>'
+    : '<div style="margin:2px 0 12px;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--border);font-size:12px;color:var(--text-muted)">Registrando o dia <strong style="color:var(--text-primary)">' + recEsc(String(dataSel).split('-').reverse().join('/')) + '</strong>' + (dataSel !== hoje ? ' <strong style="color:var(--warning)">(dia anterior)</strong>' : '') + '. Esqueceu de enviar em outro dia? Troque a data acima e preencha.</div>';
   return '<div class="rec-cols rec-cols-metas">'
     + '<div class="rec-card"><div class="rec-card-t">Check-in do dia <input type="date" class="rec-input rec-ck-data" id="po_ck_data" value="' + recEsc(dataSel) + '" max="' + hoje + '"></div>'
+    + aviso
     + secoes + plan
     + '<div class="rec-placar"><div class="rec-placar-t">Placar do dia</div><div class="rec-placar-grid" id="ponbPlacarGrid">' + placar + '</div></div>'
-    + '<button class="rec-btn primary" data-po="checkin-salvar" style="margin-top:12px">Salvar check-in</button></div>'
+    + (ro ? '' : '<button class="rec-btn primary" data-po="checkin-salvar" style="margin-top:12px">Salvar check-in</button>') + '</div>'
     + '<div class="rec-card"><div class="rec-card-t">Histórico de check-ins</div><div class="rec-ck-hists">' + histCk + '</div></div></div>';
 }
 
@@ -7058,10 +7194,14 @@ function ponbWire() {
       if (ponbCkDirty && !confirm('Você tem alterações não salvas neste check-in. Descartar e trocar o dia?')) { e.target.value = ponbCkData || recHojeISO(); return; }
       ponbCkDirty = false; ponbCkData = e.target.value; ponbRender();
     }
+    // Painel do dia: troca de data recarrega; troca de corretor só re-renderiza (dado já em memória).
+    if (e.target.id === 'ponb_pd_data') { ponbPainel = null; carregarPonbPainel(e.target.value); return; }
+    if (e.target.id === 'ponb_pd_corr') { ponbPainelCorr = e.target.value; ponbRender(); return; }
   });
   secaoPerfOnboarding.addEventListener('click', async e => {
     const el = e.target.closest('[data-po]'); if (!el) return;
     const a = el.dataset.po;
+    if (a === 'gview') { ponbGView = el.dataset.v; ponbPainelCorr = 'Todos'; ponbRender(); return; }
     if (a === 'voltar-lista') {
       if (ponbCkDirty && !confirm('Você tem alterações não salvas no check-in. Descartar e voltar?')) return;
       ponbCkDirty = false; ponbSel = null; ponbCand = null; ponbTab = 'jornada'; ponbCkData = ''; ponbRender(); return;
@@ -7081,6 +7221,7 @@ function ponbWire() {
       ponbCkDirty = false; ponbTab = el.dataset.t || 'jornada'; ponbCkData = ''; ponbRender(); return;
     }
     if (a === 'jornada-toggle') {
+      if (!ponbGestor) return;   // corretor só vê a Jornada; quem marca é a gestão
       if (!ponbCand) return;
       const tid = el.dataset.t;
       const antes = Array.isArray(ponbCand.jornada) ? [...ponbCand.jornada] : [];
@@ -7098,6 +7239,7 @@ function ponbWire() {
       ponbCkDirty = false; ponbCkData = el.dataset.d || ''; ponbRender(); return;
     }
     if (a === 'checkin-salvar') {
+      if (ponbGestor) return;   // gestor só vê; quem preenche é o corretor
       if (!ponbCand) return;
       const dataEl = document.getElementById('po_ck_data');
       const data = (dataEl && dataEl.value) || recHojeISO();

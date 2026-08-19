@@ -16,12 +16,14 @@ const PROJETO = 'remax-smart-hub';
 if (process.env.FIRESTORE_EMULATOR_HOST) { console.error('✋ Env de emulador setada. Abortando.'); process.exit(1); }
 
 const NOTA = {
-  versao: '1.0.180',
+  versao: '1.0.181',
   novo: [
-    'Nova área de Leads em Meus Negócios: os contatos recebidos pelos portais (ZAP, VivaReal, site e demais canais) passam a chegar automaticamente ao Hub, em tempo real, já direcionados ao corretor responsável.',
-    'Nos Leads é possível responder por WhatsApp, ligar ou enviar e-mail, filtrar por origem e situação, e vincular cada lead a um imóvel da Carteira. Cada corretor vê os próprios leads; a gestão vê todos.'
+    'A área de Performance passou a contar com o Painel do dia para a gestão: acompanhamento diário de quem enviou o check-in e quem ainda está pendente, com totais do time e filtro por corretor e por data.'
   ],
-  melhorias: [],
+  melhorias: [
+    'No check-in diário, o dia que está sendo registrado ficou mais visível. Caso tenha esquecido de enviar em outra data, basta selecionar o dia desejado e preencher normalmente.',
+    'O banner de notícias do mercado imobiliário, no painel inicial, recebeu um novo visual, mais destacado e com acesso direto à matéria.'
+  ],
   correcoes: []
 };
 

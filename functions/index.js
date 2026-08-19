@@ -8496,6 +8496,46 @@ exports.onboardingCorretor = onCall(async (req) => {
   } };
 });
 
+// (gestor) Painel do dia: TODOS os corretores + o check-in DAQUELE dia, agregado.
+// Pedido do Marcelo: ver as atividades do dia (quem enviou, o que cada um fez, totais
+// do time) com filtro de data. Uma leitura por corretor (poucos) — barato.
+exports.onboardingPainelDia = onCall(async (req) => {
+  const auth = exigirAutenticado(req);   // gestor OU administrativo (acompanhamento do time)
+  if (!(ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo'))) throw new HttpsError('permission-denied', 'Apenas gestor ou administrativo.');
+  const data = _txt((req.data || {}).data, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new HttpsError('invalid-argument', 'data (YYYY-MM-DD) é obrigatória.');
+  const users = (await admin.auth().listUsers(1000)).users.filter(_ehCorretorUser);
+  const cands = await db.collection('candidatos').where('etapa', '==', 'associado').limit(1000).get();
+  const porEmail = {};
+  cands.docs.forEach(d => { const e = String(d.data().email || '').trim().toLowerCase(); if (e && !porEmail[e]) porEmail[e] = d; });
+  const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null);
+  const totais = {}; REC_CHECKIN_NUM.forEach(k => totais[k] = 0);
+  const boolTotais = {}; REC_CHECKIN_BOOL.forEach(k => boolTotais[k] = 0);
+  const itens = []; let enviaram = 0;
+  for (const u of users) {
+    const email = String(u.email || '').trim().toLowerCase();
+    const doc = email ? porEmail[email] : null;
+    let ck = null;
+    if (doc) { const cs = await doc.ref.collection('checkins').doc(data).get(); if (cs.exists) ck = cs.data(); }
+    const enviou = !!ck;
+    if (enviou) enviaram++;
+    const metrics = {};
+    REC_CHECKIN_NUM.forEach(k => { const v = ck ? (parseInt(ck[k], 10) || 0) : 0; metrics[k] = v; totais[k] += v; });
+    const bools = {};
+    REC_CHECKIN_BOOL.forEach(k => { const b = ck ? !!ck[k] : false; bools[k] = b; if (b) boolTotais[k]++; });
+    itens.push({
+      uid: u.uid, nome: u.displayName || u.email || u.uid, email: u.email || '',
+      temFicha: !!doc, enviou, porNome: ck ? _txt(ck.porNome, 80) : '',
+      metrics, bools,
+      melhorAvanco: ck ? _txt(ck.melhorAvanco, 500) : '',
+      prioridadeAmanha: ck ? _txt(ck.prioridadeAmanha, 500) : '',
+      atualizadoEm: ck ? iso(ck.atualizadoEm) : null,
+    });
+  }
+  itens.sort((a, b) => (b.enviou - a.enviou) || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));  // enviados primeiro, depois alfabético
+  return { ok: true, data, itens, totais, boolTotais, enviaram, total: itens.length, pendentes: itens.length - enviaram };
+});
+
 // ═══ Leads do C2S (Contact2Sale) ═════════════════════════════════════════════
 // Integração com o CRM de leads da REMAX (Contact2Sale). Fluxo caminho 1 (o C2S
 // AVISA o Hub): o C2S dispara um webhook (on_create_lead / on_update_lead /
