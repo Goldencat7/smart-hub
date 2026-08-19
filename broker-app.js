@@ -88,6 +88,8 @@ const state = {
   loaded:false, meuNome:'Broker', onExit:null,
   role:'broker',        // 'broker' (gestor) | 'corretor' | 'administrativo'
   filaBusca:'', perfilCache:null,
+  leadsBusca:'', leadsFiltro:'Todos', leadsOrigem:'Todos', leadsVeTudo:false,   // Leads do C2S
+  leadVincLeadId:null, leadVincBusca:'',   // picker "vincular a um imóvel"
 };
 
 // Dados reais (preenchidos por carregarDados) — no FORMATO do mockup.
@@ -411,8 +413,8 @@ async function carregarPessoas(){
 /* ============================ UI INFRA ============================ */
 const RENDERERS = {};
 // Configurações e "sair da conta" ficam SÓ no Hub (pedido do Nathan) — não entram aqui.
-const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'clicksign',ico:'file-signature',label:'Clicksign'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
-const CRUMB = { dashboard:['SMART HUB','Dashboard'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], conciliacao:['SMART HUB','Conciliação de Malote'], configuracoes:['SMART HUB','Configurações'] };
+const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'leads',ico:'inbox',label:'Leads'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'clicksign',ico:'file-signature',label:'Clicksign'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
+const CRUMB = { dashboard:['SMART HUB','Dashboard'], leads:['SMART HUB','Leads'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], conciliacao:['SMART HUB','Conciliação de Malote'], configuracoes:['SMART HUB','Configurações'] };
 
 function renderNav(target){ if(!target) return; target.innerHTML = NAVITEMS.map(n=>'<button class="navitem'+(state.view===n.id?' active':'')+'" data-nav="'+n.id+'">'+icon(n.ico,18)+n.label+'</button>').join(''); }
 function renderBreadcrumb(){ const c=CRUMB[state.view]||['SMART HUB','—']; const b=$('#breadcrumb'); if(b) b.innerHTML='<span class="tmut nowrap">'+c[0]+'</span>'+icon('chevron-right',15,'tmut')+'<span class="tw fw6 trunc">'+c[1]+'</span>'; }
@@ -586,11 +588,16 @@ function setupRealtime(){
     // do listener direto da coleção `imoveis` ser negado no `list` pro gestor e falhar
     // calado. Quando a carteira muda no servidor (sync do feed etc.), imovelSeq sobe e
     // recarregamos — assim o dashboard atualiza mesmo com o app aberto.
-    let bcPrimeiro = true, bcImovel = 0;
+    let bcPrimeiro = true, bcImovel = 0, bcLead = 0;
     subs.push(onSnapshot(doc(db, 'config', 'broadcast'), snap => {
-      const seq = (snap.exists() ? (snap.data() || {}) : {}).imovelSeq || 0;
-      if(bcPrimeiro){ bcPrimeiro = false; bcImovel = seq; return; }
+      const d = snap.exists() ? (snap.data() || {}) : {};
+      const seq = d.imovelSeq || 0, leadSeq = d.leadSeq || 0;
+      if(bcPrimeiro){ bcPrimeiro = false; bcImovel = seq; bcLead = leadSeq; return; }
       if(seq !== bcImovel){ bcImovel = seq; _rtOnChange(); }
+      // Lead novo/alterado no C2S: só recarrega quem está REALMENTE na aba Leads
+      // (senão todo Broker aberto puxava 500 leads por lead que entra — leitura à toa).
+      // Quem entra na aba depois já carrega fresco pelo RENDERERS.leads.
+      if(leadSeq !== bcLead){ bcLead = leadSeq; if(state.view==='leads') carregarLeads().then(()=>{ if(state.view==='leads') updateLeads(); }); }
     }, e => console.warn('rt broadcast:', e && e.message)));
   } catch(e){ console.warn('setupRealtime:', e && e.message); }
   state._rtUnsubs = subs;
@@ -1643,6 +1650,7 @@ function globalFilter(v){
   else if(view==='pessoas'){ state.pessoasBusca=v; updatePessoas(); }
   else if(view==='imoveis'){ state.imoveisBusca=v; updateImoveis(); }
   else if(view==='clientes'){ state.cliBusca=v; if(typeof updateClientes==='function') updateClientes(); }
+  else if(view==='leads'){ state.leadsBusca=v; updateLeads(); }
 }
 
 /* ============================ EVENTOS (escopados no #bkRoot) ============================ */
@@ -1678,12 +1686,14 @@ function wireEvents(root){
     else if(k==='pessoasBusca'){ state.pessoasBusca=t.value; updatePessoas(); }
     else if(k==='imoveisBusca'){ state.imoveisBusca=t.value; updateImoveis(); }
     else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); }
+    else if(k==='leadsBusca'){ state.leadsBusca=t.value; updateLeads(); }
+    else if(k==='leadVincBusca'){ state.leadVincBusca=t.value; updateLeadVinc(); }
   });
   root.addEventListener('change', e=>{
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } });
+    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
 }
 function handleAction(a,el){
@@ -1693,6 +1703,12 @@ function handleAction(a,el){
   else if(a==='negstatuschip'){ state.negFiltroStatus=el.dataset.v; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='negverarquivados'){ state.negVerArquivados=!state.negVerArquivados; if(state.negVerArquivados) state.negVerCancelados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='negvercancelados'){ state.negVerCancelados=!state.negVerCancelados; if(state.negVerCancelados) state.negVerArquivados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
+  else if(a==='leadfiltro'){ state.leadsFiltro=el.dataset.v; const r=ROOT(); if(r) r.querySelectorAll('[data-action=leadfiltro]').forEach(b=>b.classList.toggle('active', b.dataset.v===el.dataset.v)); updateLeads(); }
+  else if(a==='openlead'){ openLead(el.dataset.id); }
+  else if(a==='lead-verimovel'){ openProp(el.dataset.id); }
+  else if(a==='lead-vincular'){ openLeadVincular(el.dataset.id); }
+  else if(a==='lead-desvincular'){ leadsDesvincular(el.dataset.id); }
+  else if(a==='lead-vincular-do'){ leadsVincularDo(el.dataset.lead, el.dataset.imovel, el.dataset.codigo, el.dataset.end); }
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
   else if(a==='feed-sync'){ sincronizarFeedPortal(el); }
@@ -1944,6 +1960,7 @@ const NAV_ROLE = {
   broker: NAVITEMS,
   corretor: [
     {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},
+    {id:'leads',ico:'inbox',label:'Leads'},
     {id:'clientes',ico:'users',label:'Meus Clientes'},
     {id:'imoveis',ico:'building-2',label:'Meus Imóveis'},
     {id:'negocios',ico:'handshake',label:'Meus Negócios'},
@@ -1954,6 +1971,7 @@ const NAV_ROLE = {
   ],
   administrativo: [
     {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},
+    {id:'leads',ico:'inbox',label:'Leads'},
     {id:'fila',ico:'kanban',label:'Fila de Trabalho'},
     {id:'pessoas',ico:'users',label:'Pessoas'},
     {id:'imoveis',ico:'building-2',label:'Imóveis'},
@@ -1977,7 +1995,7 @@ Object.assign(CRUMB, {
 // Título por papel/tela (Meus Imóveis, Meus Negócios, Meus Clientes, Relatórios Operacionais).
 function hTitulo(base){
   const r=state.role, v=state.view;
-  if(r==='corretor'){ if(v==='imoveis') return 'Meus Imóveis'; if(v==='negocios') return 'Meus Negócios'; if(v==='pessoas'||v==='clientes') return 'Meus Clientes'; }
+  if(r==='corretor'){ if(v==='imoveis') return 'Meus Imóveis'; if(v==='negocios') return 'Meus Negócios'; if(v==='pessoas'||v==='clientes') return 'Meus Clientes'; if(v==='leads') return 'Meus Leads'; }
   if(r==='administrativo' && v==='relatorios') return 'Relatórios Operacionais';
   return base;
 }
@@ -1999,6 +2017,153 @@ RENDERERS.clientes = function(host){
   + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:560px"><thead><tr><th>Nome</th><th>Tipo</th><th>Telefone</th><th class="tright">Negócios</th></tr></thead><tbody id="cliBody">'+clientesRows()+'</tbody></table></div></div>';
   if(!PEOPLE.length){ carregarPessoas().then(()=>{ if(state.view==='clientes') updateClientes(); }); }
 };
+
+/* ---------------- LEADS (Contact2Sale) ---------------- */
+// Leads que chegam dos portais (ZAP/VivaReal/site) via webhook do C2S (leadsC2SWebhook).
+// Corretor vê os seus; gestor/administrativo veem todos (o backend já filtra por posse).
+let LEADS = [];
+const LEAD_FILTROS = ['Todos','Não lidos','Novo','Em negociação','Fechado','Arquivado'];
+function leadStatusVar(l){
+  const a=(l.statusAlias||'').toLowerCase(), n=semAcento(l.status||'').toLowerCase();
+  if(l.arquivado || n.indexOf('arquiv')>=0 || n.indexOf('recus')>=0) return 'neutral';
+  if(a.indexOf('done')>=0 || n.indexOf('fechado')>=0 || n.indexOf('convert')>=0 || n.indexOf('finaliz')>=0) return 'success';
+  if(a.indexOf('negoti')>=0 || n.indexOf('negocia')>=0) return 'warning';
+  return 'info';
+}
+function leadData(iso){ if(!iso) return '—'; try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(_e){ return '—'; } }
+function leadCodigo(l){ return ((l.imovel||{}).propRef||'').trim(); }   // código do anúncio no portal (prop_ref)
+function leadEnderecoTxt(l){
+  const im=l.imovel||{}; const ref=leadCodigo(l); let desc=(im.descricao||'').trim();
+  if(ref && desc.indexOf('['+ref+']')===0) desc=desc.slice(('['+ref+']').length).trim();   // C2S repete o código no início da descrição
+  return [desc, [im.bairro,im.cidade].filter(Boolean).join(', ')].filter(Boolean).join(' · ')||'—';
+}
+function leadsOrigensOpts(){
+  const set=[...new Set(LEADS.map(l=>l.origem).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return ['Todos'].concat(set).map(o=>'<option value="'+esc(o)+'"'+((state.leadsOrigem||'Todos')===o?' selected':'')+'>'+esc(o==='Todos'?'Todas as origens':o)+'</option>').join('');
+}
+function leadWa(tel){ const d=String(tel||'').replace(/\D/g,''); if(!d) return ''; return 'https://wa.me/'+(d.length<=11?'55'+d:d); }
+async function carregarLeads(){
+  try{ const r=await call('leadsListar')({}); LEADS=(r.data&&r.data.itens)||[]; state.leadsVeTudo=!!(r.data&&r.data.veTudo); state._leadsErro=''; }
+  catch(e){ LEADS=[]; state._leadsErro=(e&&e.message)||'erro'; }
+}
+function leadsFiltradas(){
+  const q=semAcento(state.leadsBusca||'').trim(); const f=state.leadsFiltro||'Todos'; const og=state.leadsOrigem||'Todos';
+  return LEADS.filter(l=>{
+    const vv=leadStatusVar(l);
+    if(og!=='Todos' && (l.origem||'')!==og) return false;
+    if(f==='Não lidos' && l.lido) return false;
+    if(f==='Novo' && vv!=='info') return false;
+    if(f==='Em negociação' && vv!=='warning') return false;
+    if(f==='Fechado' && vv!=='success') return false;
+    if(f==='Arquivado' && !l.arquivado) return false;
+    if(q){ const c=l.cliente||{}; if(semAcento([c.nome,c.email,c.telefone,leadEnderecoTxt(l),leadCodigo(l),l.origem].join(' ')).indexOf(q)<0) return false; }
+    return true;
+  });
+}
+function leadsRows(){
+  const list=leadsFiltradas(); const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
+  if(state._leadsErro) return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:36px 0">'+icon('alert-triangle',22,'tmut')+'<p style="margin-top:8px" class="fz13">Não consegui carregar os leads.</p></div></td></tr>';
+  if(!list.length) return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:40px 0">'+icon('inbox',24)+'<p style="margin-top:8px" class="fz14 fw5">Nenhum lead por aqui ainda.</p><p class="fz12 tmut" style="margin-top:4px">Quando chega um contato dos portais, ele aparece aqui na hora.</p></div></td></tr>';
+  return list.map(l=>{ const c=l.cliente||{};
+    return '<tr data-action="openlead" data-id="'+esc(l.id)+'" style="cursor:pointer">'
+    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span></div></td>'
+    + '<td class="t700 trunc" style="max-width:220px">'+esc(leadEnderecoTxt(l))+'</td>'
+    + '<td class="mono fz12 t700 nowrap">'+(leadCodigo(l)?esc(leadCodigo(l)):'<span class="tmut">—</span>')+'</td>'
+    + '<td>'+(l.origem?pill(l.origem,'ai'):'<span class="tmut">—</span>')+'</td>'
+    + '<td>'+pill(l.status||'Novo',leadStatusVar(l))+'</td>'
+    + (veTudo?'<td class="t700 trunc" style="max-width:140px">'+esc((l.corretor&&l.corretor.nome)||'—')+'</td>':'')
+    + '<td class="tright tmut fz12 nowrap">'+leadData(l.recebidoEm)+'</td></tr>';
+  }).join('');
+}
+function updateLeads(){
+  const el=$('#leadsBody'); if(el){ el.innerHTML=leadsRows(); refreshIcons(); }
+  const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); }
+  const sel=$('#leadsOrigemSel'); if(sel){ sel.innerHTML=leadsOrigensOpts(); sel.value=state.leadsOrigem||'Todos'; }   // origens só existem depois do load
+}
+function renderLeadsInner(host){
+  const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
+  const corpo = LEADS.length ? leadsRows() : '<tr><td colspan="'+cols+'"><div class="tcenter tmut" style="padding:30px 0">Carregando…</div></td></tr>';
+  host.innerHTML=pageHead(hTitulo('Leads'),'Contatos que chegam dos portais (ZAP, VivaReal, site) em tempo real.','')
+  + '<div class="fx ac jb wrap g3" style="margin-bottom:14px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
+  + '<div class="fx ac g2 wrap">'
+  + '<select id="leadsOrigemSel" data-action="leadorigem" style="height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 10px;font-family:var(--sans);max-width:200px">'+leadsOrigensOpts()+'</select>'
+  + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(240px,60vw)">'+icon('search',16,'tmut')+'<input data-input="leadsBusca" value="'+esc(state.leadsBusca||'')+'" placeholder="Buscar lead…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div></div></div>'
+  + '<div class="fz12 tmut" id="leadsCount" style="margin-bottom:8px"></div>'
+  + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(veTudo?860:740)+'px"><thead><tr><th>Cliente</th><th>Imóvel</th><th>Código</th><th>Origem</th><th>Status</th>'+(veTudo?'<th>Corretor</th>':'')+'<th class="tright">Recebido</th></tr></thead><tbody id="leadsBody">'+corpo+'</tbody></table></div></div>';
+  if(LEADS.length){ const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); } }
+  refreshIcons();
+}
+RENDERERS.leads = function(host){
+  renderLeadsInner(host);
+  // Re-renderiza a TABELA INTEIRA depois do load (não só o corpo): o cabeçalho depende de
+  // state.leadsVeTudo, que só existe depois do carregarLeads — senão header (6 col) e linhas
+  // (7 col) ficam desalinhados no 1º acesso do gestor/adm.
+  carregarLeads().then(()=>{ const h=$('#root'); if(state.view==='leads'&&h) renderLeadsInner(h); });
+};
+function openLead(id){
+  const l=LEADS.find(x=>x.id===id); if(!l) return;
+  const c=l.cliente||{}; const im=l.imovel||{}; const wa=leadWa(c.telefone);
+  const prop=(PROPERTIES.concat(PROPERTIES_ALL||[])).find(p=>im.propRef && (String(p.code||'')===String(im.propRef) || String(p.ref||'')===String(im.propRef)));
+  const linhas=[['Código do portal',leadCodigo(l)||'—'],['Origem',l.origem||'—'],['Canal',l.canal||'—'],['Status',l.status||'Novo'],['Recebido',leadData(l.recebidoEm)]];
+  if(state.leadsVeTudo) linhas.push(['Corretor',(l.corretor&&l.corretor.nome)||'—']);
+  const info=linhas.map(kv=>'<div class="fx jb g2" style="padding:8px 0;border-bottom:1px solid var(--ink100)"><span class="tmut fz13">'+esc(kv[0])+'</span><span class="fw6 t900 fz13 tright">'+esc(kv[1])+'</span></div>').join('');
+  const contato='<div class="fx g2 wrap" style="padding:12px 20px 2px">'
+    + (wa?'<a class="btn btn-primary sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:16px;height:16px"></i>WhatsApp</a>':'')
+    + (c.telefone?'<a class="btn btn-outline sm" href="tel:'+esc(String(c.telefone).replace(/[^\d+]/g,''))+'" style="text-decoration:none"><i data-lucide="phone" style="width:16px;height:16px"></i>Ligar</a>':'')
+    + (c.email?'<a class="btn btn-outline sm" href="mailto:'+esc(c.email)+'" style="text-decoration:none"><i data-lucide="mail" style="width:16px;height:16px"></i>E-mail</a>':'')
+    + '</div>';
+  const imovelBox='<div class="card" style="padding:12px;margin:0 0 12px"><div class="fx jb ac g2"><div style="min-width:0"><div class="fz11 tmut">IMÓVEL</div><div class="fw6 t900 trunc">'+esc(leadEnderecoTxt(l))+'</div>'+(im.preco?'<div class="fz13 t700">R$ '+esc(im.preco)+(im.negociacao?' · '+esc(im.negociacao):'')+'</div>':'')+'</div>'+(prop?'<button class="btn btn-outline sm nsh" data-action="lead-verimovel" data-id="'+esc(prop.id)+'">Ver imóvel</button>':'')+'</div></div>';
+  const msg=l.mensagem?'<div style="margin:0 0 12px"><div class="fz11 tmut">MENSAGEM</div><div class="card" style="padding:12px;font-size:13px;line-height:1.5">'+esc(l.mensagem)+'</div></div>':'';
+  // Vínculo manual com um imóvel da Carteira (gestor/adm ou o dono do lead).
+  const meuUid=(auth.currentUser&&auth.currentUser.uid)||'';
+  const podeVincular=state.leadsVeTudo || l.corretorUid===meuUid;
+  const v=l.imovelVinculado;
+  const vincBox = v
+    ? '<div class="card" style="padding:12px;margin:0 0 12px;border:1px solid var(--success)"><div class="fx jb ac g2"><div style="min-width:0"><div class="fz11 tmut">IMÓVEL VINCULADO (Carteira)</div><div class="fw6 t900 trunc">'+(v.codigo?('<span class="mono">['+esc(v.codigo)+']</span> '):'')+esc(v.endereco||'—')+'</div></div><div class="fx g1 nsh">'+(v.id?'<button class="btn btn-outline sm nsh" data-action="lead-verimovel" data-id="'+esc(v.id)+'">Ver</button>':'')+(podeVincular?'<button class="btn btn-outline sm nsh" data-action="lead-desvincular" data-id="'+esc(l.id)+'" style="color:var(--danger);border-color:var(--danger)">Desvincular</button>':'')+'</div></div></div>'
+    : (podeVincular?'<button class="btn btn-outline sm" data-action="lead-vincular" data-id="'+esc(l.id)+'" style="width:100%;margin:0 0 12px">'+icon('link',15)+'Vincular a um imóvel</button>':'');
+  openDrawer('<div class="fx ac g2" style="padding:18px 20px 4px">'+avatar(c.nome||'?',44,'var(--ink800)')+'<div style="min-width:0"><div class="fw7 t900 trunc" style="font-size:17px">'+esc(c.nome||'—')+'</div><div class="tmut fz13 trunc">'+esc(c.telefone||'')+(c.email?(' · '+esc(c.email)):'')+'</div></div></div>'
+    + contato
+    + '<div class="grow scrolly" style="overflow:auto;padding:14px 20px">'
+    + imovelBox + vincBox + msg
+    + '<div class="fz11 tmut" style="margin-bottom:2px">DETALHES</div>'+info
+    + '</div>'
+    + '<div class="fx g2" style="padding:14px 20px;border-top:1px solid var(--ink100)"><button class="btn btn-outline sm grow" data-action="close-drawer">Fechar</button></div>');
+  if(!l.lido){ l.lido=true; updateLeads(); call('leadsMarcarLido')({id:l.id}).catch(()=>{}); }
+}
+/* ---- Vincular lead a um imóvel da Carteira (manual) ---- */
+function leadVincLista(){
+  const q=semAcento(state.leadVincBusca||'').trim();
+  const seen=new Set(); const all=(PROPERTIES||[]).concat(PROPERTIES_ALL||[]).filter(p=>{ if(!p||seen.has(p.id))return false; seen.add(p.id); return true; });
+  if(!all.length) return '<div class="tcenter t500 fz13" style="padding:24px">Nenhum imóvel na Carteira.</div>';
+  const filt=all.filter(p=> !q || semAcento((p.code||'')+' '+(p.rua||'')).indexOf(q)>=0).slice(0,80);
+  if(!filt.length) return '<div class="tcenter t500 fz13" style="padding:24px">Nenhum imóvel encontrado.</div>';
+  return filt.map(p=>'<button class="fx ac g3 hoverbg" data-action="lead-vincular-do" data-lead="'+esc(state.leadVincLeadId||'')+'" data-imovel="'+esc(p.id)+'" data-codigo="'+esc(p.code||'')+'" data-end="'+esc(p.rua||'')+'" style="width:100%;text-align:left;background:none;border:1px solid var(--ink200);border-radius:10px;padding:10px 12px;cursor:pointer;margin-bottom:8px"><div class="grow mw0"><div class="fz13 fw6 t900 mono">'+esc(p.code||'—')+'</div><div class="fz11 t500 trunc">'+esc(p.rua||'—')+'</div></div>'+icon('chevron-right',16,'t400')+'</button>').join('');
+}
+function updateLeadVinc(){ const el=$('#leadVincLista'); if(el){ el.innerHTML=leadVincLista(); refreshIcons(); } }
+function openLeadVincular(leadId){
+  state.leadVincLeadId=leadId; state.leadVincBusca='';
+  openModal('<div style="padding:20px;max-width:520px">'
+    + '<div class="fz15 fw7 t900" style="margin-bottom:2px">Vincular a um imóvel</div>'
+    + '<div class="fz12 t500" style="margin-bottom:14px">Escolha um imóvel da Carteira pra grudar neste lead — não precisa o código bater.</div>'
+    + '<div style="margin-bottom:10px"><input data-input="leadVincBusca" placeholder="Buscar por código ou endereço…" style="width:100%;padding:9px 11px;background:var(--ink50);border:1px solid var(--ink200);border-radius:8px;font-size:13px;font-family:var(--sans)"></div>'
+    + '<div id="leadVincLista" class="scrolly" style="max-height:48vh;overflow:auto">'+leadVincLista()+'</div>'
+    + '<div class="fx g2" style="margin-top:12px"><button class="btn btn-outline sm grow" data-action="close-modal">Fechar</button></div>'
+    + '</div>');
+}
+async function leadsVincularDo(leadId, imovelId, codigo, endereco){
+  try{
+    await call('leadsVincularImovel')({ leadId, imovelId, codigo, endereco });
+    const l=LEADS.find(x=>x.id===leadId); if(l){ l.imovelVinculadoId=imovelId; l.imovelVinculado={id:imovelId,codigo:codigo||'',endereco:endereco||''}; }
+    closeModal(); toast('Imóvel vinculado','check-circle-2','var(--success)'); openLead(leadId);
+  }catch(e){ toast('Erro ao vincular','alert-triangle','var(--warning)'); }
+}
+async function leadsDesvincular(leadId){
+  try{
+    await call('leadsVincularImovel')({ leadId, imovelId:'' });
+    const l=LEADS.find(x=>x.id===leadId); if(l){ l.imovelVinculadoId=null; l.imovelVinculado=null; }
+    toast('Desvinculado','check-circle-2','var(--success)'); openLead(leadId);
+  }catch(e){ toast('Erro ao desvincular','alert-triangle','var(--warning)'); }
+}
 
 /* ---------------- DASHBOARD por papel ---------------- */
 const _dashBroker = RENDERERS.dashboard;

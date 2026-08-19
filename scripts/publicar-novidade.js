@@ -16,16 +16,12 @@ const PROJETO = 'remax-smart-hub';
 if (process.env.FIRESTORE_EMULATOR_HOST) { console.error('✋ Env de emulador setada. Abortando.'); process.exit(1); }
 
 const NOTA = {
-  versao: '1.0.178',
+  versao: '1.0.180',
   novo: [
-    'Link do Imóvel (menu Ferramentas): informe o link de um anúncio e o sistema gera uma página com a identidade da REMAX Smart e os seus dados de contato — fotos, valor e WhatsApp — para envio ao cliente. Preencha seus dados em Meu Perfil.',
-    'Jornada e Metas na aba Performance: cada corretor passa a visualizar e preencher a própria Jornada e as Metas diárias; o gestor acompanha toda a equipe.'
+    'Nova área de Leads em Meus Negócios: os contatos recebidos pelos portais (ZAP, VivaReal, site e demais canais) passam a chegar automaticamente ao Hub, em tempo real, já direcionados ao corretor responsável.',
+    'Nos Leads é possível responder por WhatsApp, ligar ou enviar e-mail, filtrar por origem e situação, e vincular cada lead a um imóvel da Carteira. Cada corretor vê os próprios leads; a gestão vê todos.'
   ],
-  melhorias: [
-    'Etapas dos negócios de Locação e Venda reorganizadas em um fluxo mais objetivo. A alteração vale para os negócios criados a partir desta versão.',
-    'Maior fluidez nos Negócios: a troca de abas e a marcação de etapas passaram a ser instantâneas, sem recarregar a tela.',
-    'Menu lateral: a opção de recolher passou a ocultar a barra por completo, ampliando a área de trabalho, com um botão lateral para reexibi-la.'
-  ],
+  melhorias: [],
   correcoes: []
 };
 

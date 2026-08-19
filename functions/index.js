@@ -101,6 +101,8 @@ const BOT_HOOK_SECRET = defineSecret('BOT_HOOK_SECRET');
 const HUB_CHECKVISTO_SECRET = defineSecret('HUB_CHECKVISTO_SECRET'); // integração CheckVisto (INTEGRACAO-CHECKVISTO.md)
 const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY'); // Assistente de Leads (IA · Gemini)
 const RECRUTAMENTO_SECRET = defineSecret('RECRUTAMENTO_SECRET'); // webhook do formulário de recrutamento de corretores
+const C2S_TOKEN = defineSecret('C2S_TOKEN');       // token de integração do Contact2Sale (gerado dentro do C2S) — usado p/ CHAMAR a API do C2S (assinar webhook / puxar leads)
+const C2S_HOOK_KEY = defineSecret('C2S_HOOK_KEY');  // chave nossa embutida na URL do webhook (?k=) — o C2S não assina o POST, então a URL É a credencial
 const CLICKSIGN_TOKEN = defineSecret('CLICKSIGN_TOKEN'); // Access Token da API v3 do ClickSign (Configurações → API no painel)
 const CLICKSIGN_HMAC = defineSecret('CLICKSIGN_HMAC');   // segredo HMAC dos webhooks do ClickSign (mesmo painel)
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
@@ -8492,6 +8494,288 @@ exports.onboardingCorretor = onCall(async (req) => {
     jornada: Array.isArray(d.jornada) ? d.jornada : [],
     checkins: await _onbCheckins(doc.ref)
   } };
+});
+
+// ═══ Leads do C2S (Contact2Sale) ═════════════════════════════════════════════
+// Integração com o CRM de leads da REMAX (Contact2Sale). Fluxo caminho 1 (o C2S
+// AVISA o Hub): o C2S dispara um webhook (on_create_lead / on_update_lead /
+// on_close_lead) → cai em `leadsC2SWebhook` → grava/atualiza em `leads` → toca a
+// campainha do corretor. Docs: https://docs-api-leads.c2sapp.com (base fixa
+// https://api.contact2sale.com/integration; token no header Authorization).
+// ⚠️ O C2S NÃO assina o POST que manda pra gente — então a própria URL é a
+// credencial: registramos `.../webhooks/c2s?k=<C2S_HOOK_KEY>` e conferimos o `k`.
+const C2S_API_BASE = 'https://api.contact2sale.com/integration';
+
+// URL do nosso webhook. Usa a URL DIRETA da function (cloudfunctions.net) — estável
+// pelo nome+região e já no ar, então NÃO exige deploy do Hosting pra ligar o tempo
+// real. A rota bonita /webhooks/c2s (rewrite no firebase.json) fica de reserva pra
+// quando sair um deploy de Hosting; trocar de URL depois exige re-assinar o webhook.
+function _c2sHookUrl() {
+  const proj = process.env.GCLOUD_PROJECT || 'remax-smart-hub';
+  const key = (C2S_HOOK_KEY.value() || '').trim();
+  return `https://southamerica-east1-${proj}.cloudfunctions.net/leadsC2SWebhook?k=${encodeURIComponent(key)}`;
+}
+
+// Normaliza o lead do C2S (webhook OU GET /leads) num formato enxuto e estável.
+// Tolerante ao formato: aceita {data:[{…}]}, {data:{…}}, {id,attributes} ou o
+// objeto de attributes cru — assim o 1º lead real não quebra se vier diferente.
+function _c2sNormalizar(payload) {
+  let obj = payload || {};
+  if (obj.data) obj = Array.isArray(obj.data) ? (obj.data[0] || {}) : obj.data;
+  const a = obj.attributes || obj || {};
+  const c = a.customer || {};
+  const p = a.product || {};
+  const s = a.seller || {};
+  const msg = Array.isArray(a.messages) && a.messages[0] ? a.messages[0].body
+            : (a.first_message || '');
+  return {
+    c2sId: _txt(obj.id || a.id || '', 80),
+    internalId: (a.internal_id != null ? a.internal_id : null),
+    descricao: _txt(a.description, 300),
+    observacao: _txt(a.observation, 500),
+    mensagem: _txt(msg, 4000),
+    cliente: {
+      nome: _txt(c.name, 160),
+      email: _txt(c.email, 160),
+      telefone: _txt(c.phone_global || c.phone, 40),
+    },
+    imovel: {
+      propRef: _txt(p.prop_ref, 60),            // casa com o imóvel da Carteira (iList)
+      descricao: _txt(p.description, 300),
+      preco: _txt(typeof p.price === 'number' ? String(p.price) : p.price, 40),   // C2S pode mandar price numérico
+      precoFloat: (typeof p.price_float === 'number' ? p.price_float : null),
+      bairro: _txt(p.neighbourhood, 120),
+      cidade: _txt(p.city, 120),
+      negociacao: _txt((p.real_estate_detail || {}).negotiation_name, 60),
+    },
+    corretor: {
+      nome: _txt(s.name, 160),
+      email: _txt(s.email, 160),
+      telefone: _txt(s.phone, 40),
+      empresa: _txt(s.company, 160),
+    },
+    origem: _txt((a.lead_source || {}).name, 120),   // ZAP / VivaReal / site…
+    canal: _txt((a.channel || {}).name, 120),
+    status: _txt((a.lead_status || {}).name, 60),
+    statusAlias: _txt((a.lead_status || {}).alias, 60),
+    arquivado: !!((a.archive_details || {}).archived),
+    tags: Array.isArray(a.tags) ? a.tags.map(t => _txt(t && t.name ? t.name : t, 60)).filter(Boolean).slice(0, 30) : [],
+    criadoEmC2S: _txt(a.created_at, 40),
+    atualizadoEmC2S: _txt(a.updated_at, 40),
+  };
+}
+
+// Descobre o uid do corretor no Hub a partir do e-mail do seller no C2S.
+async function _c2sAcharCorretorUid(email) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!e) return null;
+  try { const u = await admin.auth().getUserByEmail(e); return u ? u.uid : null; }
+  catch (_) { return null; }   // seller sem conta no Hub = lead fica sem dono (gestor vê)
+}
+
+// Webhook do C2S: RECEBE o lead e grava/atualiza em `leads`. Upsert por c2sId, então
+// create e update caem no mesmo doc (idempotente). Registrado via rewrite /webhooks/c2s.
+exports.leadsC2SWebhook = onRequest({ region: 'southamerica-east1', secrets: [C2S_HOOK_KEY] }, async (req, res) => {
+  try {
+    if (req.method !== 'POST') return res.status(405).json({ ok: false });
+    // A URL é a credencial: confere o ?k= contra a chave (timing-safe; chave vazia nunca autoriza).
+    // Compara os BUFFERS (byte length) — comparar length de string quebraria com char multibyte
+    // (timingSafeEqual lança RangeError → 500 + alerta). Buffers de tamanho diferente = 401 limpo.
+    const dadoBuf = Buffer.from(String((req.query && req.query.k) || ''));
+    const espBuf = Buffer.from((C2S_HOOK_KEY.value() || '').trim());
+    if (!espBuf.length || dadoBuf.length !== espBuf.length || !crypto.timingSafeEqual(dadoBuf, espBuf)) {
+      return res.status(401).json({ ok: false });
+    }
+    const lead = _c2sNormalizar(req.body);
+    if (!lead.c2sId) return res.status(400).json({ ok: false, erro: 'sem id de lead' });
+
+    const uid = await _c2sAcharCorretorUid(lead.corretor.email);
+    const ref = db.collection('leads').doc(lead.c2sId);
+    const antes = await ref.get();
+    const novo = !antes.exists;
+
+    // Preserva o dono já atribuído: um update sem `seller` (on_close_lead) ou um blip do Auth
+    // NÃO pode zerar o corretorUid. Só troca de dono quando o lookup resolve um uid de fato.
+    const donoAtual = antes.exists ? (antes.data().corretorUid || null) : null;
+    const dono = uid || donoAtual;
+    const doc = {
+      ...lead,
+      corretorUid: dono,
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (novo) {
+      doc.lido = false;
+      doc.recebidoEm = admin.firestore.FieldValue.serverTimestamp();
+      // guarda o payload cru só do 1º lead (debug do formato real do C2S); cap defensivo.
+      doc.rawPrimeiro = JSON.stringify(req.body || {}).slice(0, 12000);
+    }
+    await ref.set(doc, { merge: true });
+
+    // Campainha: cutuca o corretor dono (tempo real) + broadcast geral (gestor/adm).
+    if (dono) await _bumpUserFeed(dono, 'lead');
+    await _bumpBroadcast('leadSeq');
+    return res.json({ ok: true, id: lead.c2sId, novo });
+  } catch (e) {
+    await logErro('leadsC2SWebhook', e, {});
+    return res.status(500).json({ ok: false });
+  }
+});
+
+// (admin) Assina os 3 gatilhos do webhook no C2S apontando pra nossa URL. Uma
+// requisição por ação (mesma URL nas três — o C2S aceita os 3 no mesmo endpoint).
+// ⚠️ "1 endpoint por token": use um token DEDICADO do Hub, senão apaga o webhook
+// de outra integração que use o mesmo token.
+exports.c2sAssinarWebhooks = onCall({ secrets: [C2S_TOKEN, C2S_HOOK_KEY] }, async (req) => {
+  const auth = await exigirAdmin(req);
+  const token = (C2S_TOKEN.value() || '').trim();
+  if (!token) throw new HttpsError('failed-precondition', 'Configure o secret C2S_TOKEN antes de assinar.');
+  if (!(C2S_HOOK_KEY.value() || '').trim()) throw new HttpsError('failed-precondition', 'Configure o secret C2S_HOOK_KEY antes de assinar.');
+  const hookUrl = _c2sHookUrl();
+  const acoes = ['on_create_lead', 'on_update_lead', 'on_close_lead'];
+  const resultados = [];
+  for (const acao of acoes) {
+    try {
+      const r = await fetch(`${C2S_API_BASE}/api/subscribe`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hook_action: acao, hook_url: hookUrl }),
+      });
+      let corpo = null; try { corpo = await r.json(); } catch (_) { corpo = null; }
+      resultados.push({ acao, status: r.status, ok: r.ok, resposta: corpo });
+    } catch (e) {
+      resultados.push({ acao, ok: false, erro: (e && e.message) || 'falha' });
+    }
+  }
+  await registrarAudit(auth, 'c2s_assinar_webhooks', { tipo: 'c2s' }, { hookUrl, resultados });
+  return { ok: true, hookUrl, resultados };
+});
+
+// (admin) Importa o HISTÓRICO de leads do C2S, via GET /leads paginado. O webhook só
+// traz os NOVOS daqui pra frente — isto popula os antigos. Entram como LIDOS (não viram
+// "não lido" em massa) e com a data real do C2S (recebidoEm preserva a cronologia).
+// ⚠️ Roda EM FATIAS: cada chamada processa poucas páginas e devolve `proximaPagina`; o
+// Admin chama em loop até vir null. Assim nenhuma chamada estoura o timeout do cliente.
+exports.c2sImportarLeads = onCall({ secrets: [C2S_TOKEN], timeoutSeconds: 300 }, async (req) => {
+  const auth = await exigirAdmin(req);
+  const token = (C2S_TOKEN.value() || '').trim();
+  if (!token) throw new HttpsError('failed-precondition', 'Configure o secret C2S_TOKEN antes de importar.');
+  const PAGINAS_POR_CHAMADA = 2;                                  // 2×50 = 100 leads por chamada (rápido, longe do timeout que dava 504)
+  let page = Math.max(1, parseInt((req.data || {}).page, 10) || 1);
+  let total = 0, paginas = 0, proximaPagina = null, totalPaginas = null;
+  const cacheUid = new Map();                                     // email→uid dentro da chamada (evita relookup)
+  for (let i = 0; i < PAGINAS_POR_CHAMADA; i++) {
+    if (page > 1000) { proximaPagina = null; break; }   // teto absoluto — defensivo se o C2S não mandar total_pages
+    let r;
+    try {
+      r = await fetch(`${C2S_API_BASE}/leads?perpage=50&page=${page}&sort=-created_at`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+    } catch (_) { throw new HttpsError('failed-precondition', 'Não consegui falar com o C2S. Tente de novo.'); }
+    if (r.status === 403) throw new HttpsError('failed-precondition', 'Token do C2S recusado (403).');
+    // Erro transitório (429/5xx) NÃO pode encerrar como "completo" (proximaPagina=null): lança
+    // pra o Admin mostrar e o usuário re-rodar (idempotente por c2sId). failed-precondition = sem alerta.
+    if (!r.ok) throw new HttpsError('failed-precondition', 'C2S respondeu ' + r.status + ' — importação interrompida, tente de novo.');
+    let corpo = null; try { corpo = await r.json(); } catch (_) { corpo = null; }
+    const arr = corpo && Array.isArray(corpo.data) ? corpo.data : [];
+    if (!arr.length) { proximaPagina = null; break; }
+    for (const item of arr) {
+      const lead = _c2sNormalizar(item);
+      if (!lead.c2sId) continue;
+      const email = (lead.corretor.email || '').toLowerCase();
+      let uid = cacheUid.get(email);
+      if (uid === undefined) { uid = await _c2sAcharCorretorUid(email); cacheUid.set(email, uid); }
+      const doc = { ...lead, corretorUid: uid || null, lido: true, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() };
+      const dt = lead.criadoEmC2S ? new Date(lead.criadoEmC2S) : null;
+      doc.recebidoEm = (dt && !isNaN(dt.getTime())) ? admin.firestore.Timestamp.fromDate(dt) : admin.firestore.FieldValue.serverTimestamp();
+      // Histórico entra LIDO. SEM ref.get() por lead — era o gargalo que dava 504 nas fatias
+      // grandes; o merge cria ou atualiza igual, só não distingo "novo" (não preciso na importação).
+      await db.collection('leads').doc(lead.c2sId).set(doc, { merge: true });
+      total++;
+    }
+    paginas++;
+    const pg = corpo && corpo.pagination;
+    totalPaginas = pg && pg.total_pages ? pg.total_pages : totalPaginas;
+    if (pg && pg.total_pages && page >= pg.total_pages) { proximaPagina = null; break; }
+    page++;
+    proximaPagina = page;                                        // ainda pode haver mais → cliente chama de novo
+  }
+  await _bumpBroadcast('leadSeq');
+  await registrarAudit(auth, 'c2s_importar_leads', { tipo: 'c2s' }, { total, paginas, proximaPagina });
+  return { ok: true, total, paginas, proximaPagina, totalPaginas };
+});
+
+// (autenticado) Lista os leads: corretor vê só os seus (corretorUid == uid);
+// gestor/administrativo veem todos. Campos leves; ordena por recebidoEm desc.
+exports.leadsListar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  // Gestor/adm: orderBy num só campo (índice automático). Corretor: filtra por posse e
+  // ordena EM MEMÓRIA — `where` + `orderBy` juntos exigiriam um índice composto (que
+  // quebraria a 1ª chamada com "needs index"). Volume por corretor é baixo.
+  let snap;
+  if (veTudo) snap = await db.collection('leads').orderBy('recebidoEm', 'desc').limit(500).get();
+  else        snap = await db.collection('leads').where('corretorUid', '==', auth.uid).get();   // sem limit: ordena+corta em memória (ver abaixo) pra não perder os mais recentes
+  const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null);
+  let itens = snap.docs.map(d => {
+    const x = d.data();
+    return {
+      id: d.id, internalId: x.internalId || null,
+      cliente: x.cliente || {}, imovel: x.imovel || {}, corretor: x.corretor || {},
+      origem: x.origem || '', canal: x.canal || '', status: x.status || '', statusAlias: x.statusAlias || '',
+      arquivado: !!x.arquivado, tags: Array.isArray(x.tags) ? x.tags : [],
+      descricao: x.descricao || '', mensagem: x.mensagem || '',
+      corretorUid: x.corretorUid || null, lido: !!x.lido,
+      imovelVinculadoId: x.imovelVinculadoId || null, imovelVinculado: x.imovelVinculado || null,
+      recebidoEm: iso(x.recebidoEm), atualizadoEm: iso(x.atualizadoEm),
+      criadoEmC2S: x.criadoEmC2S || '', atualizadoEmC2S: x.atualizadoEmC2S || '',
+    };
+  });
+  // corretor: ordena em memória (sem índice composto) e corta os 500 mais recentes.
+  if (!veTudo) { itens.sort((a, b) => String(b.recebidoEm || '').localeCompare(String(a.recebidoEm || ''))); itens = itens.slice(0, 500); }
+  return { ok: true, itens, veTudo };
+});
+
+// (autenticado) Marca um lead como lido — só o dono (ou gestor/adm) consegue.
+exports.leadsMarcarLido = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const id = _txt((req.data || {}).id, 80);
+  if (!id) throw new HttpsError('invalid-argument', 'id é obrigatório.');
+  const ref = db.collection('leads').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Lead não encontrado.');
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && snap.data().corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este lead.');
+  await ref.set({ lido: true }, { merge: true });
+  return { ok: true };
+});
+
+// (autenticado) Vincula (ou desvincula, com imovelId vazio) um lead a um imóvel da
+// Carteira — manual, independe de código bater. Gestor/adm ou o corretor DONO do lead.
+// Guarda o vínculo denormalizado (id + código + endereço) só pra exibir; a fonte é o id.
+exports.leadsVincularImovel = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const leadId = _txt(d.leadId, 80);
+  const imovelId = _txt(d.imovelId, 80);
+  if (!leadId) throw new HttpsError('invalid-argument', 'leadId é obrigatório.');
+  const ref = db.collection('leads').doc(leadId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Lead não encontrado.');
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && snap.data().corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este lead.');
+  if (!imovelId) {   // desvincular
+    await ref.set({ imovelVinculadoId: null, imovelVinculado: null, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await _bumpBroadcast('leadSeq');
+    return { ok: true, vinculado: null };
+  }
+  const imSnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!imSnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  // Posse do IMÓVEL também: corretor só vincula aos SEUS (o picker já filtra); gestor/adm, qualquer.
+  if (!veTudo && (imSnap.data() || {}).corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
+  const vinc = { id: imovelId, codigo: _txt(d.codigo, 60), endereco: _txt(d.endereco, 200) };
+  await ref.set({ imovelVinculadoId: imovelId, imovelVinculado: vinc, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  await _bumpBroadcast('leadSeq');
+  return { ok: true, vinculado: vinc };
 });
 
 // ═══ Link do Imóvel (Ferramentas) ════════════════════════════════════════════

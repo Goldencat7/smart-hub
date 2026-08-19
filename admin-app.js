@@ -31,6 +31,8 @@ const excluirCodigoConvite  = httpsCallable(fns, 'excluirCodigoConvite');
 const getUserAccess  = httpsCallable(fns, 'getUserAccess');
 const setUserAccess  = httpsCallable(fns, 'setUserAccess');
 const adminSetPessoaExtra = httpsCallable(fns, 'adminSetPessoaExtra');
+const c2sImportarLeads = httpsCallable(fns, 'c2sImportarLeads', { timeout: 120000 });
+const c2sAssinarWebhooks = httpsCallable(fns, 'c2sAssinarWebhooks', { timeout: 120000 });
 const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
 const getModoCofre = httpsCallable(fns, 'getModoCofre');
@@ -315,8 +317,66 @@ function ativarAba(aba) {
   if (aba === 'auditoria') carregarAuditoria();
   if (aba === 'bugbot')    carregarBugBot();
   if (aba === 'smarthub')  carregarSmartHub();
+  if (aba === 'leadsc2s')  carregarLeadsC2S();
   if (aba === 'lgpd')      carregarLgpd();
   if (aba === 'novidades') carregarNovidades();
+}
+
+// ─── Leads — integração C2S (Contact2Sale) ──────────────────────────────────
+// Dois botões: importar o histórico (só lê do C2S) e ligar o tempo real (assina o
+// webhook). Ambos chamam Cloud Functions que usam o secret C2S_TOKEN.
+function carregarLeadsC2S() {
+  const p = document.getElementById('leadsC2sPainel');
+  if (!p) return;
+  const passo = (n, titulo, texto, btnId, btnLabel, ico, primario) => `
+    <div style="display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px">
+      <div style="flex:none;width:28px;height:28px;border-radius:50%;background:var(--blue,#0a3d62);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">${n}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:2px">${titulo}</div>
+        <div class="muted" style="font-size:12.5px;line-height:1.5;margin-bottom:12px">${texto}</div>
+        <button id="${btnId}" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer;border:1px solid ${primario ? 'transparent' : 'var(--border)'};background:${primario ? 'var(--blue,#0a3d62)' : 'transparent'};color:${primario ? '#fff' : 'var(--text)'}"><i class="ti ti-${ico}"></i>${btnLabel}</button>
+      </div>
+    </div>`;
+  p.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px;max-width:640px">
+      ${passo(1, 'Importar histórico', 'Puxa os leads que já existem no C2S pra cá — só leitura, não altera nada lá. Roda em blocos e mostra o progresso.', 'c2sImportarBtn', 'Importar histórico', 'download', true)}
+      ${passo(2, 'Ligar tempo real', 'Assina o webhook do C2S apontando pra este Hub — a partir daí, todo lead novo cai sozinho. ⚠️ Use um token <strong>dedicado</strong>: se este já serve outra integração, o webhook dela é substituído.', 'c2sAssinarBtn', 'Ligar tempo real', 'bolt', false)}
+      <div id="c2sResultado" style="font-size:13px"></div>
+    </div>`;
+  const out = document.getElementById('c2sResultado');
+  const msg = (txt, cor) => { out.innerHTML = `<div style="padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--border)${cor ? `;color:${cor}` : ''}">${txt}</div>`; };
+  document.getElementById('c2sImportarBtn').addEventListener('click', async (ev) => {
+    const b = ev.currentTarget; b.disabled = true; b.style.opacity = '.6';
+    const orig = b.innerHTML; b.innerHTML = '<i class="ti ti-loader"></i> Importando…';
+    let page = 1, total = 0, guarda = 0;
+    try {
+      // Loop em fatias: chama até proximaPagina vir null (o servidor processa poucas páginas por vez).
+      while (guarda++ < 300) {
+        const r = await c2sImportarLeads({ page });
+        const d = r.data || {};
+        total += (d.total || 0);
+        const tp = d.totalPaginas ? ` de ~${d.totalPaginas}` : '';
+        msg(`Importando… <strong>${total}</strong> leads até agora (página ${page}${tp}).`);
+        if (!d.proximaPagina) break;
+        page = d.proximaPagina;
+      }
+      msg(`✔ Concluído: <strong>${total}</strong> leads sincronizados. Abra a aba <strong>Leads</strong> no Meus Negócios pra ver.`, '#3ddc84');
+    } catch (err) { msg('Erro: ' + escHtml(err.message), '#ff6b6b'); }
+    b.disabled = false; b.style.opacity = ''; b.innerHTML = orig;
+  });
+  document.getElementById('c2sAssinarBtn').addEventListener('click', async (ev) => {
+    const b = ev.currentTarget;   // captura ANTES do await — currentTarget vira null depois do await
+    if (!(await confirmar('Ligar o tempo real vai assinar o webhook no C2S apontando pra este Hub. Se este token já é usado por outra integração, o webhook dela será substituído. Continuar?', 'Ligar tempo real'))) return;
+    b.disabled = true; b.style.opacity = '.6';
+    const orig = b.innerHTML; b.innerHTML = '<i class="ti ti-loader"></i> Ligando…';
+    try {
+      const r = await c2sAssinarWebhooks({});
+      const d = r.data || {};
+      const linhas = (d.resultados || []).map(x => `${x.ok ? '✔' : '✖'} ${escHtml(x.acao)} — HTTP ${x.status || '?'}`).join('<br>');
+      msg(`<strong>Webhook assinado:</strong><br><span style="word-break:break-all;opacity:.8">${escHtml(d.hookUrl || '')}</span><br><br>${linhas}`, '#3ddc84');
+    } catch (err) { msg('Erro: ' + escHtml(err.message), '#ff6b6b'); }
+    b.disabled = false; b.style.opacity = ''; b.innerHTML = orig;
+  });
 }
 
 // ─── SMART HUB — configurações (T-06 Administração) ──────────────────────────
@@ -1544,7 +1604,7 @@ async function carregarUsuarios() {
         } catch (e) { alert('Erro: ' + e.message); cb.checked = !cb.checked; }
       });
     });
-    elListaUser.querySelectorAll('button[data-uid]').forEach(b => {
+    elListaUser.querySelectorAll('.acoes-user button[data-uid]').forEach(b => {
       b.addEventListener('click', async () => {
         if (!(await confirmar(`Excluir o usuário ${b.dataset.email}? Essa ação não pode ser desfeita.`))) return;
         try {
@@ -1820,12 +1880,16 @@ function renderAvisosEnviados(lista) {
 }
 
 // ─── Confirmação estilizada (no lugar do confirm() do navegador) ─────────────
-function confirmar(mensagem) {
+function confirmar(mensagem, labelSim) {
   return new Promise((resolve) => {
     document.getElementById('confirmMsg').textContent = mensagem;
     const btnSim = document.getElementById('confirmSim');
     const btnNao = document.getElementById('confirmNao');
-    
+    // Rótulo customizável: sem `labelSim` = exclusão (botão "Excluir" vermelho);
+    // com rótulo = ação neutra (o texto dado, sem o vermelho de perigo).
+    btnSim.textContent = labelSim || 'Excluir';
+    btnSim.classList.toggle('perigo', !labelSim);
+
     const fechar = (valor) => {
       btnSim.removeEventListener('click', onSim);
       btnNao.removeEventListener('click', onNao);

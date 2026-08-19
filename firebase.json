@@ -11,6 +11,7 @@
     "redirects": [{ "source": "/", "destination": "/app/", "type": 302 }],
     "rewrites": [
       { "source": "/imovel/**", "function": { "functionId": "linkImovelPage", "region": "southamerica-east1" } },
+      { "source": "/webhooks/c2s", "function": { "functionId": "leadsC2SWebhook", "region": "southamerica-east1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

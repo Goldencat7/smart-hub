@@ -36,6 +36,7 @@
         <button class="admin-nav-item" data-aba="auditoria"><i class="ti ti-file-search"></i>Auditoria</button>
         <button class="admin-nav-item" data-aba="bugbot"><i class="ti ti-bug"></i>Bug Bot</button>
         <button class="admin-nav-item" data-aba="smarthub"><i class="ti ti-building-estate"></i>SMART HUB — configs</button>
+        <button class="admin-nav-item" data-aba="leadsc2s"><i class="ti ti-inbox"></i>Leads (C2S)</button>
         <!-- LGPD: DESATIVADO a pedido do Nathan (2026-07-14). A tela e as Cloud Functions
              existem (admin-app.js: carregarLgpd; functions/index.js: bloco LGPD), mas as
              functions NÃO estão deployadas e este botão está fora do ar de propósito.
@@ -83,6 +84,16 @@
             </div>
           </div>
           <div id="smarthubPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="leadsc2s" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>Leads — integração C2S</h2>
+              <p class="admin-sub">Traz os leads do <strong>Contact2Sale</strong> (ZAP, VivaReal, site) pra aba <strong>Leads</strong> do Meus Negócios. Primeiro <strong>importe o histórico</strong> (só lê do C2S, não altera nada lá); depois <strong>ligue o tempo real</strong> pra os novos caírem sozinhos.</p>
+            </div>
+          </div>
+          <div id="leadsC2sPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
         </section>
 
         <section class="admin-section" data-aba="lgpd" hidden>

@@ -35,6 +35,16 @@
   --muted:   var(--text-muted);
   --accent:  var(--blue);
   --bg-card: var(--surface);
+  --hover:   #262c39;    /* fundo de chips/hover — faltava e caía no branco #f5f6f8 */
+}
+
+/* Admin — inputs dos painéis de config (SMART HUB, Leads C2S) herdam o tema escuro.
+   Sem background explícito o navegador pinta branco; a regra pega porque esses
+   inputs têm só borda inline (sem background inline que a sobrescreveria). */
+#smarthubPainel input:not([type="checkbox"]),
+#leadsC2sPainel input:not([type="checkbox"]) {
+  background: var(--bg);
+  color: var(--text);
 }
 
 /* ── Modo CLARO = só os QUADRADOS de conteúdo brancos ───────────────────────
@@ -65,6 +75,7 @@
   --text:  #14181f;
   --muted: #5b6472;
   --border: #e3e8ef;
+  --hover: #eef1f6;
   --success: #15803d;
   --danger:  #b91c1c;
   --warning: #b45309;
