@@ -16,15 +16,12 @@ const PROJETO = 'remax-smart-hub';
 if (process.env.FIRESTORE_EMULATOR_HOST) { console.error('✋ Env de emulador setada. Abortando.'); process.exit(1); }
 
 const NOTA = {
-  versao: '1.0.182',
+  versao: '1.0.183',
   novo: [
-    'O painel inicial ganhou o Resumo da operação: imóveis disponíveis para venda e para locação, leads novos e sem atendimento, SmartLeads e o total estimado em oportunidades de comissão — tudo num olhar.',
-    'SmartLead: em cada imóvel aparece quantos clientes se interessaram por imóveis parecidos (mesmo bairro, tipo e faixa de preço). Toque no número para ver a lista e falar direto por WhatsApp.'
+    'Os SmartLeads passam a aparecer na aba Interessados de cada imóvel, como sugestões de clientes que se interessaram por imóveis parecidos.',
+    'Quando o cliente é de outro corretor ativo, aparece apenas "Cliente de [corretor]" para você alinhar com o colega; se o corretor não está mais na equipe, o contato fica liberado. A aprovação para virar negócio segue com a gestão.'
   ],
-  melhorias: [
-    'Leads: agora é possível mudar a etapa do lead, registrar comentários internos e, na gestão, filtrar por corretor. O total de Leads e de SmartLeads também passa a aparecer em cada imóvel.',
-    'Leads vinculados a um imóvel passam a aparecer automaticamente como interessados na Carteira, prontos para aprovar, enviar ficha ou gerar o negócio.'
-  ],
+  melhorias: [],
   correcoes: []
 };
 

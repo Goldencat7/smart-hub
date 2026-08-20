@@ -8653,7 +8653,7 @@ function _leadInteressadoJaTem(lista, leadId, cliente) {
     (nome && it.nome && _leadNormNome(it.nome) === nome)
   );
 }
-function _leadInteressadoEntrada(cliente, finalidade, leadId, origemPortal) {
+function _leadInteressadoEntrada(cliente, finalidade, leadId, origemPortal, corretorLeadUid) {
   return {
     nome: _txt((cliente && cliente.nome), 120) || 'Lead',
     contato: _txt((cliente && cliente.telefone), 120),
@@ -8663,12 +8663,13 @@ function _leadInteressadoEntrada(cliente, finalidade, leadId, origemPortal) {
     status: 'lead',
     origemLead: leadId || '',
     origemPortal: _txt(origemPortal, 120),
+    corretorLeadUid: corretorLeadUid || '',   // dono do lead (pra máscara do SmartLead)
     em: admin.firestore.Timestamp.now(),
     statusEm: admin.firestore.Timestamp.now(),
   };
 }
 // UM lead (webhook/manual): transacional; dedup por lead/pessoa; cap 50; timeline.
-async function _leadGarantirInteressado(imovelId, cliente, leadId, origemPortal) {
+async function _leadGarantirInteressado(imovelId, cliente, leadId, origemPortal, corretorLeadUid) {
   if (!imovelId) return false;
   const imRef = db.collection('imoveis').doc(imovelId);
   let added = false;
@@ -8679,7 +8680,7 @@ async function _leadGarantirInteressado(imovelId, cliente, leadId, origemPortal)
     const lista = Array.isArray(d.interessados) ? [...d.interessados] : [];
     if (_leadInteressadoJaTem(lista, leadId, cliente)) return;
     if (lista.length >= 50) return;
-    lista.push(_leadInteressadoEntrada(cliente, d.finalidade, leadId, origemPortal));
+    lista.push(_leadInteressadoEntrada(cliente, d.finalidade, leadId, origemPortal, corretorLeadUid));
     const tl = Array.isArray(d.timeline) ? [...d.timeline] : [];
     tl.push({ texto: 'Lead vinculado: ' + (_txt(cliente && cliente.nome, 120) || 'Lead') + (origemPortal ? ' (' + origemPortal + ')' : ''), porNome: 'Sistema', em: admin.firestore.Timestamp.now() });
     tx.set(imRef, { interessados: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -8701,7 +8702,7 @@ async function _leadSincInteressados(imRef, leadsDocs) {
       if (lista.length >= 50) break;
       const cliente = ld.get('cliente') || {};
       if (_leadInteressadoJaTem(lista, ld.id, cliente)) continue;
-      lista.push(_leadInteressadoEntrada(cliente, d.finalidade, ld.id, ld.get('origem') || ''));
+      lista.push(_leadInteressadoEntrada(cliente, d.finalidade, ld.id, ld.get('origem') || '', ld.get('corretorUid') || ''));
       tl.push({ texto: 'Lead vinculado: ' + (_txt(cliente.nome, 120) || 'Lead') + (ld.get('origem') ? ' (' + ld.get('origem') + ')' : ''), porNome: 'Sistema', em: admin.firestore.Timestamp.now() });
       added++; mudou = true;
     }
@@ -8778,7 +8779,7 @@ exports.leadsC2SWebhook = onRequest({ region: 'southamerica-east1', secrets: [C2
     // na Carteira. Fora do fluxo principal: falha aqui não pode derrubar o webhook (lead
     // já salvo) — o backfill/Sync recuperam depois.
     const vincId = doc.imovelVinculadoId || jaVinc;
-    if (vincId) { try { await _leadGarantirInteressado(vincId, lead.cliente, lead.c2sId, lead.origem); } catch (e) { console.warn('lead→interessado (webhook):', (e && e.message) || e); } }
+    if (vincId) { try { await _leadGarantirInteressado(vincId, lead.cliente, lead.c2sId, lead.origem, dono); } catch (e) { console.warn('lead→interessado (webhook):', (e && e.message) || e); } }
 
     // Campainha: cutuca o corretor dono (tempo real) + broadcast geral (gestor/adm).
     if (dono) await _bumpUserFeed(dono, 'lead');
@@ -8989,9 +8990,120 @@ exports.leadsVincularImovel = onCall(async (req) => {
   const vinc = { id: imovelId, codigo: _txt(d.codigo, 60), endereco: _txt(d.endereco, 200) };
   await ref.set({ imovelVinculadoId: imovelId, imovelVinculado: vinc, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   // A pessoa do lead entra como interessada do imóvel (status 'lead'). Best-effort.
-  try { await _leadGarantirInteressado(imovelId, snap.data().cliente, leadId, snap.data().origem); } catch (_) { /* não bloqueia o vínculo */ }
+  try { await _leadGarantirInteressado(imovelId, snap.data().cliente, leadId, snap.data().origem, snap.data().corretorUid || ''); } catch (_) { /* não bloqueia o vínculo */ }
   await _bumpBroadcast('leadSeq');
   return { ok: true, vinculado: vinc };
+});
+
+// ─── SmartLead: cruzamento com máscara por dono ──────────────────────────────
+function _slMoney(v) { if (typeof v === 'number') return v; const d = String(v || '').replace(/[^\d,]/g, '').replace(',', '.'); const n = parseFloat(d); return isFinite(n) ? n : 0; }
+function _slBairro(b) { const x = _leadNormNome(b); return x === '—' ? '' : x; }
+function _slFinArr(f) { return String(f || '') === 'venda_locacao' ? ['venda', 'locacao'] : [String(f || '')]; }
+function _slChave(it) { const t = String((it && (it.telefone || it.contato)) || '').replace(/\D/g, ''); if (t) return 't:' + t; const e = String((it && it.email) || '').trim().toLowerCase(); if (e) return 'e:' + e; return 'n:' + _leadNormNome(it && it.nome); }
+// "corretor ainda ativo?" (cache por chamada). Saiu = conta excluída (getUser lança) ou desabilitada.
+async function _slCorretorAtivo(uid, cache) {
+  if (!uid) return { ativo: false, nome: '' };
+  if (cache.has(uid)) return cache.get(uid);
+  let r = { ativo: false, nome: '' };
+  try { const u = await admin.auth().getUser(uid); r = { ativo: !u.disabled, nome: u.displayName || (u.email || '').split('@')[0] || '' }; }
+  catch (_) { r = { ativo: false, nome: '' }; }
+  cache.set(uid, r); return r;
+}
+// (autenticado) SmartLeads de UM imóvel: clientes que se interessaram por imóveis
+// PARECIDOS (mesma finalidade + mesmo BAIRRO + mesmo tipo + preço ±20%) e que NÃO
+// mandaram lead neste imóvel. Máscara: cliente de corretor AINDA ATIVO (e não do
+// requisitante) → só nome + "Cliente de X", sem contato, não aprovável. Se o corretor
+// SAIU (ou é o próprio) → contato completo + aprovável. Computado na hora (não persiste).
+exports.smartLeadsDoImovel = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const imovelId = _txt((req.data || {}).imovelId, 80);
+  if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
+  const ySnap = await db.collection('imoveis').doc(imovelId).get();
+  if (!ySnap.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+  const Y = ySnap.data();
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && Y.corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
+
+  const yBai = _slBairro((Y.endereco || {}).bairro);
+  if (!yBai) return { ok: true, smartleads: [], semBairro: true };   // sem bairro não dá pra cruzar com precisão
+  const yTip = _leadNormNome(Y.tipo), yFins = _slFinArr(Y.finalidade), yPreco = _slMoney(Y.valorAnuncio);
+
+  const proprios = new Set();
+  (Array.isArray(Y.interessados) ? Y.interessados : []).forEach(it => { if (it && it.status === 'lead') proprios.add(_slChave(it)); });
+
+  // Candidatos: imóveis do MESMO bairro (query barata por índice). Filtra tipo/finalidade/preço.
+  const cand = await db.collection('imoveis').where('endereco.bairro', '==', (Y.endereco || {}).bairro).limit(400).get();
+  const cache = new Map(), vistos = new Set(), out = [];
+  for (const imDoc of cand.docs) {
+    if (imDoc.id === imovelId || out.length >= 60) continue;
+    const im = imDoc.data();
+    if (im.arquivado) continue;
+    if (!_slFinArr(im.finalidade).some(f => yFins.includes(f))) continue;
+    if (yTip && _leadNormNome(im.tipo) !== yTip) continue;
+    const p = _slMoney(im.valorAnuncio);
+    if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > 0.20 * yPreco) continue;
+    const deImovel = _txt(_leadEnderecoImovelStr(im), 160);
+    for (const it of (Array.isArray(im.interessados) ? im.interessados : [])) {
+      if (!it || it.status !== 'lead' || out.length >= 60) continue;
+      const k = _slChave(it);
+      if (proprios.has(k) || vistos.has(k)) continue;
+      vistos.add(k);
+      const dono = it.corretorLeadUid || '';
+      const info = await _slCorretorAtivo(dono, cache);
+      const mascarar = info.ativo && dono && dono !== auth.uid;
+      out.push(mascarar
+        ? { nome: it.nome || '—', tipo: it.tipo || 'locatario', mascarado: true, corretorNome: info.nome || 'outro corretor', deImovel, aprovavel: false }
+        : { nome: it.nome || '—', tipo: it.tipo || 'locatario', telefone: it.telefone || it.contato || '', email: it.email || '', origemPortal: it.origemPortal || '', origemLead: it.origemLead || '', corretorLeadUid: dono, mascarado: false, deImovel, aprovavel: true });
+    }
+  }
+  return { ok: true, smartleads: out };
+});
+
+// (gestor/adm) Aprova um SmartLead: persiste como interessado REAL (status 'aprovado')
+// no imóvel, pronto pra "Gerar negócio". Só desmascarado (dono saiu / é o próprio) —
+// nunca rouba cliente de colega ativo. Só quem aprova é gestor/adm (Manual de Regras).
+exports.smartLeadAprovar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo) throw new HttpsError('permission-denied', 'Aprovar é decisão do gestor.');
+  const d = req.data || {};
+  const imovelId = _txt(d.imovelId, 80);
+  const origemLead = _txt(d.origemLead, 80);
+  if (!imovelId || !origemLead) throw new HttpsError('invalid-argument', 'imovelId e origemLead são obrigatórios.');
+  // Acha o lead de origem (é a fonte da verdade dos dados do cliente).
+  const ldSnap = await db.collection('leads').doc(origemLead).get();
+  if (!ldSnap.exists) throw new HttpsError('not-found', 'Lead de origem não encontrado.');
+  const ld = ldSnap.data();
+  const dono = ld.corretorUid || '';
+  // Máscara: não deixa aprovar cliente de corretor AINDA ativo que não seja o requisitante.
+  if (dono && dono !== auth.uid) {
+    const info = await _slCorretorAtivo(dono, new Map());
+    if (info.ativo) throw new HttpsError('failed-precondition', 'Este cliente é de um corretor ativo (' + (info.nome || 'colega') + ') — fale com ele; não dá pra aprovar aqui.');
+  }
+  const imRef = db.collection('imoveis').doc(imovelId);
+  let total = 0;
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(imRef);
+    if (!s.exists) throw new HttpsError('not-found', 'Imóvel não encontrado.');
+    const im = s.data();
+    const lista = Array.isArray(im.interessados) ? [...im.interessados] : [];
+    const cliente = ld.cliente || {};
+    // Se já existe interessado dessa pessoa, só garante status aprovado; senão cria.
+    let i = lista.findIndex(it => _slChave(it) === _slChave({ telefone: cliente.telefone, email: cliente.email, nome: cliente.nome }));
+    if (i >= 0) {
+      if (lista[i].status === 'negocio_gerado') throw new HttpsError('failed-precondition', 'Já gerou negócio.');
+      lista[i] = { ...lista[i], status: 'aprovado', statusEm: admin.firestore.Timestamp.now() };
+    } else {
+      if (lista.length >= 50) throw new HttpsError('resource-exhausted', 'Limite de interessados atingido.');
+      const e = _leadInteressadoEntrada(cliente, im.finalidade, origemLead, ld.origem || '', dono);
+      lista.push({ ...e, status: 'aprovado', smartlead: true });
+    }
+    const tl = Array.isArray(im.timeline) ? [...im.timeline] : [];
+    tl.push({ texto: 'SmartLead aprovado: ' + (_txt(cliente.nome, 120) || 'Cliente'), porNome: 'Gestor', em: admin.firestore.Timestamp.now() });
+    tx.set(imRef, { interessados: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    total = lista.length;
+  });
+  return { ok: true, interessados: total };
 });
 
 // (admin) BACKFILL do auto-vínculo: varre os imóveis da Carteira e, pra cada um com
