@@ -26,14 +26,18 @@
 /* ── Celular / tablet estreito ────────────────────────────────────────────── */
 @media (max-width: 900px) {
 
-  /* Topbar mais alta (dedo, não mouse) e sem estourar a largura. */
+  /* Topbar mais alta (dedo, não mouse) e sem estourar a largura. ⚠️ Os botões de
+     admin (Novidades + Enviar aviso + Admin + Sair) + logo + sino não cabem em 375px:
+     davam ~421px e vazavam 46px, empurrando a página pro lado e cortando o "Sair".
+     Por isso a topbar QUEBRA LINHA no celular (wrap) — vira 2 fileiras, tudo cabe e
+     nada é escondido. (Antes era nowrap, que forçava o vazamento.) */
   .topbar {
     height: auto; min-height: 52px;
     padding: 6px 10px;
     padding-top: calc(6px + env(safe-area-inset-top)); /* entalhe do iPhone */
-    gap: 8px; flex-wrap: nowrap;
+    gap: 8px; row-gap: 6px; flex-wrap: wrap;
   }
-  .topbar-right { gap: 6px; min-width: 0; }
+  .topbar-right { gap: 6px; row-gap: 6px; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
   .topbar-btn { height: 34px; padding: 0 10px; font-size: 12px; }
   .brand-logo { height: 22px; }
   .brand-version { display: none; }
