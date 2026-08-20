@@ -16,13 +16,14 @@ const PROJETO = 'remax-smart-hub';
 if (process.env.FIRESTORE_EMULATOR_HOST) { console.error('✋ Env de emulador setada. Abortando.'); process.exit(1); }
 
 const NOTA = {
-  versao: '1.0.181',
+  versao: '1.0.182',
   novo: [
-    'A área de Performance passou a contar com o Painel do dia para a gestão: acompanhamento diário de quem enviou o check-in e quem ainda está pendente, com totais do time e filtro por corretor e por data.'
+    'O painel inicial ganhou o Resumo da operação: imóveis disponíveis para venda e para locação, leads novos e sem atendimento, SmartLeads e o total estimado em oportunidades de comissão — tudo num olhar.',
+    'SmartLead: em cada imóvel aparece quantos clientes se interessaram por imóveis parecidos (mesmo bairro, tipo e faixa de preço). Toque no número para ver a lista e falar direto por WhatsApp.'
   ],
   melhorias: [
-    'No check-in diário, o dia que está sendo registrado ficou mais visível. Caso tenha esquecido de enviar em outra data, basta selecionar o dia desejado e preencher normalmente.',
-    'O banner de notícias do mercado imobiliário, no painel inicial, recebeu um novo visual, mais destacado e com acesso direto à matéria.'
+    'Leads: agora é possível mudar a etapa do lead, registrar comentários internos e, na gestão, filtrar por corretor. O total de Leads e de SmartLeads também passa a aparecer em cada imóvel.',
+    'Leads vinculados a um imóvel passam a aparecer automaticamente como interessados na Carteira, prontos para aprovar, enviar ficha ou gerar o negócio.'
   ],
   correcoes: []
 };

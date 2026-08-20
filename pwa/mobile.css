@@ -98,6 +98,9 @@
     transform: translateX(-100%);
     transition: transform 200ms ease;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.4);
+    /* A gaveta PRECISA rolar: com a sanfona do "Meus Negócios" aberta a lista passa
+       da altura da tela e, sem rolagem, o perfil (rodapé) e os últimos itens somem. */
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   body.menu-aberto .sidebar { transform: translateX(0); }
 
@@ -287,6 +290,29 @@
 
   /* Painel de notificações: colado na largura da tela, não 290px fixos. */
   .notif-panel { width: min(300px, calc(100vw - 24px)); right: -8px; }
+
+  /* ── Anti-vazamento horizontal (o "dá pra mover pra direita muito") ────────
+     Nada pode empurrar a página inteira pro lado no celular. O scroll deve ser
+     SEMPRE interno (numa tabela, num trilho), nunca o body andando. */
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  /* ── "Meus Negócios" (Broker embutido) no celular ─────────────────────────
+     O Broker é um app próprio embutido em #bkRoot. No celular ele precisa ficar
+     100% preso à área central: largura travada e overflow interno, senão o
+     conteúdo (kanban de negócios, tabelas largas) vaza e leva a página junto —
+     empurrando abas e perfil pra fora da tela. */
+  #bkRoot.bk-embedded,
+  #bkRoot.bk-embedded .app,
+  #bkRoot.bk-embedded #scroller,
+  #bkRoot.bk-embedded #root { max-width: 100%; min-width: 0; }
+  #bkRoot.bk-embedded .app { flex-direction: column; }   /* a sidebar do Broker já está escondida; garante coluna */
+  #bkRoot.bk-embedded #scroller { overflow-x: hidden; }
+  #bkRoot.bk-embedded #root { padding-left: 12px; padding-right: 12px; }
+  /* Qualquer trilho/tabela/kanban do Broker rola DENTRO do próprio cartão, e nunca
+     mais largo que a tela (o .kboard já é overflow-x:auto; aqui garantimos o teto). */
+  #bkRoot.bk-embedded .scrolly,
+  #bkRoot.bk-embedded .kboard,
+  #bkRoot.bk-embedded [style*="overflow-x"] { max-width: 100%; }
 }
 
 /* ── Celular estreito (iPhone SE etc.) ────────────────────────────────────── */

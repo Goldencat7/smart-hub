@@ -8285,7 +8285,11 @@ exports.recrutamentoListar = onCall(async (req) => {
   await exigirGestor(req);
   const snap = await db.collection('candidatos').orderBy('atualizadoEm', 'desc').limit(1000).get();
   const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null);
-  const itens = snap.docs.map(doc => {
+  // A tela de Recrutamento mostra SÓ quem entrou pelo Formulário ou pelo cadastro manual.
+  // Os registros criados automaticamente quando um corretor loga e faz check-in
+  // (origemAuto) NÃO aparecem aqui — eles existem só pra guardar a jornada/check-ins
+  // do Performance. (pedido do Nathan, 2026-08-19)
+  const itens = snap.docs.filter(doc => !doc.data().origemAuto).map(doc => {
     const d = doc.data();
     return {
       id: doc.id, nome: d.nome || '', etapa: _recEtapa(d.etapa), status: d.status || 'ativo',
@@ -8613,6 +8617,114 @@ async function _c2sAcharCorretorUid(email) {
   catch (_) { return null; }   // seller sem conta no Hub = lead fica sem dono (gestor vê)
 }
 
+// Endereço curto do imóvel (pra denormalizar no vínculo, igual ao que o front mostra).
+function _leadEnderecoImovelStr(x) {
+  const e = (x && x.endereco) || {};
+  const rua = [e.logradouro, e.numero].filter(Boolean).join(', ');
+  const resto = [e.bairro, e.cidade].filter(Boolean).join(' - ');
+  return [rua, resto].filter(Boolean).join(' · ') || (x && x.tipo) || '';
+}
+// AUTO-VÍNCULO: acha na Carteira o imóvel cujo código do portal (feedListingId, vindo
+// do feed iList/VRSync) é IGUAL ao propRef do lead (o mesmo código que o portal devolve
+// no lead). Casamento exato; devolve {id,codigo,endereco} ou null. Nem todo lead casa —
+// muito imóvel já saiu do portal / não está na carteira — e tudo bem, fica sem vínculo.
+async function _leadAcharImovelPorRef(propRef) {
+  const ref = String(propRef || '').trim();
+  if (!ref) return null;
+  const snap = await db.collection('imoveis').where('feedListingId', '==', ref).limit(1).get();
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, codigo: ref, endereco: _txt(_leadEnderecoImovelStr(d.data() || {}), 200) };
+}
+
+// ── Lead ⇒ interessado do imóvel ─────────────────────────────────────────────
+// Ao vincular um lead a um imóvel, a pessoa do lead entra na lista de interessados
+// da Carteira com status 'lead' (estágio antes de ficha). O front já renderiza
+// qualquer status como pill; 'lead' não ganha Aprovar/Gerar (só a partir de ficha).
+function _leadNormNome(v) { return String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim(); }
+function _leadInteressadoJaTem(lista, leadId, cliente) {
+  const telDig = String((cliente && cliente.telefone) || '').replace(/\D/g, '');
+  const email = String((cliente && cliente.email) || '').trim().toLowerCase();
+  const nome = _leadNormNome(cliente && cliente.nome);
+  return lista.some(it =>
+    (leadId && it.origemLead && it.origemLead === leadId) ||
+    (telDig && String(it.telefone || it.contato || '').replace(/\D/g, '') === telDig) ||
+    (email && String(it.email || '').trim().toLowerCase() === email) ||
+    (nome && it.nome && _leadNormNome(it.nome) === nome)
+  );
+}
+function _leadInteressadoEntrada(cliente, finalidade, leadId, origemPortal) {
+  return {
+    nome: _txt((cliente && cliente.nome), 120) || 'Lead',
+    contato: _txt((cliente && cliente.telefone), 120),
+    telefone: _txt((cliente && cliente.telefone), 40),
+    email: _txt((cliente && cliente.email), 120),
+    tipo: finalidade === 'venda' ? 'comprador' : 'locatario',
+    status: 'lead',
+    origemLead: leadId || '',
+    origemPortal: _txt(origemPortal, 120),
+    em: admin.firestore.Timestamp.now(),
+    statusEm: admin.firestore.Timestamp.now(),
+  };
+}
+// UM lead (webhook/manual): transacional; dedup por lead/pessoa; cap 50; timeline.
+async function _leadGarantirInteressado(imovelId, cliente, leadId, origemPortal) {
+  if (!imovelId) return false;
+  const imRef = db.collection('imoveis').doc(imovelId);
+  let added = false;
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(imRef);
+    if (!s.exists) return;
+    const d = s.data();
+    const lista = Array.isArray(d.interessados) ? [...d.interessados] : [];
+    if (_leadInteressadoJaTem(lista, leadId, cliente)) return;
+    if (lista.length >= 50) return;
+    lista.push(_leadInteressadoEntrada(cliente, d.finalidade, leadId, origemPortal));
+    const tl = Array.isArray(d.timeline) ? [...d.timeline] : [];
+    tl.push({ texto: 'Lead vinculado: ' + (_txt(cliente && cliente.nome, 120) || 'Lead') + (origemPortal ? ' (' + origemPortal + ')' : ''), porNome: 'Sistema', em: admin.firestore.Timestamp.now() });
+    tx.set(imRef, { interessados: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    added = true;
+  });
+  return added;
+}
+// VÁRIOS leads no mesmo imóvel (backfill/sync): 1 transação por imóvel.
+async function _leadSincInteressados(imRef, leadsDocs) {
+  let added = 0;
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(imRef);
+    if (!s.exists) return;
+    const d = s.data();
+    const lista = Array.isArray(d.interessados) ? [...d.interessados] : [];
+    const tl = Array.isArray(d.timeline) ? [...d.timeline] : [];
+    let mudou = false;
+    for (const ld of leadsDocs) {
+      if (lista.length >= 50) break;
+      const cliente = ld.get('cliente') || {};
+      if (_leadInteressadoJaTem(lista, ld.id, cliente)) continue;
+      lista.push(_leadInteressadoEntrada(cliente, d.finalidade, ld.id, ld.get('origem') || ''));
+      tl.push({ texto: 'Lead vinculado: ' + (_txt(cliente.nome, 120) || 'Lead') + (ld.get('origem') ? ' (' + ld.get('origem') + ')' : ''), porNome: 'Sistema', em: admin.firestore.Timestamp.now() });
+      added++; mudou = true;
+    }
+    if (mudou) tx.set(imRef, { interessados: lista, timeline: tl.slice(-300), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+  return added;
+}
+// Remove o interessado que veio SÓ deste lead e ainda NÃO avançou (status 'lead').
+// Se a pessoa já virou ficha_recebida/aprovado/etc., NÃO mexe (não perde histórico).
+async function _leadRemoverInteressadoLead(imovelId, leadId) {
+  if (!imovelId || !leadId) return;
+  const imRef = db.collection('imoveis').doc(imovelId);
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(imRef);
+    if (!s.exists) return;
+    const lista = Array.isArray(s.data().interessados) ? [...s.data().interessados] : [];
+    const i = lista.findIndex(it => it.origemLead === leadId && it.status === 'lead');
+    if (i < 0) return;
+    lista.splice(i, 1);
+    tx.set(imRef, { interessados: lista, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  });
+}
+
 // Webhook do C2S: RECEBE o lead e grava/atualiza em `leads`. Upsert por c2sId, então
 // create e update caem no mesmo doc (idempotente). Registrado via rewrite /webhooks/c2s.
 exports.leadsC2SWebhook = onRequest({ region: 'southamerica-east1', secrets: [C2S_HOOK_KEY] }, async (req, res) => {
@@ -8649,7 +8761,24 @@ exports.leadsC2SWebhook = onRequest({ region: 'southamerica-east1', secrets: [C2
       // guarda o payload cru só do 1º lead (debug do formato real do C2S); cap defensivo.
       doc.rawPrimeiro = JSON.stringify(req.body || {}).slice(0, 12000);
     }
+    // Auto-vínculo com o imóvel da Carteira pelo código do portal — SÓ quando o lead
+    // ainda não tem vínculo (o manual do gestor sempre vence e nunca é sobrescrito).
+    // Best-effort: a busca roda ANTES do save, então um erro transitório aqui NÃO pode
+    // derrubar o webhook e perder o lead — engole e segue sem o vínculo.
+    const jaVinc = antes.exists ? (antes.data().imovelVinculadoId || null) : null;
+    if (!jaVinc && lead.imovel && lead.imovel.propRef) {
+      try {
+        const m = await _leadAcharImovelPorRef(lead.imovel.propRef);
+        if (m) { doc.imovelVinculadoId = m.id; doc.imovelVinculado = m; doc.vinculoAuto = true; }
+      } catch (e) { console.warn('lead auto-vínculo (webhook):', (e && e.message) || e); }
+    }
     await ref.set(doc, { merge: true });
+
+    // Se o lead está (ou ficou) vinculado a um imóvel, a pessoa entra como interessada
+    // na Carteira. Fora do fluxo principal: falha aqui não pode derrubar o webhook (lead
+    // já salvo) — o backfill/Sync recuperam depois.
+    const vincId = doc.imovelVinculadoId || jaVinc;
+    if (vincId) { try { await _leadGarantirInteressado(vincId, lead.cliente, lead.c2sId, lead.origem); } catch (e) { console.warn('lead→interessado (webhook):', (e && e.message) || e); } }
 
     // Campainha: cutuca o corretor dono (tempo real) + broadcast geral (gestor/adm).
     if (dono) await _bumpUserFeed(dono, 'lead');
@@ -8766,6 +8895,8 @@ exports.leadsListar = onCall(async (req) => {
       descricao: x.descricao || '', mensagem: x.mensagem || '',
       corretorUid: x.corretorUid || null, lido: !!x.lido,
       imovelVinculadoId: x.imovelVinculadoId || null, imovelVinculado: x.imovelVinculado || null,
+      statusHub: x.statusHub || '',   // etapa definida no Hub (vence o status do portal na UI)
+      comentarios: Array.isArray(x.comentarios) ? x.comentarios.map(c => ({ texto: c.texto || '', porNome: c.porNome || '', em: iso(c.em) })) : [],
       recebidoEm: iso(x.recebidoEm), atualizadoEm: iso(x.atualizadoEm),
       criadoEmC2S: x.criadoEmC2S || '', atualizadoEmC2S: x.atualizadoEmC2S || '',
     };
@@ -8789,6 +8920,46 @@ exports.leadsMarcarLido = onCall(async (req) => {
   return { ok: true };
 });
 
+// (autenticado) Edita um lead no Hub: status/etapa (override que vence o do portal na
+// UI, sem ser sobrescrito pelo webhook — que só grava `status`) ou comentário (thread
+// interna). Gestor/adm ou o corretor DONO do lead.
+const LEAD_STATUS_HUB = ['Novo', 'Em negociação', 'Fechado', 'Arquivado'];
+exports.leadsAtualizar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const leadId = _txt(d.leadId, 80);
+  const acao = _txt(d.acao, 20);
+  if (!leadId) throw new HttpsError('invalid-argument', 'leadId é obrigatório.');
+  const ref = db.collection('leads').doc(leadId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError('not-found', 'Lead não encontrado.');
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  if (!veTudo && snap.data().corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este lead.');
+
+  if (acao === 'status') {
+    const status = _txt(d.status, 40);
+    if (!LEAD_STATUS_HUB.includes(status)) throw new HttpsError('invalid-argument', 'Status inválido.');
+    await ref.set({ statusHub: status, statusHubEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await _bumpBroadcast('leadSeq');
+    return { ok: true, statusHub: status };
+  }
+  if (acao === 'comentario') {
+    const texto = _txt(d.texto, 2000);
+    if (!texto) throw new HttpsError('invalid-argument', 'Comentário vazio.');
+    const nome = await _nomeDoUid(auth.uid);
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(ref);
+      if (!s.exists) throw new HttpsError('not-found', 'Lead não encontrado.');
+      const lista = Array.isArray(s.data().comentarios) ? [...s.data().comentarios] : [];
+      lista.push({ texto, porUid: auth.uid, porNome: nome, em: admin.firestore.Timestamp.now() });
+      tx.set(ref, { comentarios: lista.slice(-200), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    });
+    await _bumpBroadcast('leadSeq');
+    return { ok: true };
+  }
+  throw new HttpsError('invalid-argument', 'Ação inválida.');
+});
+
 // (autenticado) Vincula (ou desvincula, com imovelId vazio) um lead a um imóvel da
 // Carteira — manual, independe de código bater. Gestor/adm ou o corretor DONO do lead.
 // Guarda o vínculo denormalizado (id + código + endereço) só pra exibir; a fonte é o id.
@@ -8804,7 +8975,10 @@ exports.leadsVincularImovel = onCall(async (req) => {
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   if (!veTudo && snap.data().corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este lead.');
   if (!imovelId) {   // desvincular
+    const antesVinc = snap.data().imovelVinculadoId || null;
     await ref.set({ imovelVinculadoId: null, imovelVinculado: null, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    // Tira o interessado que veio SÓ deste lead e ainda não avançou (não perde ficha).
+    if (antesVinc) { try { await _leadRemoverInteressadoLead(antesVinc, leadId); } catch (_) { /* best-effort */ } }
     await _bumpBroadcast('leadSeq');
     return { ok: true, vinculado: null };
   }
@@ -8814,8 +8988,51 @@ exports.leadsVincularImovel = onCall(async (req) => {
   if (!veTudo && (imSnap.data() || {}).corretorUid !== auth.uid) throw new HttpsError('permission-denied', 'Sem acesso a este imóvel.');
   const vinc = { id: imovelId, codigo: _txt(d.codigo, 60), endereco: _txt(d.endereco, 200) };
   await ref.set({ imovelVinculadoId: imovelId, imovelVinculado: vinc, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  // A pessoa do lead entra como interessada do imóvel (status 'lead'). Best-effort.
+  try { await _leadGarantirInteressado(imovelId, snap.data().cliente, leadId, snap.data().origem); } catch (_) { /* não bloqueia o vínculo */ }
   await _bumpBroadcast('leadSeq');
   return { ok: true, vinculado: vinc };
+});
+
+// (admin) BACKFILL do auto-vínculo: varre os imóveis da Carteira e, pra cada um com
+// código do portal (feedListingId), vincula os leads JÁ existentes cujo propRef casa e
+// que ainda estão SEM vínculo (manual nunca é sobrescrito). Roda em FATIAS por imóvel
+// (cursor `depoisDe` = id do último imóvel da chamada anterior) pra o Admin chamar em
+// loop sem estourar o timeout. Percorre imóvel→leads (Carteira é pequena; 1 query por
+// imóvel) em vez de varrer os milhares de leads. Idempotente: rodar de novo não duplica.
+exports.leadsAutoVincular = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const LOTE = 120;
+  const depois = _txt((req.data || {}).depoisDe, 200);
+  const byId = admin.firestore.FieldPath.documentId();
+  let q = db.collection('imoveis').orderBy(byId).limit(LOTE);
+  if (depois) q = db.collection('imoveis').orderBy(byId).startAfter(depois).limit(LOTE);
+  const ims = await q.get();
+  let imoveis = 0, comRef = 0, vinculados = 0, interessados = 0, ultimo = null;
+  for (const im of ims.docs) {
+    ultimo = im.id; imoveis++;
+    const ref = String(im.get('feedListingId') || '').trim();
+    if (!ref) continue;
+    comRef++;
+    const lds = await db.collection('leads').where('imovel.propRef', '==', ref).get();
+    if (lds.empty) continue;
+    const vinc = { id: im.id, codigo: ref, endereco: _txt(_leadEnderecoImovelStr(im.data() || {}), 200) };
+    for (const ld of lds.docs) {
+      if (ld.get('imovelVinculadoId')) continue;   // já vinculado (manual ou auto) — não mexe
+      await ld.ref.set({ imovelVinculadoId: im.id, imovelVinculado: vinc, vinculoAuto: true, atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      vinculados++;
+    }
+    // Interessados: 1 transação por imóvel. SÓ pros leads que estão (ou acabaram de ser)
+    // vinculados a ESTE imóvel — um lead com o mesmo código de portal mas vinculado À MÃO
+    // a outro imóvel NÃO entra como interessado daqui (o vínculo manual vence). No
+    // snapshot, os recém-vinculados ainda leem null → "sem vínculo OU vínculo == este".
+    const paraInter = lds.docs.filter(ld => { const v = ld.get('imovelVinculadoId') || null; return !v || v === im.id; });
+    interessados += await _leadSincInteressados(im.ref, paraInter);
+  }
+  const proximo = ims.size === LOTE ? ultimo : null;   // cheio = pode haver mais imóveis
+  if (vinculados || interessados) await _bumpBroadcast('leadSeq');
+  await registrarAudit(auth, 'leads_auto_vincular', { tipo: 'c2s' }, { imoveis, comRef, vinculados, interessados, proximo });
+  return { ok: true, imoveis, comRef, vinculados, interessados, proximo };
 });
 
 // ═══ Link do Imóvel (Ferramentas) ════════════════════════════════════════════
@@ -9241,6 +9458,20 @@ exports.recrutamentoSalvar = onCall(async (req) => {
 
   if (!id) {
     if (!patch.nome) throw new HttpsError('invalid-argument', 'O nome é obrigatório.');
+    // Dedupe por CPF: cadastrar de novo alguém com o MESMO CPF atualiza o registro
+    // existente em vez de criar outro (evita duplicar quem já veio do form/manual).
+    const cpfDig = (patch.cpfDigits || '').trim();
+    if (cpfDig) {
+      const q = await db.collection('candidatos').where('cpfDigits', '==', cpfDig).limit(1).get();
+      if (!q.empty) {
+        const refEx = q.docs[0].ref;
+        await refEx.set({ ...patch, historico: admin.firestore.FieldValue.arrayUnion({
+          texto: 'Cadastro manual reenviado (mesmo CPF) — dados atualizados', etapa: '', por: auth.uid, porNome, em: Date.now()
+        }) }, { merge: true });
+        await _bumpBroadcast('recrutamentoSeq');
+        return { ok: true, id: refEx.id, atualizado: true };
+      }
+    }
     const ref = await db.collection('candidatos').add({
       etapa: 'primeiro_contato', status: 'ativo', perfil: '', nota: '', tags: [], origem: 'manual',
       ...patch,

@@ -165,6 +165,7 @@ const negocioListarFn      = httpsCallable(fns, 'negocioListar');
 const negocioObterFn       = httpsCallable(fns, 'negocioObter');
 const negocioAtualizarFn   = httpsCallable(fns, 'negocioAtualizar');
 const dashboardDadosFn     = httpsCallable(fns, 'dashboardDados');
+const leadsListarFn        = httpsCallable(fns, 'leadsListar');
 const configObterFn        = httpsCallable(fns, 'configObter');
 
 const BOOTSTRAP_ADMIN_UIDS = ['OwcT6wCrXMgJ0tPADMUdKdBB8h32', 'GpyXVhlmJhMUHliypiEwhoi27Fp1'];
@@ -1710,7 +1711,38 @@ async function carregarIndicadoresPerfil() {
 // ─── Dashboard (tela inicial) ────────────────────────────────────────────────
 // Dado REAL, role-scoped pelas próprias functions (corretor vê o seu; gestor vê a
 // imobiliária). Reusa negocioListar + locListarImoveis (KPIs/comissão/negócios) +
-// listarEventos (agenda de hoje) + CARTEIRA_FICHAS (links de ficha).
+// listarEventos (agenda de hoje) + leadsListar (resumo) + CARTEIRA_FICHAS (links).
+
+// Total de SmartLeads (cruzamento) — mesma regra do Broker (mesma finalidade + cidade
+// + bairro + tipo + preço ±20%), computada aqui pro Resumo do Dashboard. Conta o total
+// de oportunidades (cliente × imóvel compatível), sem o próprio lead do imóvel.
+function _homeSmartLeadTotal(imoveis) {
+  const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  const finA = f => String(f || '') === 'venda_locacao' ? ['venda', 'locacao'] : [String(f || '')];
+  const bai = b => { b = norm(b); return b === '—' ? '' : b; };
+  const key = it => { const t = String(it.telefone || it.contato || '').replace(/\D/g, ''); if (t) return 't:' + t; const e = String(it.email || '').trim().toLowerCase(); if (e) return 'e:' + e; return 'n:' + norm(it.nome); };
+  const perfis = [], leadedOn = {};
+  imoveis.forEach(p => {
+    const fins = finA(p.finalidade), cid = norm((p.endereco || {}).cidade), bb = bai((p.endereco || {}).bairro), tip = norm(p.tipo), preco = indParseMoney(p.valorAnuncio);
+    (Array.isArray(p.interessados) ? p.interessados : []).forEach(it => { if (!it || it.status !== 'lead') return; const k = key(it); (leadedOn[p.id] = leadedOn[p.id] || new Set()).add(k); perfis.push({ k, fins, cid, bb, tip, preco, id: p.id }); });
+  });
+  let total = 0;
+  imoveis.forEach(Y => {
+    const yF = finA(Y.finalidade), yC = norm((Y.endereco || {}).cidade), yB = bai((Y.endereco || {}).bairro), yT = norm(Y.tipo), yP = indParseMoney(Y.valorAnuncio);
+    const prop = leadedOn[Y.id] || new Set(), m = new Set();
+    perfis.forEach(pf => {
+      if (pf.id === Y.id || prop.has(pf.k) || m.has(pf.k)) return;
+      if (!pf.fins.some(f => yF.includes(f))) return;
+      if (yC && pf.cid !== yC) return;
+      if (yB && pf.bb !== yB) return;
+      if (yT && pf.tip !== yT) return;
+      if (yP > 0 && pf.preco > 0 && Math.abs(pf.preco - yP) > 0.20 * yP) return;
+      m.add(pf.k);
+    });
+    total += m.size;
+  });
+  return total;
+}
 let _homeRun = 0;   // token de corrida: só a execução mais recente pode escrever na tela
 async function carregarHome() {
   if (!secaoHome) return;
@@ -1726,16 +1758,18 @@ async function carregarHome() {
 
   const de = new Date(); de.setHours(0, 0, 0, 0);
   const ate = new Date(); ate.setHours(23, 59, 59, 999);
-  let negocios = [], imoveis = [], eventosHoje = [];
+  let negocios = [], imoveis = [], eventosHoje = [], leads = [];
   try {
-    const [nR, iR, eR] = await Promise.all([
+    const [nR, iR, eR, lR] = await Promise.all([
       negocioListarFn({}).catch(() => ({ data: { negocios: [] } })),
       locListarImoveis({}).catch(() => ({ data: { imoveis: [] } })),
       listarEventos({ de: de.toISOString(), ate: ate.toISOString() }).catch(() => ({ data: { eventos: [] } })),
+      leadsListarFn({}).catch(() => ({ data: { itens: [] } })),
     ]);
     negocios = nR.data?.negocios || [];
     imoveis = iR.data?.imoveis || [];
     eventosHoje = eR.data?.eventos || [];
+    leads = lR.data?.itens || [];
   } catch (_) { /* segue com o que tiver */ }
   if (categoriaAtiva !== 'home') return;   // usuário já saiu da tela enquanto carregava
   if (_run !== _homeRun) return;           // execução velha terminando por último não sobrescreve a nova
@@ -1753,6 +1787,18 @@ async function carregarHome() {
     rua: ruaDe(imById.get(n.imovelId)), prog: chkPct(n.checklist),
     prox: n.proximaAcao || 'Sem próxima ação definida', dias: diasDe(n.atualizadoEm || n.criadoEm),
   })).sort((a, b) => b.dias - a.dias);
+
+  // ── Resumo da operação (imóveis disponíveis / leads / smartleads / comissão) ──
+  const finArr = f => f === 'venda_locacao' ? ['venda', 'locacao'] : [f];
+  const disp = imoveis.filter(im => !im.arquivado && (im.situacao || 'disponivel') === 'disponivel');
+  const imVenda = disp.filter(im => finArr(im.finalidade).includes('venda')).length;
+  const imLoc = disp.filter(im => finArr(im.finalidade).includes('locacao')).length;
+  // Comissão em oportunidades: 6% do preço de venda + 100% do preço de locação (1º aluguel).
+  const comOportun = disp.reduce((s, im) => { const p = precoDe(im); return s + (finArr(im.finalidade).includes('venda') ? p * 0.06 : p); }, 0);
+  const leadEncerrado = l => { const st = String(l.statusHub || l.status || '').toLowerCase(); return !!l.arquivado || l.statusHub === 'Arquivado' || l.statusHub === 'Fechado' || st.indexOf('arquiv') >= 0 || st.indexOf('fechado') >= 0 || st.indexOf('conclu') >= 0 || st.indexOf('convert') >= 0; };
+  const leadsNovos = leads.filter(l => !l.lido).length;
+  const leadsParados = leads.filter(l => !leadEncerrado(l) && diasDe(l.atualizadoEm || l.recebidoEm) >= 7).length;
+  const smartTotal = _homeSmartLeadTotal(imoveis);
 
   // Estilos base (tema claro do Hub)
   const cardSt = 'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)';
@@ -1807,7 +1853,19 @@ async function carregarHome() {
     ${pendencias ? `<button class="topbar-btn" data-home="negocios" style="font-size:12px;padding:3px 10px;margin-top:6px">🔔 ${pendencias} pendência${pendencias > 1 ? 's' : ''}</button>` : ''}</div>
   </div>`;
 
-  secaoHome.innerHTML = header + kpis
+  // Bloco Resumo — frases diretas "Você tem …". Só conta (numérico, sem HTML de usuário).
+  const rLinha = (ico, txt) => `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px;color:var(--text-primary)"><span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">${ico}</span><span style="min-width:0">${txt}</span></div>`;
+  const plural = (n, s, p) => n === 1 ? s : (p || s + 's');
+  const blocoResumo = `<div class="lc-q" style="${cardSt};padding:16px;margin-bottom:18px">${secTit('📊 Resumo da operação')}
+    ${rLinha('🏷️', `Você tem <b>${imVenda}</b> ${plural(imVenda, 'imóvel', 'imóveis')} ${plural(imVenda, 'disponível', 'disponíveis')} para <b>venda</b>`)}
+    ${rLinha('🔑', `Você tem <b>${imLoc}</b> ${plural(imLoc, 'imóvel', 'imóveis')} ${plural(imLoc, 'disponível', 'disponíveis')} para <b>locação</b>`)}
+    ${rLinha('📥', `Você tem <b>${leadsNovos}</b> ${plural(leadsNovos, 'Lead')} ${plural(leadsNovos, 'novo')}`)}
+    ${rLinha('⏰', `Você tem <b>${leadsParados}</b> ${plural(leadsParados, 'Lead')} sem atendimento ou sem atualização`)}
+    ${rLinha('✨', `Você tem <b>${smartTotal}</b> ${plural(smartTotal, 'SmartLead')} sem atualizações`)}
+    ${rLinha('💰', `Você tem <b style="color:#16a34a">${brl(comOportun)}</b> em oportunidades de comissão`)}
+  </div>`;
+
+  secaoHome.innerHTML = header + kpis + blocoResumo
     + `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px">${colProx}${colAgenda}</div>`
     + blocoNeg + blocoFichas;
 

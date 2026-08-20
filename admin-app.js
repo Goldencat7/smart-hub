@@ -33,6 +33,7 @@ const setUserAccess  = httpsCallable(fns, 'setUserAccess');
 const adminSetPessoaExtra = httpsCallable(fns, 'adminSetPessoaExtra');
 const c2sImportarLeads = httpsCallable(fns, 'c2sImportarLeads', { timeout: 120000 });
 const c2sAssinarWebhooks = httpsCallable(fns, 'c2sAssinarWebhooks', { timeout: 120000 });
+const leadsAutoVincular = httpsCallable(fns, 'leadsAutoVincular', { timeout: 120000 });
 const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
 const getModoCofre = httpsCallable(fns, 'getModoCofre');
@@ -341,6 +342,7 @@ function carregarLeadsC2S() {
     <div style="display:flex;flex-direction:column;gap:14px;max-width:640px">
       ${passo(1, 'Importar histórico', 'Puxa os leads que já existem no C2S pra cá — só leitura, não altera nada lá. Roda em blocos e mostra o progresso.', 'c2sImportarBtn', 'Importar histórico', 'download', true)}
       ${passo(2, 'Ligar tempo real', 'Assina o webhook do C2S apontando pra este Hub — a partir daí, todo lead novo cai sozinho. ⚠️ Use um token <strong>dedicado</strong>: se este já serve outra integração, o webhook dela é substituído.', 'c2sAssinarBtn', 'Ligar tempo real', 'bolt', false)}
+      ${passo(3, 'Vincular aos imóveis', 'Liga automaticamente cada lead ao imóvel da Carteira que tem o mesmo código do portal. Vale pros leads já importados; os novos já entram vinculados sozinhos. Não mexe em vínculo feito à mão.', 'c2sVincularBtn', 'Vincular automaticamente', 'link', false)}
       <div id="c2sResultado" style="font-size:13px"></div>
     </div>`;
   const out = document.getElementById('c2sResultado');
@@ -374,6 +376,24 @@ function carregarLeadsC2S() {
       const d = r.data || {};
       const linhas = (d.resultados || []).map(x => `${x.ok ? '✔' : '✖'} ${escHtml(x.acao)} — HTTP ${x.status || '?'}`).join('<br>');
       msg(`<strong>Webhook assinado:</strong><br><span style="word-break:break-all;opacity:.8">${escHtml(d.hookUrl || '')}</span><br><br>${linhas}`, '#3ddc84');
+    } catch (err) { msg('Erro: ' + escHtml(err.message), '#ff6b6b'); }
+    b.disabled = false; b.style.opacity = ''; b.innerHTML = orig;
+  });
+  document.getElementById('c2sVincularBtn').addEventListener('click', async (ev) => {
+    const b = ev.currentTarget; b.disabled = true; b.style.opacity = '.6';
+    const orig = b.innerHTML; b.innerHTML = '<i class="ti ti-loader"></i> Vinculando…';
+    let depoisDe = '', imoveis = 0, vinculados = 0, interessados = 0, guarda = 0;
+    try {
+      // Loop em fatias por imóvel: chama até `proximo` vir null.
+      while (guarda++ < 500) {
+        const r = await leadsAutoVincular(depoisDe ? { depoisDe } : {});
+        const d = r.data || {};
+        imoveis += (d.imoveis || 0); vinculados += (d.vinculados || 0); interessados += (d.interessados || 0);
+        msg(`Vinculando… <strong>${vinculados}</strong> leads vinculados, <strong>${interessados}</strong> interessados criados (${imoveis} imóveis verificados).`);
+        if (!d.proximo) break;
+        depoisDe = d.proximo;
+      }
+      msg(`✔ Concluído: <strong>${vinculados}</strong> leads vinculados e <strong>${interessados}</strong> interessados criados nos imóveis da Carteira (${imoveis} imóveis verificados). Os que não casaram continuam sem vínculo — o imóvel pode ter saído do portal.`, '#3ddc84');
     } catch (err) { msg('Erro: ' + escHtml(err.message), '#ff6b6b'); }
     b.disabled = false; b.style.opacity = ''; b.innerHTML = orig;
   });

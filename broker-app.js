@@ -88,7 +88,7 @@ const state = {
   loaded:false, meuNome:'Broker', onExit:null,
   role:'broker',        // 'broker' (gestor) | 'corretor' | 'administrativo'
   filaBusca:'', perfilCache:null,
-  leadsBusca:'', leadsFiltro:'Todos', leadsOrigem:'Todos', leadsVeTudo:false,   // Leads do C2S
+  leadsBusca:'', leadsFiltro:'Todos', leadsOrigem:'Todos', leadsCorretor:'Todos', leadsVeTudo:false,   // Leads do C2S
   leadVincLeadId:null, leadVincBusca:'',   // picker "vincular a um imóvel"
 };
 
@@ -1531,12 +1531,87 @@ function imoveisList(){
   const list=filteredProps();
   if(!list.length) return vazio('building','Nenhum imóvel encontrado.');
   if(state.imoveisView==='cards'){
-    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">'+list.map((p,i)=>'<button class="card card-hover" data-prop="'+p.id+'" style="overflow:hidden;text-align:left;padding:0'+(p.concluido?';opacity:.6':'')+'"><div style="height:148px;background:'+GRAD[i%GRAD.length]+';position:relative;overflow:hidden">'+(p.capa?'<img src="'+esc(p.capa)+'" loading="lazy" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.6),rgba(0,0,0,0) 60%)"></div>':'')+'<span class="pill" style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span>'+(p.fotos?'<span style="position:absolute;top:10px;right:10px"><span class="pill" style="background:rgba(0,0,0,.35);color:#fff">'+icon("image",12)+p.fotos+'</span></span>':'')+'<span class="mono" style="position:absolute;bottom:10px;left:12px;color:#fff;font-weight:700;font-size:17px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:12px;font-weight:500">/mês</span>':''):'Sem valor')+'</span></div><div style="padding:14px"><div class="fx ac jb g2"><div class="fz14 fw6 t900 trunc grow mw0">'+esc(p.rua)+'</div>'+(p.raw&&p.raw.origem==='feed'?notaCirculo(p):'')+'</div><div class="fz12 t500">'+esc(p.bairro)+' · '+esc(p.tipo)+'</div>'+((p.dorm||p.vaga!=null||p.area)?'<div class="fx ac g3 fz12 t500" style="margin-top:8px">'+(p.dorm?'<span class="fx ac g1">'+icon('bed-double',13,'t400')+p.dorm+'</span>':'')+(p.vaga!=null?'<span class="fx ac g1">'+icon('car',13,'t400')+p.vaga+'</span>':'')+(p.area?'<span class="fx ac g1">'+icon('ruler',13,'t400')+p.area+'m²</span>':'')+'</div>':'')+(state.role!=='corretor'&&corrNome(p.corretor)!=='—'?'<div class="fz12 t500" style="margin-top:6px">Corretor: '+esc(corrNome(p.corretor))+'</div>':'')+'<div class="fx ac g3 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+statusPill(p.status)+(p.pendentes.length?'<span class="fx ac g1" title="Pendências da ficha" style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:2px 8px;font-weight:700;font-size:11px">'+icon('alert-triangle',11)+p.pendentes.length+'</span>':'')+'<span class="fx ac g2" style="margin-left:auto">'+(p.dataFmt?'<span class="fx ac g1 t400">'+icon('calendar',12,'t400')+esc(p.dataFmt)+'</span>':'')+'<span class="mono t400">'+esc(p.code)+'</span></span></div></div></button>').join('')+'</div>';
+    return '<div class="gd" style="grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px">'+list.map((p,i)=>'<button class="card card-hover" data-prop="'+p.id+'" style="overflow:hidden;text-align:left;padding:0'+(p.concluido?';opacity:.6':'')+'"><div style="height:148px;background:'+GRAD[i%GRAD.length]+';position:relative;overflow:hidden">'+(p.capa?'<img src="'+esc(p.capa)+'" loading="lazy" onerror="this.remove()" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.6),rgba(0,0,0,0) 60%)"></div>':'')+'<span class="pill" style="position:absolute;top:10px;left:10px;background:rgba(255,255,255,.92);color:var(--ink900)">'+p.finalidade+'</span>'+(p.fotos?'<span style="position:absolute;top:10px;right:10px"><span class="pill" style="background:rgba(0,0,0,.35);color:#fff">'+icon("image",12)+p.fotos+'</span></span>':'')+'<span class="mono" style="position:absolute;bottom:10px;left:12px;color:#fff;font-weight:700;font-size:17px;text-shadow:0 1px 4px rgba(0,0,0,.3)">'+(p.preco?brlFull(p.preco)+(p.finalidadeRaw==='locacao'?'<span style="font-size:12px;font-weight:500">/mês</span>':''):'Sem valor')+'</span></div><div style="padding:14px"><div class="fx ac jb g2"><div class="fz14 fw6 t900 trunc grow mw0">'+esc(p.rua)+'</div>'+(p.raw&&p.raw.origem==='feed'?notaCirculo(p):'')+'</div><div class="fz12 t500">'+esc(p.bairro)+' · '+esc(p.tipo)+'</div>'+((p.dorm||p.vaga!=null||p.area)?'<div class="fx ac g3 fz12 t500" style="margin-top:8px">'+(p.dorm?'<span class="fx ac g1">'+icon('bed-double',13,'t400')+p.dorm+'</span>':'')+(p.vaga!=null?'<span class="fx ac g1">'+icon('car',13,'t400')+p.vaga+'</span>':'')+(p.area?'<span class="fx ac g1">'+icon('ruler',13,'t400')+p.area+'m²</span>':'')+'</div>':'')+(state.role!=='corretor'&&corrNome(p.corretor)!=='—'?'<div class="fz12 t500" style="margin-top:6px">Corretor: '+esc(corrNome(p.corretor))+'</div>':'')+imLeadCounts(p)+'<div class="fx ac g3 fz12 t500" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--ink100)">'+statusPill(p.status)+(p.pendentes.length?'<span class="fx ac g1" title="Pendências da ficha" style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:2px 8px;font-weight:700;font-size:11px">'+icon('alert-triangle',11)+p.pendentes.length+'</span>':'')+'<span class="fx ac g2" style="margin-left:auto">'+(p.dataFmt?'<span class="fx ac g1 t400">'+icon('calendar',12,'t400')+esc(p.dataFmt)+'</span>':'')+'<span class="mono t400">'+esc(p.code)+'</span></span></div></div></button>').join('')+'</div>';
   }
   return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:760px"><thead><tr><th>Código</th><th>Imóvel</th><th>Tipo</th><th>Finalidade</th><th>Proprietário</th><th>Data</th><th class="tcenter">Pend.</th><th class="tright">Valor</th></tr></thead><tbody>'+list.map(p=>'<tr data-prop="'+p.id+'"'+(p.concluido?' style="opacity:.6"':'')+'><td class="mono fz13 fw6 t900">'+esc(p.code)+'</td><td><div class="fw6 t900">'+esc(p.rua)+'</div><div class="fz12 t500">'+esc(p.bairro)+'</div></td><td class="t700">'+esc(p.tipo)+'</td><td>'+pill(p.finalidade,p.finalidadeRaw==='locacao'?'ai':'info')+'</td><td class="t700">'+esc(p.proprietarioNome)+'</td><td class="fz13 t700">'+esc(p.dataFmt||'—')+'</td><td class="tcenter">'+(p.pendentes.length?'<span title="'+esc(p.pendentes.map(pendLabel).join(', '))+'" style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:2px 8px;font-weight:700;font-size:12px">'+p.pendentes.length+'</span>':'<span class="t400">—</span>')+'</td><td class="tright mono fw6 t900">'+(p.preco?brlFull(p.preco):'—')+'</td></tr>').join('')+'</tbody></table></div></div>';
 }
 function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imoveisList(); refreshIcons(); } }
+// ── SmartLead: motor de cruzamento (v1, no cliente) ──────────────────────────
+// Perfil do cliente = o imóvel onde ele mandou lead (finalidade/cidade/tipo/preço).
+// SmartLead do imóvel Y = clientes que mandaram lead em OUTRO imóvel compatível com Y
+// (mesma finalidade + mesma cidade + mesmo tipo + preço ±20%), e que NÃO mandaram lead
+// no próprio Y. Cruza os imóveis já carregados — gestor vê todos (PROPERTIES_ALL);
+// corretor vê os seus (subconta, aceitável na v1).
+let SMARTLEAD = {};   // imovelId -> [ {nome,telefone,email,contato,deEnd} ] clientes com match
+function _slNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
+function _slFin(f){ f=String(f||''); return f==='venda_locacao'?['venda','locacao']:[f]; }
+function _slKey(it){ const t=String(it.telefone||it.contato||'').replace(/\D/g,''); if(t) return 't:'+t; const e=String(it.email||'').trim().toLowerCase(); if(e) return 'e:'+e; return 'n:'+_slNorm(it.nome); }
+function computeSmartLeads(){
+  SMARTLEAD={};
+  const seen=new Set();
+  const imv=(PROPERTIES||[]).concat(PROPERTIES_ALL||[]).filter(p=>{ if(!p||seen.has(p.id))return false; seen.add(p.id); return true; });
+  const _bai=(b)=>{ b=_slNorm(b); return b==='—'?'':b; };
+  const perfis=[];               // {key, fins[], cid, bai, tip, preco, imovelId, nome, telefone, email, contato, deEnd}
+  const leadedOn={};             // imovelId -> Set(clientKey) que mandaram lead NELE
+  imv.forEach(p=>{
+    const fins=_slFin(p.finalidadeRaw), cid=_slNorm(p.cidade), bai=_bai(p.bairro), tip=_slNorm(p.tipo), preco=+p.preco||0;
+    (Array.isArray(p.interessados)?p.interessados:[]).forEach(it=>{ if(!it||it.status!=='lead')return;
+      const key=_slKey(it);
+      (leadedOn[p.id]=leadedOn[p.id]||new Set()).add(key);
+      perfis.push({key, fins, cid, bai, tip, preco, imovelId:p.id, nome:it.nome||'', telefone:it.telefone||'', email:it.email||'', contato:it.contato||'', deEnd:p.rua||''});
+    });
+  });
+  imv.forEach(Y=>{
+    const yFins=_slFin(Y.finalidadeRaw), yCid=_slNorm(Y.cidade), yBai=_bai(Y.bairro), yTip=_slNorm(Y.tipo), yPreco=+Y.preco||0;
+    const proprios=leadedOn[Y.id]||new Set(); const matched=new Set(); const arr=[];
+    perfis.forEach(pf=>{
+      if(pf.imovelId===Y.id || proprios.has(pf.key) || matched.has(pf.key)) return;
+      if(!pf.fins.some(f=>yFins.includes(f))) return;             // finalidade
+      if(yCid && pf.cid!==yCid) return;                           // cidade
+      if(yBai && pf.bai!==yBai) return;                           // bairro (obrigatório — é o que separa)
+      if(yTip && pf.tip!==yTip) return;                           // tipo
+      if(yPreco>0 && pf.preco>0 && Math.abs(pf.preco-yPreco)>0.20*yPreco) return;  // preço ±20%
+      matched.add(pf.key);
+      arr.push({nome:pf.nome, telefone:pf.telefone, email:pf.email, contato:pf.contato, deEnd:pf.deEnd});
+    });
+    if(arr.length) SMARTLEAD[Y.id]=arr;
+  });
+}
+// Contadores de oportunidades do imóvel (pills CLICÁVEIS → abrem a lista de clientes):
+//  Leads    = clientes que vieram do anúncio do próprio imóvel (interessados status 'lead').
+//  SmartLead = clientes compatíveis por cruzamento (SMARTLEAD, computeSmartLeads).
+function imLeadCounts(p){
+  const its=Array.isArray(p.interessados)?p.interessados:[];
+  const nLead=its.filter(it=>it&&it.status==='lead').length;
+  const nSmart=(SMARTLEAD[p.id]||[]).length;
+  const mkpill=(cls,act,ico,txt,on,tit)=>'<span class="pill '+(on?cls:'neutral')+'"'+(on?' data-action="'+act+'" data-imovel="'+esc(p.id)+'" role="button" tabindex="0" style="font-size:11px;padding:2px 9px;cursor:pointer"':' style="font-size:11px;padding:2px 9px"')+' title="'+tit+'">'+icon(ico,12)+txt+'</span>';
+  return '<div class="fx ac g2 wrap" style="margin-top:8px">'
+    +mkpill('ai','im-leads','inbox',nLead+' Lead'+(nLead===1?'':'s'),nLead>0,'Leads do anúncio deste imóvel — clientes que clicaram no próprio anúncio')
+    +mkpill('success','im-smartleads','sparkles',nSmart+' SmartLead',nSmart>0,'SmartLead — clientes que se interessaram por imóveis parecidos (mesmo bairro, tipo e faixa de preço)')
+    +'</div>';
+}
+// Linha de cliente (nome + contato + WhatsApp/Ligar) reusada nas duas listas.
+function _clienteRow(c, sub){
+  const tel=String(c.telefone||c.contato||'').replace(/[^\d+]/g,'');
+  const wa=leadWa(c.telefone||c.contato||'');
+  return '<div class="fx ac g3" style="padding:10px 0;border-bottom:1px solid var(--ink100)">'+avatar(c.nome||'?',34,'var(--ink800)')
+    +'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(c.nome||'—')+'</div><div class="fz11 t500 trunc">'+esc([c.telefone||c.contato,c.email].filter(Boolean).join(' · ')||'—')+(sub?' · '+esc(sub):'')+'</div></div>'
+    +'<div class="fx g1 nsh">'+(wa?'<a class="btn btn-success sm nsh" href="'+wa+'" target="_blank" rel="noopener" title="WhatsApp" style="text-decoration:none;padding:0 10px">'+icon('message-circle',15)+'</a>':'')+(tel?'<a class="btn btn-outline sm nsh" href="tel:'+esc(tel)+'" title="Ligar" style="text-decoration:none;padding:0 10px">'+icon('phone',15)+'</a>':'')+'</div></div>';
+}
+function openImLeads(imovelId){
+  const p=(typeof prop==='function'?prop(imovelId):null)||{};
+  const its=(Array.isArray(p.interessados)?p.interessados:[]).filter(it=>it&&it.status==='lead');
+  const body=its.length?its.map(it=>_clienteRow(it,'')).join(''):'<div class="tcenter t500 fz13" style="padding:20px">Nenhum lead direto neste imóvel.</div>';
+  openModal('<div style="padding:20px;max-width:460px"><div class="fz15 fw7 t900" style="margin-bottom:2px">Leads deste imóvel ('+its.length+')</div><div class="fz12 t500" style="margin-bottom:12px">Clientes que clicaram no anúncio de '+esc(p.rua||'—')+'.</div><div style="max-height:60vh;overflow:auto">'+body+'</div><div class="fx je" style="margin-top:14px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
+}
+function openSmartLeadList(imovelId){
+  const p=(typeof prop==='function'?prop(imovelId):null)||{};
+  const arr=SMARTLEAD[imovelId]||[];
+  const body=arr.length?arr.map(c=>_clienteRow(c, c.deEnd?('via '+c.deEnd):'')).join(''):'<div class="tcenter t500 fz13" style="padding:20px">Nenhum cliente compatível.</div>';
+  openModal('<div style="padding:20px;max-width:460px"><div class="fz15 fw7 t900" style="margin-bottom:2px">SmartLeads ('+arr.length+')</div><div class="fz12 t500" style="margin-bottom:12px">Clientes que se interessaram por imóveis parecidos com '+esc(p.rua||'—')+' (mesmo bairro, tipo e faixa de preço) — boa chance de gostarem deste. Ofereça!</div><div style="max-height:60vh;overflow:auto">'+body+'</div><div class="fx je" style="margin-top:14px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
+}
 RENDERERS.imoveis=function(host){
+  computeSmartLeads();
   const fs=['Todos','Venda','Locação','Arquivado'];
   // Contagem por filtro (respeita o mês, ignora a busca e o chip ativo). Todos/Venda/
   // Locação contam só os ATIVOS; Arquivado conta os arquivados (saíram do portal etc.).
@@ -1575,7 +1650,7 @@ function propDrawer(id){
   const tabs=[['dados','Dados'],['interessados','Interessados'],['docs','Documentos'],['vinc','Negócios']];
   let body='';
   if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>'+(p.raw&&p.raw.origem==='feed'?' <span class="fz11 t400" title="Vem do portal — edite o valor no anúncio">· do portal</span>':' <button class="btn btn-ghost sm" data-action="alterar-valor" data-imovel="'+esc(p.id)+'" title="Alterar valor" style="margin-left:6px;padding:2px 8px;font-size:11px">'+icon('pencil',12)+'Alterar</button>'))+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+(p.feed&&p.feed.suites?kv('Suítes',esc(p.feed.suites)):'')+(p.feed&&p.feed.banheiros?kv('Banheiros',esc(p.feed.banheiros)):'')+(p.feed&&p.feed.condominio?kv('Condomínio','R$ '+esc(p.feed.condominio)):'')+(p.feed&&p.feed.ano?kv('Ano de construção',esc(p.feed.ano)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+kv('Cadastrado em',esc(p.dataFmt||'—'))+(p.portalUrl?'<div class="fx ac g2" style="margin-top:12px"><a href="'+esc(p.portalUrl)+'" target="_blank" rel="noopener" class="btn btn-outline sm" style="text-decoration:none">'+icon('external-link',14)+'Ver anúncio no portal</a><details class="im-share" style="position:relative"><summary class="btn btn-outline sm" style="list-style:none;padding:6px 12px;font-size:18px;line-height:1;font-weight:800" title="Mais opções">⋯</summary><div style="position:absolute;top:calc(100% + 6px);right:0;z-index:20;background:var(--surface,#fff);border:1px solid var(--ink200);border-radius:10px;padding:6px;box-shadow:0 10px 28px rgba(0,0,0,.28);min-width:190px"><button class="btn btn-ghost sm" data-action="imovel-compartilhar" data-url="'+esc(p.portalUrl)+'" data-titulo="'+esc(p.rua||'Imóvel')+'" style="width:100%;justify-content:flex-start">'+icon('share-2',14)+'Compartilhar link</button></div></details></div>':'')+(p.feed&&p.feed.descricao?'<div class="fz11 up fw7 t500" style="margin-top:16px;margin-bottom:6px">Descrição do anúncio</div><div class="fz12 t600" style="white-space:pre-line;max-height:180px;overflow:auto;line-height:1.5">'+esc(p.feed.descricao)+'</div>':'')+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+propFichaBtns+'</div>'+(p.pendentes.length?'<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><div class="fx ac g2 fz12 fw7" style="margin-bottom:8px;color:#f59e0b">'+icon('alert-triangle',14)+'Pendências da ficha ('+p.pendentes.length+')</div><div class="fx wrap g2">'+p.pendentes.map(k=>'<span style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600">'+esc(pendLabel(k))+'</span>').join('')+'</div><div class="fz11 t500" style="margin-top:8px">Itens que o cliente marcou como “não tenho agora” ao preencher a ficha.</div></div>':'')+(p.raw&&p.raw.origem==='feed'?dicasImovel:''); }
-  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Cliente PF']);fichaOpts.push(['ficha-pj.html','Cliente PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':'')+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>'); }
+  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Cliente PF']);fichaOpts.push(['ficha-pj.html','Cliente PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'||st==='lead'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':(st==='lead'?'<button class="btn btn-outline sm" data-action="int-ver-lead" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'" style="margin-top:10px">'+icon('user',14)+'Ver dados</button>':''))+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>'); }
   else if(tab==='docs'){
     const raw=(p.raw&&p.raw.documentos)||{};
     const extra=(p.raw&&p.raw.documentosExtra)||[];
@@ -1693,7 +1768,7 @@ function wireEvents(root){
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } });
+    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
 }
 function handleAction(a,el){
@@ -1708,6 +1783,9 @@ function handleAction(a,el){
   else if(a==='lead-verimovel'){ openProp(el.dataset.id); }
   else if(a==='lead-vincular'){ openLeadVincular(el.dataset.id); }
   else if(a==='lead-desvincular'){ leadsDesvincular(el.dataset.id); }
+  else if(a==='lead-status-edit'){ openLeadStatus(el.dataset.id); }
+  else if(a==='lead-status-set'){ leadSetStatus(el.dataset.id, el.dataset.status); }
+  else if(a==='lead-comentar'){ leadComentar(el.dataset.id); }
   else if(a==='lead-vincular-do'){ leadsVincularDo(el.dataset.lead, el.dataset.imovel, el.dataset.codigo, el.dataset.end); }
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
   else if(a==='novo-imovel-save'){ salvarNovoImovel(); }
@@ -1721,6 +1799,8 @@ function handleAction(a,el){
   else if(a==='negtipo'){ state.negFiltroTipo=el.dataset.v; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='pesstipo'){ state.pessoasFiltro=el.dataset.v; RENDERERS.pessoas($('#root')); refreshIcons(); }
   else if(a==='pessview'){ state.pessoasView=el.dataset.v; RENDERERS.pessoas($('#root')); refreshIcons(); }
+  else if(a==='im-leads'){ openImLeads(el.dataset.imovel); }
+  else if(a==='im-smartleads'){ openSmartLeadList(el.dataset.imovel); }
   else if(a==='imotipo'){ state.imoveisFiltro=el.dataset.v; RENDERERS.imoveis($('#root')); refreshIcons(); }
   else if(a==='imoview'){ state.imoveisView=el.dataset.v; RENDERERS.imoveis($('#root')); refreshIcons(); }
   else if(a==='imosort'){ state.imoveisSort = state.imoveisSort==='antigo'?'recente':'antigo'; RENDERERS.imoveis($('#root')); refreshIcons(); }
@@ -2023,11 +2103,13 @@ RENDERERS.clientes = function(host){
 // Corretor vê os seus; gestor/administrativo veem todos (o backend já filtra por posse).
 let LEADS = [];
 const LEAD_FILTROS = ['Todos','Não lidos','Novo','Em negociação','Fechado','Arquivado'];
+function leadStatusTxt(l){ return l.statusHub || l.status || 'Novo'; }   // etapa do Hub vence a do portal
+function leadArquivado(l){ return l.statusHub ? (semAcento(l.statusHub).toLowerCase().indexOf('arquiv')>=0) : !!l.arquivado; }
 function leadStatusVar(l){
-  const a=(l.statusAlias||'').toLowerCase(), n=semAcento(l.status||'').toLowerCase();
-  if(l.arquivado || n.indexOf('arquiv')>=0 || n.indexOf('recus')>=0) return 'neutral';
-  if(a.indexOf('done')>=0 || n.indexOf('fechado')>=0 || n.indexOf('convert')>=0 || n.indexOf('finaliz')>=0) return 'success';
-  if(a.indexOf('negoti')>=0 || n.indexOf('negocia')>=0) return 'warning';
+  const n=semAcento(leadStatusTxt(l)).toLowerCase(), a=(l.statusAlias||'').toLowerCase();
+  if(leadArquivado(l) || n.indexOf('recus')>=0) return 'neutral';
+  if((!l.statusHub && a.indexOf('done')>=0) || n.indexOf('fechado')>=0 || n.indexOf('convert')>=0 || n.indexOf('finaliz')>=0) return 'success';
+  if((!l.statusHub && a.indexOf('negoti')>=0) || n.indexOf('negocia')>=0) return 'warning';
   return 'info';
 }
 function leadData(iso){ if(!iso) return '—'; try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(_e){ return '—'; } }
@@ -2041,21 +2123,50 @@ function leadsOrigensOpts(){
   const set=[...new Set(LEADS.map(l=>l.origem).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   return ['Todos'].concat(set).map(o=>'<option value="'+esc(o)+'"'+((state.leadsOrigem||'Todos')===o?' selected':'')+'>'+esc(o==='Todos'?'Todas as origens':o)+'</option>').join('');
 }
+function leadsCorretoresOpts(){
+  const set=[...new Set(LEADS.map(l=>(l.corretor&&l.corretor.nome)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return ['Todos'].concat(set).map(o=>'<option value="'+esc(o)+'"'+((state.leadsCorretor||'Todos')===o?' selected':'')+'>'+esc(o==='Todos'?'Todos os corretores':o)+'</option>').join('');
+}
 function leadWa(tel){ const d=String(tel||'').replace(/\D/g,''); if(!d) return ''; return 'https://wa.me/'+(d.length<=11?'55'+d:d); }
+// "Ficha da pessoa" de um interessado que veio de LEAD (sem ficha cadastral): mostra
+// os dados que temos do lead + WhatsApp/Ligar/E-mail. Lê do imóvel já carregado.
+function openLeadPessoa(imovelId, idx){
+  const p=(typeof prop==='function'?prop(imovelId):null)||{};
+  const it=(p.interessados||[])[idx];
+  if(!it){ toast('Interessado não encontrado — recarregue','alert-triangle','var(--danger)'); return; }
+  const tel=String(it.telefone||it.contato||'').replace(/[^\d+]/g,'');
+  const wa=leadWa(it.telefone||it.contato||'');
+  const tipoLbl=it.tipo==='comprador'?'Comprador':'Locatário';
+  const contato='<div class="fx g2 wrap" style="margin:14px 0">'
+    +(wa?'<a class="btn btn-primary sm grow" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',15)+'WhatsApp</a>':'')
+    +(tel?'<a class="btn btn-outline sm grow" href="tel:'+esc(tel)+'" style="text-decoration:none">'+icon('phone',15)+'Ligar</a>':'')
+    +(it.email?'<a class="btn btn-outline sm grow" href="mailto:'+esc(it.email)+'" style="text-decoration:none">'+icon('mail',15)+'E-mail</a>':'')
+    +'</div>';
+  const linha=(l,v)=>v?'<div class="fx jb g2" style="padding:8px 0;border-top:1px solid var(--ink100)"><span class="fz12 t500">'+l+'</span><span class="fz13 fw6 t900" style="text-align:right;word-break:break-word">'+esc(v)+'</span></div>':'';
+  openModal('<div style="padding:20px;max-width:440px">'
+    +'<div class="fx ac g3" style="margin-bottom:6px">'+avatar(it.nome||'?',42,'var(--ink800)')+'<div class="mw0"><div class="fz16 fw7 t900 trunc">'+esc(it.nome||'—')+'</div><div class="fz12 t500" style="margin-top:3px">'+pill('lead','neutral')+' '+esc(tipoLbl)+'</div></div></div>'
+    +contato
+    +linha('Telefone', it.telefone||it.contato)
+    +linha('E-mail', it.email)
+    +linha('Origem', it.origemPortal)
+    +'<div class="fz11 t500" style="margin-top:12px;background:var(--ink50);border:1px solid var(--ink200);border-radius:8px;padding:10px 12px">Este contato veio de um lead do portal — ainda sem ficha cadastral. Use “Enviar ficha ao interessado” acima pra ele preencher os dados completos.</div>'
+    +'<div class="fx je" style="margin-top:16px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
+}
 async function carregarLeads(){
   try{ const r=await call('leadsListar')({}); LEADS=(r.data&&r.data.itens)||[]; state.leadsVeTudo=!!(r.data&&r.data.veTudo); state._leadsErro=''; }
   catch(e){ LEADS=[]; state._leadsErro=(e&&e.message)||'erro'; }
 }
 function leadsFiltradas(){
-  const q=semAcento(state.leadsBusca||'').trim(); const f=state.leadsFiltro||'Todos'; const og=state.leadsOrigem||'Todos';
+  const q=semAcento(state.leadsBusca||'').trim(); const f=state.leadsFiltro||'Todos'; const og=state.leadsOrigem||'Todos'; const co=state.leadsCorretor||'Todos';
   return LEADS.filter(l=>{
     const vv=leadStatusVar(l);
     if(og!=='Todos' && (l.origem||'')!==og) return false;
+    if(co!=='Todos' && ((l.corretor&&l.corretor.nome)||'')!==co) return false;
     if(f==='Não lidos' && l.lido) return false;
     if(f==='Novo' && vv!=='info') return false;
     if(f==='Em negociação' && vv!=='warning') return false;
     if(f==='Fechado' && vv!=='success') return false;
-    if(f==='Arquivado' && !l.arquivado) return false;
+    if(f==='Arquivado' && !leadArquivado(l)) return false;
     if(q){ const c=l.cliente||{}; if(semAcento([c.nome,c.email,c.telefone,leadEnderecoTxt(l),leadCodigo(l),l.origem].join(' ')).indexOf(q)<0) return false; }
     return true;
   });
@@ -2070,7 +2181,7 @@ function leadsRows(){
     + '<td class="t700 trunc" style="max-width:220px">'+esc(leadEnderecoTxt(l))+'</td>'
     + '<td class="mono fz12 t700 nowrap">'+(leadCodigo(l)?esc(leadCodigo(l)):'<span class="tmut">—</span>')+'</td>'
     + '<td>'+(l.origem?pill(l.origem,'ai'):'<span class="tmut">—</span>')+'</td>'
-    + '<td>'+pill(l.status||'Novo',leadStatusVar(l))+'</td>'
+    + '<td>'+pill(leadStatusTxt(l),leadStatusVar(l))+'</td>'
     + (veTudo?'<td class="t700 trunc" style="max-width:140px">'+esc((l.corretor&&l.corretor.nome)||'—')+'</td>':'')
     + '<td class="tright tmut fz12 nowrap">'+leadData(l.recebidoEm)+'</td></tr>';
   }).join('');
@@ -2079,6 +2190,7 @@ function updateLeads(){
   const el=$('#leadsBody'); if(el){ el.innerHTML=leadsRows(); refreshIcons(); }
   const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); }
   const sel=$('#leadsOrigemSel'); if(sel){ sel.innerHTML=leadsOrigensOpts(); sel.value=state.leadsOrigem||'Todos'; }   // origens só existem depois do load
+  const selC=$('#leadsCorretorSel'); if(selC){ selC.innerHTML=leadsCorretoresOpts(); selC.value=state.leadsCorretor||'Todos'; }
 }
 function renderLeadsInner(host){
   const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
@@ -2086,6 +2198,7 @@ function renderLeadsInner(host){
   host.innerHTML=pageHead(hTitulo('Leads'),'Contatos que chegam dos portais (ZAP, VivaReal, site) em tempo real.','')
   + '<div class="fx ac jb wrap g3" style="margin-bottom:14px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
   + '<div class="fx ac g2 wrap">'
+  + (veTudo?'<select id="leadsCorretorSel" data-action="leadcorr" style="height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 10px;font-family:var(--sans);max-width:200px">'+leadsCorretoresOpts()+'</select>':'')
   + '<select id="leadsOrigemSel" data-action="leadorigem" style="height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 10px;font-family:var(--sans);max-width:200px">'+leadsOrigensOpts()+'</select>'
   + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(240px,60vw)">'+icon('search',16,'tmut')+'<input data-input="leadsBusca" value="'+esc(state.leadsBusca||'')+'" placeholder="Buscar lead…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div></div></div>'
   + '<div class="fz12 tmut" id="leadsCount" style="margin-bottom:8px"></div>'
@@ -2103,10 +2216,15 @@ RENDERERS.leads = function(host){
 function openLead(id){
   const l=LEADS.find(x=>x.id===id); if(!l) return;
   const c=l.cliente||{}; const im=l.imovel||{}; const wa=leadWa(c.telefone);
+  const meuUid=(auth.currentUser&&auth.currentUser.uid)||'';
+  const podeEditar=state.leadsVeTudo || l.corretorUid===meuUid;
   const prop=(PROPERTIES.concat(PROPERTIES_ALL||[])).find(p=>im.propRef && (String(p.code||'')===String(im.propRef) || String(p.ref||'')===String(im.propRef)));
-  const linhas=[['Código do portal',leadCodigo(l)||'—'],['Origem',l.origem||'—'],['Canal',l.canal||'—'],['Status',l.status||'Novo'],['Recebido',leadData(l.recebidoEm)]];
+  const linhas=[['Código do portal',leadCodigo(l)||'—'],['Origem',l.origem||'—'],['Canal',l.canal||'—'],['Status',leadStatusTxt(l),'status'],['Recebido',leadData(l.recebidoEm)]];
   if(state.leadsVeTudo) linhas.push(['Corretor',(l.corretor&&l.corretor.nome)||'—']);
-  const info=linhas.map(kv=>'<div class="fx jb g2" style="padding:8px 0;border-bottom:1px solid var(--ink100)"><span class="tmut fz13">'+esc(kv[0])+'</span><span class="fw6 t900 fz13 tright">'+esc(kv[1])+'</span></div>').join('');
+  const info=linhas.map(kv=>'<div class="fx jb g2 ac" style="padding:8px 0;border-bottom:1px solid var(--ink100)"><span class="tmut fz13">'+esc(kv[0])+'</span><span class="fx ac g1"><span class="fw6 t900 fz13 tright">'+esc(kv[1])+'</span>'+(kv[2]==='status'&&podeEditar?'<button class="btn btn-ghost sm nsh" data-action="lead-status-edit" data-id="'+esc(l.id)+'" title="Editar status" style="padding:2px 6px">'+icon('pencil',13)+'</button>':'')+'</span></div>').join('');
+  const coments=Array.isArray(l.comentarios)?l.comentarios:[];
+  const comentLista=coments.length?coments.map(cm=>'<div style="padding:10px 0;border-bottom:1px solid var(--ink100)"><div class="fx jb g2 ac"><span class="fz12 fw6 t900">'+esc(cm.porNome||'—')+'</span><span class="fz11 tmut nsh">'+leadData(cm.em)+'</span></div><div class="fz13 t700" style="margin-top:3px;white-space:pre-wrap;word-break:break-word">'+esc(cm.texto||'')+'</div></div>').join(''):'<div class="fz12 tmut" style="padding:8px 0">Nenhum comentário ainda.</div>';
+  const comentBox='<div style="margin-top:18px"><div class="fz11 tmut" style="margin-bottom:2px">COMENTÁRIOS</div>'+comentLista+(podeEditar?'<div class="fx g2" style="margin-top:10px"><input id="leadComentInput" placeholder="Escreva um comentário…" style="flex:1;min-width:0;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:8px 10px;font-family:var(--sans)"><button class="btn btn-primary sm nsh" data-action="lead-comentar" data-id="'+esc(l.id)+'" title="Enviar">'+icon('send',15)+'</button></div>':'')+'</div>';
   const contato='<div class="fx g2 wrap" style="padding:12px 20px 2px">'
     + (wa?'<a class="btn btn-primary sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:16px;height:16px"></i>WhatsApp</a>':'')
     + (c.telefone?'<a class="btn btn-outline sm" href="tel:'+esc(String(c.telefone).replace(/[^\d+]/g,''))+'" style="text-decoration:none"><i data-lucide="phone" style="width:16px;height:16px"></i>Ligar</a>':'')
@@ -2115,7 +2233,6 @@ function openLead(id){
   const imovelBox='<div class="card" style="padding:12px;margin:0 0 12px"><div class="fx jb ac g2"><div style="min-width:0"><div class="fz11 tmut">IMÓVEL</div><div class="fw6 t900 trunc">'+esc(leadEnderecoTxt(l))+'</div>'+(im.preco?'<div class="fz13 t700">R$ '+esc(im.preco)+(im.negociacao?' · '+esc(im.negociacao):'')+'</div>':'')+'</div>'+(prop?'<button class="btn btn-outline sm nsh" data-action="lead-verimovel" data-id="'+esc(prop.id)+'">Ver imóvel</button>':'')+'</div></div>';
   const msg=l.mensagem?'<div style="margin:0 0 12px"><div class="fz11 tmut">MENSAGEM</div><div class="card" style="padding:12px;font-size:13px;line-height:1.5">'+esc(l.mensagem)+'</div></div>':'';
   // Vínculo manual com um imóvel da Carteira (gestor/adm ou o dono do lead).
-  const meuUid=(auth.currentUser&&auth.currentUser.uid)||'';
   const podeVincular=state.leadsVeTudo || l.corretorUid===meuUid;
   const v=l.imovelVinculado;
   const vincBox = v
@@ -2126,9 +2243,28 @@ function openLead(id){
     + '<div class="grow scrolly" style="overflow:auto;padding:14px 20px">'
     + imovelBox + vincBox + msg
     + '<div class="fz11 tmut" style="margin-bottom:2px">DETALHES</div>'+info
+    + comentBox
     + '</div>'
     + '<div class="fx g2" style="padding:14px 20px;border-top:1px solid var(--ink100)"><button class="btn btn-outline sm grow" data-action="close-drawer">Fechar</button></div>');
   if(!l.lido){ l.lido=true; updateLeads(); call('leadsMarcarLido')({id:l.id}).catch(()=>{}); }
+}
+/* ---- Editar status/etapa do lead (override do Hub) ---- */
+function openLeadStatus(id){
+  const l=LEADS.find(x=>x.id===id); if(!l) return;
+  const atual=leadStatusTxt(l);
+  const opts=['Novo','Em negociação','Fechado','Arquivado'];
+  openModal('<div style="padding:20px;max-width:360px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Status do lead</div><div class="fz12 t500" style="margin-bottom:14px">Escolha a etapa. Vale só aqui no Hub — o portal não sobrescreve.</div>'
+    + opts.map(o=>'<button class="btn '+(o===atual?'btn-primary':'btn-outline')+' sm" data-action="lead-status-set" data-id="'+esc(id)+'" data-status="'+esc(o)+'" style="width:100%;margin-bottom:8px;justify-content:flex-start">'+icon(o===atual?'check-circle':'circle',15)+o+'</button>').join('')
+    + '<div class="fx je" style="margin-top:6px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
+}
+function leadSetStatus(id, status){
+  const l=LEADS.find(x=>x.id===id); if(l) l.statusHub=status;   // otimista
+  call('leadsAtualizar')({leadId:id, acao:'status', status}).then(()=>{ closeModal(); toast('Status atualizado','check'); updateLeads(); const dr=$('#drawer'); if(dr&&dr.classList.contains('show')) openLead(id); }).catch(e=>{ if(l) delete l.statusHub; toast(e.message||'Erro','alert-triangle','var(--danger)'); });
+}
+function leadComentar(id){
+  const inp=$('#leadComentInput'); const texto=((inp&&inp.value)||'').trim(); if(!texto){ if(inp) inp.focus(); return; }
+  const l=LEADS.find(x=>x.id===id);
+  call('leadsAtualizar')({leadId:id, acao:'comentario', texto}).then(()=>{ if(l) l.comentarios=(l.comentarios||[]).concat([{texto,porNome:'Você',em:new Date().toISOString()}]); toast('Comentário adicionado','message-circle'); const dr=$('#drawer'); if(dr&&dr.classList.contains('show')) openLead(id); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); });
 }
 /* ---- Vincular lead a um imóvel da Carteira (manual) ---- */
 function leadVincLista(){
@@ -2872,6 +3008,7 @@ handleAction = function(a, el){
   if(a==='alterar-valor-save'){ salvarNovoValor(el.dataset.imovel); return; }
   if(a==='int-add-open'){ openInteressadoPicker(el.dataset.imovel); return; }
   if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const _imf=(typeof prop==='function'?prop(imovelId):null)||{}; const _fin=_imf.finalidadeRaw||''; const tipo = _fin==='venda' ? 'comprador' : _fin==='locacao' ? 'locatario' : (f.tipo==='proposta'?'comprador':'locatario'); /* papel vem da finalidade do imóvel, não do tipo da ficha */ el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
+  if(a==='int-ver-lead'){ openLeadPessoa(el.dataset.imovel, +el.dataset.idx); return; }
   if(a==='int-remover'){ if(!confirm('Remover este interessado do imóvel?'))return; const imovelId=el.dataset.imovel, idx=+el.dataset.idx; el.disabled=true; fnInteressado({imovelId, acao:'remover', index:idx, esperaNome:el.dataset.nome||'', esperaFichaId:el.dataset.fid||''}).then(async()=>{ toast('Interessado removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-aprovar'){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }
   if(a==='int-reprovar'){ if(confirm('Reprovar este interessado?')){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'reprovado', 'Interessado reprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); } return; }
