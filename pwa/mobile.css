@@ -342,8 +342,13 @@
   #bkRoot.bk-embedded .app,
   #bkRoot.bk-embedded #scroller,
   #bkRoot.bk-embedded #root { max-width: 100%; min-width: 0; }
-  #bkRoot.bk-embedded .app { flex-direction: column; }   /* a sidebar do Broker já está escondida; garante coluna */
-  #bkRoot.bk-embedded #scroller { overflow-x: hidden; }
+  #bkRoot.bk-embedded .app { flex-direction: column; min-height: 0; }   /* a sidebar do Broker já está escondida; garante coluna */
+  /* ⚠️ `min-height: 0` é o pulo do gato: sem ele o #scroller (flex item) herda
+     min-height:auto e CRESCE até caber TODO o conteúdo (91883px no real), em vez de
+     ficar do tamanho da .app (581) e ROLAR por dentro. Com min-height:0 ele fica
+     limitado e o overflow-y:auto volta a rolar. (Diagnosticado no console do app real:
+     .app=581 mas #scroller=91883.) */
+  #bkRoot.bk-embedded #scroller { overflow-x: hidden; min-height: 0; }
   #bkRoot.bk-embedded #root { padding-left: 12px; padding-right: 12px; }
   /* Qualquer trilho/tabela/kanban do Broker rola DENTRO do próprio cartão, e nunca
      mais largo que a tela (o .kboard já é overflow-x:auto; aqui garantimos o teto). */
