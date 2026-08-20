@@ -1999,6 +1999,10 @@ body { animation: hubPageIn 160ms ease-out both; }
   .hub-layout.loc-embed,
   .hub-layout.agenda-oculta,
   .hub-layout.na-agenda { grid-template-columns: 160px 1fr; }
+  /* Sidebar recolhida (display:none): sem esta linha, a regra base de 2 classes
+     `.hub-layout.sb-recolhida { 1fr 300px }` vencia o bloco e sobrava uma coluna
+     de 300px VAZIA ao lado do conteúdo (o painel da agenda está display:none aqui). */
+  .hub-layout.sb-recolhida { grid-template-columns: 1fr; }
   .agenda-panel { display: none; }
 }
 

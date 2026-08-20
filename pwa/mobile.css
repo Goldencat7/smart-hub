@@ -114,12 +114,32 @@
   }
   body.menu-aberto .sidebar { transform: translateX(0); }
 
-  /* Volta a ser coluna (desfaz o `row` do bloco de 720px do styles.css) */
+  /* Volta a ser coluna (desfaz o `row` do bloco de 720px do styles.css).
+     ⚠️ overflow:visible dos DOIS eixos: o bloco velho deixava `overflow-y:hidden`, o
+     que zerava o min-height automático do flex item → o nav ENCOLHIA pra caber na
+     gaveta e CORTAVA os itens de baixo (com a sanfona aberta, as últimas categorias
+     ficavam inalcançáveis — e a rolagem da gaveta nunca disparava porque "coube").
+     E align-items:stretch desfaz o `center` (itens viravam largura-do-texto, centrados). */
   .sidebar-nav {
     flex-direction: column;
-    overflow-x: visible;
+    overflow: visible;
+    align-items: stretch;
     gap: 2px;
   }
+  /* Cabeçalhos de seção (.nav-group): o bloco de 720px os deixava com cara de chip
+     horizontal (34px, sem uppercase, fundo de hover permanente, seções coladas).
+     Restaura o visual do desktop (mesmos valores do styles.css base). */
+  .nav-group {
+    height: 30px; margin: 14px 0 0; padding: 0 8px 0 10px;
+    font-size: 11px; letter-spacing: .11em; text-transform: uppercase;
+    background: none;
+  }
+  .nav-sec-count { display: inline; }
+  /* Barra vermelha do item ativo (o bloco de 720px escondia o ::before) */
+  .nav-item.ativo::before, .nav-subitem.ativo::before { display: block; }
+  /* Botão « de recolher é de desktop — na gaveta é um no-op armadilha (o estado
+     recolhido é neutralizado no mobile e ainda persistia pro desktop). Some. */
+  .sb-top { display: none; }
   /* Item igual ao do PC (mesmo ícone, mesma fonte), só com mais respiro vertical
      pro dedo. Sem mexer na fonte de propósito: o `font:` do styles.css é inválido
      (family `inherit` no shorthand), então o item cai nos ~13px padrão do botão —
@@ -308,10 +328,13 @@
   /* Tela de Admin: o menu lateral de 220px + 64px de padding estouram a largura
      de um celular (a página inteira ganhava scroll horizontal). Vira uma linha
      de botões que quebra em várias linhas, acima do conteúdo. */
+  /* Mesmo padrão do Hub: body coluna flex + layout preenchendo o que sobra da topbar
+     (que pode quebrar linha) — nada de altura fixa que não bate. */
+  .admin-body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
   .admin-layout {
     grid-template-columns: 1fr;
     gap: 12px; padding: 12px 12px 40px;
-    height: calc(100dvh - 52px - env(safe-area-inset-top));   /* idem: desconta o entalhe */
+    height: auto; flex: 1 1 auto; min-height: 0; overflow-y: auto;
   }
   .admin-nav {
     position: static; max-height: none;

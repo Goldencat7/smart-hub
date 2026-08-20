@@ -313,6 +313,13 @@
       if (e.target.closest('.nav-group')) return;
       if (e.target.closest('.nav-item') || e.target.closest('.nav-subitem')) fechar();
     });
+    // O rodapé da gaveta (#sbFoot: Suporte/TI + "Meu Perfil"/.sb-acc) fica FORA do
+    // #navCategorias — sem este listener, tocar neles trocava a tela por baixo mas a
+    // gaveta ficava aberta cobrindo tudo. Delegação no elemento persistente (o
+    // renderSidebar só troca o innerHTML), igual ao de cima.
+    document.getElementById('sbFoot')?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cat]')) fechar();
+    });
   }
 
   // ─── Service worker (é o que torna o Hub instalável e abre offline) ────────

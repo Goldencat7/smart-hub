@@ -908,7 +908,7 @@ function renderKanbanGerenciar(){
     +'<button class="btn btn-ghost sm nsh" data-action="col-down" data-i="'+i+'"'+(i===cols.length-1?' disabled':'')+' title="Descer">'+icon('chevron-down',15)+'</button>'
     +'<button class="btn btn-ghost sm nsh" data-action="col-rm" data-i="'+i+'" style="color:var(--danger)" title="Remover">'+icon('trash-2',15)+'</button>'
     +'</div>').join('');
-  openModal('<div style="padding:20px;min-width:380px;max-width:460px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Colunas do quadro</div><div class="fz12 t500" style="margin-bottom:14px">Renomeie, reordene (↑↓), adicione ou remova. Cards de uma coluna removida voltam pra primeira.</div>'
+  openModal('<div style="padding:20px;min-width:min(380px,100%);max-width:460px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Colunas do quadro</div><div class="fz12 t500" style="margin-bottom:14px">Renomeie, reordene (↑↓), adicione ou remova. Cards de uma coluna removida voltam pra primeira.</div>'
     +'<div id="colEditList">'+rows+'</div>'
     +'<button class="btn btn-outline sm" data-action="col-add" style="width:100%;margin-top:6px">'+icon('plus',15)+'Adicionar coluna</button>'
     +'<div class="fx g2" style="margin-top:16px"><button class="btn btn-outline sm grow" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm grow" data-action="col-salvar">'+icon('check',15)+'Salvar</button></div></div>');
