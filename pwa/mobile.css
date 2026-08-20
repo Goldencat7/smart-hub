@@ -78,11 +78,17 @@
   .hub-layout.sb-recolhida.agenda-oculta,
   .hub-layout.sb-recolhida.loc-embed {
     grid-template-columns: 1fr;
-    /* −52px = topbar; −safe-area = o entalhe do iPhone engorda a topbar (padding-top),
-       e sem descontá-lo o grid passava da tela e, com body overflow:hidden, o rodapé
-       (último card/botão) ficava cortado. Sem notch o env() é 0 → volta a 52px. */
-    height: calc(100dvh - 52px - env(safe-area-inset-top));
+    /* ⚠️ NÃO usar mais `height: calc(100dvh - 52px)`: a topbar agora QUEBRA LINHA
+       (pode ter 52px OU ~81px em 2 fileiras), então um desconto fixo cortava o
+       conteúdo embaixo e matava a rolagem. Agora o body é coluna flex (abaixo) e o
+       .hub-layout preenche o que SOBRA da topbar, seja qual for a altura dela. */
+    height: auto; flex: 1 1 auto; min-height: 0;
   }
+  /* Body em coluna flex: topbar (altura natural, 1 ou 2 fileiras) + .hub-layout
+     preenchendo o resto. Assim o scroll interno (hub-main / #scroller do Broker)
+     sempre alcança o rodapé, independente da topbar ter quebrado linha. */
+  .hub-body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  .topbar { flex: 0 0 auto; }
   /* No mobile a gaveta controla a visibilidade — ignora o estado recolhido do desktop
      (senão a sidebar sumiria de vez) e não mostra o botão flutuante de reabrir. */
   .sidebar.recolhida { display: flex; }
