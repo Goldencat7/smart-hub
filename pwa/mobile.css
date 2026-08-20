@@ -128,6 +128,24 @@
     border-top: 1px solid var(--navy-dark); padding-top: 10px;
   }
 
+  /* ⚠️ Desfaz o RESTO do @media(max-width:720px) ANTIGO do styles.css (era pra janela
+     estreita do Electron virar TIRA horizontal) que NÃO serve pra gaveta do celular e
+     estava QUEBRANDO a barra lateral:
+       • `.sb-foot` (o rodapé com o PERFIL) vinha display:none → o perfil sumia da gaveta;
+       • `.nav-item`/`.nav-subitem` travados em height:34px → a sanfona do "Meus Negócios"
+         era espremida (6 sub-itens dentro de 34px), sumindo/cortando os itens.
+     O mobile.css já tinha devolvido a COLUNA do sidebar-nav; faltava desfazer estes. */
+  .sb-foot { display: flex; }
+  .nav-item, .nav-subitem { height: auto; }
+  /* E o pulo do gato: o mesmo bloco força `.nav-subwrap { flex-direction: row }`, então
+     os sub-itens da sanfona ("Meus Negócios" → Dashboard/Pessoas/Imóveis/…) iam PRA
+     DIREITA, pra fora da tela — parecia "vazio". Volta pra COLUNA, com o recuo original. */
+  .nav-subwrap {
+    flex-direction: column; gap: 2px;
+    margin: 2px 0 4px 19px; padding-left: 7px;
+    border-left: 1px solid var(--sb-hairline);
+  }
+
   /* Cabeçalho da gaveta: a logo + ✕ (a gaveta cobre a topbar, então sem isso os
      itens ficam soltos encostados no topo da tela). Criado no platform-web.js. */
   .menu-mobile-topo {
