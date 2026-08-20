@@ -146,6 +146,15 @@
     border-left: 1px solid var(--sb-hairline);
   }
 
+  /* Perfil (rodapé da gaveta) compacto — do tamanho dos itens da lista, não um
+     cartão grandão: avatar e paddings menores. */
+  .sb-foot { padding: 6px; }
+  .sb-acc { padding: 7px 10px; gap: 9px; margin-top: 0; }
+  .sb-acc-av { width: 26px; height: 26px; font-size: 10px; }
+  .sb-acc-nome { font-size: 12px; }
+  .sb-acc-cargo { font-size: 10px; }
+  .sb-ver { font-size: 9.5px; padding: 4px 10px 2px; }
+
   /* Cabeçalho da gaveta: a logo + ✕ (a gaveta cobre a topbar, então sem isso os
      itens ficam soltos encostados no topo da tela). Criado no platform-web.js. */
   .menu-mobile-topo {
