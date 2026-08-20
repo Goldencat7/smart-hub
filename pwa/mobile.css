@@ -342,12 +342,17 @@
   #bkRoot.bk-embedded .app,
   #bkRoot.bk-embedded #scroller,
   #bkRoot.bk-embedded #root { max-width: 100%; min-width: 0; }
-  #bkRoot.bk-embedded .app { flex-direction: column; min-height: 0; }   /* a sidebar do Broker já está escondida; garante coluna */
-  /* ⚠️ `min-height: 0` é o pulo do gato: sem ele o #scroller (flex item) herda
-     min-height:auto e CRESCE até caber TODO o conteúdo (91883px no real), em vez de
-     ficar do tamanho da .app (581) e ROLAR por dentro. Com min-height:0 ele fica
-     limitado e o overflow-y:auto volta a rolar. (Diagnosticado no console do app real:
-     .app=581 mas #scroller=91883.) */
+  /* ⚠️ NÃO forçar `.app { flex-direction: column }` — a `.app` do Broker é ROW por
+     natureza (sidebar | coluna de conteúdo) e no desktop rola certinho assim. Forçar
+     column fazia a coluna de conteúdo (.fx.col.grow) crescer pelo flex-grow e, com
+     min-height:auto, ESTOURAR até o tamanho do conteúdo (91883px no real) em vez de
+     rolar. Deixa row: a coluna estica na altura da .app (581) via align-items e o
+     #scroller volta a rolar por dentro. */
+  #bkRoot.bk-embedded .app { min-height: 0; }
+  /* min-height:0 em TODA a cadeia de flex até o scroller (o pulo do gato de flex+overflow):
+     sem isso o min-height:auto de cada nível deixa o filho crescer até o conteúdo. O
+     wrapper .fx.col.grow (coluna de conteúdo do Broker) e o próprio #scroller. */
+  #bkRoot.bk-embedded .fx.col.grow { min-height: 0; }
   #bkRoot.bk-embedded #scroller { overflow-x: hidden; min-height: 0; }
   #bkRoot.bk-embedded #root { padding-left: 12px; padding-right: 12px; }
   /* Qualquer trilho/tabela/kanban do Broker rola DENTRO do próprio cartão, e nunca
