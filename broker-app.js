@@ -92,6 +92,8 @@ const state = {
   leadsFinalidade:'Todos', leadsTime:'Todos', leadsTemp:'Todos', leadsCidade:'Todas', leadsBairro:'Todos',   // filtros avançados de Leads
   leadsVerArquivados:false,   // toggle: por padrão esconde arquivados/perdidos (mostra só os vivos)
   leadsPeriodo:'tudo', leadsDe:'', leadsAte:'', leadsSemDono:false, _leadsCapado:false,   // filtros no servidor (período · sem dono ativo)
+  leadsModo:'lista',   // 'lista' | 'busca' (buscar clientes por especificação)
+  buscaBairro:'', buscaTipo:'', buscaFin:'', buscaPreco:'', buscaArea:'', buscaQuartos:'', buscaSoMeus:false, buscaRes:null, buscaSel:{}, buscaLoading:false,
   leadVincLeadId:null, leadVincBusca:'',   // picker "vincular a um imóvel"
 };
 
@@ -1817,13 +1819,17 @@ function wireEvents(root){
     else if(k==='cliBusca'){ state.cliBusca=t.value; if(typeof updateClientes==='function') updateClientes(); }
     else if(k==='leadsBusca'){ state.leadsBusca=t.value; updateLeads(); }
     else if(k==='leadVincBusca'){ state.leadVincBusca=t.value; updateLeadVinc(); }
+    else if(k==='bBairro'){ state.buscaBairro=t.value; }
+    else if(k==='bPreco'){ state.buscaPreco=t.value; }
+    else if(k==='bArea'){ state.buscaArea=t.value; }
+    else if(k==='bQuartos'){ state.buscaQuartos=t.value; }
   });
   root.addEventListener('change', e=>{
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } });
-  document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
+    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='buscafin'){ state.buscaFin=t.value; } else if(a==='buscatipo'){ state.buscaTipo=t.value; } else if(a==='buscasomeu'){ state.buscaSoMeus=t.checked; } else if(a==='buscasel'){ state.buscaSel[t.dataset.i]=t.checked; const r=state.buscaRes||[]; const nSel=Object.values(state.buscaSel).filter(Boolean).length; const c=$('#buscaCount'); if(c) c.textContent=r.length+' cliente'+(r.length===1?'':'s')+(nSel?' · '+nSel+' selecionado'+(nSel===1?'':'s'):''); const bx=$('#buscaExportBtn'); if(bx) bx.disabled=!nSel; } });
+  document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } else if(e.key==='Enter' && state.leadsModo==='busca' && e.target && /^b(Bairro|Preco|Area|Quartos)$/.test((e.target.dataset&&e.target.dataset.input)||'')){ e.preventDefault(); buscaRodar(); } });
 }
 function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
@@ -1835,6 +1841,10 @@ function handleAction(a,el){
   else if(a==='leadfiltro'){ state.leadsFiltro=el.dataset.v; const r=ROOT(); if(r) r.querySelectorAll('[data-action=leadfiltro]').forEach(b=>b.classList.toggle('active', b.dataset.v===el.dataset.v)); updateLeads(); }
   else if(a==='leadverarq'){ state.leadsVerArquivados=!state.leadsVerArquivados; state.leadsFiltro='Todos'; recarregarLeads(); }
   else if(a==='leadsemdono'){ state.leadsSemDono=!state.leadsSemDono; recarregarLeads(); }
+  else if(a==='leadsmodo'){ state.leadsModo=el.dataset.v; const h=$('#root'); if(h) RENDERERS.leads(h); refreshIcons(); }
+  else if(a==='buscarodar'){ buscaRodar(); }
+  else if(a==='buscaexport'){ buscaExportar(); }
+  else if(a==='buscaseltodos'){ const r=state.buscaRes||[]; const allOn=r.length&&r.every((_s,i)=>state.buscaSel[i]); state.buscaSel={}; if(!allOn) r.forEach((_s,i)=>state.buscaSel[i]=true); updateBuscaResultados(); }
   else if(a==='openlead'){ openLead(el.dataset.id); }
   else if(a==='lead-verimovel'){ openProp(el.dataset.id); }
   else if(a==='lead-vincular'){ openLeadVincular(el.dataset.id); }
@@ -2308,6 +2318,7 @@ function renderLeadsInner(host){
   const nArq=LEADS.filter(leadArquivado).length;   // arquivados/perdidos dentro do que está carregado
   const corpo = LEADS.length ? leadsRows() : '<tr><td colspan="'+cols+'"><div class="tcenter tmut" style="padding:30px 0">Carregando…</div></td></tr>';
   host.innerHTML=pageHead(hTitulo('Leads'),'Contatos que chegam dos portais (ZAP, VivaReal, site) em tempo real.','')
+  + leadsTabs()
   + '<div class="fx ac jb wrap g3" style="margin-bottom:10px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')
   + '<button class="chip'+(state.leadsVerArquivados?' active':'')+'" data-action="leadverarq" style="margin-left:6px" title="Leads perdidos/arquivados (sem retorno, desistência). Ficam escondidos por padrão.">'+icon('archive',13)+(state.leadsVerArquivados?'Vendo arquivados':'Arquivados')+((nArq&&!state.leadsVerArquivados)?'<span style="margin-left:6px;opacity:.65;font-weight:700">'+nArq+'</span>':'')+'</button>'
   + (veTudo?'<button class="chip'+(state.leadsSemDono?' active':'')+'" data-action="leadsemdono" style="margin-left:4px" title="Leads sem corretor ativo dono: não atribuídos ou cujo corretor saiu/foi desativado.">'+icon('user-x',13)+'Sem dono ativo</button>':'')
@@ -2331,13 +2342,91 @@ function renderLeadsInner(host){
   if(LEADS.length){ const cnt=$('#leadsCount'); if(cnt){ cnt.textContent=leadsCountTxt(); } }
   refreshIcons();
 }
+// Abas do topo dos Leads: lista de leads × buscar clientes por especificação.
+function leadsTabs(){
+  return '<div class="fx ac g2" style="margin-bottom:12px;border-bottom:1px solid var(--ink200);padding-bottom:10px">'
+   +'<button class="chip'+(state.leadsModo!=='busca'?' active':'')+'" data-action="leadsmodo" data-v="lista">'+icon('inbox',14)+'Leads</button>'
+   +'<button class="chip'+(state.leadsModo==='busca'?' active':'')+'" data-action="leadsmodo" data-v="busca">'+icon('search',14)+'Buscar clientes</button>'
+   +'</div>';
+}
+// ─── Buscar clientes: informa a especificação de um imóvel → leads que combinam ──────
+function renderBuscaClientes(host){
+  const TIPOS=[['','Qualquer tipo'],['apto','Apartamento'],['casa','Casa'],['comercial','Comercial'],['terreno','Terreno']];
+  const FINS=[['','Venda e locação'],['venda','Venda'],['locacao','Locação']];
+  const bairros=(LEAD_FACETAS&&LEAD_FACETAS.bairros)||[];
+  const inp=(id,ph,val,tipo)=>'<input data-input="'+id+'" value="'+esc(val||'')+'" type="'+(tipo||'text')+'" placeholder="'+esc(ph)+'"'+(id==='bBairro'?' list="bBairroList"':'')+' style="height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 12px;font-family:var(--sans);width:170px">';
+  const selc=(id,opts,val)=>'<select data-action="'+id+'" style="'+LEAD_SEL_ST+'">'+opts.map(o=>'<option value="'+o[0]+'"'+(String(val||'')===o[0]?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
+  host.innerHTML=pageHead(hTitulo('Leads'),'Encontre clientes (leads) que combinam com uma especificação — sem cadastrar o imóvel.','')
+   + leadsTabs()
+   + '<div class="card" style="padding:16px 18px;margin-bottom:14px">'
+   + '<div class="fz13 t500" style="margin-bottom:12px">Preencha a especificação do imóvel e veja quais leads batem — inclui os antigos do portal. Nada é salvo. Depois é só selecionar e exportar pra planilha.</div>'
+   + '<datalist id="bBairroList">'+bairros.map(b=>'<option value="'+esc(b)+'"></option>').join('')+'</datalist>'
+   + '<div class="fx g2 wrap">'
+   + inp('bBairro','Bairro (obrigatório)',state.buscaBairro)
+   + selc('buscafin',FINS,state.buscaFin)
+   + selc('buscatipo',TIPOS,state.buscaTipo)
+   + inp('bPreco','Preço R$',state.buscaPreco,'number')
+   + inp('bArea','Metragem m²',state.buscaArea,'number')
+   + inp('bQuartos','Quartos',state.buscaQuartos,'number')
+   + '</div>'
+   + '<div class="fx ac jb wrap g2" style="margin-top:14px">'
+   + '<label class="fx ac g2 fz13 t700" style="cursor:pointer"><input type="checkbox" data-action="buscasomeu" '+(state.buscaSoMeus?'checked':'')+' style="width:16px;height:16px">Só os meus clientes</label>'
+   + '<button class="btn btn-primary" data-action="buscarodar"'+(state.buscaLoading?' disabled':'')+'>'+icon('search',16)+(state.buscaLoading?'Buscando…':'Buscar clientes')+'</button>'
+   + '</div></div>'
+   + '<div id="buscaResultados">'+buscaResultadosHtml()+'</div>';
+  refreshIcons();
+}
+function buscaResultadosHtml(){
+  const r=state.buscaRes;
+  if(state.buscaLoading) return '<div class="tcenter t500" style="padding:30px">'+icon('loader',22)+'<p class="fz13" style="margin-top:8px">Buscando…</p></div>';
+  if(!r) return '';
+  if(!r.length) return '<div class="tcenter t500" style="padding:30px">'+icon('search',22)+'<p class="fz14 fw5" style="margin-top:8px">Nenhum cliente combina com essa especificação.</p><p class="fz12 tmut" style="margin-top:4px">Tente afrouxar preço/metragem ou tirar algum filtro.</p></div>';
+  const nSel=Object.values(state.buscaSel).filter(Boolean).length;
+  let h='<div class="fx ac jb wrap g2" style="margin-bottom:10px"><div class="fz13 fw6 t900"><span id="buscaCount">'+r.length+' cliente'+(r.length===1?'':'s')+(nSel?' · '+nSel+' selecionado'+(nSel===1?'':'s'):'')+'</span></div>'
+   +'<div class="fx g2"><button class="btn btn-outline sm" data-action="buscaseltodos">'+icon('check-square',14)+'Selecionar todos</button><button id="buscaExportBtn" class="btn btn-success sm" data-action="buscaexport"'+(nSel?'':' disabled')+'>'+icon('download',14)+'Exportar planilha</button></div></div>';
+  h+=r.map((s,i)=>{
+    const on=!!state.buscaSel[i];
+    const chk='<input type="checkbox" data-action="buscasel" data-i="'+i+'" '+(on?'checked':'')+' style="width:17px;height:17px;flex:none">';
+    if(s.mascarado){
+      return '<div class="fx ac g3" style="border:1px dashed var(--ink300);border-radius:10px;margin-bottom:8px;padding:11px 12px;opacity:.95">'+chk+avatar(s.nome,32,'var(--ink600)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div><div class="fz11 t500 trunc">'+icon('lock',11)+' Cliente de <b>'+esc(s.corretorNome||'outro corretor')+'</b> — falar com o corretor</div></div>'+pill(s.doHistorico?'histórico':'lead',s.doHistorico?'neutral':'ai')+'</div>';
+    }
+    const wa=leadWa(s.telefone||'');
+    return '<div class="fx ac g3" style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px">'+chk+avatar(s.nome,32,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+(s.deImovel?'<div class="fz11 t400 trunc">'+(s.doHistorico?'pediu ':'via ')+esc(s.deImovel)+'</div>':'')+'</div>'
+     +(s.semDonoAtivo?'<span class="fz10 fw6" style="flex:none;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:6px;padding:1px 5px" title="Sem corretor ativo dono">sem dono</span>':'')
+     +pill(s.doHistorico?'histórico':'lead',s.doHistorico?'neutral':'ai')
+     +(wa?'<a class="btn btn-success sm nsh" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',14)+'</a>':'')+'</div>';
+  }).join('');
+  return h;
+}
+function updateBuscaResultados(){ const el=$('#buscaResultados'); if(el){ el.innerHTML=buscaResultadosHtml(); refreshIcons(); } }
+function buscaRodar(){
+  const b=(state.buscaBairro||'').trim();
+  if(!b){ toast('Informe o bairro','alert-triangle','var(--warning)'); return; }
+  state.buscaLoading=true; state.buscaSel={}; state.buscaRes=null; renderBuscaClientes($('#root'));
+  call('smartLeadBuscar')({ bairro:b, tipo:state.buscaTipo, finalidade:state.buscaFin, preco:state.buscaPreco, area:state.buscaArea, quartos:state.buscaQuartos, soMeus:state.buscaSoMeus })
+    .then(r=>{ state.buscaRes=(r.data&&r.data.resultados)||[]; })
+    .catch(e=>{ state.buscaRes=[]; toast(e.message||'Erro na busca','alert-triangle','var(--danger)'); })
+    .finally(()=>{ state.buscaLoading=false; const h=$('#root'); if(state.view==='leads'&&state.leadsModo==='busca'&&h) renderBuscaClientes(h); });
+}
+function buscaExportar(){
+  const r=state.buscaRes||[]; const sel=r.filter((_s,i)=>state.buscaSel[i]);
+  if(!sel.length){ toast('Selecione ao menos um cliente','alert-triangle','var(--warning)'); return; }
+  const linhas=[['Nome','Telefone','E-mail','De qual imóvel','Situação']];
+  sel.forEach(s=>{
+    if(s.mascarado) linhas.push([s.nome||'—','','',s.deImovel||'','Falar com '+(s.corretorNome||'outro corretor')]);
+    else linhas.push([s.nome||'—', s.telefone||'', s.email||'', s.deImovel||'', (s.doHistorico?'Histórico':'Lead')+(s.semDonoAtivo?' · sem dono ativo':'')]);
+  });
+  baixarTexto(montarCSV(linhas),'clientes-'+(state.buscaBairro||'busca').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g,'-')+'-'+new Date().toISOString().slice(0,10)+'.csv','text/csv');
+  toast('Planilha exportada','download','var(--success)');
+}
 RENDERERS.leads = function(host){
+  if(!LEAD_FACETAS) carregarLeadFacetas();
+  if(state.leadsModo==='busca'){ renderBuscaClientes(host); return; }
   renderLeadsInner(host);
   // Re-renderiza a TABELA INTEIRA depois do load (não só o corpo): o cabeçalho depende de
   // state.leadsVeTudo, que só existe depois do carregarLeads — senão header (6 col) e linhas
   // (7 col) ficam desalinhados no 1º acesso do gestor/adm.
-  carregarLeads().then(()=>{ const h=$('#root'); if(state.view==='leads'&&h) renderLeadsInner(h); });
-  if(!LEAD_FACETAS) carregarLeadFacetas();
+  carregarLeads().then(()=>{ const h=$('#root'); if(state.view==='leads'&&state.leadsModo!=='busca'&&h) renderLeadsInner(h); });
 };
 // Cidades/bairros distintos (todos os 9k) pros selects — 1x por sessão, cacheado no servidor.
 function carregarLeadFacetas(){

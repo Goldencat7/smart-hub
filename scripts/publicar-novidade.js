@@ -16,15 +16,12 @@ const PROJETO = 'remax-smart-hub';
 if (process.env.FIRESTORE_EMULATOR_HOST) { console.error('✋ Env de emulador setada. Abortando.'); process.exit(1); }
 
 const NOTA = {
-  versao: '1.0.184',
+  versao: '1.0.187',
   novo: [
-    'Leads com etapas novas: Novo, Em atendimento, Visita, Proposta, Negócio fechado e Cliente desistiu.',
-    'Time do cliente: classifique o momento de cada lead (Pesquisando, Curioso, Pronto para fechar, Encantado, Finalista, Aguardando Crédito e mais) direto na ficha do lead.',
-    'Temperatura do lead: marque Quente, Morno ou Frio com um clique — aparece uma bolinha colorida na lista pra bater o olho.',
-    'Busca avançada na aba Leads: filtre por venda ou locação, etapa, time do cliente, temperatura, cidade e bairro.'
+    'Leads → aba "Buscar clientes": digite a especificação de um imóvel (bairro, tipo, preço, metragem, quartos) e descubra na hora quais clientes já procuraram algo parecido — inclui os leads antigos do portal. Dá pra filtrar só os seus, selecionar os que quiser e exportar tudo pra uma planilha.'
   ],
   melhorias: [
-    '@gestor Nas sugestões de SmartLead, agora aparece de qual corretor é o cliente — fica fácil saber com quem alinhar.'
+    '@gestor Na busca de clientes, os leads de outro corretor aparecem como "falar com o corretor" (sem contato) — na tela e na planilha; os seus e os liberados saem completos.'
   ],
   correcoes: []
 };

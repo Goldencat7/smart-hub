@@ -9415,6 +9415,83 @@ exports.smartLeadConfigSalvar = onCall(async (req) => {
   return { ok: true, params: await _slParams() };
 });
 
+// Monta um resultado de busca aplicando a MÁSCARA por dono (igual ao SmartLead). `_dono`
+// é interno (pro filtro "só meus") e é removido antes de devolver.
+async function _slResultado(cand, veTudo, uid, cache) {
+  const dono = cand.dono || '';
+  const info = await _slCorretorAtivo(dono, cache);
+  const semDono = !(dono && info.ativo);
+  const mascarar = !veTudo && info.ativo && dono && dono !== uid;
+  const base = { nome: cand.nome || '—', doHistorico: !!cand.doHistorico, deImovel: cand.deImovel || '', semDonoAtivo: semDono, _dono: dono };
+  if (mascarar) return { ...base, mascarado: true, corretorNome: info.nome || 'outro corretor' };
+  return { ...base, mascarado: false, telefone: cand.telefone || '', email: cand.email || '', corretorNome: dono ? (info.nome || '') : '', corretorAtivo: !!info.ativo };
+}
+
+// (autenticado) BUSCA REVERSA: a pessoa informa a especificação de um imóvel (bairro, tipo,
+// finalidade, preço, m², quartos) e recebe os leads que combinam — dos imóveis da carteira
+// (interessados) + do HISTÓRICO do C2S. NÃO persiste nada (é uma consulta). Máscara igual ao
+// SmartLead: gestor vê tudo; corretor vê os seus + liberados completos, e os de colega ativo
+// mascarados ("falar com Fulano"). `soMeus` restringe aos leads do próprio requisitante.
+exports.smartLeadBuscar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const d = req.data || {};
+  const bairro = _txt(d.bairro, 120);
+  if (!bairro) throw new HttpsError('invalid-argument', 'Informe o bairro.');
+  const yKey = _slBairroKey(bairro);
+  if (!yKey) throw new HttpsError('invalid-argument', 'Bairro inválido.');
+  const finReq = _txt(d.finalidade, 20);   // 'venda' | 'locacao' | ''
+  const yCat = _tipoCategoria(_txt(d.tipo, 60));
+  const yPreco = _slMoney(d.preco);
+  const yArea = _num(d.area, 0, 0, 1e9);
+  const yQ = _num(d.quartos, 0, 0, 99);
+  const soMeus = !!d.soMeus;
+  const P = await _slParams();
+  const finOk = (arr) => !finReq || arr.includes(finReq);
+
+  const cache = new Map(), vistos = new Set(), out = [];
+
+  // Fonte 1: interessados (status 'lead') dos imóveis da carteira no MESMO bairro-chave.
+  const imSnap = await db.collection('imoveis').get();
+  for (const doc of imSnap.docs) {
+    if (out.length >= 400) break;
+    const im = doc.data();
+    if (im.arquivado) continue;
+    if (_slBairroKey((im.endereco || {}).bairro) !== yKey) continue;
+    if (!finOk(_slFinArr(im.finalidade))) continue;
+    if (yCat && _tipoCategoria(im.tipo) !== yCat) continue;
+    const p = _slMoney(im.valorAnuncio);
+    if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > (P.precoPct / 100) * yPreco) continue;
+    const imArea = _num(im.area, 0, 0, 1e9);
+    if (yArea > 0 && imArea > 0 && Math.abs(imArea - yArea) > (P.areaPct / 100) * yArea) continue;
+    const imQ = _num(im.dormitorios, 0, 0, 99);
+    if (yQ > 0 && imQ > 0 && Math.abs(imQ - yQ) > P.quartosTol) continue;
+    const deImovel = _txt(_leadEnderecoImovelStr(im), 160);
+    for (const it of (Array.isArray(im.interessados) ? im.interessados : [])) {
+      if (!it || it.status !== 'lead' || out.length >= 400) continue;
+      const k = _slChave(it); if (vistos.has(k)) continue; vistos.add(k);
+      out.push(await _slResultado({ nome: it.nome, telefone: it.telefone || it.contato, email: it.email, dono: it.corretorLeadUid || '', deImovel, doHistorico: false }, veTudo, auth.uid, cache));
+    }
+  }
+  // Fonte 2: HISTÓRICO do C2S (bairro-chave, finalidade, tipo, m², quartos, preço).
+  if (P.ativoHistorico) {
+    const hist = (await _leadsHistoricoIndex().catch(() => new Map())).get(yKey) || [];
+    for (const e of hist) {
+      if (out.length >= 400) break;
+      if (e.fin && !finOk([e.fin])) continue;
+      if (yCat && e.tipo && e.tipo !== yCat) continue;
+      if (yArea > 0 && e.area && Math.abs(e.area - yArea) > (P.areaPct / 100) * yArea) continue;
+      if (yQ > 0 && e.q && Math.abs(e.q - yQ) > P.quartosTol) continue;
+      if (yPreco > 0 && e.preco > 0 && Math.abs(e.preco - yPreco) > (P.precoPct / 100) * yPreco) continue;
+      if (vistos.has(e.chave)) continue; vistos.add(e.chave);
+      out.push(await _slResultado({ nome: e.nome, telefone: e.telefone, email: e.email, dono: e.dono, deImovel: e.deImovel, doHistorico: true }, veTudo, auth.uid, cache));
+    }
+  }
+  let res = soMeus ? out.filter(r => r._dono === auth.uid) : out;
+  res = res.map(r => { const c = { ...r }; delete c._dono; return c; });
+  return { ok: true, resultados: res.slice(0, 400), total: res.length };
+});
+
 // (gestor/adm) Aprova um SmartLead: persiste como interessado REAL (status 'aprovado')
 // no imóvel, pronto pra "Gerar negócio". Só desmascarado (dono saiu / é o próprio) —
 // nunca rouba cliente de colega ativo. Só quem aprova é gestor/adm (Manual de Regras).
