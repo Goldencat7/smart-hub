@@ -93,6 +93,8 @@ const GOOGLE_CLIENT_SECRET = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET');
 const GOOGLE_CLIENT_SECRET_WEB = defineSecret('GOOGLE_OAUTH_CLIENT_SECRET_WEB');
 // Senha de app (Google Workspace) da conta que envia/recebe os chamados de suporte.
 const SUPPORT_EMAIL_PASS = defineSecret('SUPPORT_EMAIL_PASS');
+// App password do Gmail DEDICADO do Hub (remaxsmarthub@gmail.com) — remetente dos e-mails de imóveis.
+const HUB_EMAIL_PASS = defineSecret('HUB_EMAIL_PASS');
 // Fine-grained PAT (Contents+Pull requests: write) que dispara o Bug Fix Bot no GitHub Actions.
 const BOT_GH_TOKEN = defineSecret('BOT_GH_TOKEN');
 // Segredo compartilhado com o workflow do caça-bugs (header x-bot-secret) — só ele
@@ -107,6 +109,7 @@ const CLICKSIGN_TOKEN = defineSecret('CLICKSIGN_TOKEN'); // Access Token da API 
 const CLICKSIGN_HMAC = defineSecret('CLICKSIGN_HMAC');   // segredo HMAC dos webhooks do ClickSign (mesmo painel)
 const BOT_REPO = 'Goldencat7/remax-smart-hub';       // owner/repo alvo do repository_dispatch
 const SUPORTE_EMAIL = 'nathangabriel@remax.com.br'; // remetente + destino dos chamados
+const HUB_EMAIL = 'remaxsmarthub@gmail.com';          // Gmail dedicado do Hub — remetente dos e-mails de imóveis (fallback quando o corretor não conectou o dele)
 const FICHAS_ADMIN_EMAIL = 'marcelogutierres@remax.com.br'; // recebe aviso quando ficha é enviada ao admin
 const GOOGLE_CLIENT_ID = '474454438949-8hu3emcu98oa9pb92qcd7ucq9elhj9nc.apps.googleusercontent.com';       // "Hub Desktop" (loopback do .exe)
 const GOOGLE_CLIENT_ID_WEB = '474454438949-1t333dt83j46pph39uep7oqmv31i1t64.apps.googleusercontent.com'; // "Web client" (redirect https do navegador)
@@ -4863,6 +4866,9 @@ exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_C
     // marca se este consentimento concedeu o escopo do Drive — o trigger de
     // sincronização só age em quem tem `drive:true` (evita 403 em quem só ligou a Agenda).
     drive: (tokens.scope || '').includes('/auth/drive.file'),
+    // marca se concedeu o escopo de ENVIAR e-mail (gmail.send) — o enviarEmailImoveis
+    // manda pela conta do corretor quando `mail:true`; senão cai no Gmail do Hub.
+    mail: (tokens.scope || '').includes('/auth/gmail.send'),
     // qual cliente OAuth emitiu este refresh_token (web vs desktop) — o getAccessToken
     // precisa renovar com o MESMO cliente. redirect https ⇒ web.
     web: /^https:\/\//i.test(redirectUri || ''),
@@ -4877,11 +4883,22 @@ exports.desconectarGoogleAgenda = onCall(async (req) => {
   return { ok: true };
 });
 
+// Desliga SÓ o envio de e-mail pela conta do corretor (mantém Agenda/Drive). Volta a
+// enviar pela conta do Hub. Não revoga o consentimento no Google — só o Hub deixa de usar.
+exports.emailContaDesconectar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const ref = db.collection('google_tokens').doc(auth.uid);
+  const snap = await ref.get();
+  if (snap.exists) await ref.set({ mail: false }, { merge: true });
+  return { ok: true };
+});
+
 exports.statusGoogleAgenda = onCall(async (req) => {   // escala a zero (custo): status da agenda Google não bloqueia
   const auth = exigirAutenticado(req);
   const snap = await db.collection('google_tokens').doc(auth.uid).get();
-  if (!snap.exists) return { conectado: false, email: '' };
-  return { conectado: true, email: snap.data().email || '' };
+  if (!snap.exists) return { conectado: false, email: '', mail: false, drive: false };
+  const d = snap.data();
+  return { conectado: true, email: d.email || '', mail: !!d.mail, drive: !!d.drive };
 });
 
 // ═══ Google Drive: organização automática de documentos (escopo drive.file) ═══
@@ -8942,7 +8959,7 @@ function _serializarLead(d, ativos) {
 // COM `filtros`: busca no SERVIDOR — bairro/cidade varrem TODOS os 9k, período por range,
 // e refino (arquivado/finalidade/status/sem dono ativo) em memória. Zero índice composto:
 // a query primária usa NO MÁXIMO 1 igualdade OU 1 range+orderBy no mesmo campo.
-exports.leadsListar = onCall(async (req) => {
+exports.leadsListar = onCall({ memory: '512MiB' }, async (req) => {
   const auth = exigirAutenticado(req);
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const ativos = await _uidsAtivos().catch(() => new Set());
@@ -9009,7 +9026,7 @@ exports.leadsListar = onCall(async (req) => {
 // pra alimentar os selects sem colapsar quando um filtro está ativo. Projeção `.select`
 // (transfere pouco) + cache de 15 min por papel. Corretor só as suas; gestor/adm tudo.
 let _leadFacetasCache = { data: null, em: 0, key: '' };
-exports.leadsFacetas = onCall(async (req) => {
+exports.leadsFacetas = onCall({ memory: '512MiB' }, async (req) => {
   const auth = exigirAutenticado(req);
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const key = veTudo ? 'all' : ('u:' + auth.uid);
@@ -9228,7 +9245,7 @@ async function _leadsHistoricoIndex() {
   const agora = Date.now();
   if (_leadsHistIdxCache.map && (agora - _leadsHistIdxCache.em) < 900000) return _leadsHistIdxCache.map;
   const snap = await db.collection('leads')
-    .select('imovel', 'cliente', 'corretorUid', 'status', 'statusAlias', 'statusHub', 'origem', 'mensagem').get();
+    .select('imovel', 'cliente', 'corretorUid', 'status', 'statusAlias', 'statusHub', 'origem').get();
   const map = new Map();
   snap.docs.forEach(d => {
     const ld = d.data();
@@ -9237,11 +9254,12 @@ async function _leadsHistoricoIndex() {
     if (!key) return;
     if (_leadConvertido(ld)) return;
     const c = ld.cliente || {};
-    const pd = _leadParseDesc((im.descricao || '') + ' ' + (ld.mensagem || ''));
+    const pd = _leadParseDesc(im.descricao || '');   // só a descrição do anúncio (mensagem saiu p/ aliviar memória)
     const entry = {
       id: d.id, chave: _slChave(c),
       fin: _slFinFromNeg(im.negociacao),
       preco: _slMoney(im.precoFloat || im.preco),
+      bairro: im.bairro || '',
       tipo: pd.tipo, area: pd.area, q: pd.q,   // extraídos do texto do anúncio consultado
       dono: ld.corretorUid || '',
       nome: c.nome || '—', telefone: c.telefone || '', email: c.email || '',
@@ -9257,7 +9275,7 @@ async function _leadsHistoricoIndex() {
 // mandaram lead neste imóvel. Máscara: cliente de corretor AINDA ATIVO (e não do
 // requisitante) → só nome + "Cliente de X", sem contato, não aprovável. Se o corretor
 // SAIU (ou é o próprio) → contato completo + aprovável. Computado na hora (não persiste).
-exports.smartLeadsDoImovel = onCall(async (req) => {
+exports.smartLeadsDoImovel = onCall({ memory: '512MiB' }, async (req) => {
   const auth = exigirAutenticado(req);
   const imovelId = _txt((req.data || {}).imovelId, 80);
   if (!imovelId) throw new HttpsError('invalid-argument', 'imovelId é obrigatório.');
@@ -9290,6 +9308,7 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
     const imArea = _num(im.area, 0, 0, 1e9);
     if (yArea > 0 && imArea > 0 && Math.abs(imArea - yArea) > (P.areaPct / 100) * yArea) continue;
     const deImovel = _txt(_leadEnderecoImovelStr(im), 160);
+    const refIm = { bairro: (im.endereco || {}).bairro || '', tipo: _tipoCategoria(im.tipo), fin: _slFinArr(im.finalidade)[0] || '', preco: _slMoney(im.valorAnuncio), area: _num(im.area, 0, 0, 1e9), quartos: _num(im.dormitorios, 0, 0, 99) };
     for (const it of (Array.isArray(im.interessados) ? im.interessados : [])) {
       if (!it || it.status !== 'lead' || out.length >= 60) continue;
       const k = _slChave(it);
@@ -9305,7 +9324,7 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
             // bloqueado pro DONO deste imóvel só quando o cliente é de OUTRO corretor ainda ativo
             // (se o cliente é do próprio dono do imóvel, não há bloqueio).
             bloqueadoParaDono: !!(dono && info.ativo && dono !== Y.corretorUid),
-            mascarado: false, deImovel, aprovavel: true });
+            mascarado: false, deImovel, aprovavel: true, ref: refIm });
     }
   }
 
@@ -9333,7 +9352,8 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
       : { nome: e.nome, tipo: 'lead', telefone: e.telefone, email: e.email, origemLead: e.id, origemPortal: e.origem,
           corretorLeadUid: dono, corretorNome: dono ? (info.nome || '') : '', corretorAtivo: !!info.ativo,
           bloqueadoParaDono: !!(dono && info.ativo && dono !== Y.corretorUid),
-          mascarado: false, deImovel: e.deImovel, aprovavel: true, doHistorico: true, semDonoAtivo: semDono });
+          mascarado: false, deImovel: e.deImovel, aprovavel: true, doHistorico: true, semDonoAtivo: semDono,
+          ref: { bairro: e.bairro || '', tipo: e.tipo || '', fin: e.fin || '', preco: e.preco || 0, area: e.area || 0, quartos: e.q || 0 } });
   }
   return { ok: true, smartleads: out };
 });
@@ -9342,7 +9362,7 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
 // pro corretor (o cruzamento client-side só via os imóveis DELE; aqui cruzamos contra TODOS
 // no servidor). Devolve { imovelId: nº de sugestões } só dos imóveis que o usuário vê
 // (corretor: os seus; gestor/adm: todos). Não devolve PII — só o número.
-exports.smartLeadContagem = onCall(async (req) => {
+exports.smartLeadContagem = onCall({ memory: '512MiB' }, async (req) => {
   const auth = exigirAutenticado(req);
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const snap = await db.collection('imoveis').get();
@@ -9432,7 +9452,7 @@ async function _slResultado(cand, veTudo, uid, cache) {
 // (interessados) + do HISTÓRICO do C2S. NÃO persiste nada (é uma consulta). Máscara igual ao
 // SmartLead: gestor vê tudo; corretor vê os seus + liberados completos, e os de colega ativo
 // mascarados ("falar com Fulano"). `soMeus` restringe aos leads do próprio requisitante.
-exports.smartLeadBuscar = onCall(async (req) => {
+exports.smartLeadBuscar = onCall({ memory: '512MiB' }, async (req) => {
   const auth = exigirAutenticado(req);
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
   const d = req.data || {};
@@ -9490,6 +9510,192 @@ exports.smartLeadBuscar = onCall(async (req) => {
   let res = soMeus ? out.filter(r => r._dono === auth.uid) : out;
   res = res.map(r => { const c = { ...r }; delete c._dono; return c; });
   return { ok: true, resultados: res.slice(0, 400), total: res.length };
+});
+
+// ─── E-mail marketing de imóveis (envio pelo Hub, estilo iList) ──────────────
+// O corretor manda pro cliente até 5 imóveis da carteira parecidos com o que ele
+// pediu. Sai pela conta do Hub (Gmail), responder-para = corretor. Registra o envio
+// (email_marketing) e respeita descadastro (email_optout). Coleções protegidas pelo
+// catch-all das rules (só via Cloud Function).
+const _cryptoMkt = require('crypto');
+function _emailKey(email) { return _cryptoMkt.createHash('sha1').update(String(email || '').trim().toLowerCase()).digest('hex'); }
+function _emailValido(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim()); }
+function _mktOptoutUrl(token) { const pid = process.env.GCLOUD_PROJECT || 'remax-smart-hub'; return `https://southamerica-east1-${pid}.cloudfunctions.net/emailOptout?t=${token}`; }
+function _imFoto(im) { const f = (im.feedDados && Array.isArray(im.feedDados.fotos)) ? im.feedDados.fotos[0] : ''; return typeof f === 'string' ? f : ''; }
+function _imResumo(im, id) {
+  const e = im.endereco || {};
+  return {
+    id, tipo: im.tipo || '', finalidade: im.finalidade || '',
+    preco: _slMoney(im.valorAnuncio), precoTxt: String(im.valorAnuncio || ''),
+    endereco: [[e.logradouro, e.numero].filter(Boolean).join(', '), e.bairro, e.cidade].filter(Boolean).join(' · '),
+    bairro: e.bairro || '', cidade: e.cidade || '',
+    area: _num(im.area, 0, 0, 1e9), dormitorios: _num(im.dormitorios, 0, 0, 99), vagas: _num(im.vagas, 0, 0, 99),
+    codigo: im.feedListingId || im.referencia || '', foto: _imFoto(im),
+    portalUrl: (im.feedDados && im.feedDados.detalheUrl) || '',
+  };
+}
+function _mktEmailHtml(imoveis, cor, mensagem, optoutUrl) {
+  const corretorNome = cor.nome, corretorTel = cor.tel, corretorEmail = cor.email, corretorCreci = cor.creci;
+  const esc = escaparHtml;
+  const card = (im) => {
+    const specs = [im.dormitorios ? im.dormitorios + ' dorm' : '', im.vagas ? im.vagas + (im.vagas > 1 ? ' vagas' : ' vaga') : '', im.area ? im.area + ' m²' : ''].filter(Boolean).join(' · ');
+    const preco = im.precoTxt || (im.preco ? ('R$ ' + im.preco.toLocaleString('pt-BR')) : '');
+    const url = im.portalUrl || '';
+    const img = im.foto ? '<img src="' + esc(im.foto) + '" width="600" style="width:100%;max-width:600px;display:block;max-height:300px" alt="">' : '';
+    return '<tr><td style="padding:0 0 18px"><table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#fff">'
+      + (img ? '<tr><td>' + (url ? '<a href="' + esc(url) + '" target="_blank" style="text-decoration:none">' + img + '</a>' : img) + '</td></tr>' : '')
+      + '<tr><td style="padding:16px 18px">'
+      + '<div style="font-size:12px;color:#e11d48;font-weight:700;text-transform:uppercase;letter-spacing:.5px">' + esc(im.finalidade === 'locacao' ? 'Locação' : 'Venda') + ' · ' + esc(im.tipo || '') + '</div>'
+      + '<div style="font-size:20px;font-weight:800;color:#0a3d62;margin:4px 0">' + esc(preco) + '</div>'
+      + '<div style="font-size:14px;color:#334155;margin-bottom:6px">' + esc(im.endereco || '') + '</div>'
+      + (specs ? '<div style="font-size:13px;color:#64748b">' + esc(specs) + '</div>' : '')
+      + (im.codigo ? '<div style="font-size:11px;color:#94a3b8;margin-top:6px">Cód. ' + esc(im.codigo) + '</div>' : '')
+      + (url ? '<div style="margin-top:12px"><a href="' + esc(url) + '" target="_blank" style="display:inline-block;background:#0a3d62;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:10px 20px;border-radius:8px">Ver imóvel &rarr;</a></div>' : '')
+      + '</td></tr></table></td></tr>';
+  };
+  const intro = mensagem ? esc(mensagem).replace(/\n/g, '<br>') : 'Olá! Separei alguns imóveis que combinam com o que você procura. Dê uma olhada:';
+  return '<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif">'
+    + '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0"><tr><td align="center">'
+    + '<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">'
+    + '<tr><td style="background:#0a3d62;border-radius:12px 12px 0 0;padding:20px 22px"><span style="color:#fff;font-size:20px;font-weight:800;letter-spacing:1px">RE<span style="color:#e11d48">MAX</span> Smart</span></td></tr>'
+    + '<tr><td style="background:#fff;padding:22px 22px 6px"><div style="font-size:15px;color:#334155;line-height:1.6">' + intro + '</div></td></tr>'
+    + '<tr><td style="background:#fff;padding:16px 22px 4px"><table width="100%" cellpadding="0" cellspacing="0">' + imoveis.map(card).join('') + '</table></td></tr>'
+    + '<tr><td style="background:#fff;padding:6px 22px 22px;border-radius:0 0 12px 12px"><div style="border-top:1px solid #e5e7eb;padding-top:14px">'
+    + '<div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Fale comigo</div>'
+    + '<div style="font-size:15px;color:#0a3d62;font-weight:800">' + esc(corretorNome || 'Seu corretor REMAX Smart') + '</div>'
+    + (corretorCreci ? '<div style="font-size:12px;color:#64748b">CRECI ' + esc(corretorCreci) + '</div>' : '')
+    + (corretorTel ? '<div style="font-size:14px;color:#334155;margin-top:6px">📞 ' + esc(corretorTel) + '</div>' : '')
+    + (corretorEmail ? '<div style="font-size:14px;color:#334155">✉️ ' + esc(corretorEmail) + '</div>' : '')
+    + '</div></td></tr>'
+    + '<tr><td style="padding:16px 22px;text-align:center;font-size:11px;color:#94a3b8">Você recebeu este e-mail porque demonstrou interesse em um imóvel.<br><a href="' + esc(optoutUrl) + '" style="color:#94a3b8">Não quero mais receber e-mails</a></td></tr>'
+    + '</table></td></tr></table></body></html>';
+}
+
+// Monta o MIME (base64url) usando o compositor do nodemailer — pra mandar pela Gmail API.
+function _construirMime(opts) {
+  return new Promise((resolve, reject) => {
+    const MailComposer = require('nodemailer/lib/mail-composer');
+    new MailComposer(opts).compile().build((err, message) => {
+      if (err) return reject(err);
+      resolve(message.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
+    });
+  });
+}
+// Envia pela conta do corretor via Gmail API (escopo gmail.send). `accessToken` renovado
+// do refresh_token guardado em google_tokens.
+async function _enviarViaGmailApi(accessToken, opts) {
+  const raw = await _construirMime(opts);
+  const resp = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw }),
+  });
+  if (!resp.ok) { let t = ''; try { t = await resp.text(); } catch (_) {} throw new Error('Gmail API ' + resp.status + ' ' + String(t).slice(0, 200)); }
+}
+
+// (autenticado) Imóveis da carteira PARECIDOS com uma especificação (pro picker do e-mail).
+exports.carteiraParecidos = onCall({ memory: '512MiB' }, async (req) => {
+  exigirAutenticado(req);
+  const d = req.data || {};
+  const yKey = _slBairroKey(_txt(d.bairro, 120));
+  const finReq = _txt(d.finalidade, 20);
+  const yCat = _tipoCategoria(_txt(d.tipo, 60));
+  const yPreco = _slMoney(d.preco);
+  const excluir = _txt(d.excluirId, 80);
+  // Picker do e-mail: mostra TODAS as parecidas (mesmo bairro, finalidade e tipo) — sem cortar
+  // por preço/m² (aqui é o corretor que escolhe). Ordena pela proximidade de preço.
+  const snap = await db.collection('imoveis').get();
+  let out = [];
+  for (const doc of snap.docs) {
+    const im = doc.data();
+    if (im.arquivado || doc.id === excluir) continue;
+    if (yKey && _slBairroKey((im.endereco || {}).bairro) !== yKey) continue;
+    if (finReq && !_slFinArr(im.finalidade).includes(finReq)) continue;
+    if (yCat && _tipoCategoria(im.tipo) !== yCat) continue;
+    out.push(_imResumo(im, doc.id));
+  }
+  if (yPreco > 0) out.sort((a, b) => Math.abs((a.preco || 0) - yPreco) - Math.abs((b.preco || 0) - yPreco));
+  return { ok: true, imoveis: out.slice(0, 40) };
+});
+
+// (autenticado) Envia o e-mail com até 5 imóveis pro cliente. Respeita descadastro.
+exports.enviarEmailImoveis = onCall({ memory: '512MiB', secrets: [HUB_EMAIL_PASS, GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB] }, async (req) => {
+  const auth = exigirAutenticado(req);
+  const d = req.data || {};
+  const para = _txt(d.para, 160).toLowerCase();
+  if (!_emailValido(para)) throw new HttpsError('invalid-argument', 'E-mail do cliente inválido.');
+  const paraNome = _txt(d.paraNome, 160);
+  const ids = Array.isArray(d.imovelIds) ? d.imovelIds.map(x => _txt(x, 80)).filter(Boolean).slice(0, 5) : [];
+  if (!ids.length) throw new HttpsError('invalid-argument', 'Selecione de 1 a 5 imóveis.');
+  const mensagem = _txt(d.mensagem, 1000);
+  const optSnap = await db.collection('email_optout').doc(_emailKey(para)).get();
+  if (optSnap.exists) throw new HttpsError('failed-precondition', 'Este cliente se descadastrou dos e-mails.');
+  const docs = await db.getAll(...ids.map(id => db.collection('imoveis').doc(id)));
+  const imoveis = docs.filter(s => s.exists).map(s => _imResumo(s.data(), s.id));
+  if (!imoveis.length) throw new HttpsError('not-found', 'Imóveis não encontrados.');
+  let nome = auth.uid, email = (auth.token && auth.token.email) || '', tel = '', creci = '';
+  try { const u = await admin.auth().getUser(auth.uid); nome = u.displayName || u.email || nome; email = u.email || email; } catch (_) {}
+  try { const pf = await db.collection('user_profiles').doc(auth.uid).get(); if (pf.exists) { const x = pf.data(); nome = x.nome || nome; tel = x.telefone || ''; creci = x.creci || ''; } } catch (_) {}
+  const token = _cryptoMkt.randomBytes(16).toString('hex');
+  const html = _mktEmailHtml(imoveis, { nome, tel, email, creci }, mensagem, _mktOptoutUrl(token));
+  const assunto = 'Imóveis selecionados pra você — REMAX Smart';
+  const texto = imoveis.map(i => `${i.tipo} · ${i.precoTxt} · ${i.endereco}`).join('\n') + '\n\n' + nome;
+  // Onde envia: se o corretor CONECTOU o Gmail dele (google_tokens.mail), sai da conta DELE
+  // via Gmail API; senão, da conta central do Hub (remaxsmarthub) por SMTP.
+  let enviadoPor = HUB_EMAIL;
+  try {
+    const tok = await db.collection('google_tokens').doc(auth.uid).get();
+    const td = tok.exists ? tok.data() : null;
+    if (td && td.mail && td.refreshToken) {
+      const accessToken = await getAccessToken(td.refreshToken, td.web);
+      const fromAddr = td.email || email || HUB_EMAIL;
+      await _enviarViaGmailApi(accessToken, { from: `${nome} <${fromAddr}>`, to: para, replyTo: fromAddr, subject: assunto, html, text: texto });
+      enviadoPor = fromAddr;
+    } else {
+      const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: HUB_EMAIL, pass: HUB_EMAIL_PASS.value() } });
+      await transporter.sendMail({ from: `${nome} (REMAX Smart) <${HUB_EMAIL}>`, to: para, replyTo: email || undefined, subject: assunto, html, text: texto });
+    }
+  } catch (e) { console.error('email imoveis:', e.message); throw new HttpsError('internal', 'Não consegui enviar o e-mail. Tente de novo.'); }
+  await db.collection('email_marketing').add({
+    corretorUid: auth.uid, corretorNome: nome, para, paraNome, enviadoPor,
+    imovelIds: imoveis.map(i => i.id), imoveisResumo: imoveis.map(i => ({ endereco: i.endereco, precoTxt: i.precoTxt, tipo: i.tipo })),
+    leadOrigemId: _txt(d.leadOrigemId, 80) || null,
+    optoutToken: token, enviadoEm: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await registrarAudit(auth, 'email_marketing_enviado', { tipo: 'email_marketing', id: para }, { imoveis: imoveis.length });
+  return { ok: true };
+});
+
+// (autenticado) Histórico de e-mails enviados (corretor: os seus; gestor/adm: todos) +
+// flag de descadastro por destinatário. Alimenta a aba "E-mails".
+exports.emailMktListar = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const iso = t => (t && t.toDate ? t.toDate().toISOString() : null);
+  let snap;
+  if (veTudo) snap = await db.collection('email_marketing').orderBy('enviadoEm', 'desc').limit(300).get();
+  else snap = await db.collection('email_marketing').where('corretorUid', '==', auth.uid).limit(300).get();
+  let itens = snap.docs.map(d => { const x = d.data(); return { id: d.id, para: x.para || '', paraNome: x.paraNome || '', corretorNome: x.corretorNome || '', enviadoPor: x.enviadoPor || '', imoveis: x.imoveisResumo || [], qtd: (x.imovelIds || []).length, enviadoEm: iso(x.enviadoEm) }; });
+  if (!veTudo) itens.sort((a, b) => String(b.enviadoEm || '').localeCompare(String(a.enviadoEm || '')));
+  const emails = [...new Set(itens.map(i => i.para).filter(Boolean))];
+  const optSet = new Set();
+  if (emails.length) { const os = await db.getAll(...emails.map(e => db.collection('email_optout').doc(_emailKey(e)))); os.forEach((s, i) => { if (s.exists) optSet.add(emails[i]); }); }
+  itens = itens.map(i => ({ ...i, descadastrado: optSet.has(i.para) }));
+  return { ok: true, itens };
+});
+
+// (público) Página de descadastro — o link do rodapé do e-mail aponta aqui.
+exports.emailOptout = onRequest({ region: 'southamerica-east1' }, async (req, res) => {
+  const t = String((req.query && req.query.t) || '').trim();
+  const pagina = (titulo, msg) => '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' + titulo + '</title></head><body style="margin:0;font-family:Arial,sans-serif;background:#f1f5f9;display:flex;min-height:100vh;align-items:center;justify-content:center"><div style="background:#fff;border-radius:14px;padding:32px 28px;max-width:420px;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08)"><div style="font-size:22px;font-weight:800;color:#0a3d62;margin-bottom:10px">RE<span style="color:#e11d48">MAX</span> Smart</div><div style="font-size:15px;color:#334155;line-height:1.6">' + msg + '</div></div></body></html>';
+  if (!t) { res.status(400).send(pagina('Link inválido', 'Link de descadastro inválido.')); return; }
+  try {
+    const q = await db.collection('email_marketing').where('optoutToken', '==', t).limit(1).get();
+    if (q.empty) { res.status(200).send(pagina('Descadastro', 'Não encontramos este cadastro (talvez já tenha sido removido).')); return; }
+    const para = q.docs[0].data().para;
+    await db.collection('email_optout').doc(_emailKey(para)).set({ email: para, em: admin.firestore.FieldValue.serverTimestamp(), viaToken: t });
+    res.status(200).send(pagina('Pronto', 'Você não receberá mais e-mails de imóveis da REMAX Smart. Se mudar de ideia, é só avisar o seu corretor.'));
+  } catch (e) { console.error('optout:', e.message); res.status(500).send(pagina('Erro', 'Não foi possível processar agora. Tente mais tarde.')); }
 });
 
 // (gestor/adm) Aprova um SmartLead: persiste como interessado REAL (status 'aprovado')

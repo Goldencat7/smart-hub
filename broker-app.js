@@ -419,7 +419,7 @@ async function carregarPessoas(){
 /* ============================ UI INFRA ============================ */
 const RENDERERS = {};
 // Configurações e "sair da conta" ficam SÓ no Hub (pedido do Nathan) — não entram aqui.
-const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'leads',ico:'inbox',label:'Leads'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'clicksign',ico:'file-signature',label:'Clicksign'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
+const NAVITEMS = [ {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},{id:'leads',ico:'inbox',label:'Leads'},{id:'emails',ico:'mail',label:'E-mails'},{id:'pessoas',ico:'users',label:'Pessoas'},{id:'imoveis',ico:'building-2',label:'Imóveis'},{id:'negocios',ico:'handshake',label:'Negócios'},{id:'documentos',ico:'folder',label:'Documentos'},{id:'clicksign',ico:'file-signature',label:'Clicksign'},{id:'relatorios',ico:'bar-chart-3',label:'Relatórios'},{id:'conciliacao',ico:'clipboard-check',label:'Conciliação'} ];
 const CRUMB = { dashboard:['SMART HUB','Dashboard'], leads:['SMART HUB','Leads'], pessoas:['SMART HUB','Pessoas'], imoveis:['SMART HUB','Imóveis'], negocios:['SMART HUB','Negócios'], relatorios:['SMART HUB','Relatórios'], conciliacao:['SMART HUB','Conciliação de Malote'], configuracoes:['SMART HUB','Configurações'] };
 
 function renderNav(target){ if(!target) return; target.innerHTML = NAVITEMS.map(n=>'<button class="navitem'+(state.view===n.id?' active':'')+'" data-nav="'+n.id+'">'+icon(n.ico,18)+n.label+'</button>').join(''); }
@@ -1550,6 +1550,9 @@ function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imove
 // corretor vê os seus (subconta, aceitável na v1).
 let SMARTLEAD = {};   // imovelId -> [ {nome,telefone,email,contato,deEnd} ] clientes com match (client-side, fallback)
 let SL_COUNT = {};    // imovelId -> nº de SmartLeads (do BACKEND — cruza contra TODOS os imóveis; funciona pro corretor)
+let SL_SUGESTOES = []; // sugestões do imóvel aberto (pro botão E-mail achar o cliente por índice)
+let EMAIL_CTX = null;  // contexto do modal "Enviar imóveis por e-mail"
+let MKT_EMAILS = null; // histórico de e-mails enviados (aba E-mails)
 let _slCountFetched = false;
 // Busca a contagem real de SmartLead no servidor (o cruzamento client-side só vê os imóveis
 // do próprio corretor). Atualiza só a lista de imóveis, sem re-renderizar a view (sem loop).
@@ -1657,13 +1660,14 @@ function smartLeadsHtml(imovelId, arr, semBairro){
   const head='<div class="fz11 up fw7 t500" style="margin-bottom:4px">'+icon('sparkles',13)+' Sugestões · SmartLead</div><div class="fz11 t500" style="margin-bottom:10px">Clientes que procuraram imóveis parecidos (mesmo bairro e faixa de preço) — inclui leads antigos do portal (selo <b>histórico</b>). Boa chance de gostarem deste.</div>';
   if(semBairro) return head+'<div class="tcenter t500 fz12" style="padding:10px">Cadastre o bairro do imóvel pra ver sugestões.</div>';
   if(!arr.length) return head+'<div class="tcenter t500 fz12" style="padding:10px">Nenhuma sugestão no momento.</div>';
-  return head+arr.map(s=>{
+  SL_SUGESTOES=arr||[];
+  return head+arr.map((s,i)=>{
     const selo=pill('SmartLead','ai')+(s.doHistorico?' '+pill('histórico','neutral'):'');
     if(s.mascarado){
       return '<div style="border:1px dashed var(--ink300);border-radius:10px;margin-bottom:8px;padding:11px 12px;opacity:.9"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink600)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div><div class="fz11 t500 trunc">'+icon('lock',11)+' Cliente de <b>'+esc(s.corretorNome||'outro corretor')+'</b> — fale com ele</div></div>'+selo+'</div>'+(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">'+(s.doHistorico?'pediu ':'via ')+esc(s.deImovel)+'</div>':'')+'</div>';
     }
     const tel=String(s.telefone||'').replace(/[^\d+]/g,''); const wa=leadWa(s.telefone||'');
-    return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+selo+'</div>'
+    return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc" style="user-select:text">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc" style="user-select:text">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+(ehG?'<button data-action="sl-copiar" data-i="'+i+'" title="Copiar dados do cliente" class="nsh" style="background:none;border:none;cursor:pointer;padding:3px;color:var(--ink500);flex:none">'+icon('copy',14)+'</button>':'')+selo+'</div>'
       // Aviso do dono do lead (só desmascarado). Bloqueado = cliente de OUTRO corretor ativo
       // (pro dono deste imóvel). Liberado = corretor saiu. Sem dono ativo = livre. Cliente do próprio dono = sem aviso.
       +(s.bloqueadoParaDono
@@ -1674,8 +1678,101 @@ function smartLeadsHtml(imovelId, arr, semBairro){
             ? '<div class="fz11" style="margin-top:6px;color:#f59e0b">'+icon('user-x',11)+' Sem corretor ativo dono — livre pra pegar</div>'
             : '')))
       +(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">'+(s.doHistorico?'pediu ':'via ')+esc(s.deImovel)+'</div>':'')
-      +'<div class="fx g2 wrap" style="margin-top:10px">'+(wa?'<a class="btn btn-success sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',14)+'WhatsApp</a>':'')+(tel?'<a class="btn btn-outline sm" href="tel:'+esc(tel)+'" style="text-decoration:none">'+icon('phone',14)+'Ligar</a>':'')+(ehG&&s.aprovavel&&s.origemLead?'<button class="btn btn-primary sm" data-action="sl-aprovar" data-imovel="'+esc(imovelId)+'" data-lead="'+esc(s.origemLead)+'">'+icon('check',14)+'Aprovar</button>':'')+'</div></div>';
+      +'<div class="fx g2 wrap" style="margin-top:10px">'+(wa?'<a class="btn btn-success sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',14)+'WhatsApp</a>':'')+(tel?'<a class="btn btn-outline sm" href="tel:'+esc(tel)+'" style="text-decoration:none">'+icon('phone',14)+'Ligar</a>':'')+(s.email?'<button class="btn btn-outline sm" data-action="sl-email" data-i="'+i+'">'+icon('mail',14)+'E-mail</button>':'')+(ehG&&s.aprovavel&&s.origemLead?'<button class="btn btn-primary sm" data-action="sl-aprovar" data-imovel="'+esc(imovelId)+'" data-lead="'+esc(s.origemLead)+'">'+icon('check',14)+'Aprovar</button>':'')+'</div></div>';
   }).join('');
+}
+// Copia os dados do cliente pra área de transferência (só gestor usa; o app bloqueia
+// seleção de texto em vários lugares, então o botão resolve).
+function copiarTexto(txt){
+  const ok=()=>toast('Copiado','check-circle-2','var(--success)');
+  const fb=()=>{ try{ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); ta.remove(); ok(); }catch(_e){ toast('Não consegui copiar','alert-triangle','var(--danger)'); } };
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(ok).catch(fb); } else fb(); }catch(_e){ fb(); }
+}
+function slCopiar(s){ if(!s) return; const txt=[s.nome,s.telefone,s.email].filter(Boolean).join(' · '); if(!txt){ toast('Sem dados pra copiar','alert-triangle','var(--warning)'); return; } copiarTexto(txt); }
+function leadCopiar(id){ const l=LEADS.find(x=>x.id===id); if(!l) return; const c=l.cliente||{}; const txt=[c.nome,c.telefone,c.email].filter(Boolean).join(' · '); if(!txt){ toast('Sem dados pra copiar','alert-triangle','var(--warning)'); return; } copiarTexto(txt); }
+function intCopiar(imovelId, idx){ const p=(typeof prop==='function'?prop(imovelId):null)||{}; const it=(p.interessados||[])[idx]; if(!it){ toast('Não encontrado — recarregue','alert-triangle','var(--warning)'); return; } const txt=[it.nome, it.telefone||it.contato, it.email].filter(Boolean).join(' · '); if(!txt){ toast('Sem dados pra copiar','alert-triangle','var(--warning)'); return; } copiarTexto(txt); }
+// Categoria do tipo a partir de texto livre (mesma regra do backend _tipoCategoria).
+function _tipoCatFront(txt){ txt=semAcento(txt||'').toLowerCase(); if(/apart|apto|studio|kitn|cobertura|flat|loft/.test(txt))return 'apto'; if(/casa|sobrado/.test(txt))return 'casa'; if(/sala|comercial|conjunto|escrit|loja|galp|predio|ponto/.test(txt))return 'comercial'; if(/terreno|lote/.test(txt))return 'terreno'; return ''; }
+// "E-mail" do lead → abre o modal de enviar imóveis, semeado com o imóvel que o lead pediu.
+function openEmailLead(id){
+  const l=LEADS.find(x=>x.id===id); if(!l){ toast('Lead não encontrado','alert-triangle','var(--warning)'); return; }
+  const c=l.cliente||{}; const im=l.imovel||{};
+  if(!c.email){ toast('Este lead não tem e-mail cadastrado','alert-triangle','var(--warning)'); return; }
+  const neg=semAcento(im.negociacao||'').toLowerCase();
+  const fin=/vend|compra/.test(neg)?'venda':(/alug|loca/.test(neg)?'locacao':'');
+  let preco=im.precoFloat||0; if(!preco){ const d=String(im.preco||'').replace(/[^\d,]/g,'').replace(',','.'); const n=parseFloat(d); if(isFinite(n))preco=n; }
+  const ref={ bairro:im.bairro||'', fin:fin, preco:preco, tipo:_tipoCatFront((im.descricao||'')+' '+(l.mensagem||'')), area:0, quartos:0 };
+  openEmailImoveis({ email:c.email, nome:c.nome||'', ref });
+}
+// ─── E-mail marketing: manda até 5 imóveis parecidos pro cliente ─────────────
+function openEmailImoveis(s){
+  if(!s||!s.email){ toast('Sem e-mail deste cliente','alert-triangle','var(--warning)'); return; }
+  EMAIL_CTX={ para:s.email, paraNome:s.nome||'', ref:s.ref||{}, cands:null, sel:{}, mensagem:'', loading:true };
+  openModal(emailModalHtml());
+  setTimeout(()=>{ const el=$('#emailParaInput'); if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); } },60);
+  call('carteiraParecidos')(Object.assign({}, EMAIL_CTX.ref))
+   .then(r=>{ if(!EMAIL_CTX) return; EMAIL_CTX.cands=(r.data&&r.data.imoveis)||[]; EMAIL_CTX.loading=false; refreshEmailModal(); })
+   .catch(e=>{ if(!EMAIL_CTX) return; EMAIL_CTX.cands=[]; EMAIL_CTX.loading=false; toast(e.message||'Erro ao buscar imóveis','alert-triangle','var(--danger)'); refreshEmailModal(); });
+}
+function emailCandsHtml(){
+  const c=EMAIL_CTX; if(!c) return '';
+  const nSel=Object.values(c.sel).filter(Boolean).length;
+  if(c.loading) return '<div class="tcenter t500" style="padding:30px">'+icon('loader',22)+'<p class="fz13" style="margin-top:8px">Buscando imóveis parecidos…</p></div>';
+  if(!c.cands||!c.cands.length) return '<div class="tcenter t500" style="padding:24px">'+icon('search',20)+'<p class="fz13" style="margin-top:8px">Nenhum imóvel parecido na carteira agora.</p></div>';
+  return c.cands.map((im,i)=>{ const on=!!c.sel[i]; const dis=(!on&&nSel>=5);
+    return '<label class="fx ac g3" style="border:1px solid '+(on?'var(--ai)':'var(--ink200)')+';border-radius:10px;margin-bottom:8px;padding:8px 10px;cursor:'+(dis?'not-allowed':'pointer')+';opacity:'+(dis?'.5':'1')+'">'
+     +'<input type="checkbox" data-action="email-sel" data-i="'+i+'" '+(on?'checked':'')+(dis?' disabled':'')+' style="width:17px;height:17px;flex:none">'
+     +(im.foto?'<img src="'+esc(im.foto)+'" style="width:58px;height:44px;object-fit:cover;border-radius:6px;flex:none" alt="">':'<div style="width:58px;height:44px;border-radius:6px;background:var(--ink100);flex:none"></div>')
+     +'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(im.precoTxt||'')+' · '+esc(im.tipo||'')+'</div><div class="fz11 t500 trunc">'+esc(im.endereco||'')+'</div><div class="fz11 tmut">'+[im.dormitorios?im.dormitorios+' dorm':'',im.area?im.area+' m²':''].filter(Boolean).join(' · ')+'</div></div></label>';
+  }).join('');
+}
+function emailModalHtml(){
+  const c=EMAIL_CTX; if(!c) return '';
+  const nSel=Object.values(c.sel).filter(Boolean).length;
+  return '<div style="padding:18px 20px;max-width:520px;width:92vw">'
+   +'<div class="fz16 fw7 t900" style="margin-bottom:2px">'+icon('mail',17)+' Enviar imóveis por e-mail</div>'
+   +'<div class="fz12 t500" style="margin-bottom:10px">Cliente: <b>'+esc(c.paraNome||'—')+'</b> — selecione até <b>5</b> imóveis parecidos com o que ele pediu.</div>'
+   +'<label class="fz11 tmut" style="display:block;margin-bottom:4px">Enviar para</label>'
+   +'<input id="emailParaInput" data-input="emailPara" value="'+esc(c.para||'')+'" type="email" style="width:100%;box-sizing:border-box;height:38px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 11px;font-family:var(--sans);margin-bottom:10px">'
+   +'<textarea data-input="emailMsg" placeholder="Mensagem (opcional) — ex.: Oi! Achei estes que combinam com o que você procura." style="width:100%;box-sizing:border-box;min-height:56px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:9px 11px;font-family:var(--sans);margin-bottom:12px">'+esc(c.mensagem||'')+'</textarea>'
+   +'<div style="max-height:42vh;overflow:auto" class="scrolly" id="emailCands">'+emailCandsHtml()+'</div>'
+   +'<div class="fx ac jb g2" style="margin-top:14px"><span class="fz12 tmut" id="emailSelInfo">'+nSel+'/5 selecionados</span><div class="fx g2"><button class="btn btn-outline sm" data-action="close-modal">Cancelar</button><button class="btn btn-primary sm" data-action="email-enviar"'+(nSel?'':' disabled')+' id="emailEnviarBtn">'+icon('send',14)+'Enviar</button></div></div>'
+   +'</div>';
+}
+function updateEmailSelInfo(){ const c=EMAIL_CTX; if(!c) return; const nSel=Object.values(c.sel).filter(Boolean).length; const s=$('#emailSelInfo'); if(s) s.textContent=nSel+'/5 selecionados'; const b=$('#emailEnviarBtn'); if(b) b.disabled=!nSel; }
+function refreshEmailModal(){ const el=$('#emailCands'); if(el){ el.innerHTML=emailCandsHtml(); refreshIcons(); } updateEmailSelInfo(); }
+function emailToggleSel(i){ const c=EMAIL_CTX; if(!c) return; const nSel=Object.values(c.sel).filter(Boolean).length; if(!c.sel[i] && nSel>=5){ toast('Máximo 5 imóveis','alert-triangle','var(--warning)'); return; } c.sel[i]=!c.sel[i]; refreshEmailModal(); }
+function emailEnviar(btn){
+  const c=EMAIL_CTX; if(!c) return;
+  const ids=(c.cands||[]).filter((_im,i)=>c.sel[i]).map(im=>im.id);
+  if(!ids.length){ toast('Selecione ao menos 1 imóvel','alert-triangle','var(--warning)'); return; }
+  if(!c.para||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.para)){ toast('E-mail do destinatário inválido','alert-triangle','var(--warning)'); return; }
+  if(btn){ btn.disabled=true; btn.innerHTML=icon('loader',14)+'Enviando…'; refreshIcons(); }
+  call('enviarEmailImoveis')({ para:c.para, paraNome:c.paraNome, imovelIds:ids, mensagem:c.mensagem })
+   .then(()=>{ toast('E-mail enviado pra '+(c.paraNome||c.para),'check-circle-2','var(--success)'); EMAIL_CTX=null; closeModal(); })
+   .catch(e=>{ toast(e.message||'Erro ao enviar','alert-triangle','var(--danger)'); if(btn){ try{ btn.disabled=false; btn.innerHTML=icon('send',14)+'Enviar'; refreshIcons(); }catch(_e){} } });
+}
+// Aba "E-mails" — histórico de envios + descadastros.
+RENDERERS.emails=function(host){
+  host.innerHTML=pageHead(hTitulo('E-mails'),'E-mails de imóveis enviados aos clientes e quem se descadastrou.','')
+    +'<div id="emailsBody"><div class="card tcenter tmut" style="padding:30px 0">Carregando…</div></div>';
+  refreshIcons();
+  call('emailMktListar')({}).then(r=>{ MKT_EMAILS=(r.data&&r.data.itens)||[]; const b=$('#emailsBody'); if(state.view==='emails'&&b){ b.innerHTML=emailsTabela(); refreshIcons(); } })
+   .catch(()=>{ const b=$('#emailsBody'); if(b) b.innerHTML=vazio('alert-triangle','Não consegui carregar os e-mails.'); });
+};
+function emailsTabela(){
+  const arr=MKT_EMAILS||[]; const veTudo=state.role!=='corretor';
+  if(!arr.length) return vazio('mail','Nenhum e-mail enviado ainda. Use o botão “E-mail” nas sugestões de SmartLead (dentro de um imóvel) pra mandar imóveis a um cliente.');
+  const nDesc=arr.filter(x=>x.descadastrado).length;
+  const aviso = nDesc ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;border:1px solid var(--warning)"><div class="fz13 fw6" style="color:var(--warning)">'+icon('user-x',14)+' '+nDesc+' destinatário(s) se descadastraram — o sistema bloqueia reenvio pra eles.</div></div>' : '';
+  const rows=arr.map(x=>'<tr>'
+    +'<td><div class="fw6 t900 trunc">'+esc(x.paraNome||x.para)+'</div><div class="fz11 tmut trunc">'+esc(x.para)+'</div></td>'
+    +'<td class="t700 fz12 nowrap">'+x.qtd+' imóvel'+(x.qtd===1?'':'is')+'</td>'
+    +(veTudo?'<td class="t700 trunc" style="max-width:140px">'+esc(x.corretorNome||'—')+'</td>':'')
+    +'<td class="tmut fz12 nowrap">'+leadData(x.enviadoEm)+'</td>'
+    +'<td>'+(x.descadastrado?pill('descadastrado','neutral'):pill('enviado','success'))+'</td>'
+    +'</tr>').join('');
+  return aviso+'<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(veTudo?720:600)+'px"><thead><tr><th>Cliente</th><th>Imóveis</th>'+(veTudo?'<th>Corretor</th>':'')+'<th>Enviado</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
 function slAprovar(imovelId, origemLead, btn){
   if(!confirm('Aprovar este SmartLead? Ele vira interessado APROVADO, pronto pra gerar negócio.')) return;
@@ -1706,7 +1803,7 @@ function propDrawer(id){
   const tabs=[['dados','Dados'],['interessados','Interessados'],['docs','Documentos'],['vinc','Negócios']];
   let body='';
   if(tab==='dados'){ body='<div>'+kv('Finalidade',p.finalidade)+kv('Tipo',esc(p.tipo))+kv('Valor','<span class="mono">'+(p.preco?brlFull(p.preco):'—')+(p.finalidadeRaw==='locacao'?'/mês':'')+'</span>'+(p.raw&&p.raw.origem==='feed'?' <span class="fz11 t400" title="Vem do portal — edite o valor no anúncio">· do portal</span>':' <button class="btn btn-ghost sm" data-action="alterar-valor" data-imovel="'+esc(p.id)+'" title="Alterar valor" style="margin-left:6px;padding:2px 8px;font-size:11px">'+icon('pencil',12)+'Alterar</button>'))+kv('Situação',p.status)+(p.area?kv('Área',esc(p.area)+' m²'):'')+(p.dorm?kv('Dormitórios',esc(p.dorm)):'')+(p.vaga!=null?kv('Vagas',esc(p.vaga)):'')+(p.feed&&p.feed.suites?kv('Suítes',esc(p.feed.suites)):'')+(p.feed&&p.feed.banheiros?kv('Banheiros',esc(p.feed.banheiros)):'')+(p.feed&&p.feed.condominio?kv('Condomínio','R$ '+esc(p.feed.condominio)):'')+(p.feed&&p.feed.ano?kv('Ano de construção',esc(p.feed.ano)):'')+kv('Bairro',esc(p.bairro))+kv('Cidade',esc(p.cidade))+kv('Cadastrado em',esc(p.dataFmt||'—'))+(p.portalUrl?'<div class="fx ac g2" style="margin-top:12px"><a href="'+esc(p.portalUrl)+'" target="_blank" rel="noopener" class="btn btn-outline sm" style="text-decoration:none">'+icon('external-link',14)+'Ver anúncio no portal</a><details class="im-share" style="position:relative"><summary class="btn btn-outline sm" style="list-style:none;padding:6px 12px;font-size:18px;line-height:1;font-weight:800" title="Mais opções">⋯</summary><div style="position:absolute;top:calc(100% + 6px);right:0;z-index:20;background:var(--surface,#fff);border:1px solid var(--ink200);border-radius:10px;padding:6px;box-shadow:0 10px 28px rgba(0,0,0,.28);min-width:190px"><button class="btn btn-ghost sm" data-action="imovel-compartilhar" data-url="'+esc(p.portalUrl)+'" data-titulo="'+esc(p.rua||'Imóvel')+'" style="width:100%;justify-content:flex-start">'+icon('share-2',14)+'Compartilhar link</button></div></details></div>':'')+(p.feed&&p.feed.descricao?'<div class="fz11 up fw7 t500" style="margin-top:16px;margin-bottom:6px">Descrição do anúncio</div><div class="fz12 t600" style="white-space:pre-line;max-height:180px;overflow:auto;line-height:1.5">'+esc(p.feed.descricao)+'</div>':'')+'</div><div class="card" style="margin-top:14px;padding:12px 14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz11 t500">Proprietário</div><div class="fz14 fw6 t900">'+esc(p.proprietarioNome)+'</div>'+(p.proprietarioContato?'<div class="fz12 t500">'+esc(p.proprietarioContato)+'</div>':'')+propFichaBtns+'</div>'+(p.pendentes.length?'<div class="card" style="margin-top:14px;padding:12px 14px;background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3)"><div class="fx ac g2 fz12 fw7" style="margin-bottom:8px;color:#f59e0b">'+icon('alert-triangle',14)+'Pendências da ficha ('+p.pendentes.length+')</div><div class="fx wrap g2">'+p.pendentes.map(k=>'<span style="background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.35);border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600">'+esc(pendLabel(k))+'</span>').join('')+'</div><div class="fz11 t500" style="margin-top:8px">Itens que o cliente marcou como “não tenho agora” ao preencher a ficha.</div></div>':'')+(p.raw&&p.raw.origem==='feed'?dicasImovel:''); }
-  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Cliente PF']);fichaOpts.push(['ficha-pj.html','Cliente PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'||st==='lead'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':(st==='lead'?'<button class="btn btn-outline sm" data-action="int-ver-lead" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'" style="margin-top:10px">'+icon('user',14)+'Ver dados</button>':''))+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>')+'<div id="smartleadBox" style="margin-top:18px;border-top:1px solid var(--ink100);padding-top:14px"></div>'; }
+  else if(tab==='interessados'){ const its=p.interessados||[]; const ehG=state.role==='broker'; const fichaOpts=[]; if(p.finalidadeRaw!=='locacao')fichaOpts.push(['ficha-proposta.html','Comprador']); if(p.finalidadeRaw!=='venda'){fichaOpts.push(['ficha-pf.html','Cliente PF']);fichaOpts.push(['ficha-pj.html','Cliente PJ']);} const enviarFicha='<div class="card" style="padding:12px 14px;margin-bottom:14px;background:var(--ink50);border-color:var(--ink200)"><div class="fz12 fw7 t800" style="margin-bottom:2px">Enviar ficha ao interessado</div><div class="fz11 t500" style="margin-bottom:10px">O link já vai amarrado a este imóvel — quando o cliente responder, ele entra aqui como “Ficha recebida”.</div><div class="fx g2 wrap">'+fichaOpts.map(f=>'<button class="btn btn-outline sm" data-action="int-ficha-copy" data-arq="'+f[0]+'" data-imovel="'+esc(p.id)+'">'+icon('copy',14)+f[1]+'</button>').join('')+'</div></div>'; const addInteressado='<button class="btn btn-outline sm" data-action="int-add-open" data-imovel="'+esc(p.id)+'" style="width:100%;margin-bottom:14px">'+icon('user-plus',14)+'Adicionar interessado do Cadastro</button>'; body=enviarFicha+addInteressado+(its.length?its.map((it,idx)=>{ const st=it.status||''; const _ida=' data-nome="'+esc(it.nome||'')+'" data-fid="'+esc(it.fichaId||'')+'"'; let ac=''; if(ehG){ if(st==='ficha_recebida'||st==='em_analise'||st==='ficha_enviada'||st==='lead'){ ac='<div class="fx g2" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-aprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('check',14)+'Aprovar</button><button class="btn btn-outline sm" data-action="int-reprovar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('x',14)+'Reprovar</button></div>'; } else if(st==='aprovado'){ ac='<div class="fx" style="margin-top:10px"><button class="btn btn-primary sm" data-action="int-gerar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+'>'+icon('handshake',14)+'Gerar negócio</button></div>'; } } return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(it.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(it.nome||'—')+'</div>'+((it.telefone||it.contato||it.email||it.cpf)?'<div class="fz11 t500 trunc">'+esc([it.telefone||it.contato,it.email,it.cpf?('CPF '+it.cpf):''].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+(ehG?'<button data-action="int-copiar" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'" title="Copiar dados do interessado" class="nsh" style="background:none;border:none;cursor:pointer;padding:3px;color:var(--ink500);flex:none">'+icon('copy',14)+'</button>':'')+pill(st.replace(/_/g,' '),'neutral')+'</div>'+(it.fichaId?'<button class="btn btn-outline sm" data-action="int-ver-ficha" data-ficha="'+esc(it.fichaId)+'" data-tipo="'+esc(it.fichaTipo||'')+'" style="margin-top:10px">'+icon('file-text',14)+'Ver ficha</button>':(st==='lead'?'<button class="btn btn-outline sm" data-action="int-ver-lead" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'" style="margin-top:10px">'+icon('user',14)+'Ver dados</button>':''))+ac+((st!=='negocio_gerado'&&(ehG||(st!=='aprovado'&&st!=='reprovado')))?'<button class="btn btn-ghost sm" data-action="int-remover" data-imovel="'+esc(p.id)+'" data-idx="'+idx+'"'+_ida+' style="margin-top:8px;color:#dc2626">'+icon('trash-2',14)+'Remover</button>':'')+'</div>'; }).join(''):'<div class="tcenter t500 fz13" style="padding:24px">Nenhum interessado ainda — adicione um do Cadastro ou envie uma ficha acima.</div>')+'<div id="smartleadBox" style="margin-top:18px;border-top:1px solid var(--ink100);padding-top:14px"></div>'; }
   else if(tab==='docs'){
     const raw=(p.raw&&p.raw.documentos)||{};
     const extra=(p.raw&&p.raw.documentosExtra)||[];
@@ -1823,13 +1920,15 @@ function wireEvents(root){
     else if(k==='bPreco'){ state.buscaPreco=t.value; }
     else if(k==='bArea'){ state.buscaArea=t.value; }
     else if(k==='bQuartos'){ state.buscaQuartos=t.value; }
+    else if(k==='emailMsg'){ if(EMAIL_CTX) EMAIL_CTX.mensagem=t.value; }
+    else if(k==='emailPara'){ if(EMAIL_CTX) EMAIL_CTX.para=t.value.trim(); }
   });
   root.addEventListener('change', e=>{
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='buscafin'){ state.buscaFin=t.value; } else if(a==='buscatipo'){ state.buscaTipo=t.value; } else if(a==='buscasomeu'){ state.buscaSoMeus=t.checked; } else if(a==='buscasel'){ state.buscaSel[t.dataset.i]=t.checked; const r=state.buscaRes||[]; const nSel=Object.values(state.buscaSel).filter(Boolean).length; const c=$('#buscaCount'); if(c) c.textContent=r.length+' cliente'+(r.length===1?'':'s')+(nSel?' · '+nSel+' selecionado'+(nSel===1?'':'s'):''); const bx=$('#buscaExportBtn'); if(bx) bx.disabled=!nSel; } });
-  document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } else if(e.key==='Enter' && state.leadsModo==='busca' && e.target && /^b(Bairro|Preco|Area|Quartos)$/.test((e.target.dataset&&e.target.dataset.input)||'')){ e.preventDefault(); buscaRodar(); } });
+    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='buscafin'){ state.buscaFin=t.value; } else if(a==='buscatipo'){ state.buscaTipo=t.value; } else if(a==='buscasomeu'){ state.buscaSoMeus=t.checked; } else if(a==='email-sel'){ emailToggleSel(t.dataset.i); } else if(a==='buscasel'){ state.buscaSel[t.dataset.i]=t.checked; const r=state.buscaRes||[]; const nSel=Object.values(state.buscaSel).filter(Boolean).length; const c=$('#buscaCount'); if(c) c.textContent=r.length+' cliente'+(r.length===1?'':'s')+(nSel?' · '+nSel+' selecionado'+(nSel===1?'':'s'):''); const bx=$('#buscaExportBtn'); if(bx) bx.disabled=!nSel; } });
+  document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } else if(e.key==='Enter' && state.leadsModo==='busca' && e.target && /^b(Bairro|Preco|Area|Quartos)$/.test((e.target.dataset&&e.target.dataset.input)||'')){ e.preventDefault(); buscaRodar(); } else if(e.key==='Tab' && !e.shiftKey && e.target && e.target.dataset && e.target.dataset.input==='emailMsg' && !e.target.value.trim()){ e.preventDefault(); const msg='Oi! Achei estes imóveis que combinam com o que você procura. Dá uma olhada:'; e.target.value=msg; if(EMAIL_CTX) EMAIL_CTX.mensagem=msg; } });
 }
 function handleAction(a,el){
   if(a==='sair'){ unmount(); if(typeof state.onExit==='function') state.onExit(); }
@@ -1845,6 +1944,8 @@ function handleAction(a,el){
   else if(a==='buscarodar'){ buscaRodar(); }
   else if(a==='buscaexport'){ buscaExportar(); }
   else if(a==='buscaseltodos'){ const r=state.buscaRes||[]; const allOn=r.length&&r.every((_s,i)=>state.buscaSel[i]); state.buscaSel={}; if(!allOn) r.forEach((_s,i)=>state.buscaSel[i]=true); updateBuscaResultados(); }
+  else if(a==='lead-copiar'){ leadCopiar(el.dataset.id); }
+  else if(a==='lead-email'){ openEmailLead(el.dataset.id); }
   else if(a==='openlead'){ openLead(el.dataset.id); }
   else if(a==='lead-verimovel'){ openProp(el.dataset.id); }
   else if(a==='lead-vincular'){ openLeadVincular(el.dataset.id); }
@@ -2110,6 +2211,7 @@ const NAV_ROLE = {
   corretor: [
     {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},
     {id:'leads',ico:'inbox',label:'Leads'},
+    {id:'emails',ico:'mail',label:'E-mails'},
     {id:'clientes',ico:'users',label:'Meus Clientes'},
     {id:'imoveis',ico:'building-2',label:'Meus Imóveis'},
     {id:'negocios',ico:'handshake',label:'Meus Negócios'},
@@ -2121,6 +2223,7 @@ const NAV_ROLE = {
   administrativo: [
     {id:'dashboard',ico:'layout-dashboard',label:'Dashboard'},
     {id:'leads',ico:'inbox',label:'Leads'},
+    {id:'emails',ico:'mail',label:'E-mails'},
     {id:'fila',ico:'kanban',label:'Fila de Trabalho'},
     {id:'pessoas',ico:'users',label:'Pessoas'},
     {id:'imoveis',ico:'building-2',label:'Imóveis'},
@@ -2295,7 +2398,7 @@ function leadsRows(){
     return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:40px 0">'+icon(arq?'archive':'inbox',24)+'<p style="margin-top:8px" class="fz14 fw5">'+(arq?'Nenhum lead arquivado.':'Nenhum lead por aqui ainda.')+'</p><p class="fz12 tmut" style="margin-top:4px">'+(arq?'Leads perdidos ou marcados como “Cliente desistiu” aparecem aqui.':'Quando chega um contato dos portais, ele aparece aqui na hora.')+'</p></div></td></tr>'; }
   return list.map(l=>{ const c=l.cliente||{};
     return '<tr data-action="openlead" data-id="'+esc(l.id)+'" style="cursor:pointer">'
-    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span>'+(l.temperaturaHub?'<span title="'+esc(l.temperaturaHub)+'" style="width:9px;height:9px;border-radius:50%;background:'+leadTempCor(l.temperaturaHub)+';flex:none"></span>':'')+(l.semDonoAtivo?'<span class="fz10 fw6" title="Sem corretor ativo dono" style="flex:none;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:6px;padding:1px 5px">sem dono</span>':'')+'</div></td>'
+    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span>'+(l.temperaturaHub?'<span title="'+esc(l.temperaturaHub)+'" style="width:9px;height:9px;border-radius:50%;background:'+leadTempCor(l.temperaturaHub)+';flex:none"></span>':'')+(l.semDonoAtivo?'<span class="fz10 fw6" title="Sem corretor ativo dono" style="flex:none;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:6px;padding:1px 5px">sem dono</span>':'')+(state.role==='broker'?'<button data-action="lead-copiar" data-id="'+esc(l.id)+'" title="Copiar dados do cliente" class="nsh" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--ink500);flex:none">'+icon('copy',13)+'</button>':'')+'</div></td>'
     + '<td class="t700 trunc" style="max-width:220px">'+esc(leadEnderecoTxt(l))+'</td>'
     + '<td class="mono fz12 t700 nowrap">'+(leadCodigo(l)?esc(leadCodigo(l)):'<span class="tmut">—</span>')+'</td>'
     + '<td>'+(l.origem?pill(l.origem,'ai'):'<span class="tmut">—</span>')+'</td>'
@@ -2450,7 +2553,7 @@ function openLead(id){
   const contato='<div class="fx g2 wrap" style="padding:12px 20px 2px">'
     + (wa?'<a class="btn btn-primary sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:16px;height:16px"></i>WhatsApp</a>':'')
     + (c.telefone?'<a class="btn btn-outline sm" href="tel:'+esc(String(c.telefone).replace(/[^\d+]/g,''))+'" style="text-decoration:none"><i data-lucide="phone" style="width:16px;height:16px"></i>Ligar</a>':'')
-    + (c.email?'<a class="btn btn-outline sm" href="mailto:'+esc(c.email)+'" style="text-decoration:none"><i data-lucide="mail" style="width:16px;height:16px"></i>E-mail</a>':'')
+    + (c.email?'<button class="btn btn-outline sm" data-action="lead-email" data-id="'+esc(l.id)+'"><i data-lucide="mail" style="width:16px;height:16px"></i>E-mail</button>':'')
     + '</div>'
     // Temperatura: clicáveis (clicar de novo desliga). Só quem pode editar clica; o resto vê o estado.
     + '<div class="fx ac g2 wrap" style="padding:10px 20px 2px">'
@@ -3260,6 +3363,10 @@ handleAction = function(a, el){
   if(a==='int-add-open'){ openInteressadoPicker(el.dataset.imovel); return; }
   if(a==='int-add-pick'){ const f=_intPickCache[el.dataset.ficha]; if(!f)return; const imovelId=el.dataset.imovel; const _imf=(typeof prop==='function'?prop(imovelId):null)||{}; const _fin=_imf.finalidadeRaw||''; const tipo = _fin==='venda' ? 'comprador' : _fin==='locacao' ? 'locatario' : (f.tipo==='proposta'?'comprador':'locatario'); /* papel vem da finalidade do imóvel, não do tipo da ficha */ el.disabled=true; fnInteressado({imovelId, acao:'add', nome:f.nome||'(sem nome)', contato:f.telefone||f.email||'', tipo, status:'em_analise', fichaId:f.id, fichaTipo:f.tipo, email:f.email||'', cpf:f.cpf||'', telefone:f.telefone||''}).then(async()=>{ toast('Interessado adicionado','user-plus'); closeModal(); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='sl-aprovar'){ slAprovar(el.dataset.imovel, el.dataset.lead, el); return; }
+  if(a==='sl-email'){ openEmailImoveis(SL_SUGESTOES[el.dataset.i]); return; }
+  if(a==='sl-copiar'){ slCopiar(SL_SUGESTOES[el.dataset.i]); return; }
+  if(a==='email-enviar'){ emailEnviar(el); return; }
+  if(a==='int-copiar'){ intCopiar(el.dataset.imovel, +el.dataset.idx); return; }
   if(a==='int-ver-lead'){ openLeadPessoa(el.dataset.imovel, +el.dataset.idx); return; }
   if(a==='int-remover'){ if(!confirm('Remover este interessado do imóvel?'))return; const imovelId=el.dataset.imovel, idx=+el.dataset.idx; el.disabled=true; fnInteressado({imovelId, acao:'remover', index:idx, esperaNome:el.dataset.nome||'', esperaFichaId:el.dataset.fid||''}).then(async()=>{ toast('Interessado removido','trash-2'); await carregarDados(); const dr=$('#drawer'); if(state.currentProp===imovelId && dr && dr.classList.contains('show')) openProp(imovelId); }).catch(e=>{ toast(e.message||'Erro','alert-triangle','var(--danger)'); try{el.disabled=false;}catch(_e){} }); return; }
   if(a==='int-aprovar'){ el.disabled=true; interessadoAcao(el.dataset.imovel, +el.dataset.idx, 'aprovado', 'Interessado aprovado', {nome:el.dataset.nome, fid:el.dataset.fid}).finally(()=>{ try{ el.disabled=false; }catch(_e){} }); return; }

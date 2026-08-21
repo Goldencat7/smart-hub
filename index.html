@@ -251,6 +251,16 @@
               <button type="button" id="btnGoogleAgenda" class="topbar-btn google-btn" title="Conectar sua conta Google (Agenda + Drive)"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg>Conectar Google</button>
             </div>
 
+            <!-- Enviar e-mails de imóveis pela conta do próprio corretor (Gmail API). Sem
+                 conectar, sai pela conta do Hub (remaxsmarthub) com o nome + responder-para. -->
+            <div class="config-linha">
+              <div>
+                <div class="config-linha-titulo">Enviar e-mails pela minha conta</div>
+                <div class="muted config-dica" id="cfgGmailEnviarStatus">Conecte seu Gmail para os e-mails de imóveis saírem da <b>sua</b> conta. Sem conectar, saem pela conta do Hub (com o seu nome e responder-para você).</div>
+              </div>
+              <button type="button" id="btnGmailEnviar" class="topbar-btn google-btn" title="Conectar meu Gmail para enviar e-mails"><svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>Conectar meu Gmail</button>
+            </div>
+
             <!-- Robô do Drive (setup de bastidor — só admin, só no .exe). Conecta a conta
                  dedicada remaxsmarthub@gmail.com com escopo Drive completo pra organizar
                  as pastas por negócio na pasta da imobiliária compartilhada com ela. -->

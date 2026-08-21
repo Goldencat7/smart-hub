@@ -16,14 +16,18 @@ const PROJETO = 'remax-smart-hub';
 if (process.env.FIRESTORE_EMULATOR_HOST) { console.error('✋ Env de emulador setada. Abortando.'); process.exit(1); }
 
 const NOTA = {
-  versao: '1.0.187',
+  versao: '1.0.188',
   novo: [
-    'Leads → aba "Buscar clientes": digite a especificação de um imóvel (bairro, tipo, preço, metragem, quartos) e descubra na hora quais clientes já procuraram algo parecido — inclui os leads antigos do portal. Dá pra filtrar só os seus, selecionar os que quiser e exportar tudo pra uma planilha.'
+    'Enviar imóveis por e-mail: no SmartLead e nos Leads, o botão "E-mail" abre um envio com até 5 imóveis parecidos (com foto, preço e link do anúncio) direto pro cliente.',
+    'Conecte seu Gmail em Configurações → os e-mails de imóveis passam a sair da SUA conta (o cliente responde pra você). Sem conectar, saem pela conta do Hub, com o seu nome e responder-para você.',
+    'Nova aba "E-mails" no Meus Negócios: histórico do que você enviou + quem pediu pra não receber mais.'
   ],
   melhorias: [
-    '@gestor Na busca de clientes, os leads de outro corretor aparecem como "falar com o corretor" (sem contato) — na tela e na planilha; os seus e os liberados saem completos.'
+    '@gestor Botão de copiar (📋) os dados do cliente (nome, telefone, e-mail) com um clique — no SmartLead, nos interessados e na lista de Leads.'
   ],
-  correcoes: []
+  correcoes: [
+    'Mais estabilidade no SmartLead em imóveis com muitos leads.'
+  ]
 };
 
 const admin = require(path.join(__dirname, '..', 'functions', 'node_modules', 'firebase-admin'));

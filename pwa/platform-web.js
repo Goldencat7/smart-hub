@@ -168,12 +168,16 @@
     // PKCE (S256): guardamos verifier+state no sessionStorage antes de sair; a
     // callback confere o state e usa o verifier. Devolve {redirecting:true} pro
     // hub-app saber que NÃO deve finalizar aqui (a página navegou).
-    conectarGoogle: async () => {
+    conectarGoogle: async (scopeArg) => {
       try {
         // Cliente OAuth do tipo "Aplicativo da Web" (separado do "Hub Desktop" do .exe).
         // O redirect https só funciona com ele. Ver GOOGLE-OAUTH-WEB.md.
         const CLIENT_ID = '474454438949-1t333dt83j46pph39uep7oqmv31i1t64.apps.googleusercontent.com';
-        const SCOPES = 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/drive.file';
+        // scope custom (ex.: gmail.send) usa só ele; sem arg = escopos padrão da Agenda/Drive.
+        // include_granted_scopes preserva o que a conta já concedeu (não apaga agenda/drive).
+        const SCOPES = (typeof scopeArg === 'string' && scopeArg.trim())
+          ? ('openid email ' + scopeArg.trim())
+          : 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/drive.file';
         const redirectUri = location.origin + '/app/google-callback.html';
 
         const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
@@ -190,7 +194,7 @@
 
         const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
           client_id: CLIENT_ID, redirect_uri: redirectUri, response_type: 'code',
-          scope: SCOPES, access_type: 'offline', prompt: 'consent', state,
+          scope: SCOPES, access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state,
           code_challenge: challenge, code_challenge_method: 'S256'
         });
         window.location.href = authUrl;

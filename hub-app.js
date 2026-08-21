@@ -88,6 +88,7 @@ const excluirEvento = httpsCallable(fns, 'excluirEvento');
 const listarPessoas = httpsCallable(fns, 'listarPessoas');
 const conectarGoogleAgenda = httpsCallable(fns, 'conectarGoogleAgenda');
 const desconectarGoogleAgenda = httpsCallable(fns, 'desconectarGoogleAgenda');
+const emailContaDesconectar = httpsCallable(fns, 'emailContaDesconectar');
 // Robô do Drive (setup admin, só .exe) — conecta a conta dedicada com escopo drive completo.
 const conectarDriveRobo = httpsCallable(fns, 'conectarDriveRobo');
 const driveRoboStatus   = httpsCallable(fns, 'driveRoboStatus');
@@ -907,6 +908,7 @@ function renderCentro() {
     inputBusca.placeholder = '';
     carregarPerfil();
     atualizarStatusGoogle(); // pinta o botão "Conectar Google" (Agenda + Drive) em Meu Perfil
+    atualizarStatusGmail();  // pinta o botão "Conectar meu Gmail" (envio de e-mails)
     atualizarStatusRoboDrive(); // seção do robô do Drive (só admin + desktop)
     carregarIndicadoresPerfil(); // números reais em "Meus indicadores"
     return;
@@ -3165,6 +3167,54 @@ btnGoogleAgenda.addEventListener('click', async ()=>{
     btnGoogleAgenda.disabled = false;
     if(!googleConectado) pintarBotaoGoogle(false, ''); // fix 1: restaura HTML completo (com SVG), não só texto
   }
+});
+
+// ── Enviar e-mails pela conta do próprio corretor (Gmail API) ────────────────
+const btnGmailEnviar = document.getElementById('btnGmailEnviar');
+const cfgGmailEnviarStatus = document.getElementById('cfgGmailEnviarStatus');
+let gmailEnvioConectado = false;
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+const _icoMail = '<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>';
+const _icoCheck = '<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+function pintarBotaoGmail(conectado, email){
+  gmailEnvioConectado = conectado;
+  if(!btnGmailEnviar) return;
+  if(conectado){
+    btnGmailEnviar.innerHTML = _icoCheck + 'Conectado';
+    btnGmailEnviar.classList.add('conectado');
+    if(cfgGmailEnviarStatus) cfgGmailEnviarStatus.innerHTML = 'Os e-mails de imóveis saem da <b>sua</b> conta'+(email?' ('+email+')':'')+'. Clique pra desconectar (voltam a sair pela conta do Hub).';
+  } else {
+    btnGmailEnviar.innerHTML = _icoMail + 'Conectar meu Gmail';
+    btnGmailEnviar.classList.remove('conectado');
+    if(cfgGmailEnviarStatus) cfgGmailEnviarStatus.innerHTML = 'Conecte seu Gmail para os e-mails de imóveis saírem da <b>sua</b> conta. Sem conectar, saem pela conta do Hub (com o seu nome e responder-para você).';
+  }
+}
+async function atualizarStatusGmail(){
+  try { const r = await statusGoogleAgenda(); pintarBotaoGmail(!!(r.data && r.data.mail), (r.data && r.data.email) || ''); }
+  catch(e){ /* silencioso — status não bloqueia nada */ }
+}
+if(btnGmailEnviar) btnGmailEnviar.addEventListener('click', async ()=>{
+  if(gmailEnvioConectado){
+    if(!confirm('Desconectar? Os e-mails de imóveis voltam a sair pela conta do Hub (com o seu nome).')) return;
+    btnGmailEnviar.disabled = true;
+    try { await emailContaDesconectar(); pintarBotaoGmail(false, ''); }
+    catch(e){ alert('Erro ao desconectar: '+e.message); }
+    finally { btnGmailEnviar.disabled = false; }
+    return;
+  }
+  btnGmailEnviar.disabled = true;
+  btnGmailEnviar.textContent = 'Abrindo...';
+  try {
+    const r = await window.hubApi.conectarGoogle(GMAIL_SEND_SCOPE);
+    if(r && r.redirecting) return;   // web: redireciona; quem finaliza é o google-callback.html
+    if(!r || !r.ok){ alert('Conexão cancelada' + (r && r.erro ? ': '+r.erro : '.')); return; }
+    btnGmailEnviar.textContent = 'Finalizando...';
+    await conectarGoogleAgenda({ code: r.code, codeVerifier: r.codeVerifier, redirectUri: r.redirectUri });
+    await atualizarStatusGmail();
+    if(gmailEnvioConectado) alert('Gmail conectado! ✅ Seus e-mails de imóveis agora saem da sua conta.');
+    else alert('Conectado, mas faltou a permissão de "Enviar e-mail". Tente de novo e marque essa permissão.');
+  } catch(e){ alert('Erro ao conectar: '+e.message); }
+  finally { btnGmailEnviar.disabled = false; if(!gmailEnvioConectado) pintarBotaoGmail(false, ''); }
 });
 
 // ── Robô do Drive (setup de bastidor — admin, só .exe) ───────────────────────

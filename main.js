@@ -598,6 +598,7 @@ ipcMain.handle('conectar-google', async (_evt, scopeArg) => {
         scope: scopeUsado,
         access_type: 'offline',
         prompt: 'consent',
+        include_granted_scopes: 'true',   // incremental: conectar um escopo (ex.: gmail.send) NÃO apaga os já concedidos (agenda/drive)
         state,
         code_challenge: codeChallenge,
         code_challenge_method: 'S256'
