@@ -34,6 +34,8 @@ const adminSetPessoaExtra = httpsCallable(fns, 'adminSetPessoaExtra');
 const c2sImportarLeads = httpsCallable(fns, 'c2sImportarLeads', { timeout: 120000 });
 const c2sAssinarWebhooks = httpsCallable(fns, 'c2sAssinarWebhooks', { timeout: 120000 });
 const leadsAutoVincular = httpsCallable(fns, 'leadsAutoVincular', { timeout: 120000 });
+const smartLeadConfigObter = httpsCallable(fns, 'smartLeadConfigObter');
+const smartLeadConfigSalvar = httpsCallable(fns, 'smartLeadConfigSalvar');
 const getMinhasPermissoes = httpsCallable(fns, 'getMinhasPermissoes');
 const publicarLocacoes = httpsCallable(fns, 'publicarLocacoes');
 const getModoCofre = httpsCallable(fns, 'getModoCofre');
@@ -356,7 +358,14 @@ function carregarLeadsC2S() {
       ${passo(2, 'Ligar tempo real', 'Assina o webhook do C2S apontando pra este Hub — a partir daí, todo lead novo cai sozinho. ⚠️ Use um token <strong>dedicado</strong>: se este já serve outra integração, o webhook dela é substituído.', 'c2sAssinarBtn', 'Ligar tempo real', 'bolt', false)}
       ${passo(3, 'Vincular aos imóveis', 'Liga automaticamente cada lead ao imóvel da Carteira que tem o mesmo código do portal. Vale pros leads já importados; os novos já entram vinculados sozinhos. Não mexe em vínculo feito à mão.', 'c2sVincularBtn', 'Vincular automaticamente', 'link', false)}
       <div id="c2sResultado" style="font-size:13px"></div>
+      <div style="height:1px;background:var(--border);margin:6px 0"></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px">
+        <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:2px"><i class="ti ti-sparkles"></i> SmartLead — precisão das sugestões</div>
+        <div class="muted" style="font-size:12.5px;line-height:1.5;margin-bottom:14px">O SmartLead sugere, em cada imóvel, clientes que procuraram algo parecido (mesmo bairro, tipo, tamanho e faixa de preço) — inclui os leads antigos do portal. Quanto <strong>menor</strong> a tolerância, <strong>mais focadas</strong> (e menos) as sugestões.</div>
+        <div id="slConfigBox"><p class="muted" style="font-size:13px">carregando…</p></div>
+      </div>
     </div>`;
+    carregarSmartLeadConfig();
   const out = document.getElementById('c2sResultado');
   const msg = (txt, cor) => { out.innerHTML = `<div style="padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--border)${cor ? `;color:${cor}` : ''}">${txt}</div>`; };
   document.getElementById('c2sImportarBtn').addEventListener('click', async (ev) => {
@@ -407,6 +416,49 @@ function carregarLeadsC2S() {
       }
       msg(`✔ Concluído: <strong>${vinculados}</strong> leads vinculados e <strong>${interessados}</strong> interessados criados nos imóveis da Carteira (${imoveis} imóveis verificados). Os que não casaram continuam sem vínculo — o imóvel pode ter saído do portal.`, '#3ddc84');
     } catch (err) { msg('Erro: ' + escHtml(err.message), '#ff6b6b'); }
+    b.disabled = false; b.style.opacity = ''; b.innerHTML = orig;
+  });
+}
+
+// Parâmetros do SmartLead (precisão do cruzamento) — editáveis pelo admin.
+async function carregarSmartLeadConfig() {
+  const box = document.getElementById('slConfigBox');
+  if (!box) return;
+  let p = {};
+  try { const r = await smartLeadConfigObter({}); p = (r.data && r.data.params) || {}; }
+  catch (e) { box.innerHTML = '<p class="muted" style="font-size:13px;color:#ff6b6b">Não consegui carregar os parâmetros.</p>'; return; }
+  const numRow = (id, label, val, min, max, sufixo, dica) => `
+    <label style="display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border)">
+      <span style="font-size:13px;color:var(--text)"><strong>${label}</strong><br><span class="muted" style="font-size:11.5px">${dica}</span></span>
+      <span style="flex:none;display:inline-flex;align-items:center;gap:6px"><input id="${id}" type="number" min="${min}" max="${max}" value="${val}" style="width:72px;text-align:right;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px"><span class="muted" style="font-size:13px;width:14px">${sufixo}</span></span>
+    </label>`;
+  const chkRow = (id, label, checked, dica) => `
+    <label style="display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border);cursor:pointer">
+      <span style="font-size:13px;color:var(--text)"><strong>${label}</strong><br><span class="muted" style="font-size:11.5px">${dica}</span></span>
+      <input id="${id}" type="checkbox" ${checked ? 'checked' : ''} style="width:18px;height:18px;flex:none">
+    </label>`;
+  box.innerHTML =
+    numRow('slPreco', 'Tolerância de preço', p.precoPct, 1, 100, '%', 'Preço do imóvel ± esta faixa. Menor = mais parecido.') +
+    numRow('slArea', 'Tolerância de metragem', p.areaPct, 1, 100, '%', 'm² ± esta faixa (quando o lead informa o tamanho).') +
+    numRow('slQuartos', 'Tolerância de quartos', p.quartosTol, 0, 10, '±', 'Diferença de quartos aceita (quando o lead informa).') +
+    chkRow('slTipo', 'Exigir o mesmo tipo', p.tipoExato !== false, 'Apartamento só casa com apartamento, sala com sala etc.') +
+    chkRow('slHist', 'Incluir leads antigos do portal', p.ativoHistorico !== false, 'Reaproveita os leads perdidos do C2S nas sugestões.') +
+    `<div style="display:flex;justify-content:flex-end;margin-top:14px"><button id="slSalvarBtn" style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;padding:9px 18px;border-radius:9px;cursor:pointer;border:1px solid transparent;background:var(--blue,#0a3d62);color:#fff"><i class="ti ti-device-floppy"></i>Salvar parâmetros</button></div>` +
+    `<div id="slSalvarMsg" style="font-size:12.5px;margin-top:8px"></div>`;
+  document.getElementById('slSalvarBtn').addEventListener('click', async (ev) => {
+    const b = ev.currentTarget; b.disabled = true; b.style.opacity = '.6';
+    const orig = b.innerHTML; b.innerHTML = '<i class="ti ti-loader"></i> Salvando…';
+    const msgEl = document.getElementById('slSalvarMsg');
+    try {
+      await smartLeadConfigSalvar({
+        precoPct: Number(document.getElementById('slPreco').value),
+        areaPct: Number(document.getElementById('slArea').value),
+        quartosTol: Number(document.getElementById('slQuartos').value),
+        tipoExato: document.getElementById('slTipo').checked,
+        ativoHistorico: document.getElementById('slHist').checked,
+      });
+      msgEl.innerHTML = '<span style="color:#3ddc84">✔ Salvo. Vale nas próximas sugestões (pode levar até ~2 min pra atualizar).</span>';
+    } catch (err) { msgEl.innerHTML = '<span style="color:#ff6b6b">Erro: ' + escHtml(err.message) + '</span>'; }
     b.disabled = false; b.style.opacity = ''; b.innerHTML = orig;
   });
 }

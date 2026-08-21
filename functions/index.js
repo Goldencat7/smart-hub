@@ -8874,39 +8874,165 @@ exports.c2sImportarLeads = onCall({ secrets: [C2S_TOKEN], timeoutSeconds: 300 },
   return { ok: true, total, paginas, proximaPagina, totalPaginas };
 });
 
-// (autenticado) Lista os leads: corretor vê só os seus (corretorUid == uid);
-// gestor/administrativo veem todos. Campos leves; ordena por recebidoEm desc.
+// ── Helpers dos filtros de Leads (Bloco 2) ──────────────────────────────────
+// Set de UIDs ATIVOS (conta existe e NÃO está desabilitada). Cache curto (5 min) pra
+// não chamar listUsers a cada leadsListar. Usado pra marcar leads "sem dono ativo".
+let _uidsAtivosCache = { set: null, em: 0 };
+async function _uidsAtivos() {
+  const agora = Date.now();
+  if (_uidsAtivosCache.set && (agora - _uidsAtivosCache.em) < 300000) return _uidsAtivosCache.set;
+  const r = await admin.auth().listUsers(1000);
+  const s = new Set(r.users.filter(u => !u.disabled).map(u => u.uid));
+  _uidsAtivosCache = { set: s, em: agora };
+  return s;
+}
+// Mesma regra do front (broker-app leadArquivado): a etapa do Hub vence; sem etapa, cai
+// no flag `arquivado` do C2S (lead perdido/lost). 'Cliente desistiu' conta como arquivado.
+function _leadArquivado(x) {
+  const n = _leadNormNome(x.statusHub || '');
+  return x.statusHub ? (n.indexOf('arquiv') >= 0 || n.indexOf('desist') >= 0) : !!x.arquivado;
+}
+function _leadFinMatch(neg, alvo) {   // alvo: 'Venda' | 'Locação'
+  const n = _leadNormNome(neg);
+  if (alvo === 'Venda') return /vend|compra/.test(n);
+  if (alvo === 'Locação' || alvo === 'Locacao') return /alug|loca/.test(n);
+  return true;
+}
+// Intervalo de datas do filtro de período. Server-time (UTC) — o drift de fuso nos limites
+// é irrelevante pro uso interno. Devolve Date|null pra ini/fim.
+function _leadPeriodoRange(periodo, de, ate) {
+  const now = new Date();
+  const dia = 864e5;
+  if (periodo === '7d')  return { ini: new Date(now.getTime() - 7 * dia),  fim: null };
+  if (periodo === '30d') return { ini: new Date(now.getTime() - 30 * dia), fim: null };
+  if (periodo === 'mes') return { ini: new Date(now.getFullYear(), now.getMonth(), 1), fim: null };
+  if (periodo === 'ano') return { ini: new Date(now.getFullYear(), 0, 1), fim: null };
+  if (periodo === 'custom') {
+    let ini = null, fim = null;
+    if (de)  { ini = new Date(de);  ini.setHours(0, 0, 0, 0);      if (isNaN(ini)) ini = null; }
+    if (ate) { fim = new Date(ate); fim.setHours(23, 59, 59, 999); if (isNaN(fim)) fim = null; }
+    return { ini, fim };
+  }
+  return { ini: null, fim: null };   // 'tudo'
+}
+function _serializarLead(d, ativos) {
+  const x = d.data();
+  const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null);
+  const donoAtivo = !!(x.corretorUid && ativos && ativos.has(x.corretorUid));
+  return {
+    id: d.id, internalId: x.internalId || null,
+    cliente: x.cliente || {}, imovel: x.imovel || {}, corretor: x.corretor || {},
+    origem: x.origem || '', canal: x.canal || '', status: x.status || '', statusAlias: x.statusAlias || '',
+    arquivado: !!x.arquivado, tags: Array.isArray(x.tags) ? x.tags : [],
+    descricao: x.descricao || '', mensagem: x.mensagem || '',
+    corretorUid: x.corretorUid || null, lido: !!x.lido,
+    semDonoAtivo: !donoAtivo,   // true = sem corretor ativo dono (não atribuído OU dono saiu/desativado)
+    imovelVinculadoId: x.imovelVinculadoId || null, imovelVinculado: x.imovelVinculado || null,
+    statusHub: x.statusHub || '',   // etapa definida no Hub (vence o status do portal na UI)
+    timeHub: x.timeHub || '',       // "time do cliente" (classificação de momento, definida no Hub)
+    temperaturaHub: x.temperaturaHub || '',   // Quente/Morno/Frio (definida no Hub)
+    comentarios: Array.isArray(x.comentarios) ? x.comentarios.map(c => ({ texto: c.texto || '', porNome: c.porNome || '', em: iso(c.em) })) : [],
+    recebidoEm: iso(x.recebidoEm), atualizadoEm: iso(x.atualizadoEm),
+    criadoEmC2S: x.criadoEmC2S || '', atualizadoEmC2S: x.atualizadoEmC2S || '',
+  };
+}
+
+// (autenticado) Lista os leads. Corretor vê só os seus; gestor/adm veem todos.
+// SEM `filtros` (cliente antigo): comportamento legado (500 recentes, tudo misturado).
+// COM `filtros`: busca no SERVIDOR — bairro/cidade varrem TODOS os 9k, período por range,
+// e refino (arquivado/finalidade/status/sem dono ativo) em memória. Zero índice composto:
+// a query primária usa NO MÁXIMO 1 igualdade OU 1 range+orderBy no mesmo campo.
 exports.leadsListar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
-  // Gestor/adm: orderBy num só campo (índice automático). Corretor: filtra por posse e
-  // ordena EM MEMÓRIA — `where` + `orderBy` juntos exigiriam um índice composto (que
-  // quebraria a 1ª chamada com "needs index"). Volume por corretor é baixo.
-  let snap;
-  if (veTudo) snap = await db.collection('leads').orderBy('recebidoEm', 'desc').limit(500).get();
-  else        snap = await db.collection('leads').where('corretorUid', '==', auth.uid).get();   // sem limit: ordena+corta em memória (ver abaixo) pra não perder os mais recentes
-  const iso = (t) => (t && t.toDate ? t.toDate().toISOString() : null);
-  let itens = snap.docs.map(d => {
-    const x = d.data();
-    return {
-      id: d.id, internalId: x.internalId || null,
-      cliente: x.cliente || {}, imovel: x.imovel || {}, corretor: x.corretor || {},
-      origem: x.origem || '', canal: x.canal || '', status: x.status || '', statusAlias: x.statusAlias || '',
-      arquivado: !!x.arquivado, tags: Array.isArray(x.tags) ? x.tags : [],
-      descricao: x.descricao || '', mensagem: x.mensagem || '',
-      corretorUid: x.corretorUid || null, lido: !!x.lido,
-      imovelVinculadoId: x.imovelVinculadoId || null, imovelVinculado: x.imovelVinculado || null,
-      statusHub: x.statusHub || '',   // etapa definida no Hub (vence o status do portal na UI)
-      timeHub: x.timeHub || '',       // "time do cliente" (classificação de momento, definida no Hub)
-      temperaturaHub: x.temperaturaHub || '',   // Quente/Morno/Frio (definida no Hub)
-      comentarios: Array.isArray(x.comentarios) ? x.comentarios.map(c => ({ texto: c.texto || '', porNome: c.porNome || '', em: iso(c.em) })) : [],
-      recebidoEm: iso(x.recebidoEm), atualizadoEm: iso(x.atualizadoEm),
-      criadoEmC2S: x.criadoEmC2S || '', atualizadoEmC2S: x.atualizadoEmC2S || '',
-    };
+  const ativos = await _uidsAtivos().catch(() => new Set());
+  const data = req.data || {};
+  const f = data.filtros;
+
+  // ── LEGADO: cliente sem `filtros` (ex.: .exe 1.0.185) — não esconde nada ──
+  if (!f || typeof f !== 'object') {
+    let snap;
+    if (veTudo) snap = await db.collection('leads').orderBy('recebidoEm', 'desc').limit(500).get();
+    else        snap = await db.collection('leads').where('corretorUid', '==', auth.uid).get();
+    let itens = snap.docs.map(d => _serializarLead(d, ativos));
+    if (!veTudo) { itens.sort((a, b) => String(b.recebidoEm || '').localeCompare(String(a.recebidoEm || ''))); itens = itens.slice(0, 500); }
+    return { ok: true, itens, veTudo };
+  }
+
+  // ── NOVO: filtros no servidor ──
+  const bairro = _txt(f.bairro, 120);
+  const cidade = _txt(f.cidade, 120);
+  const finalidade = _txt(f.finalidade, 20);      // 'Venda' | 'Locação' | ''
+  const status = _txt(f.status, 40);              // etapa exata (LEAD_STATUS_HUB)
+  const arquivados = !!f.arquivados;              // ver arquivados (default false)
+  const soSemDono = !!f.semDonoAtivo;
+  const periodo = _txt(f.periodo, 12) || 'tudo';
+  const range = _leadPeriodoRange(periodo, _txt(f.de, 30), _txt(f.ate, 30));
+  const CAP_QUERY = 4000, CAP_OUT = 1000;
+
+  let q = db.collection('leads');
+  if (!veTudo) {
+    q = q.where('corretorUid', '==', auth.uid);          // corretor: só os seus (≤~900), resto em memória
+  } else if (bairro) {
+    q = q.where('imovel.bairro', '==', bairro);          // varre TODOS os leads do bairro
+  } else if (cidade) {
+    q = q.where('imovel.cidade', '==', cidade);          // varre TODOS os leads da cidade
+  } else if (range.ini || range.fim) {                   // período sem lugar: range+orderBy no MESMO campo
+    if (range.ini) q = q.where('recebidoEm', '>=', admin.firestore.Timestamp.fromDate(range.ini));
+    if (range.fim) q = q.where('recebidoEm', '<=', admin.firestore.Timestamp.fromDate(range.fim));
+    q = q.orderBy('recebidoEm', 'desc');
+  } else {
+    q = q.orderBy('recebidoEm', 'desc');                 // sem filtro estrutural: recentes
+  }
+  const snap = await q.limit(CAP_QUERY).get();
+
+  const iniT = range.ini ? range.ini.getTime() : null;
+  const fimT = range.fim ? range.fim.getTime() : null;
+  let itens = snap.docs.map(d => _serializarLead(d, ativos)).filter(l => {
+    if (_leadArquivado(l) !== arquivados) return false;
+    if (soSemDono && !l.semDonoAtivo) return false;
+    if (bairro && ((l.imovel || {}).bairro || '') !== bairro) return false;
+    if (cidade && ((l.imovel || {}).cidade || '') !== cidade) return false;
+    if (finalidade && !_leadFinMatch((l.imovel || {}).negociacao, finalidade)) return false;
+    if (status && (l.statusHub || l.status || 'Novo') !== status) return false;
+    if ((iniT || fimT) && l.recebidoEm) { const t = new Date(l.recebidoEm).getTime();
+      if (iniT && t < iniT) return false; if (fimT && t > fimT) return false; }
+    return true;
   });
-  // corretor: ordena em memória (sem índice composto) e corta os 500 mais recentes.
-  if (!veTudo) { itens.sort((a, b) => String(b.recebidoEm || '').localeCompare(String(a.recebidoEm || ''))); itens = itens.slice(0, 500); }
-  return { ok: true, itens, veTudo };
+  itens.sort((a, b) => String(b.recebidoEm || '').localeCompare(String(a.recebidoEm || '')));
+  const capado = itens.length > CAP_OUT || snap.size >= CAP_QUERY;
+  itens = itens.slice(0, CAP_OUT);
+  return { ok: true, itens, veTudo, filtrado: true, capado };
+});
+
+// (autenticado) Facetas dos filtros de Leads: cidades e bairros DISTINTOS (todos os 9k),
+// pra alimentar os selects sem colapsar quando um filtro está ativo. Projeção `.select`
+// (transfere pouco) + cache de 15 min por papel. Corretor só as suas; gestor/adm tudo.
+let _leadFacetasCache = { data: null, em: 0, key: '' };
+exports.leadsFacetas = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const key = veTudo ? 'all' : ('u:' + auth.uid);
+  const agora = Date.now();
+  if (_leadFacetasCache.data && _leadFacetasCache.key === key && (agora - _leadFacetasCache.em) < 900000) return _leadFacetasCache.data;
+  let q = db.collection('leads');
+  if (!veTudo) q = q.where('corretorUid', '==', auth.uid);
+  const snap = await q.select('imovel.cidade', 'imovel.bairro').get();
+  const cidades = new Set(), bairros = new Set(), porCidade = {};
+  snap.docs.forEach(d => {
+    const ci = String(d.get('imovel.cidade') || '').trim();
+    const ba = String(d.get('imovel.bairro') || '').trim();
+    if (ci) cidades.add(ci);
+    if (ba) { bairros.add(ba); const k = ci || ''; (porCidade[k] = porCidade[k] || new Set()).add(ba); }
+  });
+  const sortPt = (a, b) => a.localeCompare(b, 'pt-BR');
+  const data = {
+    cidades: [...cidades].sort(sortPt),
+    bairros: [...bairros].sort(sortPt),
+    bairrosPorCidade: Object.fromEntries(Object.entries(porCidade).map(([k, v]) => [k, [...v].sort(sortPt)])),
+  };
+  _leadFacetasCache = { data, em: agora, key };
+  return data;
 });
 
 // (autenticado) Marca um lead como lido — só o dono (ou gestor/adm) consegue.
@@ -9029,6 +9155,103 @@ async function _slCorretorAtivo(uid, cache) {
   catch (_) { r = { ativo: false, nome: '' }; }
   cache.set(uid, r); return r;
 }
+// Bairro → CHAVE de cruzamento: tira o prefixo de código do C2S ("804 - Barra Funda" →
+// "barra funda") e normaliza acento/caixa. Casa lead (C2S) × imóvel (iList), que escrevem
+// o bairro diferente (o C2S às vezes põe o código do bairro na frente).
+function _slBairroKey(b) {
+  const s = String(b || '').trim().replace(/^\s*\d{1,6}\s*[-–]\s*/, '');
+  return _slBairro(s);
+}
+function _slFinFromNeg(neg) {
+  const n = _leadNormNome(neg);
+  if (/vend|compra/.test(n)) return 'venda';
+  if (/alug|loca/.test(n)) return 'locacao';
+  return '';   // "Indefinido" casa com qualquer finalidade
+}
+// Convertido = negócio REALMENTE fechado (não reaproveitar). Perdido/lost/desistiu NÃO
+// conta — é o que a gente QUER trazer de volta. Etapa do Hub vence; senão, status do C2S.
+function _leadConvertido(ld) {
+  if (ld.statusHub) return /fechado|convert|finaliz|ganho/.test(_leadNormNome(ld.statusHub));
+  return /convert/.test(_leadNormNome(ld.statusAlias)) || /fechado|convert|ganho/.test(_leadNormNome(ld.status));
+}
+function _leadDoImovelStr(ld) {
+  const im = ld.imovel || {};
+  return _txt([im.bairro, im.cidade].filter(Boolean).join(', ') || im.descricao || '', 160);
+}
+// Tipo do imóvel → CATEGORIA canônica (pro match tolerar variações de escrita).
+function _tipoCategoria(tipo) {
+  const t = _leadNormNome(tipo);
+  if (/apart|apto|studio|kitn|cobertura|flat|loft/.test(t)) return 'apto';
+  if (/casa|sobrado/.test(t)) return 'casa';
+  if (/sala|comercial|conjunto|escrit|loja|galp|predio|ponto/.test(t)) return 'comercial';
+  if (/terreno|lote/.test(t)) return 'terreno';
+  return '';
+}
+// O lead do C2S não tem tipo/m²/quartos em campo — mas o TEXTO do anúncio consultado traz
+// ("Apartamento … 50 metros, 2 quartos"). Extrai o que der; onde não achar, fica 0/'' (o
+// match então NÃO filtra por aquele critério — não perde lead legítimo).
+function _leadParseDesc(desc) {
+  const t = _leadNormNome(desc).replace(/²/g, '2');
+  const tipo = _tipoCategoria(t);
+  let area = 0; const am = t.match(/(\d{2,4})\s?(m2|metros?|m\b)/); if (am) area = parseInt(am[1], 10);
+  let q = 0; const qm = t.match(/(\d)\s?(quartos?|dorm)/); if (qm) q = parseInt(qm[1], 10);
+  return { tipo, area, q };
+}
+// Parâmetros do SmartLead — AJUSTÁVEIS NO ADMIN (smarthub_config/smartlead). Defaults sensatos.
+const _num = (v, def, min, max) => { const n = Number(v); return isFinite(n) ? Math.max(min, Math.min(max, n)) : def; };
+const SL_PARAMS_DEFAULT = { precoPct: 15, areaPct: 15, quartosTol: 1, tipoExato: true, ativoHistorico: true };
+let _slParamsCache = { v: null, em: 0 };
+async function _slParams() {
+  const agora = Date.now();
+  if (_slParamsCache.v && (agora - _slParamsCache.em) < 120000) return _slParamsCache.v;
+  let v = { ...SL_PARAMS_DEFAULT };
+  try {
+    const s = await db.collection('smarthub_config').doc('smartlead').get();
+    if (s.exists) { const d = s.data() || {};
+      v = {
+        precoPct: _num(d.precoPct, SL_PARAMS_DEFAULT.precoPct, 1, 100),
+        areaPct: _num(d.areaPct, SL_PARAMS_DEFAULT.areaPct, 1, 100),
+        quartosTol: _num(d.quartosTol, SL_PARAMS_DEFAULT.quartosTol, 0, 10),
+        tipoExato: d.tipoExato !== false,
+        ativoHistorico: d.ativoHistorico !== false,
+      };
+    }
+  } catch (_) { /* usa default */ }
+  _slParamsCache = { v, em: agora };
+  return v;
+}
+// Índice do HISTÓRICO de leads (coleção `leads`) por bairro-chave, pro SmartLead cruzar os
+// ~9k contra a Carteira. Exclui só os CONVERTIDOS (os perdidos entram). Cache de 15 min
+// (recomputa a bairroKey + parse do texto em memória — sem migração). PII fica só no servidor.
+let _leadsHistIdxCache = { map: null, em: 0 };
+async function _leadsHistoricoIndex() {
+  const agora = Date.now();
+  if (_leadsHistIdxCache.map && (agora - _leadsHistIdxCache.em) < 900000) return _leadsHistIdxCache.map;
+  const snap = await db.collection('leads')
+    .select('imovel', 'cliente', 'corretorUid', 'status', 'statusAlias', 'statusHub', 'origem', 'mensagem').get();
+  const map = new Map();
+  snap.docs.forEach(d => {
+    const ld = d.data();
+    const im = ld.imovel || {};
+    const key = _slBairroKey(im.bairro);
+    if (!key) return;
+    if (_leadConvertido(ld)) return;
+    const c = ld.cliente || {};
+    const pd = _leadParseDesc((im.descricao || '') + ' ' + (ld.mensagem || ''));
+    const entry = {
+      id: d.id, chave: _slChave(c),
+      fin: _slFinFromNeg(im.negociacao),
+      preco: _slMoney(im.precoFloat || im.preco),
+      tipo: pd.tipo, area: pd.area, q: pd.q,   // extraídos do texto do anúncio consultado
+      dono: ld.corretorUid || '',
+      nome: c.nome || '—', telefone: c.telefone || '', email: c.email || '',
+      origem: ld.origem || '', deImovel: _leadDoImovelStr(ld),
+    };
+    const arr = map.get(key) || []; arr.push(entry); map.set(key, arr);
+  });
+  _leadsHistIdxCache = { map, em: agora };
+  return map;
+}
 // (autenticado) SmartLeads de UM imóvel: clientes que se interessaram por imóveis
 // PARECIDOS (mesma finalidade + mesmo BAIRRO + mesmo tipo + preço ±20%) e que NÃO
 // mandaram lead neste imóvel. Máscara: cliente de corretor AINDA ATIVO (e não do
@@ -9047,6 +9270,8 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
   const yBai = _slBairro((Y.endereco || {}).bairro);
   if (!yBai) return { ok: true, smartleads: [], semBairro: true };   // sem bairro não dá pra cruzar com precisão
   const yTip = _leadNormNome(Y.tipo), yFins = _slFinArr(Y.finalidade), yPreco = _slMoney(Y.valorAnuncio);
+  const P = await _slParams();
+  const yCat = _tipoCategoria(Y.tipo), yArea = _num(Y.area, 0, 0, 1e9), yQ = _num(Y.dormitorios, 0, 0, 99);
 
   const proprios = new Set();
   (Array.isArray(Y.interessados) ? Y.interessados : []).forEach(it => { if (it && it.status === 'lead') proprios.add(_slChave(it)); });
@@ -9061,7 +9286,9 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
     if (!_slFinArr(im.finalidade).some(f => yFins.includes(f))) continue;
     if (yTip && _leadNormNome(im.tipo) !== yTip) continue;
     const p = _slMoney(im.valorAnuncio);
-    if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > 0.20 * yPreco) continue;
+    if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > (P.precoPct / 100) * yPreco) continue;
+    const imArea = _num(im.area, 0, 0, 1e9);
+    if (yArea > 0 && imArea > 0 && Math.abs(imArea - yArea) > (P.areaPct / 100) * yArea) continue;
     const deImovel = _txt(_leadEnderecoImovelStr(im), 160);
     for (const it of (Array.isArray(im.interessados) ? im.interessados : [])) {
       if (!it || it.status !== 'lead' || out.length >= 60) continue;
@@ -9081,6 +9308,33 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
             mascarado: false, deImovel, aprovavel: true });
     }
   }
+
+  // ── Fonte 2: HISTÓRICO de leads do C2S (os ~9k) — mesmo bairro, finalidade, tipo, m²,
+  // quartos e preço (tolerâncias ajustáveis no Admin). Tipo/m²/quartos são EXTRAÍDOS do texto
+  // do anúncio; onde o lead não tiver o dado, não filtra por ele. Perdidos ENTRAM (só convertido
+  // fica fora). Cada um marcado `doHistorico` + `semDonoAtivo` (dono não é usuário ativo).
+  const yKey = _slBairroKey((Y.endereco || {}).bairro);
+  const hist = P.ativoHistorico ? ((await _leadsHistoricoIndex().catch(() => new Map())).get(yKey) || []) : [];
+  for (const e of hist) {
+    if (out.length >= 120) break;
+    if (e.fin && !yFins.includes(e.fin)) continue;
+    if (P.tipoExato && e.tipo && yCat && e.tipo !== yCat) continue;
+    if (e.area && yArea > 0 && Math.abs(e.area - yArea) > (P.areaPct / 100) * yArea) continue;
+    if (e.q && yQ > 0 && Math.abs(e.q - yQ) > P.quartosTol) continue;
+    if (yPreco > 0 && e.preco > 0 && Math.abs(e.preco - yPreco) > (P.precoPct / 100) * yPreco) continue;
+    if (proprios.has(e.chave) || vistos.has(e.chave)) continue;
+    vistos.add(e.chave);
+    const dono = e.dono || '';
+    const info = await _slCorretorAtivo(dono, cache);
+    const semDono = !(dono && info.ativo);
+    const mascarar = !veTudo && info.ativo && dono && dono !== auth.uid;
+    out.push(mascarar
+      ? { nome: e.nome, tipo: 'lead', mascarado: true, corretorNome: info.nome || 'outro corretor', deImovel: e.deImovel, aprovavel: false, doHistorico: true, semDonoAtivo: semDono }
+      : { nome: e.nome, tipo: 'lead', telefone: e.telefone, email: e.email, origemLead: e.id, origemPortal: e.origem,
+          corretorLeadUid: dono, corretorNome: dono ? (info.nome || '') : '', corretorAtivo: !!info.ativo,
+          bloqueadoParaDono: !!(dono && info.ativo && dono !== Y.corretorUid),
+          mascarado: false, deImovel: e.deImovel, aprovavel: true, doHistorico: true, semDonoAtivo: semDono });
+  }
   return { ok: true, smartleads: out };
 });
 
@@ -9097,10 +9351,13 @@ exports.smartLeadContagem = onCall(async (req) => {
   // Índice por bairro (candidatos), pra não varrer os 288 por alvo.
   const porBairro = {};
   ims.forEach(im => { const b = (im.endereco || {}).bairro; if (b) (porBairro[b] = porBairro[b] || []).push(im); });
+  const P = await _slParams();
+  const histIdx = P.ativoHistorico ? await _leadsHistoricoIndex().catch(() => new Map()) : new Map();   // histórico do C2S por bairro-chave
   const contagem = {};
   for (const Y of alvos) {
     const yBai = (Y.endereco || {}).bairro; if (!yBai || !_slBairro(yBai)) continue;
     const yTip = _leadNormNome(Y.tipo), yFins = _slFinArr(Y.finalidade), yPreco = _slMoney(Y.valorAnuncio);
+    const yCat = _tipoCategoria(Y.tipo), yArea = _num(Y.area, 0, 0, 1e9), yQ = _num(Y.dormitorios, 0, 0, 99);
     const proprios = new Set(), vistos = new Set();
     (Array.isArray(Y.interessados) ? Y.interessados : []).forEach(it => { if (it && it.status === 'lead') proprios.add(_slChave(it)); });
     let n = 0;
@@ -9109,7 +9366,9 @@ exports.smartLeadContagem = onCall(async (req) => {
       if (!_slFinArr(im.finalidade).some(f => yFins.includes(f))) continue;
       if (yTip && _leadNormNome(im.tipo) !== yTip) continue;
       const p = _slMoney(im.valorAnuncio);
-      if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > 0.20 * yPreco) continue;
+      if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > (P.precoPct / 100) * yPreco) continue;
+      const imArea = _num(im.area, 0, 0, 1e9);
+      if (yArea > 0 && imArea > 0 && Math.abs(imArea - yArea) > (P.areaPct / 100) * yArea) continue;
       for (const it of (Array.isArray(im.interessados) ? im.interessados : [])) {
         if (!it || it.status !== 'lead') continue;
         const k = _slChave(it);
@@ -9117,9 +9376,43 @@ exports.smartLeadContagem = onCall(async (req) => {
         vistos.add(k); n++;
       }
     }
+    // + histórico do C2S (mesmo bairro-chave, finalidade, tipo, m², quartos e preço)
+    for (const e of (histIdx.get(_slBairroKey(yBai)) || [])) {
+      if (e.fin && !yFins.includes(e.fin)) continue;
+      if (P.tipoExato && e.tipo && yCat && e.tipo !== yCat) continue;
+      if (e.area && yArea > 0 && Math.abs(e.area - yArea) > (P.areaPct / 100) * yArea) continue;
+      if (e.q && yQ > 0 && Math.abs(e.q - yQ) > P.quartosTol) continue;
+      if (yPreco > 0 && e.preco > 0 && Math.abs(e.preco - yPreco) > (P.precoPct / 100) * yPreco) continue;
+      if (proprios.has(e.chave) || vistos.has(e.chave)) continue;
+      vistos.add(e.chave); n++;
+    }
     if (n > 0) contagem[Y.id] = n;
   }
   return { ok: true, contagem };
+});
+
+// (autenticado) Lê os parâmetros do SmartLead (o Admin edita; todos leem pra saber o estado).
+exports.smartLeadConfigObter = onCall(async (req) => {
+  exigirAutenticado(req);
+  return { ok: true, params: await _slParams(), padrao: SL_PARAMS_DEFAULT };
+});
+// (admin) Salva os parâmetros do SmartLead.
+exports.smartLeadConfigSalvar = onCall(async (req) => {
+  const auth = await exigirAdmin(req);
+  const d = req.data || {};
+  const v = {
+    precoPct: _num(d.precoPct, SL_PARAMS_DEFAULT.precoPct, 1, 100),
+    areaPct: _num(d.areaPct, SL_PARAMS_DEFAULT.areaPct, 1, 100),
+    quartosTol: _num(d.quartosTol, SL_PARAMS_DEFAULT.quartosTol, 0, 10),
+    tipoExato: d.tipoExato !== false,
+    ativoHistorico: d.ativoHistorico !== false,
+    atualizadoEm: admin.firestore.FieldValue.serverTimestamp(), porUid: auth.uid,
+  };
+  await db.collection('smarthub_config').doc('smartlead').set(v, { merge: true });
+  _slParamsCache = { v: null, em: 0 };   // invalida o cache pra valer na hora
+  await registrarAudit(auth, 'config_salvar', { tipo: 'smarthub_config', id: 'smartlead' },
+    { precoPct: v.precoPct, areaPct: v.areaPct, quartosTol: v.quartosTol, tipoExato: v.tipoExato, ativoHistorico: v.ativoHistorico });
+  return { ok: true, params: await _slParams() };
 });
 
 // (gestor/adm) Aprova um SmartLead: persiste como interessado REAL (status 'aprovado')

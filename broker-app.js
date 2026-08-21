@@ -90,6 +90,8 @@ const state = {
   filaBusca:'', perfilCache:null,
   leadsBusca:'', leadsFiltro:'Todos', leadsOrigem:'Todos', leadsCorretor:'Todos', leadsVeTudo:false,   // Leads do C2S
   leadsFinalidade:'Todos', leadsTime:'Todos', leadsTemp:'Todos', leadsCidade:'Todas', leadsBairro:'Todos',   // filtros avançados de Leads
+  leadsVerArquivados:false,   // toggle: por padrão esconde arquivados/perdidos (mostra só os vivos)
+  leadsPeriodo:'tudo', leadsDe:'', leadsAte:'', leadsSemDono:false, _leadsCapado:false,   // filtros no servidor (período · sem dono ativo)
   leadVincLeadId:null, leadVincBusca:'',   // picker "vincular a um imóvel"
 };
 
@@ -1650,23 +1652,26 @@ function carregarSmartLeads(imovelId){
 }
 function smartLeadsHtml(imovelId, arr, semBairro){
   const ehG=state.role==='broker';
-  const head='<div class="fz11 up fw7 t500" style="margin-bottom:4px">'+icon('sparkles',13)+' Sugestões · SmartLead</div><div class="fz11 t500" style="margin-bottom:10px">Clientes que se interessaram por imóveis parecidos (mesmo bairro, tipo e faixa de preço). Boa chance de gostarem deste.</div>';
+  const head='<div class="fz11 up fw7 t500" style="margin-bottom:4px">'+icon('sparkles',13)+' Sugestões · SmartLead</div><div class="fz11 t500" style="margin-bottom:10px">Clientes que procuraram imóveis parecidos (mesmo bairro e faixa de preço) — inclui leads antigos do portal (selo <b>histórico</b>). Boa chance de gostarem deste.</div>';
   if(semBairro) return head+'<div class="tcenter t500 fz12" style="padding:10px">Cadastre o bairro do imóvel pra ver sugestões.</div>';
   if(!arr.length) return head+'<div class="tcenter t500 fz12" style="padding:10px">Nenhuma sugestão no momento.</div>';
   return head+arr.map(s=>{
+    const selo=pill('SmartLead','ai')+(s.doHistorico?' '+pill('histórico','neutral'):'');
     if(s.mascarado){
-      return '<div style="border:1px dashed var(--ink300);border-radius:10px;margin-bottom:8px;padding:11px 12px;opacity:.9"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink600)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div><div class="fz11 t500 trunc">'+icon('lock',11)+' Cliente de <b>'+esc(s.corretorNome||'outro corretor')+'</b> — fale com ele</div></div>'+pill('SmartLead','ai')+'</div>'+(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">via '+esc(s.deImovel)+'</div>':'')+'</div>';
+      return '<div style="border:1px dashed var(--ink300);border-radius:10px;margin-bottom:8px;padding:11px 12px;opacity:.9"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink600)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div><div class="fz11 t500 trunc">'+icon('lock',11)+' Cliente de <b>'+esc(s.corretorNome||'outro corretor')+'</b> — fale com ele</div></div>'+selo+'</div>'+(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">'+(s.doHistorico?'pediu ':'via ')+esc(s.deImovel)+'</div>':'')+'</div>';
     }
     const tel=String(s.telefone||'').replace(/[^\d+]/g,''); const wa=leadWa(s.telefone||'');
-    return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill('SmartLead','ai')+'</div>'
+    return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+selo+'</div>'
       // Aviso do dono do lead (só desmascarado). Bloqueado = cliente de OUTRO corretor ativo
-      // (pro dono deste imóvel). Liberado = corretor saiu. Cliente do próprio dono = sem aviso.
+      // (pro dono deste imóvel). Liberado = corretor saiu. Sem dono ativo = livre. Cliente do próprio dono = sem aviso.
       +(s.bloqueadoParaDono
         ? '<div class="fz11" style="margin-top:6px;color:#f59e0b">'+icon('lock',11)+' Cliente de <b>'+esc(s.corretorNome||'outro corretor')+'</b> — bloqueado para o dono deste imóvel (aprovar é decisão sua)</div>'
         : (s.corretorNome && !s.corretorAtivo
           ? '<div class="fz11" style="margin-top:6px;color:var(--success)">'+icon('unlock',11)+' Cliente de <b>'+esc(s.corretorNome)+'</b> — saiu da equipe, liberado</div>'
-          : ''))
-      +(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">via '+esc(s.deImovel)+'</div>':'')
+          : (s.semDonoAtivo
+            ? '<div class="fz11" style="margin-top:6px;color:#f59e0b">'+icon('user-x',11)+' Sem corretor ativo dono — livre pra pegar</div>'
+            : '')))
+      +(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">'+(s.doHistorico?'pediu ':'via ')+esc(s.deImovel)+'</div>':'')
       +'<div class="fx g2 wrap" style="margin-top:10px">'+(wa?'<a class="btn btn-success sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',14)+'WhatsApp</a>':'')+(tel?'<a class="btn btn-outline sm" href="tel:'+esc(tel)+'" style="text-decoration:none">'+icon('phone',14)+'Ligar</a>':'')+(ehG&&s.aprovavel&&s.origemLead?'<button class="btn btn-primary sm" data-action="sl-aprovar" data-imovel="'+esc(imovelId)+'" data-lead="'+esc(s.origemLead)+'">'+icon('check',14)+'Aprovar</button>':'')+'</div></div>';
   }).join('');
 }
@@ -1817,7 +1822,7 @@ function wireEvents(root){
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; updateLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; updateLeads(); } });
+    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
 }
 function handleAction(a,el){
@@ -1828,6 +1833,8 @@ function handleAction(a,el){
   else if(a==='negverarquivados'){ state.negVerArquivados=!state.negVerArquivados; if(state.negVerArquivados) state.negVerCancelados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='negvercancelados'){ state.negVerCancelados=!state.negVerCancelados; if(state.negVerCancelados) state.negVerArquivados=false; state.negFiltroStatus='Todos'; RENDERERS.negocios($('#root')); refreshIcons(); }
   else if(a==='leadfiltro'){ state.leadsFiltro=el.dataset.v; const r=ROOT(); if(r) r.querySelectorAll('[data-action=leadfiltro]').forEach(b=>b.classList.toggle('active', b.dataset.v===el.dataset.v)); updateLeads(); }
+  else if(a==='leadverarq'){ state.leadsVerArquivados=!state.leadsVerArquivados; state.leadsFiltro='Todos'; recarregarLeads(); }
+  else if(a==='leadsemdono'){ state.leadsSemDono=!state.leadsSemDono; recarregarLeads(); }
   else if(a==='openlead'){ openLead(el.dataset.id); }
   else if(a==='lead-verimovel'){ openProp(el.dataset.id); }
   else if(a==='lead-vincular'){ openLeadVincular(el.dataset.id); }
@@ -2154,6 +2161,7 @@ RENDERERS.clientes = function(host){
 // Leads que chegam dos portais (ZAP/VivaReal/site) via webhook do C2S (leadsC2SWebhook).
 // Corretor vê os seus; gestor/administrativo veem todos (o backend já filtra por posse).
 let LEADS = [];
+let LEAD_FACETAS = null;   // { cidades, bairros, bairrosPorCidade } — do backend (todos os 9k), pros selects não colapsarem
 // Etapas do lead no Hub (fonte única — modal, filtros e cor). Bate com LEAD_STATUS_HUB no backend.
 const LEAD_ETAPAS = ['Novo','Em atendimento','Visita','Proposta','Negócio fechado','Cliente desistiu'];
 const LEAD_VIBE = { 'novo':'info', 'em atendimento':'warning', 'visita':'warning', 'proposta':'warning', 'negocio fechado':'success', 'cliente desistiu':'neutral' };
@@ -2193,12 +2201,18 @@ function _leadOpts(lista, atual, todosVal, todosRotulo){
   return [todosVal].concat(lista).map(o=>'<option value="'+esc(o)+'"'+(atual===o?' selected':'')+'>'+esc(o===todosVal?todosRotulo:o)+'</option>').join('');
 }
 function leadsCidadesOpts(){
-  const set=[...new Set(LEADS.map(l=>(l.imovel&&l.imovel.cidade)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const set=(LEAD_FACETAS&&LEAD_FACETAS.cidades) ? LEAD_FACETAS.cidades
+    : [...new Set(LEADS.map(l=>(l.imovel&&l.imovel.cidade)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   return _leadOpts(set, state.leadsCidade||'Todas', 'Todas', 'Todas as cidades');
 }
 function leadsBairrosOpts(){
   const cid=state.leadsCidade||'Todas';
-  const set=[...new Set(LEADS.filter(l=>cid==='Todas'||((l.imovel&&l.imovel.cidade)||'')===cid).map(l=>(l.imovel&&l.imovel.bairro)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  let set;
+  if(LEAD_FACETAS){
+    set = cid==='Todas' ? (LEAD_FACETAS.bairros||[]) : ((LEAD_FACETAS.bairrosPorCidade&&LEAD_FACETAS.bairrosPorCidade[cid])||[]);
+  } else {
+    set=[...new Set(LEADS.filter(l=>cid==='Todas'||((l.imovel&&l.imovel.cidade)||'')===cid).map(l=>(l.imovel&&l.imovel.bairro)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  }
   return _leadOpts(set, state.leadsBairro||'Todos', 'Todos', 'Todos os bairros');
 }
 function leadWa(tel){ const d=String(tel||'').replace(/\D/g,''); if(!d) return ''; return 'https://wa.me/'+(d.length<=11?'55'+d:d); }
@@ -2226,15 +2240,29 @@ function openLeadPessoa(imovelId, idx){
     +'<div class="fz11 t500" style="margin-top:12px;background:var(--ink50);border:1px solid var(--ink200);border-radius:8px;padding:10px 12px">Este contato veio de um lead do portal — ainda sem ficha cadastral. Use “Enviar ficha ao interessado” acima pra ele preencher os dados completos.</div>'
     +'<div class="fx je" style="margin-top:16px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
 }
+function leadsFiltrosServidor(){
+  // Filtros que MOLDAM a query no servidor (varrem os 9k). O resto (finalidade/etapa/
+  // origem/corretor/busca) é refino em memória sobre o que voltou.
+  const f={ periodo: state.leadsPeriodo||'tudo', arquivados: !!state.leadsVerArquivados, semDonoAtivo: !!state.leadsSemDono };
+  if((state.leadsBairro||'Todos')!=='Todos') f.bairro=state.leadsBairro;
+  if((state.leadsCidade||'Todas')!=='Todas') f.cidade=state.leadsCidade;
+  if(f.periodo==='custom'){ if(state.leadsDe) f.de=state.leadsDe; if(state.leadsAte) f.ate=state.leadsAte; }
+  return f;
+}
 async function carregarLeads(){
-  try{ const r=await call('leadsListar')({}); LEADS=(r.data&&r.data.itens)||[]; state.leadsVeTudo=!!(r.data&&r.data.veTudo); state._leadsErro=''; }
+  try{ const r=await call('leadsListar')({ filtros: leadsFiltrosServidor() });
+    LEADS=(r.data&&r.data.itens)||[]; state.leadsVeTudo=!!(r.data&&r.data.veTudo); state._leadsCapado=!!(r.data&&r.data.capado); state._leadsErro=''; }
   catch(e){ LEADS=[]; state._leadsErro=(e&&e.message)||'erro'; }
 }
+// Refetch (filtro estrutural mudou) → recarrega do servidor e re-renderiza a tela toda.
+function recarregarLeads(){ const h=$('#root'); carregarLeads().then(()=>{ if(state.view==='leads'&&h) renderLeadsInner(h); }); }
 function leadsFiltradas(){
   const q=semAcento(state.leadsBusca||'').trim(); const f=state.leadsFiltro||'Todos'; const og=state.leadsOrigem||'Todos'; const co=state.leadsCorretor||'Todos';
   const fin=state.leadsFinalidade||'Todos', tm=state.leadsTime||'Todos', tp=state.leadsTemp||'Todos', cid=state.leadsCidade||'Todas', bai=state.leadsBairro||'Todos';
+  const verArq=!!state.leadsVerArquivados;
   return LEADS.filter(l=>{
     const im=l.imovel||{};
+    if(leadArquivado(l)!==verArq) return false;   // padrão: só vivos · toggle "Ver arquivados": só arquivados/perdidos
     if(og!=='Todos' && (l.origem||'')!==og) return false;
     if(co!=='Todos' && ((l.corretor&&l.corretor.nome)||'')!==co) return false;
     if(f==='Não lidos' && l.lido) return false;
@@ -2253,10 +2281,11 @@ const LEAD_SEL_ST='height:40px;background:var(--raised);border:1px solid var(--b
 function leadsRows(){
   const list=leadsFiltradas(); const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
   if(state._leadsErro) return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:36px 0">'+icon('alert-triangle',22,'tmut')+'<p style="margin-top:8px" class="fz13">Não consegui carregar os leads.</p></div></td></tr>';
-  if(!list.length) return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:40px 0">'+icon('inbox',24)+'<p style="margin-top:8px" class="fz14 fw5">Nenhum lead por aqui ainda.</p><p class="fz12 tmut" style="margin-top:4px">Quando chega um contato dos portais, ele aparece aqui na hora.</p></div></td></tr>';
+  if(!list.length){ const arq=state.leadsVerArquivados;
+    return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:40px 0">'+icon(arq?'archive':'inbox',24)+'<p style="margin-top:8px" class="fz14 fw5">'+(arq?'Nenhum lead arquivado.':'Nenhum lead por aqui ainda.')+'</p><p class="fz12 tmut" style="margin-top:4px">'+(arq?'Leads perdidos ou marcados como “Cliente desistiu” aparecem aqui.':'Quando chega um contato dos portais, ele aparece aqui na hora.')+'</p></div></td></tr>'; }
   return list.map(l=>{ const c=l.cliente||{};
     return '<tr data-action="openlead" data-id="'+esc(l.id)+'" style="cursor:pointer">'
-    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span>'+(l.temperaturaHub?'<span title="'+esc(l.temperaturaHub)+'" style="width:9px;height:9px;border-radius:50%;background:'+leadTempCor(l.temperaturaHub)+';flex:none"></span>':'')+'</div></td>'
+    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span>'+(l.temperaturaHub?'<span title="'+esc(l.temperaturaHub)+'" style="width:9px;height:9px;border-radius:50%;background:'+leadTempCor(l.temperaturaHub)+';flex:none"></span>':'')+(l.semDonoAtivo?'<span class="fz10 fw6" title="Sem corretor ativo dono" style="flex:none;background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b55;border-radius:6px;padding:1px 5px">sem dono</span>':'')+'</div></td>'
     + '<td class="t700 trunc" style="max-width:220px">'+esc(leadEnderecoTxt(l))+'</td>'
     + '<td class="mono fz12 t700 nowrap">'+(leadCodigo(l)?esc(leadCodigo(l)):'<span class="tmut">—</span>')+'</td>'
     + '<td>'+(l.origem?pill(l.origem,'ai'):'<span class="tmut">—</span>')+'</td>'
@@ -2265,9 +2294,10 @@ function leadsRows(){
     + '<td class="tright tmut fz12 nowrap">'+leadData(l.recebidoEm)+'</td></tr>';
   }).join('');
 }
+function leadsCountTxt(){ const n=leadsFiltradas().length; return n+' lead'+(n===1?'':'s')+(state._leadsCapado?' · muitos resultados — refine por bairro/período pra ver todos':''); }
 function updateLeads(){
   const el=$('#leadsBody'); if(el){ el.innerHTML=leadsRows(); refreshIcons(); }
-  const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); }
+  const cnt=$('#leadsCount'); if(cnt){ cnt.textContent=leadsCountTxt(); }
   const sel=$('#leadsOrigemSel'); if(sel){ sel.innerHTML=leadsOrigensOpts(); sel.value=state.leadsOrigem||'Todos'; }   // origens só existem depois do load
   const selC=$('#leadsCorretorSel'); if(selC){ selC.innerHTML=leadsCorretoresOpts(); selC.value=state.leadsCorretor||'Todos'; }
   const selCi=$('#leadsCidadeSel'); if(selCi){ selCi.innerHTML=leadsCidadesOpts(); selCi.value=state.leadsCidade||'Todas'; }   // cidades/bairros também vêm dos dados
@@ -2275,15 +2305,21 @@ function updateLeads(){
 }
 function renderLeadsInner(host){
   const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
+  const nArq=LEADS.filter(leadArquivado).length;   // arquivados/perdidos dentro do que está carregado
   const corpo = LEADS.length ? leadsRows() : '<tr><td colspan="'+cols+'"><div class="tcenter tmut" style="padding:30px 0">Carregando…</div></td></tr>';
   host.innerHTML=pageHead(hTitulo('Leads'),'Contatos que chegam dos portais (ZAP, VivaReal, site) em tempo real.','')
-  + '<div class="fx ac jb wrap g3" style="margin-bottom:10px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
+  + '<div class="fx ac jb wrap g3" style="margin-bottom:10px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')
+  + '<button class="chip'+(state.leadsVerArquivados?' active':'')+'" data-action="leadverarq" style="margin-left:6px" title="Leads perdidos/arquivados (sem retorno, desistência). Ficam escondidos por padrão.">'+icon('archive',13)+(state.leadsVerArquivados?'Vendo arquivados':'Arquivados')+((nArq&&!state.leadsVerArquivados)?'<span style="margin-left:6px;opacity:.65;font-weight:700">'+nArq+'</span>':'')+'</button>'
+  + (veTudo?'<button class="chip'+(state.leadsSemDono?' active':'')+'" data-action="leadsemdono" style="margin-left:4px" title="Leads sem corretor ativo dono: não atribuídos ou cujo corretor saiu/foi desativado.">'+icon('user-x',13)+'Sem dono ativo</button>':'')
+  + '</div>'
   + '<div class="fx ac g2 wrap">'
   + (veTudo?'<select id="leadsCorretorSel" data-action="leadcorr" class="lead-sel" style="'+LEAD_SEL_ST+'">'+leadsCorretoresOpts()+'</select>':'')
   + '<select id="leadsOrigemSel" data-action="leadorigem" class="lead-sel" style="'+LEAD_SEL_ST+'">'+leadsOrigensOpts()+'</select>'
   + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(240px,60vw)">'+icon('search',16,'tmut')+'<input data-input="leadsBusca" value="'+esc(state.leadsBusca||'')+'" placeholder="Buscar lead…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div></div></div>'
-  // Filtros avançados (2ª linha): finalidade · time do cliente · temperatura · cidade · bairro.
+  // Filtros avançados (2ª linha): período · finalidade · time do cliente · temperatura · cidade · bairro.
   + '<div class="fx ac g2 wrap" style="margin-bottom:14px">'
+  + '<select data-action="leadperiodo" class="lead-sel" style="'+LEAD_SEL_ST+'">'+[['tudo','Qualquer data'],['7d','Últimos 7 dias'],['30d','Últimos 30 dias'],['mes','Este mês'],['ano','Este ano'],['custom','Personalizado…']].map(function(o){return '<option value="'+o[0]+'"'+((state.leadsPeriodo||'tudo')===o[0]?' selected':'')+'>'+o[1]+'</option>';}).join('')+'</select>'
+  + (state.leadsPeriodo==='custom' ? '<input type="date" data-action="leadde" value="'+esc(state.leadsDe||'')+'" class="lead-sel" style="'+LEAD_SEL_ST+';max-width:150px" title="De">'+'<input type="date" data-action="leadate" value="'+esc(state.leadsAte||'')+'" class="lead-sel" style="'+LEAD_SEL_ST+';max-width:150px" title="Até">' : '')
   + '<select data-action="leadfin" class="lead-sel" style="'+LEAD_SEL_ST+'">'+_leadOpts(['Venda','Locação'], state.leadsFinalidade||'Todos', 'Todos', 'Venda e locação')+'</select>'
   + '<select id="leadsTimeSel" data-action="leadtimef" class="lead-sel" style="'+LEAD_SEL_ST+'">'+_leadOpts(LEAD_TIMES, state.leadsTime||'Todos', 'Todos', 'Time do cliente: todos')+'</select>'
   + '<select data-action="leadtempf" class="lead-sel" style="'+LEAD_SEL_ST+'">'+_leadOpts(LEAD_TEMPS.map(t=>t[0]), state.leadsTemp||'Todos', 'Todos', 'Temperatura: todas')+'</select>'
@@ -2292,7 +2328,7 @@ function renderLeadsInner(host){
   + '</div>'
   + '<div class="fz12 tmut" id="leadsCount" style="margin-bottom:8px"></div>'
   + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(veTudo?860:740)+'px"><thead><tr><th>Cliente</th><th>Imóvel</th><th>Código</th><th>Origem</th><th>Status</th>'+(veTudo?'<th>Corretor</th>':'')+'<th class="tright">Recebido</th></tr></thead><tbody id="leadsBody">'+corpo+'</tbody></table></div></div>';
-  if(LEADS.length){ const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); } }
+  if(LEADS.length){ const cnt=$('#leadsCount'); if(cnt){ cnt.textContent=leadsCountTxt(); } }
   refreshIcons();
 }
 RENDERERS.leads = function(host){
@@ -2301,7 +2337,15 @@ RENDERERS.leads = function(host){
   // state.leadsVeTudo, que só existe depois do carregarLeads — senão header (6 col) e linhas
   // (7 col) ficam desalinhados no 1º acesso do gestor/adm.
   carregarLeads().then(()=>{ const h=$('#root'); if(state.view==='leads'&&h) renderLeadsInner(h); });
+  if(!LEAD_FACETAS) carregarLeadFacetas();
 };
+// Cidades/bairros distintos (todos os 9k) pros selects — 1x por sessão, cacheado no servidor.
+function carregarLeadFacetas(){
+  call('leadsFacetas')({}).then(r=>{ LEAD_FACETAS=(r&&r.data)||null;
+    const selCi=$('#leadsCidadeSel'); if(selCi){ selCi.innerHTML=leadsCidadesOpts(); selCi.value=state.leadsCidade||'Todas'; }
+    const selBa=$('#leadsBairroSel'); if(selBa){ selBa.innerHTML=leadsBairrosOpts(); selBa.value=state.leadsBairro||'Todos'; }
+  }).catch(()=>{});
+}
 function openLead(id){
   const l=LEADS.find(x=>x.id===id); if(!l) return;
   const c=l.cliente||{}; const im=l.imovel||{}; const wa=leadWa(c.telefone);
@@ -2335,6 +2379,7 @@ function openLead(id){
     : (podeVincular?'<button class="btn btn-outline sm" data-action="lead-vincular" data-id="'+esc(l.id)+'" style="width:100%;margin:0 0 12px">'+icon('link',15)+'Vincular a um imóvel</button>':'');
   openDrawer('<div class="fx ac g2" style="padding:18px 20px 4px">'+avatar(c.nome||'?',44,'var(--ink800)')+'<div style="min-width:0"><div class="fw7 t900 trunc" style="font-size:17px">'+esc(c.nome||'—')+'</div><div class="tmut fz13 trunc">'+esc(c.telefone||'')+(c.email?(' · '+esc(c.email)):'')+'</div></div></div>'
     + contato
+    + (l.semDonoAtivo?'<div class="fz12" style="margin:10px 20px 0;background:#f59e0b18;border:1px solid #f59e0b55;color:#f59e0b;border-radius:8px;padding:8px 12px">'+icon('user-x',13)+' Sem corretor ativo dono — não atribuído ou o corretor saiu do sistema.</div>':'')
     + '<div class="grow scrolly" style="overflow:auto;padding:14px 20px">'
     + imovelBox + vincBox + msg
     + '<div class="fz11 tmut" style="margin-bottom:2px">DETALHES</div>'+info
