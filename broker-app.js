@@ -327,6 +327,7 @@ async function carregarDados(){
   const imoveisRaw = (imR.data&&imR.data.imoveis)||[];
   PROPERTIES_ALL = imoveisRaw.map(mapImovel);
   PROPERTIES = PROPERTIES_ALL.filter(p=>!p.arquivado);
+  _slCountFetched = false;   // dados novos → rebusca a contagem de SmartLead na próxima render de Imóveis
   const negociosRaw = (ngR.data&&ngR.data.negocios)||[];
   DEALS = negociosRaw.filter(n=>n.status!=='cancelado').map(mapNegocio);
   DEALS_DOCS = negociosRaw.map(mapNegocio);   // inclui cancelados (docs continuam acessíveis na tela Documentos)
@@ -1543,7 +1544,14 @@ function updateImoveis(){ const el=$('#imoveisList'); if(el){ el.innerHTML=imove
 // (mesma finalidade + mesma cidade + mesmo tipo + preço ±20%), e que NÃO mandaram lead
 // no próprio Y. Cruza os imóveis já carregados — gestor vê todos (PROPERTIES_ALL);
 // corretor vê os seus (subconta, aceitável na v1).
-let SMARTLEAD = {};   // imovelId -> [ {nome,telefone,email,contato,deEnd} ] clientes com match
+let SMARTLEAD = {};   // imovelId -> [ {nome,telefone,email,contato,deEnd} ] clientes com match (client-side, fallback)
+let SL_COUNT = {};    // imovelId -> nº de SmartLeads (do BACKEND — cruza contra TODOS os imóveis; funciona pro corretor)
+let _slCountFetched = false;
+// Busca a contagem real de SmartLead no servidor (o cruzamento client-side só vê os imóveis
+// do próprio corretor). Atualiza só a lista de imóveis, sem re-renderizar a view (sem loop).
+function carregarSmartLeadCount(){
+  call('smartLeadContagem')({}).then(r=>{ SL_COUNT=(r.data&&r.data.contagem)||{}; const el=$('#imoveisList'); if(el && state.view==='imoveis') el.innerHTML=imoveisList(); refreshIcons(); }).catch(()=>{});
+}
 function _slNorm(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim(); }
 function _slFin(f){ f=String(f||''); return f==='venda_locacao'?['venda','locacao']:[f]; }
 function _slKey(it){ const t=String(it.telefone||it.contato||'').replace(/\D/g,''); if(t) return 't:'+t; const e=String(it.email||'').trim().toLowerCase(); if(e) return 'e:'+e; return 'n:'+_slNorm(it.nome); }
@@ -1584,7 +1592,8 @@ function computeSmartLeads(){
 function imLeadCounts(p){
   const its=Array.isArray(p.interessados)?p.interessados:[];
   const nLead=its.filter(it=>it&&it.status==='lead').length;
-  const nSmart=(SMARTLEAD[p.id]||[]).length;
+  // Contador do backend (cruza contra TODOS os imóveis) — funciona pro corretor; fallback = client-side.
+  const nSmart = (SL_COUNT[p.id]!=null) ? SL_COUNT[p.id] : (SMARTLEAD[p.id]||[]).length;
   const mkpill=(cls,act,ico,txt,on,tit)=>'<span class="pill '+(on?cls:'neutral')+'"'+(on?' data-action="'+act+'" data-imovel="'+esc(p.id)+'" role="button" tabindex="0" style="font-size:11px;padding:2px 9px;cursor:pointer"':' style="font-size:11px;padding:2px 9px"')+' title="'+tit+'">'+icon(ico,12)+txt+'</span>';
   return '<div class="fx ac g2 wrap" style="margin-top:8px">'
     +mkpill('ai','im-leads','inbox',nLead+' Lead'+(nLead===1?'':'s'),nLead>0,'Leads do anúncio deste imóvel — clientes que clicaram no próprio anúncio')
@@ -1613,6 +1622,7 @@ function openSmartLeadList(imovelId){
 }
 RENDERERS.imoveis=function(host){
   computeSmartLeads();
+  if(!_slCountFetched){ _slCountFetched=true; carregarSmartLeadCount(); }   // contador real do backend (1x por load de dados)
   const fs=['Todos','Venda','Locação','Arquivado'];
   // Contagem por filtro (respeita o mês, ignora a busca e o chip ativo). Todos/Venda/
   // Locação contam só os ATIVOS; Arquivado conta os arquivados (saíram do portal etc.).
@@ -1649,8 +1659,13 @@ function smartLeadsHtml(imovelId, arr, semBairro){
     }
     const tel=String(s.telefone||'').replace(/[^\d+]/g,''); const wa=leadWa(s.telefone||'');
     return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill('SmartLead','ai')+'</div>'
-      // Dono do lead (gestor/adm veem desmascarado — mas precisam saber DE QUEM é o cliente).
-      +(s.corretorNome?'<div class="fz11 t500" style="margin-top:6px">'+icon('user',11)+' Cliente de <b>'+esc(s.corretorNome)+'</b>'+(s.corretorAtivo?'':' <span class="tmut">(saiu da equipe)</span>')+'</div>':'')
+      // Aviso do dono do lead (só desmascarado). Bloqueado = cliente de OUTRO corretor ativo
+      // (pro dono deste imóvel). Liberado = corretor saiu. Cliente do próprio dono = sem aviso.
+      +(s.bloqueadoParaDono
+        ? '<div class="fz11" style="margin-top:6px;color:#f59e0b">'+icon('lock',11)+' Cliente de <b>'+esc(s.corretorNome||'outro corretor')+'</b> — bloqueado para o dono deste imóvel (aprovar é decisão sua)</div>'
+        : (s.corretorNome && !s.corretorAtivo
+          ? '<div class="fz11" style="margin-top:6px;color:var(--success)">'+icon('unlock',11)+' Cliente de <b>'+esc(s.corretorNome)+'</b> — saiu da equipe, liberado</div>'
+          : ''))
       +(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">via '+esc(s.deImovel)+'</div>':'')
       +'<div class="fx g2 wrap" style="margin-top:10px">'+(wa?'<a class="btn btn-success sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',14)+'WhatsApp</a>':'')+(tel?'<a class="btn btn-outline sm" href="tel:'+esc(tel)+'" style="text-decoration:none">'+icon('phone',14)+'Ligar</a>':'')+(ehG&&s.aprovavel&&s.origemLead?'<button class="btn btn-primary sm" data-action="sl-aprovar" data-imovel="'+esc(imovelId)+'" data-lead="'+esc(s.origemLead)+'">'+icon('check',14)+'Aprovar</button>':'')+'</div></div>';
   }).join('');

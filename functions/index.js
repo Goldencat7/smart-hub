@@ -9074,10 +9074,52 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
       const mascarar = !veTudo && info.ativo && dono && dono !== auth.uid;
       out.push(mascarar
         ? { nome: it.nome || '—', tipo: it.tipo || 'locatario', mascarado: true, corretorNome: info.nome || 'outro corretor', deImovel, aprovavel: false }
-        : { nome: it.nome || '—', tipo: it.tipo || 'locatario', telefone: it.telefone || it.contato || '', email: it.email || '', origemPortal: it.origemPortal || '', origemLead: it.origemLead || '', corretorLeadUid: dono, corretorNome: dono ? (info.nome || '') : '', corretorAtivo: !!info.ativo, mascarado: false, deImovel, aprovavel: true });
+        : { nome: it.nome || '—', tipo: it.tipo || 'locatario', telefone: it.telefone || it.contato || '', email: it.email || '', origemPortal: it.origemPortal || '', origemLead: it.origemLead || '', corretorLeadUid: dono, corretorNome: dono ? (info.nome || '') : '', corretorAtivo: !!info.ativo,
+            // bloqueado pro DONO deste imóvel só quando o cliente é de OUTRO corretor ainda ativo
+            // (se o cliente é do próprio dono do imóvel, não há bloqueio).
+            bloqueadoParaDono: !!(dono && info.ativo && dono !== Y.corretorUid),
+            mascarado: false, deImovel, aprovavel: true });
     }
   }
   return { ok: true, smartleads: out };
+});
+
+// (autenticado) CONTAGEM de SmartLead por imóvel — pro CONTADOR do card funcionar também
+// pro corretor (o cruzamento client-side só via os imóveis DELE; aqui cruzamos contra TODOS
+// no servidor). Devolve { imovelId: nº de sugestões } só dos imóveis que o usuário vê
+// (corretor: os seus; gestor/adm: todos). Não devolve PII — só o número.
+exports.smartLeadContagem = onCall(async (req) => {
+  const auth = exigirAutenticado(req);
+  const veTudo = ehGestorAuth(auth) || (auth.token && auth.token.locRole === 'administrativo');
+  const snap = await db.collection('imoveis').get();
+  const ims = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  const alvos = veTudo ? ims : ims.filter(im => im.corretorUid === auth.uid);
+  // Índice por bairro (candidatos), pra não varrer os 288 por alvo.
+  const porBairro = {};
+  ims.forEach(im => { const b = (im.endereco || {}).bairro; if (b) (porBairro[b] = porBairro[b] || []).push(im); });
+  const contagem = {};
+  for (const Y of alvos) {
+    const yBai = (Y.endereco || {}).bairro; if (!yBai || !_slBairro(yBai)) continue;
+    const yTip = _leadNormNome(Y.tipo), yFins = _slFinArr(Y.finalidade), yPreco = _slMoney(Y.valorAnuncio);
+    const proprios = new Set(), vistos = new Set();
+    (Array.isArray(Y.interessados) ? Y.interessados : []).forEach(it => { if (it && it.status === 'lead') proprios.add(_slChave(it)); });
+    let n = 0;
+    for (const im of (porBairro[yBai] || [])) {
+      if (im.id === Y.id || im.arquivado) continue;
+      if (!_slFinArr(im.finalidade).some(f => yFins.includes(f))) continue;
+      if (yTip && _leadNormNome(im.tipo) !== yTip) continue;
+      const p = _slMoney(im.valorAnuncio);
+      if (yPreco > 0 && p > 0 && Math.abs(p - yPreco) > 0.20 * yPreco) continue;
+      for (const it of (Array.isArray(im.interessados) ? im.interessados : [])) {
+        if (!it || it.status !== 'lead') continue;
+        const k = _slChave(it);
+        if (proprios.has(k) || vistos.has(k)) continue;
+        vistos.add(k); n++;
+      }
+    }
+    if (n > 0) contagem[Y.id] = n;
+  }
+  return { ok: true, contagem };
 });
 
 // (gestor/adm) Aprova um SmartLead: persiste como interessado REAL (status 'aprovado')
