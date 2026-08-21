@@ -3173,7 +3173,9 @@ btnGoogleAgenda.addEventListener('click', async ()=>{
 const btnGmailEnviar = document.getElementById('btnGmailEnviar');
 const cfgGmailEnviarStatus = document.getElementById('cfgGmailEnviarStatus');
 let gmailEnvioConectado = false;
-const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+// Envio (gmail.send) + leitura (gmail.readonly) — a leitura deixa o Hub detectar a resposta
+// do cliente e marcar "resposta recebida". O corretor pode conceder só o envio se quiser.
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly';
 const _icoMail = '<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>';
 const _icoCheck = '<svg class="btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 function pintarBotaoGmail(conectado, email){

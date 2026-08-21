@@ -4869,6 +4869,9 @@ exports.conectarGoogleAgenda = onCall({ secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_C
     // marca se concedeu o escopo de ENVIAR e-mail (gmail.send) — o enviarEmailImoveis
     // manda pela conta do corretor quando `mail:true`; senão cai no Gmail do Hub.
     mail: (tokens.scope || '').includes('/auth/gmail.send'),
+    // marca se concedeu LEITURA (gmail.readonly) — a rotina emailChecarRespostas só varre
+    // a caixa de quem tem `mailRead:true` (pra detectar resposta do cliente).
+    mailRead: (tokens.scope || '').includes('/auth/gmail.readonly'),
     // qual cliente OAuth emitiu este refresh_token (web vs desktop) — o getAccessToken
     // precisa renovar com o MESMO cliente. redirect https ⇒ web.
     web: /^https:\/\//i.test(redirectUri || ''),
@@ -9590,7 +9593,9 @@ async function _enviarViaGmailApi(accessToken, opts) {
     headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ raw }),
   });
-  if (!resp.ok) { let t = ''; try { t = await resp.text(); } catch (_) {} throw new Error('Gmail API ' + resp.status + ' ' + String(t).slice(0, 200)); }
+  const t = await resp.text().catch(() => '');
+  if (!resp.ok) throw new Error('Gmail API ' + resp.status + ' ' + String(t).slice(0, 200));
+  try { return JSON.parse(t); } catch (_) { return {}; }   // { id, threadId }
 }
 
 // (autenticado) Imóveis da carteira PARECIDOS com uma especificação (pro picker do e-mail).
@@ -9598,7 +9603,7 @@ exports.carteiraParecidos = onCall({ memory: '512MiB' }, async (req) => {
   exigirAutenticado(req);
   const d = req.data || {};
   const yKey = _slBairroKey(_txt(d.bairro, 120));
-  const finReq = _txt(d.finalidade, 20);
+  const finReq = _txt(d.finalidade, 20) || _txt(d.fin, 20);   // o `ref` do SmartLead manda `fin`
   const yCat = _tipoCategoria(_txt(d.tipo, 60));
   const yPreco = _slMoney(d.preco);
   const excluir = _txt(d.excluirId, 80);
@@ -9642,24 +9647,34 @@ exports.enviarEmailImoveis = onCall({ memory: '512MiB', secrets: [HUB_EMAIL_PASS
   const texto = imoveis.map(i => `${i.tipo} · ${i.precoTxt} · ${i.endereco}`).join('\n') + '\n\n' + nome;
   // Onde envia: se o corretor CONECTOU o Gmail dele (google_tokens.mail), sai da conta DELE
   // via Gmail API; senão, da conta central do Hub (remaxsmarthub) por SMTP.
-  let enviadoPor = HUB_EMAIL;
+  let enviadoPor = '', threadId = '';
+  // 1º tenta a conta do CORRETOR (se conectada); se der ruim (token revogado etc.), NÃO
+  // derruba o envio — cai pro Gmail do Hub. Só falha de vez se o Hub também falhar.
   try {
     const tok = await db.collection('google_tokens').doc(auth.uid).get();
     const td = tok.exists ? tok.data() : null;
     if (td && td.mail && td.refreshToken) {
       const accessToken = await getAccessToken(td.refreshToken, td.web);
       const fromAddr = td.email || email || HUB_EMAIL;
-      await _enviarViaGmailApi(accessToken, { from: `${nome} <${fromAddr}>`, to: para, replyTo: fromAddr, subject: assunto, html, text: texto });
+      const gr = await _enviarViaGmailApi(accessToken, { from: `${nome} <${fromAddr}>`, to: para, replyTo: fromAddr, subject: assunto, html, text: texto });
+      threadId = (gr && gr.threadId) || '';   // pra detectar a resposta na mesma conversa
       enviadoPor = fromAddr;
-    } else {
+    }
+  } catch (e) { console.warn('email imoveis (conta do corretor falhou, caindo pro Hub):', e.message); enviadoPor = ''; threadId = ''; }
+  if (!enviadoPor) {
+    try {
       const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: HUB_EMAIL, pass: HUB_EMAIL_PASS.value() } });
       await transporter.sendMail({ from: `${nome} (REMAX Smart) <${HUB_EMAIL}>`, to: para, replyTo: email || undefined, subject: assunto, html, text: texto });
-    }
-  } catch (e) { console.error('email imoveis:', e.message); throw new HttpsError('internal', 'Não consegui enviar o e-mail. Tente de novo.'); }
+      enviadoPor = HUB_EMAIL;
+    } catch (e) { console.error('email imoveis:', e.message); throw new HttpsError('internal', 'Não consegui enviar o e-mail. Tente de novo.'); }
+  }
   await db.collection('email_marketing').add({
     corretorUid: auth.uid, corretorNome: nome, para, paraNome, enviadoPor,
-    imovelIds: imoveis.map(i => i.id), imoveisResumo: imoveis.map(i => ({ endereco: i.endereco, precoTxt: i.precoTxt, tipo: i.tipo })),
+    mensagem,   // pra reabrir o e-mail depois (ver o que foi enviado)
+    imovelIds: imoveis.map(i => i.id),
+    imoveisResumo: imoveis.map(i => ({ endereco: i.endereco, precoTxt: i.precoTxt, tipo: i.tipo, finalidade: i.finalidade, foto: i.foto || '', portalUrl: i.portalUrl || '', dormitorios: i.dormitorios || 0, area: i.area || 0 })),
     leadOrigemId: _txt(d.leadOrigemId, 80) || null,
+    status: 'enviado', threadId: threadId || null, corretorMail: enviadoPor !== HUB_EMAIL,
     optoutToken: token, enviadoEm: admin.firestore.FieldValue.serverTimestamp(),
   });
   await registrarAudit(auth, 'email_marketing_enviado', { tipo: 'email_marketing', id: para }, { imoveis: imoveis.length });
@@ -9675,7 +9690,7 @@ exports.emailMktListar = onCall(async (req) => {
   let snap;
   if (veTudo) snap = await db.collection('email_marketing').orderBy('enviadoEm', 'desc').limit(300).get();
   else snap = await db.collection('email_marketing').where('corretorUid', '==', auth.uid).limit(300).get();
-  let itens = snap.docs.map(d => { const x = d.data(); return { id: d.id, para: x.para || '', paraNome: x.paraNome || '', corretorNome: x.corretorNome || '', enviadoPor: x.enviadoPor || '', imoveis: x.imoveisResumo || [], qtd: (x.imovelIds || []).length, enviadoEm: iso(x.enviadoEm) }; });
+  let itens = snap.docs.map(d => { const x = d.data(); return { id: d.id, para: x.para || '', paraNome: x.paraNome || '', corretorNome: x.corretorNome || '', enviadoPor: x.enviadoPor || '', mensagem: x.mensagem || '', imoveis: x.imoveisResumo || [], qtd: (x.imovelIds || []).length, status: x.status || 'enviado', respostaEm: iso(x.respostaEm), respostaTexto: x.respostaTexto || '', enviadoEm: iso(x.enviadoEm) }; });
   if (!veTudo) itens.sort((a, b) => String(b.enviadoEm || '').localeCompare(String(a.enviadoEm || '')));
   const emails = [...new Set(itens.map(i => i.para).filter(Boolean))];
   const optSet = new Set();
@@ -9696,6 +9711,63 @@ exports.emailOptout = onRequest({ region: 'southamerica-east1' }, async (req, re
     await db.collection('email_optout').doc(_emailKey(para)).set({ email: para, em: admin.firestore.FieldValue.serverTimestamp(), viaToken: t });
     res.status(200).send(pagina('Pronto', 'Você não receberá mais e-mails de imóveis da REMAX Smart. Se mudar de ideia, é só avisar o seu corretor.'));
   } catch (e) { console.error('optout:', e.message); res.status(500).send(pagina('Erro', 'Não foi possível processar agora. Tente mais tarde.')); }
+});
+
+// (agendada) Detecta RESPOSTA do cliente aos e-mails enviados PELA CONTA DO CORRETOR (Gmail
+// API, com threadId). Varre a caixa de quem conectou com leitura (gmail.readonly): se a
+// conversa (threadId) tem uma mensagem que NÃO é do corretor, marca `resposta_recebida` +
+// guarda o trecho. E-mails enviados pelo Hub não têm threadId — não são checados.
+exports.emailChecarRespostas = onSchedule({ schedule: 'every 20 minutes', timeZone: TZ, secrets: [GOOGLE_CLIENT_SECRET, GOOGLE_CLIENT_SECRET_WEB], timeoutSeconds: 300 }, async () => {
+  if (process.env.GCLOUD_PROJECT !== 'remax-smart-hub') return;   // só em produção
+  const corteMs = Date.now() - 30 * 864e5;
+  const snap = await db.collection('email_marketing').where('status', '==', 'enviado').limit(800).get();
+  const porCorretor = new Map();
+  snap.docs.forEach(d => {
+    const x = d.data();
+    if (!x.threadId || !x.corretorMail || !x.corretorUid) return;
+    const em = x.enviadoEm && x.enviadoEm.toMillis ? x.enviadoEm.toMillis() : 0;
+    if (em && em < corteMs) return;   // ignora envios com mais de 30 dias
+    if (!porCorretor.has(x.corretorUid)) porCorretor.set(x.corretorUid, []);
+    porCorretor.get(x.corretorUid).push({ id: d.id, threadId: x.threadId });
+  });
+  let marcados = 0;
+  for (const [uid, docs] of porCorretor) {
+    const tokSnap = await db.collection('google_tokens').doc(uid).get();
+    const td = tokSnap.exists ? tokSnap.data() : null;
+    if (!td || !td.mailRead || !td.refreshToken) continue;   // não conectou leitura
+    let accessToken;
+    try { accessToken = await getAccessToken(td.refreshToken, td.web); } catch (_) { continue; }
+    const meu = (td.email || '').toLowerCase();
+    if (!meu) continue;   // sem saber o e-mail do corretor, TUDO pareceria resposta (falso positivo)
+    const vistas = new Set();
+    for (const doc of docs.slice(0, 40)) {
+      if (vistas.has(doc.threadId)) continue; vistas.add(doc.threadId);
+      try {
+        const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/threads/' + encodeURIComponent(doc.threadId) + '?format=metadata&metadataHeaders=From', { headers: { Authorization: 'Bearer ' + accessToken } });
+        if (!r.ok) continue;
+        const th = await r.json();
+        const msgs = Array.isArray(th.messages) ? th.messages : [];
+        let reply = null;
+        for (const m of msgs) {
+          const h = ((m.payload && m.payload.headers) || []).find(x => (x.name || '').toLowerCase() === 'from');
+          const fromVal = ((h && h.value) || '').toLowerCase();
+          if (!fromVal || fromVal.includes(meu)) continue;                       // sem From / é o próprio corretor
+          if (/mailer-daemon|postmaster|no-?reply/.test(fromVal)) continue;      // bounce/aviso automático ≠ resposta
+          reply = m;   // a última mensagem que NÃO é do corretor = resposta
+        }
+        if (reply) {
+          await db.collection('email_marketing').doc(doc.id).set({
+            status: 'resposta_recebida',
+            respostaTexto: String(reply.snippet || '').slice(0, 1000),
+            respostaEm: reply.internalDate ? admin.firestore.Timestamp.fromMillis(Number(reply.internalDate)) : admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+          marcados++;
+        }
+      } catch (_) { /* segue pro próximo */ }
+    }
+  }
+  if (marcados) { try { await _bumpBroadcast('leadSeq'); } catch (_) {} }
+  console.log('emailChecarRespostas: ' + marcados + ' resposta(s) marcada(s)');
 });
 
 // (gestor/adm) Aprova um SmartLead: persiste como interessado REAL (status 'aprovado')

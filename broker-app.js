@@ -94,6 +94,7 @@ const state = {
   leadsPeriodo:'tudo', leadsDe:'', leadsAte:'', leadsSemDono:false, _leadsCapado:false,   // filtros no servidor (período · sem dono ativo)
   leadsModo:'lista',   // 'lista' | 'busca' (buscar clientes por especificação)
   buscaBairro:'', buscaTipo:'', buscaFin:'', buscaPreco:'', buscaArea:'', buscaQuartos:'', buscaSoMeus:false, buscaRes:null, buscaSel:{}, buscaLoading:false,
+  emailsCorretor:'Todos', emailsStatus:'Todos', emailsBusca:'',   // filtros da aba E-mails
   leadVincLeadId:null, leadVincBusca:'',   // picker "vincular a um imóvel"
 };
 
@@ -1752,27 +1753,72 @@ function emailEnviar(btn){
    .then(()=>{ toast('E-mail enviado pra '+(c.paraNome||c.para),'check-circle-2','var(--success)'); EMAIL_CTX=null; closeModal(); })
    .catch(e=>{ toast(e.message||'Erro ao enviar','alert-triangle','var(--danger)'); if(btn){ try{ btn.disabled=false; btn.innerHTML=icon('send',14)+'Enviar'; refreshIcons(); }catch(_e){} } });
 }
-// Aba "E-mails" — histórico de envios + descadastros.
+// Aba "E-mails" — histórico de envios + descadastros + resposta do cliente.
 RENDERERS.emails=function(host){
-  host.innerHTML=pageHead(hTitulo('E-mails'),'E-mails de imóveis enviados aos clientes e quem se descadastrou.','')
+  host.innerHTML=pageHead(hTitulo('E-mails'),'E-mails de imóveis enviados aos clientes — clique num para ver o que foi enviado.','')
     +'<div id="emailsBody"><div class="card tcenter tmut" style="padding:30px 0">Carregando…</div></div>';
   refreshIcons();
   call('emailMktListar')({}).then(r=>{ MKT_EMAILS=(r.data&&r.data.itens)||[]; const b=$('#emailsBody'); if(state.view==='emails'&&b){ b.innerHTML=emailsTabela(); refreshIcons(); } })
    .catch(()=>{ const b=$('#emailsBody'); if(b) b.innerHTML=vazio('alert-triangle','Não consegui carregar os e-mails.'); });
 };
-function emailsTabela(){
-  const arr=MKT_EMAILS||[]; const veTudo=state.role!=='corretor';
-  if(!arr.length) return vazio('mail','Nenhum e-mail enviado ainda. Use o botão “E-mail” nas sugestões de SmartLead (dentro de um imóvel) pra mandar imóveis a um cliente.');
-  const nDesc=arr.filter(x=>x.descadastrado).length;
-  const aviso = nDesc ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;border:1px solid var(--warning)"><div class="fz13 fw6" style="color:var(--warning)">'+icon('user-x',14)+' '+nDesc+' destinatário(s) se descadastraram — o sistema bloqueia reenvio pra eles.</div></div>' : '';
-  const rows=arr.map(x=>'<tr>'
+function emailStatusTxt(x){ if(x.descadastrado) return 'Descadastrado'; if(x.status==='resposta_recebida'||x.respostaEm) return 'Resposta recebida'; return 'Enviado'; }
+function emailStatusVar(x){ if(x.descadastrado) return 'neutral'; if(x.status==='resposta_recebida'||x.respostaEm) return 'ai'; return 'success'; }
+function emailsFiltradas(){
+  const co=state.emailsCorretor||'Todos', st=state.emailsStatus||'Todos', q=semAcento(state.emailsBusca||'').trim();
+  return (MKT_EMAILS||[]).filter(x=>{
+    if(co!=='Todos' && (x.corretorNome||'')!==co) return false;
+    if(st!=='Todos'){ const s=emailStatusTxt(x); if(st!==s) return false; }
+    if(q){ if(semAcento([x.paraNome,x.para,x.corretorNome].join(' ')).indexOf(q)<0) return false; }
+    return true;
+  });
+}
+function emailsCorretoresOpts(){
+  const set=[...new Set((MKT_EMAILS||[]).map(x=>x.corretorNome).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return ['Todos'].concat(set).map(o=>'<option value="'+esc(o)+'"'+((state.emailsCorretor||'Todos')===o?' selected':'')+'>'+esc(o==='Todos'?'Todos os corretores':o)+'</option>').join('');
+}
+function emailsTabelaMiolo(){
+  const veTudo=state.role!=='corretor'; const arr=emailsFiltradas();
+  const rows = arr.length ? arr.map(x=>'<tr data-action="email-detalhe" data-id="'+esc(x.id)+'" style="cursor:pointer">'
     +'<td><div class="fw6 t900 trunc">'+esc(x.paraNome||x.para)+'</div><div class="fz11 tmut trunc">'+esc(x.para)+'</div></td>'
     +'<td class="t700 fz12 nowrap">'+x.qtd+' imóvel'+(x.qtd===1?'':'is')+'</td>'
     +(veTudo?'<td class="t700 trunc" style="max-width:140px">'+esc(x.corretorNome||'—')+'</td>':'')
     +'<td class="tmut fz12 nowrap">'+leadData(x.enviadoEm)+'</td>'
-    +'<td>'+(x.descadastrado?pill('descadastrado','neutral'):pill('enviado','success'))+'</td>'
-    +'</tr>').join('');
-  return aviso+'<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(veTudo?720:600)+'px"><thead><tr><th>Cliente</th><th>Imóveis</th>'+(veTudo?'<th>Corretor</th>':'')+'<th>Enviado</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    +'<td>'+pill(emailStatusTxt(x),emailStatusVar(x))+'</td>'
+    +'</tr>').join('') : '<tr><td colspan="'+(veTudo?5:4)+'"><div class="tcenter tmut" style="padding:24px">Nenhum e-mail com esse filtro.</div></td></tr>';
+  return '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(veTudo?720:600)+'px"><thead><tr><th>Cliente</th><th>Imóveis</th>'+(veTudo?'<th>Corretor</th>':'')+'<th>Enviado</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+}
+function emailsCountTxt(){ const n=emailsFiltradas().length; return n+' e-mail'+(n===1?'':'s'); }
+function emailsTabela(){
+  const arr0=MKT_EMAILS||[]; const veTudo=state.role!=='corretor';
+  if(!arr0.length) return vazio('mail','Nenhum e-mail enviado ainda. Use o botão “E-mail” nas sugestões de SmartLead ou nos Leads pra mandar imóveis a um cliente.');
+  const nDesc=arr0.filter(x=>x.descadastrado).length;
+  const aviso = nDesc ? '<div class="card" style="padding:12px 16px;margin-bottom:12px;border:1px solid var(--warning)"><div class="fz13 fw6" style="color:var(--warning)">'+icon('user-x',14)+' '+nDesc+' destinatário(s) se descadastraram — o sistema bloqueia reenvio pra eles.</div></div>' : '';
+  const barra='<div class="fx ac g2 wrap" style="margin-bottom:12px">'
+    +(veTudo?'<select data-action="emailscorr" class="lead-sel" style="'+LEAD_SEL_ST+'">'+emailsCorretoresOpts()+'</select>':'')
+    +'<select data-action="emailsstatus" class="lead-sel" style="'+LEAD_SEL_ST+'">'+['Todos','Enviado','Resposta recebida','Descadastrado'].map(s=>'<option'+((state.emailsStatus||'Todos')===s?' selected':'')+'>'+s+'</option>').join('')+'</select>'
+    +'<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(240px,60vw)">'+icon('search',16,'tmut')+'<input data-input="emailsBusca" value="'+esc(state.emailsBusca||'')+'" placeholder="Buscar cliente…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div>'
+    +'<span class="fz12 tmut" id="emailsCount" style="align-self:center">'+emailsCountTxt()+'</span></div>';
+  return aviso+barra+'<div id="emailsTabelaWrap">'+emailsTabelaMiolo()+'</div>';
+}
+// Atualiza SÓ a tabela + contador (não a barra) — senão digitar na busca perdia o foco a cada letra.
+function updateEmailsTabela(){ const w=$('#emailsTabelaWrap'); if(w){ w.innerHTML=emailsTabelaMiolo(); refreshIcons(); } const c=$('#emailsCount'); if(c) c.textContent=emailsCountTxt(); }
+// Detalhe do e-mail enviado (drawer) — mostra a mensagem, os imóveis e a resposta (se houver).
+function openEmailDetalhe(id){
+  const x=(MKT_EMAILS||[]).find(e=>e.id===id); if(!x) return;
+  const cards=(x.imoveis||[]).map(im=>'<div class="card" style="padding:0;overflow:hidden;margin-bottom:8px">'
+    +(im.foto?'<img src="'+esc(im.foto)+'" style="width:100%;max-height:150px;object-fit:cover;display:block">':'')
+    +'<div style="padding:10px 12px"><div class="fz11 fw7" style="color:var(--danger)">'+esc(im.finalidade==='locacao'?'Locação':'Venda')+(im.tipo?' · '+esc(im.tipo):'')+'</div><div class="fz15 fw7 t900">'+esc(im.precoTxt||'')+'</div><div class="fz12 t500">'+esc(im.endereco||'')+'</div>'+(im.portalUrl?'<a href="'+esc(im.portalUrl)+'" target="_blank" rel="noopener" class="fz11" style="color:var(--ai)">Ver anúncio ↗</a>':'')+'</div></div>').join('');
+  const resposta = (x.respostaTexto||x.respostaEm)
+    ? '<div class="card" style="padding:12px 14px;margin-top:14px;border:1px solid var(--ai)"><div class="fz11 up fw7" style="color:var(--ai);margin-bottom:4px">'+icon('corner-down-left',13)+' Resposta do cliente'+(x.respostaEm?' · '+leadData(x.respostaEm):'')+'</div><div class="fz13 t700" style="white-space:pre-wrap">'+esc(x.respostaTexto||'(sem texto)')+'</div></div>'
+    : '<div class="fz12 tmut" style="margin-top:14px">'+icon('info',13)+' Se o cliente responder, a resposta cai no e-mail de quem enviou. (Em breve ela aparece aqui.)</div>';
+  openDrawer(drawerHead(x.paraNome||x.para, x.para)
+    +'<div class="grow scrolly" style="overflow:auto;padding:16px 20px">'
+    +'<div class="fx jb g2" style="padding-bottom:10px"><span class="fz12 tmut">Enviado por</span><span class="fz13 fw6 t900">'+esc(x.corretorNome||'—')+(x.enviadoPor?' · '+esc(x.enviadoPor):'')+'</span></div>'
+    +'<div class="fx jb g2" style="padding-bottom:10px;border-bottom:1px solid var(--ink100)"><span class="fz12 tmut">Data</span><span class="fz13 fw6 t900">'+leadData(x.enviadoEm)+'</span></div>'
+    +(x.mensagem?'<div style="margin-top:12px"><div class="fz11 up fw7 t500" style="margin-bottom:4px">Mensagem</div><div class="fz13 t700" style="white-space:pre-wrap">'+esc(x.mensagem)+'</div></div>':'')
+    +'<div class="fz11 up fw7 t500" style="margin:16px 0 8px">Imóveis enviados ('+(x.imoveis||[]).length+')</div>'+cards
+    +resposta
+    +'</div>');
 }
 function slAprovar(imovelId, origemLead, btn){
   if(!confirm('Aprovar este SmartLead? Ele vira interessado APROVADO, pronto pra gerar negócio.')) return;
@@ -1921,13 +1967,14 @@ function wireEvents(root){
     else if(k==='bArea'){ state.buscaArea=t.value; }
     else if(k==='bQuartos'){ state.buscaQuartos=t.value; }
     else if(k==='emailMsg'){ if(EMAIL_CTX) EMAIL_CTX.mensagem=t.value; }
+    else if(k==='emailsBusca'){ state.emailsBusca=t.value; updateEmailsTabela(); }
     else if(k==='emailPara'){ if(EMAIL_CTX) EMAIL_CTX.para=t.value.trim(); }
   });
   root.addEventListener('change', e=>{
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='buscafin'){ state.buscaFin=t.value; } else if(a==='buscatipo'){ state.buscaTipo=t.value; } else if(a==='buscasomeu'){ state.buscaSoMeus=t.checked; } else if(a==='email-sel'){ emailToggleSel(t.dataset.i); } else if(a==='buscasel'){ state.buscaSel[t.dataset.i]=t.checked; const r=state.buscaRes||[]; const nSel=Object.values(state.buscaSel).filter(Boolean).length; const c=$('#buscaCount'); if(c) c.textContent=r.length+' cliente'+(r.length===1?'':'s')+(nSel?' · '+nSel+' selecionado'+(nSel===1?'':'s'):''); const bx=$('#buscaExportBtn'); if(bx) bx.disabled=!nSel; } });
+    const t=e.target.closest('select[data-action],input[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; recarregarLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; recarregarLeads(); } else if(a==='leadperiodo'){ state.leadsPeriodo=t.value; if(t.value!=='custom'){ recarregarLeads(); } else { renderLeadsInner($('#root')); } } else if(a==='leadde'){ state.leadsDe=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='leadate'){ state.leadsAte=t.value; if(state.leadsPeriodo==='custom') recarregarLeads(); } else if(a==='buscafin'){ state.buscaFin=t.value; } else if(a==='buscatipo'){ state.buscaTipo=t.value; } else if(a==='buscasomeu'){ state.buscaSoMeus=t.checked; } else if(a==='emailscorr'){ state.emailsCorretor=t.value; updateEmailsTabela(); } else if(a==='emailsstatus'){ state.emailsStatus=t.value; updateEmailsTabela(); } else if(a==='email-sel'){ emailToggleSel(t.dataset.i); } else if(a==='buscasel'){ state.buscaSel[t.dataset.i]=t.checked; const r=state.buscaRes||[]; const nSel=Object.values(state.buscaSel).filter(Boolean).length; const c=$('#buscaCount'); if(c) c.textContent=r.length+' cliente'+(r.length===1?'':'s')+(nSel?' · '+nSel+' selecionado'+(nSel===1?'':'s'):''); const bx=$('#buscaExportBtn'); if(bx) bx.disabled=!nSel; } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } else if(e.key==='Enter' && state.leadsModo==='busca' && e.target && /^b(Bairro|Preco|Area|Quartos)$/.test((e.target.dataset&&e.target.dataset.input)||'')){ e.preventDefault(); buscaRodar(); } else if(e.key==='Tab' && !e.shiftKey && e.target && e.target.dataset && e.target.dataset.input==='emailMsg' && !e.target.value.trim()){ e.preventDefault(); const msg='Oi! Achei estes imóveis que combinam com o que você procura. Dá uma olhada:'; e.target.value=msg; if(EMAIL_CTX) EMAIL_CTX.mensagem=msg; } });
 }
 function handleAction(a,el){
@@ -1946,6 +1993,7 @@ function handleAction(a,el){
   else if(a==='buscaseltodos'){ const r=state.buscaRes||[]; const allOn=r.length&&r.every((_s,i)=>state.buscaSel[i]); state.buscaSel={}; if(!allOn) r.forEach((_s,i)=>state.buscaSel[i]=true); updateBuscaResultados(); }
   else if(a==='lead-copiar'){ leadCopiar(el.dataset.id); }
   else if(a==='lead-email'){ openEmailLead(el.dataset.id); }
+  else if(a==='email-detalhe'){ openEmailDetalhe(el.dataset.id); }
   else if(a==='openlead'){ openLead(el.dataset.id); }
   else if(a==='lead-verimovel'){ openProp(el.dataset.id); }
   else if(a==='lead-vincular'){ openLeadVincular(el.dataset.id); }
