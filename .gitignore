@@ -93,3 +93,6 @@ _*.tmp
 
 # Scripts temporários/diagnóstico (scratchpad é descartável; drive-test.js já é tracked e segue versionado)
 scratchpad/
+
+# Cópia gerada dos motores H-REC (canônico em hrec/dominio/)
+functions/hrec-dominio/

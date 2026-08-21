@@ -36,6 +36,8 @@ const COMPARTILHADOS = [
   'styles.css',
   'broker.css',        // visão nova da Locação (escopada em #bkRoot)
   'broker-app.js',     // módulo do Broker (montado pelo hub-app.js na aba Locação)
+  'hrec.css',          // wizard H-REC Agenda (escopado em #secaoHrec)
+  'hrec-app.js',       // módulo do wizard H-REC (carregado sob demanda pelo hub-app.js)
   'logo.png'
 ];
 
@@ -116,6 +118,8 @@ for (const arq of SO_WEB) {
 
 // vendor/ (lucide para os ícones do Broker) — copiado como está.
 copiarPasta(path.join(RAIZ, 'vendor'), path.join(SAIDA, 'vendor'));
+// hrec/dominio/ (motores UMD do wizard H-REC — carregados por <script> sob demanda).
+copiarPasta(path.join(RAIZ, 'hrec', 'dominio'), path.join(SAIDA, 'hrec', 'dominio'), (n) => n.endsWith('.js'));
 
 // Service worker: o nome do cache carrega versão + carimbo do build. O carimbo é o
 // que garante que um deploy de correção (mesma versão do package.json) chegue no

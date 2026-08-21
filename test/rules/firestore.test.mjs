@@ -175,3 +175,84 @@ describe('Bloqueio padrão (coleção sem regra explícita)', () => {
     await assertFails(getDoc(doc(corretor1(), 'qualquer_coisa', 'x')));
   });
 });
+
+describe('H-REC AGENDA — regras (papéis via claims role/imobiliariaId)', () => {
+  // Contextos por papel do módulo de fotografia.
+  const corA = () => testEnv.authenticatedContext('corA', { hrecRole: 'corretor', hrecImob: 'imobA' }).firestore();
+  const brokerA = () => testEnv.authenticatedContext('brkA', { hrecRole: 'broker', hrecImob: 'imobA' }).firestore();
+  const brokerB = () => testEnv.authenticatedContext('brkB', { hrecRole: 'broker', hrecImob: 'imobB' }).firestore();
+  const fotografo = () => testEnv.authenticatedContext('fot1', { hrecRole: 'fotografo' }).firestore();
+  const adminHrec = () => testEnv.authenticatedContext('admH', { hrecRole: 'administrador' }).firestore();
+
+  // --- Aceite do Bloco 2: cliente NUNCA escreve em bookings/credits/payments ---
+  it('NENHUM cliente escreve em bookings (nem o dono)', async () => {
+    await assertFails(setDoc(doc(corA(), 'bookings', 'b1'), { corretorId: 'corA', imobiliariaId: 'imobA' }));
+    await assertFails(setDoc(doc(adminHrec(), 'bookings', 'b1'), { corretorId: 'corA' }));
+  });
+  it('NENHUM cliente escreve em credits nem payments', async () => {
+    await assertFails(setDoc(doc(brokerA(), 'credits', 'imobA'), { disponivel: 999 }));
+    await assertFails(setDoc(doc(adminHrec(), 'payments', 'p1'), { amount: 1 }));
+  });
+  it('ninguém escreve nas tabelas de preço (só Cloud Function)', async () => {
+    await assertFails(setDoc(doc(adminHrec(), 'pricingTables', 'padrao_hrec'), { nome: 'x' }));
+  });
+
+  // --- Catálogo/config: qualquer logado lê; anônimo não ---
+  it('logado lê pricingTables/servicosAdicionais/config-agenda; anônimo não', async () => {
+    await seed((db) => Promise.all([
+      setDoc(doc(db, 'pricingTables', 'padrao_hrec'), { nome: 'Padrão' }),
+      setDoc(doc(db, 'servicosAdicionais', 'drone'), { valor: 600 }),
+      setDoc(doc(db, 'config', 'agenda'), { limiteDia: 5 }),
+    ]));
+    await assertSucceeds(getDoc(doc(corA(), 'pricingTables', 'padrao_hrec')));
+    await assertSucceeds(getDoc(doc(corA(), 'servicosAdicionais', 'drone')));
+    await assertSucceeds(getDoc(doc(corA(), 'config', 'agenda')));
+    await assertFails(getDoc(doc(anon(), 'pricingTables', 'padrao_hrec')));
+  });
+
+  // --- Bookings: dono / broker da imob / staff ---
+  it('corretor lê o PRÓPRIO booking, não o de outro', async () => {
+    await seed((db) => Promise.all([
+      setDoc(doc(db, 'bookings', 'meu'), { corretorId: 'corA', imobiliariaId: 'imobA' }),
+      setDoc(doc(db, 'bookings', 'alheio'), { corretorId: 'corX', imobiliariaId: 'imobA' }),
+    ]));
+    await assertSucceeds(getDoc(doc(corA(), 'bookings', 'meu')));
+    await assertFails(getDoc(doc(corA(), 'bookings', 'alheio')));
+  });
+  it('broker lê bookings da PRÓPRIA imobiliária, não de outra', async () => {
+    await seed((db) => setDoc(doc(db, 'bookings', 'b'), { corretorId: 'corA', imobiliariaId: 'imobA' }));
+    await assertSucceeds(getDoc(doc(brokerA(), 'bookings', 'b')));
+    await assertFails(getDoc(doc(brokerB(), 'bookings', 'b')));
+  });
+  it('staff H-REC (fotografo/administrador) lê qualquer booking', async () => {
+    await seed((db) => setDoc(doc(db, 'bookings', 'b'), { corretorId: 'corA', imobiliariaId: 'imobA' }));
+    await assertSucceeds(getDoc(doc(fotografo(), 'bookings', 'b')));
+    await assertSucceeds(getDoc(doc(adminHrec(), 'bookings', 'b')));
+  });
+
+  // --- Financeiro: broker da imob e staff; corretor não ---
+  it('credits/payments: broker da imob e staff leem; corretor não', async () => {
+    await seed((db) => Promise.all([
+      setDoc(doc(db, 'credits', 'imobA'), { disponivel: 10 }),
+      setDoc(doc(db, 'payments', 'p1'), { imobiliariaId: 'imobA', amount: 100 }),
+    ]));
+    await assertSucceeds(getDoc(doc(brokerA(), 'credits', 'imobA')));
+    await assertSucceeds(getDoc(doc(adminHrec(), 'payments', 'p1')));
+    await assertFails(getDoc(doc(corA(), 'credits', 'imobA')));
+    await assertFails(getDoc(doc(brokerB(), 'payments', 'p1')));
+  });
+  it('pricingHistory (auditoria): só staff H-REC lê', async () => {
+    await seed((db) => setDoc(doc(db, 'pricingHistory', 'h1'), { tableId: 'padrao_hrec' }));
+    await assertSucceeds(getDoc(doc(adminHrec(), 'pricingHistory', 'h1')));
+    await assertFails(getDoc(doc(brokerA(), 'pricingHistory', 'h1')));
+  });
+
+  it('hrec_notifs: cada um lê SÓ as suas', async () => {
+    await seed((db) => Promise.all([
+      setDoc(doc(db, 'hrec_notifs', 'n1'), { uid: 'corA', texto: 'sua' }),
+      setDoc(doc(db, 'hrec_notifs', 'n2'), { uid: 'outro', texto: 'alheia' }),
+    ]));
+    await assertSucceeds(getDoc(doc(corA(), 'hrec_notifs', 'n1')));
+    await assertFails(getDoc(doc(corA(), 'hrec_notifs', 'n2')));
+  });
+});

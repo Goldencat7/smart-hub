@@ -1,7 +1,7 @@
 {
   "name": "remax-smart-hub",
   "productName": "Remax Smart Hub",
-  "version": "1.0.183",
+  "version": "1.0.184",
   "description": "Hub interno da Remax Smart — acesso rápido às plataformas com autologin via Firebase.",
   "main": "main.js",
   "type": "commonjs",
@@ -15,7 +15,8 @@
     "start": "electron .",
     "lint": "eslint .",
     "test": "firebase emulators:exec --only firestore --project demo-smart-hub \"node --test --test-reporter=spec test/rules/firestore.test.mjs\"",
-    "test:functions": "firebase emulators:exec --only auth,firestore,functions --project demo-smart-hub \"node --test --test-concurrency=1 --test-reporter=spec test/functions/callables.test.mjs\"",
+    "test:functions": "node scripts/hrec-sync-functions.js && firebase emulators:exec --only auth,firestore,functions --project demo-smart-hub \"node --test --test-concurrency=1 --test-reporter=spec test/functions/callables.test.mjs test/functions/hrec.test.mjs\"",
+    "test:hrec": "node --test --test-reporter=spec test/hrec/dominio.test.mjs test/hrec/disponibilidade.test.mjs",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
     "publish": "electron-builder --publish always",
@@ -24,6 +25,7 @@
     "deploy:pwa": "node scripts/build-pwa.js && firebase deploy --only hosting --project remax-smart-hub",
     "emu": "node scripts/emu.js",
     "emu:seed": "node scripts/emu-seed.js",
+    "hrec:seed": "node scripts/hrec-seed.js",
     "deploy:staging": "node scripts/build-pwa.js && firebase deploy --only hosting,functions,firestore:rules,storage --project staging"
   },
   "devDependencies": {

@@ -36,6 +36,8 @@
         <button class="admin-nav-item" data-aba="auditoria"><i class="ti ti-file-search"></i>Auditoria</button>
         <button class="admin-nav-item" data-aba="bugbot"><i class="ti ti-bug"></i>Bug Bot</button>
         <button class="admin-nav-item" data-aba="smarthub"><i class="ti ti-building-estate"></i>SMART HUB — configs</button>
+        <!-- H-REC Agenda: escondido até o módulo ser ativado (backend não deployado). Tirar o hidden no release de ativação. -->
+        <button class="admin-nav-item" data-aba="hrec" hidden><i class="ti ti-camera"></i>H-REC Agenda</button>
         <button class="admin-nav-item" data-aba="leadsc2s"><i class="ti ti-inbox"></i>Leads (C2S)</button>
         <!-- LGPD: DESATIVADO a pedido do Nathan (2026-07-14). A tela e as Cloud Functions
              existem (admin-app.js: carregarLgpd; functions/index.js: bloco LGPD), mas as
@@ -84,6 +86,16 @@
             </div>
           </div>
           <div id="smarthubPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
+        </section>
+
+        <section class="admin-section" data-aba="hrec" hidden>
+          <div class="admin-section-head">
+            <div>
+              <h2>H-REC Agenda</h2>
+              <p class="admin-sub">Módulo de <strong>agendamento de fotografia</strong>. Cadastre as <strong>imobiliárias</strong> (com sua tabela de preço) e atribua o <strong>papel</strong> de cada pessoa (corretor, broker, fotógrafo, administrador). Só quem tem papel vê a aba "H-REC Agenda" no Hub. <em>Trocar o papel exige que a pessoa relogue.</em></p>
+            </div>
+          </div>
+          <div id="hrecAdminPainel" class="banner-admin-wrap"><p class="muted">carregando...</p></div>
         </section>
 
         <section class="admin-section" data-aba="leadsc2s" hidden>

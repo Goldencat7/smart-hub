@@ -42,6 +42,17 @@ const migrarCredenciaisCofre = httpsCallable(fns, 'migrarCredenciaisCofre');
 const listarStatusApps        = httpsCallable(fns, 'listarStatusApps');
 const listarNotificacoesAdmin = httpsCallable(fns, 'listarNotificacoesAdmin');
 const excluirNotificacao      = httpsCallable(fns, 'excluirNotificacao');
+const hrecUsuariosListar    = httpsCallable(fns, 'hrecUsuariosListar');
+const hrecImobiliariasListar = httpsCallable(fns, 'hrecImobiliariasListar');
+const hrecImobiliariaSalvar = httpsCallable(fns, 'hrecImobiliariaSalvar');
+const hrecSetPapel          = httpsCallable(fns, 'hrecSetPapel');
+const hrecAdminConfig       = httpsCallable(fns, 'hrecAdminConfig');
+const hrecSalvarTabela      = httpsCallable(fns, 'hrecSalvarTabela');
+const hrecSalvarAdicional   = httpsCallable(fns, 'hrecSalvarAdicional');
+const hrecSalvarConfigAgenda = httpsCallable(fns, 'hrecSalvarConfigAgenda');
+const hrecSalvarConfigPix   = httpsCallable(fns, 'hrecSalvarConfigPix');
+const hrecBloquearData      = httpsCallable(fns, 'hrecBloquearData');
+const hrecDesbloquearData   = httpsCallable(fns, 'hrecDesbloquearData');
 const getTreinamentoLinks = httpsCallable(fns, 'getTreinamentoLinks');
 const setTreinamentoLink  = httpsCallable(fns, 'setTreinamentoLink');
 const setStatusApp     = httpsCallable(fns, 'setStatusApp');
@@ -318,6 +329,7 @@ function ativarAba(aba) {
   if (aba === 'auditoria') carregarAuditoria();
   if (aba === 'bugbot')    carregarBugBot();
   if (aba === 'smarthub')  carregarSmartHub();
+  if (aba === 'hrec')      carregarHrecAdmin();
   if (aba === 'leadsc2s')  carregarLeadsC2S();
   if (aba === 'lgpd')      carregarLgpd();
   if (aba === 'novidades') carregarNovidades();
@@ -1933,4 +1945,196 @@ function confirmar(mensagem, labelSim) {
     
     modalConfirm.showModal();
   });
+}
+// ===================== H-REC AGENDA — imobiliárias + atribuição de papéis =====================
+let _hrecImobs = [], _hrecCfg = null;
+async function carregarHrecAdmin() {
+  const painel = document.getElementById('hrecAdminPainel');
+  if (!painel) return;
+  painel.innerHTML = '<p class="muted">carregando...</p>';
+  try {
+    const [imobsR, usersR, cfgR] = await Promise.all([hrecImobiliariasListar(), hrecUsuariosListar(), hrecAdminConfig()]);
+    _hrecImobs = (imobsR.data.imobiliarias || []).slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || ''));
+    _hrecCfg = cfgR.data;
+    renderHrecAdmin(painel, usersR.data.usuarios || []);
+  } catch (e) {
+    painel.innerHTML = `<p style="color:var(--danger,#c0353a)">Erro: ${escapeHtml(e.message || e)}</p>`;
+  }
+}
+
+function renderHrecAdmin(painel, usuarios) {
+  const PAPEIS = [['', '— sem acesso —'], ['corretor', 'Corretor'], ['avulso', 'Avulso'], ['broker', 'Broker'], ['fotografo', 'Fotógrafo (H-REC)'], ['administrador', 'Administrador (H-REC)']];
+  const optImobs = (sel) => '<option value="">—</option>' + _hrecImobs.map(i => `<option value="${escapeHtml(i.id)}"${sel === i.id ? ' selected' : ''}>${escapeHtml(i.nome)} (${escapeHtml(i.tipo)})</option>`).join('');
+
+  const linhasImobs = _hrecImobs.length
+    ? _hrecImobs.map(i => `<tr><td>${escapeHtml(i.nome)}</td><td>${escapeHtml(i.tipo)}</td><td>${escapeHtml(i.pricingTableId || '')}</td><td>${i.ativa === false ? '—' : '✔'}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="muted">Nenhuma imobiliária ainda.</td></tr>';
+
+  const linhasUsers = usuarios.map(u => `
+    <tr data-uid="${escapeHtml(u.uid)}">
+      <td>${escapeHtml(u.email || u.nome || u.uid)}</td>
+      <td><select class="hrecad-role">${PAPEIS.map(p => `<option value="${p[0]}"${(u.hrecRole || '') === p[0] ? ' selected' : ''}>${escapeHtml(p[1])}</option>`).join('')}</select></td>
+      <td><select class="hrecad-imob">${optImobs(u.hrecImob || '')}</select></td>
+      <td><button class="topbar-btn hrecad-salvar">Salvar</button></td>
+    </tr>`).join('');
+
+  painel.innerHTML = `
+    <div style="display:grid;gap:16px">
+      <div class="banner-admin-card">
+        <h3 style="margin:0 0 8px">Imobiliárias</h3>
+        <table class="users-table"><thead><tr><th>Nome</th><th>Tipo</th><th>Tabela</th><th>Ativa</th></tr></thead><tbody>${linhasImobs}</tbody></table>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-top:10px">
+          <div><label class="muted" style="font-size:11px">Nome</label><br><input id="hrecImNome" class="admin-input" placeholder="Ex.: REMAX Empire"></div>
+          <div><label class="muted" style="font-size:11px">Tipo</label><br><select id="hrecImTipo" class="admin-input"><option value="avulso">Avulso (Pix)</option><option value="parceria">Parceria (créditos)</option></select></div>
+          <button class="topbar-btn" id="hrecImAdd">+ Adicionar imobiliária</button>
+        </div>
+        <p class="muted" style="font-size:11px;margin-top:6px">Parceria usa a tabela <strong>remax_empire</strong> (20% desc.); avulso usa a <strong>padrao_hrec</strong>.</p>
+      </div>
+
+      <div class="banner-admin-card">
+        <h3 style="margin:0 0 8px">Papéis das pessoas</h3>
+        <table class="users-table"><thead><tr><th>Pessoa</th><th>Papel H-REC</th><th>Imobiliária</th><th></th></tr></thead><tbody>${linhasUsers}</tbody></table>
+        <p class="muted" style="font-size:11px;margin-top:6px">Corretor e Broker exigem imobiliária. Depois de salvar, a pessoa precisa <strong>relogar</strong> pra o papel valer.</p>
+      </div>
+      ${hrecConfigHtml()}
+    </div>`;
+
+  document.getElementById('hrecImAdd')?.addEventListener('click', async (ev) => {
+    const nome = document.getElementById('hrecImNome').value.trim();
+    const tipo = document.getElementById('hrecImTipo').value;
+    if (!nome) { alert('Informe o nome da imobiliária.'); return; }
+    ev.target.disabled = true; ev.target.textContent = 'Salvando...';
+    try { await hrecImobiliariaSalvar({ nome, tipo }); await carregarHrecAdmin(); }
+    catch (e) { alert('Erro: ' + (e.message || e)); ev.target.disabled = false; ev.target.textContent = '+ Adicionar imobiliária'; }
+  });
+
+  painel.querySelectorAll('.hrecad-salvar').forEach(btn => btn.addEventListener('click', async () => {
+    const tr = btn.closest('tr');
+    const uid = tr.dataset.uid;
+    const role = tr.querySelector('.hrecad-role').value;
+    const imob = tr.querySelector('.hrecad-imob').value;
+    if ((role === 'corretor' || role === 'broker') && !imob) { alert('Corretor e Broker exigem uma imobiliária.'); return; }
+    btn.disabled = true; btn.textContent = 'Salvando...';
+    try {
+      await hrecSetPapel({ uid, role, imobiliariaId: imob || '' });
+      btn.textContent = 'Salvo ✔';
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Salvar'; }, 1500);
+    } catch (e) { alert('Erro: ' + (e.message || e)); btn.disabled = false; btn.textContent = 'Salvar'; }
+  }));
+  ligarHrecConfig();
+}
+
+// Seções de configuração do módulo H-REC (agenda, Pix, datas bloqueadas, adicionais, tabelas).
+function hrecConfigHtml() {
+  const cfg = _hrecCfg || {};
+  const ca = cfg.configAgenda || {}, px = cfg.configPix || {};
+  const chk = (v) => v ? ' checked' : '';
+  const inp = (id, val, tipo) => `<input id="${id}" class="admin-input" type="${tipo || 'text'}" value="${escapeHtml(val == null ? '' : val)}" style="width:100%">`;
+  const DOW = [['0', 'Dom'], ['1', 'Seg'], ['2', 'Ter'], ['3', 'Qua'], ['4', 'Qui'], ['5', 'Sex'], ['6', 'Sáb']];
+  const dias = Array.isArray(ca.diasAtendimento) ? ca.diasAtendimento.map(String) : ['1', '2', '3', '4', '5', '6'];
+
+  // Config da agenda
+  const agenda = `<div class="banner-admin-card"><h3 style="margin:0 0 8px">Configuração da agenda</h3>
+    <div class="hrec-cfg-grid">
+      <label>Abre<br>${inp('hcAgIni', ca.horaInicio || '09:00', 'time')}</label>
+      <label>Fecha<br>${inp('hcAgFim', ca.horaFim || '18:00', 'time')}</label>
+      <label>Almoço início<br>${inp('hcAlmI', ca.almocoInicio || '12:00', 'time')}</label>
+      <label>Almoço fim<br>${inp('hcAlmF', ca.almocoFim || '13:00', 'time')}</label>
+      <label>Buffer deslocamento (min)<br>${inp('hcBuf', ca.travelBufferMinutes == null ? 30 : ca.travelBufferMinutes, 'number')}</label>
+      <label>Grade (min)<br>${inp('hcGrade', ca.gradeMinutos == null ? 15 : ca.gradeMinutos, 'number')}</label>
+      <label>Limite/dia<br>${inp('hcLim', ca.limiteDia == null ? 5 : ca.limiteDia, 'number')}</label>
+      <label>Antecedência (h)<br>${inp('hcAnt', ca.antecedenciaHoras == null ? 24 : ca.antecedenciaHoras, 'number')}</label>
+      <label>Hold Pix (min)<br>${inp('hcHold', ca.holdMinutos == null ? 30 : ca.holdMinutos, 'number')}</label>
+    </div>
+    <div style="margin-top:8px">Dias de atendimento: ${DOW.map(d => `<label style="margin-right:8px;font-size:12px"><input type="checkbox" class="hc-dia" value="${d[0]}"${chk(dias.indexOf(d[0]) >= 0)}> ${d[1]}</label>`).join('')}</div>
+    <button class="topbar-btn" id="hcSalvarAgenda" style="margin-top:10px">Salvar agenda</button></div>`;
+
+  // Config Pix
+  const pix = `<div class="banner-admin-card"><h3 style="margin:0 0 8px">Pix (cobrança avulsa e créditos)</h3>
+    <div class="hrec-cfg-grid">
+      <label>Chave Pix<br>${inp('hcPixChave', px.chave)}</label>
+      <label>Tipo (cpf/cnpj/email/tel/aleatoria)<br>${inp('hcPixTipo', px.tipoChave)}</label>
+      <label>Recebedor<br>${inp('hcPixNome', px.recebedor)}</label>
+      <label>Cidade<br>${inp('hcPixCidade', px.cidade)}</label>
+      <label>URL do QR (opcional)<br>${inp('hcPixQr', px.qrCodeUrl)}</label>
+    </div>
+    <label style="display:block;margin-top:8px;font-size:12px"><input type="checkbox" id="hcPixAtivo"${chk(px.ativo)}> Pix ativo</label>
+    <button class="topbar-btn" id="hcSalvarPix" style="margin-top:10px">Salvar Pix</button></div>`;
+
+  // Datas bloqueadas
+  const bloq = (cfg.bloqueios || []).map(b => `<tr><td>${escapeHtml(b.dateISO)}</td><td>${escapeHtml(b.motivo || '')}</td><td><button class="topbar-btn hc-desbloq" data-iso="${escapeHtml(b.dateISO)}">Remover</button></td></tr>`).join('') || '<tr><td colspan="3" class="muted">Nenhuma data bloqueada.</td></tr>';
+  const datas = `<div class="banner-admin-card"><h3 style="margin:0 0 8px">Datas bloqueadas</h3>
+    <table class="users-table"><thead><tr><th>Data</th><th>Motivo</th><th></th></tr></thead><tbody>${bloq}</tbody></table>
+    <div style="display:flex;gap:8px;align-items:end;margin-top:10px;flex-wrap:wrap">
+      <label>Data<br><input id="hcBloqData" class="admin-input" type="date"></label>
+      <label style="flex:1">Motivo<br><input id="hcBloqMotivo" class="admin-input" placeholder="Feriado, férias…" style="width:100%"></label>
+      <button class="topbar-btn" id="hcBloquear">Bloquear data</button></div></div>`;
+
+  // Adicionais (valor + ativo)
+  const ads = (cfg.adicionais || []).map(a => `<tr data-id="${escapeHtml(a.id)}">
+    <td>${escapeHtml(a.nome)}</td><td>${escapeHtml(a.tipoCobranca)}</td>
+    <td><input class="admin-input hc-ad-valor" type="number" value="${escapeHtml(a.valor)}" style="width:90px"></td>
+    <td><input type="checkbox" class="hc-ad-ativo"${chk(a.ativo !== false)}></td>
+    <td><button class="topbar-btn hc-ad-salvar">Salvar</button></td></tr>`).join('');
+  const adics = `<div class="banner-admin-card"><h3 style="margin:0 0 8px">Serviços adicionais</h3>
+    <table class="users-table"><thead><tr><th>Nome</th><th>Cobrança</th><th>Valor (R$)</th><th>Ativo</th><th></th></tr></thead><tbody>${ads}</tbody></table></div>`;
+
+  // Tabelas de preço (edita valorReferencia/valorFinal/tempoMinutos/ativo por faixa)
+  const tabelas = (cfg.tabelas || []).map(t => {
+    const faixas = (t.faixas || []).map((f, i) => `<tr data-i="${i}">
+      <td>${f.min}–${f.max == null ? '∞' : f.max} m²${f.sobConsulta ? ' <span class="muted">(consulta)</span>' : ''}</td>
+      <td><input class="admin-input hc-fx-ref" type="number" value="${f.valorReferencia == null ? '' : f.valorReferencia}" style="width:80px"></td>
+      <td><input class="admin-input hc-fx-fin" type="number" value="${f.valorFinal == null ? '' : f.valorFinal}" style="width:80px"></td>
+      <td><input class="admin-input hc-fx-tmp" type="number" value="${f.tempoMinutos == null ? '' : f.tempoMinutos}" style="width:70px"></td>
+      <td><input type="checkbox" class="hc-fx-ativo"${chk(f.ativo !== false)}></td></tr>`).join('');
+    return `<div class="banner-admin-card hc-tab" data-id="${escapeHtml(t.id)}"><h3 style="margin:0 0 4px">${escapeHtml(t.nome)} <span class="muted" style="font-size:11px">v${t.versao || 1} · ${escapeHtml(t.tipo)} · ${t.descontoPercentual || 0}%</span></h3>
+      <table class="users-table"><thead><tr><th>Faixa</th><th>Ref.</th><th>Final</th><th>Tempo</th><th>Ativa</th></tr></thead><tbody>${faixas}</tbody></table>
+      <button class="topbar-btn hc-tab-salvar" style="margin-top:10px">Salvar tabela (nova versão)</button></div>`;
+  }).join('');
+
+  return `<style>.hrec-cfg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.hrec-cfg-grid label{font-size:12px}@media(max-width:700px){.hrec-cfg-grid{grid-template-columns:1fr 1fr}}</style>` +
+    agenda + pix + datas + adics + tabelas;
+}
+
+function ligarHrecConfig() {
+  const val = id => (document.getElementById(id) || {}).value;
+  const num = id => Number(val(id)) || 0;
+  const chk = id => !!(document.getElementById(id) || {}).checked;
+  const feedback = (btn, fn) => async () => { const t = btn.textContent; btn.disabled = true; btn.textContent = 'Salvando…'; try { await fn(); btn.textContent = 'Salvo ✔'; setTimeout(() => carregarHrecAdmin(), 700); } catch (e) { alert('Erro: ' + (e.message || e)); btn.disabled = false; btn.textContent = t; } };
+
+  const bAg = document.getElementById('hcSalvarAgenda');
+  if (bAg) bAg.addEventListener('click', feedback(bAg, () => hrecSalvarConfigAgenda({ config: {
+    horaInicio: val('hcAgIni'), horaFim: val('hcAgFim'), almocoInicio: val('hcAlmI'), almocoFim: val('hcAlmF'),
+    travelBufferMinutes: num('hcBuf'), gradeMinutos: num('hcGrade'), limiteDia: num('hcLim'), antecedenciaHoras: num('hcAnt'), holdMinutos: num('hcHold'),
+    diasAtendimento: [...document.querySelectorAll('.hc-dia:checked')].map(c => Number(c.value))
+  } })));
+
+  const bPix = document.getElementById('hcSalvarPix');
+  if (bPix) bPix.addEventListener('click', feedback(bPix, () => hrecSalvarConfigPix({ pix: {
+    chave: val('hcPixChave'), tipoChave: val('hcPixTipo'), recebedor: val('hcPixNome'), cidade: val('hcPixCidade'), qrCodeUrl: val('hcPixQr'), ativo: chk('hcPixAtivo')
+  } })));
+
+  const bBloq = document.getElementById('hcBloquear');
+  if (bBloq) bBloq.addEventListener('click', feedback(bBloq, async () => { const dt = val('hcBloqData'); if (!dt) throw new Error('Escolha uma data.'); await hrecBloquearData({ dateISO: dt, motivo: val('hcBloqMotivo') }); }));
+  document.querySelectorAll('.hc-desbloq').forEach(b => b.addEventListener('click', feedback(b, () => hrecDesbloquearData({ dateISO: b.dataset.iso }))));
+
+  document.querySelectorAll('.hc-ad-salvar').forEach(b => b.addEventListener('click', feedback(b, () => {
+    const tr = b.closest('tr');
+    return hrecSalvarAdicional({ adicional: { id: tr.dataset.id, valor: Number(tr.querySelector('.hc-ad-valor').value) || 0, ativo: tr.querySelector('.hc-ad-ativo').checked } });
+  })));
+
+  document.querySelectorAll('.hc-tab-salvar').forEach(b => b.addEventListener('click', feedback(b, () => {
+    const card = b.closest('.hc-tab');
+    const id = card.dataset.id;
+    const base = (_hrecCfg.tabelas || []).find(t => t.id === id);
+    const faixas = base.faixas.map((f, i) => {
+      const tr = card.querySelector(`tr[data-i="${i}"]`); if (!tr) return f;
+      const nf = v => v === '' ? null : Number(v);
+      return Object.assign({}, f, {
+        valorReferencia: nf(tr.querySelector('.hc-fx-ref').value), valorFinal: nf(tr.querySelector('.hc-fx-fin').value),
+        tempoMinutos: nf(tr.querySelector('.hc-fx-tmp').value), ativo: tr.querySelector('.hc-fx-ativo').checked
+      });
+    });
+    return hrecSalvarTabela({ tabela: Object.assign({}, base, { faixas }), obs: 'edição pelo Admin' });
+  })));
 }

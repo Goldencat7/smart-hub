@@ -111,5 +111,56 @@ service cloud.firestore {
       allow read:  if request.auth != null && (request.auth.uid == uid || locGestor());
       allow write: if false; // só via Cloud Function (locDefinirPerfil)
     }
+
+    // ===================== H-REC AGENDA (módulo de fotografia) =====================
+    // Papéis vêm de claims { role, imobiliariaId } (mintadas por Cloud Function, Bloco 5).
+    // ESCRITA sempre negada aqui: bookings/credits/payments e todo o resto passam por
+    // Cloud Function (Admin SDK ignora estas regras). Leitura escopada.
+    // Staff H-REC = fotografo/administrador (veem tudo); broker vê a própria imobiliária;
+    // corretor/avulso veem só o que é seu. ⚠️ A disponibilidade da agenda NÃO é lida
+    // varrendo `bookings` no cliente (vazaria PII de todos) — vem por Cloud Function que
+    // devolve só os intervalos ocupados/slots, sem PII (desvio consciente do MD §7).
+    function hrecRole()          { return request.auth != null ? request.auth.token.hrecRole : null; }
+    function hrecStaff()         { return hrecRole() == 'administrador' || hrecRole() == 'fotografo'; }
+    function hrecMinhaImob(imob) { return request.auth != null && request.auth.token.hrecImob == imob; }
+
+    // Catálogo/config: qualquer logado LÊ (pra montar preço/agenda/pagamento).
+    match /pricingTables/{id}      { allow read: if request.auth != null; allow write: if false; }
+    match /servicosAdicionais/{id} { allow read: if request.auth != null; allow write: if false; }
+    match /imobiliarias/{id}       { allow read: if request.auth != null; allow write: if false; }
+    match /blockedDates/{iso}      { allow read: if request.auth != null; allow write: if false; }
+    match /config/agenda           { allow read: if request.auth != null; allow write: if false; }
+    match /config/pix              { allow read: if request.auth != null; allow write: if false; }
+
+    // Bookings: dono (corretor) OU broker da imobiliária OU staff H-REC.
+    match /bookings/{id} {
+      allow read: if request.auth != null && (
+        resource.data.corretorId == request.auth.uid ||
+        hrecStaff() ||
+        (hrecRole() == 'broker' && hrecMinhaImob(resource.data.imobiliariaId))
+      );
+      allow write: if false;
+    }
+
+    // Financeiro (mais restrito): broker da imobiliária OU staff H-REC.
+    match /payments/{id} {
+      allow read: if request.auth != null && (hrecStaff() ||
+        (hrecRole() == 'broker' && hrecMinhaImob(resource.data.imobiliariaId)));
+      allow write: if false;
+    }
+    match /credits/{imobId} {
+      allow read: if request.auth != null && (hrecStaff() ||
+        (hrecRole() == 'broker' && hrecMinhaImob(imobId)));
+      allow write: if false;
+    }
+    match /creditMovements/{id} {
+      allow read: if request.auth != null && (hrecStaff() ||
+        (hrecRole() == 'broker' && hrecMinhaImob(resource.data.imobiliariaId)));
+      allow write: if false;
+    }
+    // Histórico de preços = auditoria: só staff H-REC.
+    match /pricingHistory/{id} { allow read: if hrecStaff(); allow write: if false; }
+    // Notificações in-app: só o dono LÊ; escrita só via Cloud Function.
+    match /hrec_notifs/{id} { allow read: if request.auth != null && resource.data.uid == request.auth.uid; allow write: if false; }
   }
 }

@@ -8897,6 +8897,8 @@ exports.leadsListar = onCall(async (req) => {
       corretorUid: x.corretorUid || null, lido: !!x.lido,
       imovelVinculadoId: x.imovelVinculadoId || null, imovelVinculado: x.imovelVinculado || null,
       statusHub: x.statusHub || '',   // etapa definida no Hub (vence o status do portal na UI)
+      timeHub: x.timeHub || '',       // "time do cliente" (classificação de momento, definida no Hub)
+      temperaturaHub: x.temperaturaHub || '',   // Quente/Morno/Frio (definida no Hub)
       comentarios: Array.isArray(x.comentarios) ? x.comentarios.map(c => ({ texto: c.texto || '', porNome: c.porNome || '', em: iso(c.em) })) : [],
       recebidoEm: iso(x.recebidoEm), atualizadoEm: iso(x.atualizadoEm),
       criadoEmC2S: x.criadoEmC2S || '', atualizadoEmC2S: x.atualizadoEmC2S || '',
@@ -8924,7 +8926,9 @@ exports.leadsMarcarLido = onCall(async (req) => {
 // (autenticado) Edita um lead no Hub: status/etapa (override que vence o do portal na
 // UI, sem ser sobrescrito pelo webhook — que só grava `status`) ou comentário (thread
 // interna). Gestor/adm ou o corretor DONO do lead.
-const LEAD_STATUS_HUB = ['Novo', 'Em negociação', 'Fechado', 'Arquivado'];
+const LEAD_STATUS_HUB = ['Novo', 'Em atendimento', 'Visita', 'Proposta', 'Negócio fechado', 'Cliente desistiu'];
+const LEAD_TIMES_HUB = ['Precisa vender imóvel', 'Pesquisando', 'Curioso', 'Pronto para fechar', 'Encantado', 'Finalista', 'Aguardando Crédito', 'Quer Ver Mais', 'Sem Pressa', 'Sem Retorno'];
+const LEAD_TEMPERATURAS_HUB = ['Quente', 'Morno', 'Frio'];
 exports.leadsAtualizar = onCall(async (req) => {
   const auth = exigirAutenticado(req);
   const d = req.data || {};
@@ -8943,6 +8947,22 @@ exports.leadsAtualizar = onCall(async (req) => {
     await ref.set({ statusHub: status, statusHubEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     await _bumpBroadcast('leadSeq');
     return { ok: true, statusHub: status };
+  }
+  if (acao === 'time') {
+    const time = _txt(d.time, 40);
+    // vazio = limpar a classificação
+    if (time && !LEAD_TIMES_HUB.includes(time)) throw new HttpsError('invalid-argument', 'Time do cliente inválido.');
+    await ref.set({ timeHub: time, timeHubEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await _bumpBroadcast('leadSeq');
+    return { ok: true, timeHub: time };
+  }
+  if (acao === 'temperatura') {
+    const temp = _txt(d.temperatura, 10);
+    // vazio = limpar; clicar de novo na mesma temperatura desliga (o front manda '')
+    if (temp && !LEAD_TEMPERATURAS_HUB.includes(temp)) throw new HttpsError('invalid-argument', 'Temperatura inválida.');
+    await ref.set({ temperaturaHub: temp, temperaturaHubEm: admin.firestore.FieldValue.serverTimestamp(), atualizadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    await _bumpBroadcast('leadSeq');
+    return { ok: true, temperaturaHub: temp };
   }
   if (acao === 'comentario') {
     const texto = _txt(d.texto, 2000);
@@ -9050,10 +9070,11 @@ exports.smartLeadsDoImovel = onCall(async (req) => {
       vistos.add(k);
       const dono = it.corretorLeadUid || '';
       const info = await _slCorretorAtivo(dono, cache);
-      const mascarar = info.ativo && dono && dono !== auth.uid;
+      // Gestor/adm veem TUDO normal (sem máscara). Corretor só desmascara o próprio / de quem saiu.
+      const mascarar = !veTudo && info.ativo && dono && dono !== auth.uid;
       out.push(mascarar
         ? { nome: it.nome || '—', tipo: it.tipo || 'locatario', mascarado: true, corretorNome: info.nome || 'outro corretor', deImovel, aprovavel: false }
-        : { nome: it.nome || '—', tipo: it.tipo || 'locatario', telefone: it.telefone || it.contato || '', email: it.email || '', origemPortal: it.origemPortal || '', origemLead: it.origemLead || '', corretorLeadUid: dono, mascarado: false, deImovel, aprovavel: true });
+        : { nome: it.nome || '—', tipo: it.tipo || 'locatario', telefone: it.telefone || it.contato || '', email: it.email || '', origemPortal: it.origemPortal || '', origemLead: it.origemLead || '', corretorLeadUid: dono, corretorNome: dono ? (info.nome || '') : '', corretorAtivo: !!info.ativo, mascarado: false, deImovel, aprovavel: true });
     }
   }
   return { ok: true, smartleads: out };
@@ -9075,11 +9096,8 @@ exports.smartLeadAprovar = onCall(async (req) => {
   if (!ldSnap.exists) throw new HttpsError('not-found', 'Lead de origem não encontrado.');
   const ld = ldSnap.data();
   const dono = ld.corretorUid || '';
-  // Máscara: não deixa aprovar cliente de corretor AINDA ativo que não seja o requisitante.
-  if (dono && dono !== auth.uid) {
-    const info = await _slCorretorAtivo(dono, new Map());
-    if (info.ativo) throw new HttpsError('failed-precondition', 'Este cliente é de um corretor ativo (' + (info.nome || 'colega') + ') — fale com ele; não dá pra aprovar aqui.');
-  }
+  // Gestor/adm é o dono da decisão de alocação — aprova qualquer SmartLead (inclusive de
+  // corretor ativo). Só gestor/adm chega aqui (gate acima), então não há risco de "roubo".
   const imRef = db.collection('imoveis').doc(imovelId);
   let total = 0;
   await db.runTransaction(async (tx) => {
@@ -9640,3 +9658,8 @@ exports.recrutamentoExcluir = onCall(async (req) => {
   await _bumpBroadcast('recrutamentoSeq');
   return { ok: true };
 });
+
+// ===================== H-REC AGENDA (Bloco 5) =====================
+// Callables/scheduler do módulo de agendamento (definidas em ./hrec.js). Requeridas
+// AQUI, no fim, para herdarem admin.initializeApp() + setGlobalOptions (região).
+Object.assign(exports, require('./hrec'));

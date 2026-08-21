@@ -59,6 +59,28 @@ const locSalvarVistoria = httpsCallable(fns, 'locSalvarVistoria');
 const locSolicitarVistoriaCheckVisto = httpsCallable(fns, 'locSolicitarVistoriaCheckVisto');
 const locDashboard = httpsCallable(fns, 'locDashboard');
 const locRelatorios = httpsCallable(fns, 'locRelatorios');
+const hrecCatalogo = httpsCallable(fns, 'hrecCatalogo');
+const hrecDisponibilidadeMes = httpsCallable(fns, 'hrecDisponibilidadeMes');
+const hrecCriarBooking = httpsCallable(fns, 'hrecCriarBooking');
+const hrecListarBookings = httpsCallable(fns, 'hrecListarBookings');
+const hrecBookingObter = httpsCallable(fns, 'hrecBookingObter');
+const hrecCancelarBooking = httpsCallable(fns, 'hrecCancelarBooking');
+const hrecAgendaDia = httpsCallable(fns, 'hrecAgendaDia');
+const hrecIniciarServico = httpsCallable(fns, 'hrecIniciarServico');
+const hrecConcluirServico = httpsCallable(fns, 'hrecConcluirServico');
+const hrecEntregarMaterial = httpsCallable(fns, 'hrecEntregarMaterial');
+const hrecAprovarDrone = httpsCallable(fns, 'hrecAprovarDrone');
+const hrecReprovarDrone = httpsCallable(fns, 'hrecReprovarDrone');
+const hrecDefinirValorIA = httpsCallable(fns, 'hrecDefinirValorIA');
+const hrecPagamentosPendentes = httpsCallable(fns, 'hrecPagamentosPendentes');
+const hrecConfirmarPagamento = httpsCallable(fns, 'hrecConfirmarPagamento');
+const hrecReverterPagamento = httpsCallable(fns, 'hrecReverterPagamento');
+const hrecComprarCreditos = httpsCallable(fns, 'hrecComprarCreditos');
+const hrecConfirmarCompraCredito = httpsCallable(fns, 'hrecConfirmarCompraCredito');
+const hrecListarMovimentos = httpsCallable(fns, 'hrecListarMovimentos');
+const hrecRelatorio = httpsCallable(fns, 'hrecRelatorio');
+const hrecMinhasNotifs = httpsCallable(fns, 'hrecMinhasNotifs');
+const hrecMarcarNotifsLidas = httpsCallable(fns, 'hrecMarcarNotifsLidas');
 const criarEvento = httpsCallable(fns, 'criarEvento');
 const editarEvento = httpsCallable(fns, 'editarEvento');
 const listarEventos = httpsCallable(fns, 'listarEventos');
@@ -350,6 +372,7 @@ const CATEGORIAS = [
   { id: 'locacoes',    nome: 'Meus Negócios', icone: ICN.locacao, locacoes: true },
   { id: 'recrutamento', nome: 'Recrutamento', icone: ICN.recrutamento, recrutamento: true, soGestor: true },
   { id: 'fotografia',  nome: 'Fotografia',  icone: ICN.fotografia, fotografia: true },   // aparece no celular (pedido 2026-08-13): agendamento + Drive são iframes/links, funcionam na web
+  { id: 'hrec',        nome: 'H-REC Agenda', icone: ICN.fotografia, hrec: true },   // módulo nativo de agendamento H-REC — dark launch pela claim hrecRole (só quem tem papel vê; admin vê p/ testar)
   { id: 'reuniao',      nome: 'Reuniões',        icone: ICN.reuniao, reuniao: true, webOculto: true },
   { id: 'sala_reuniao', nome: 'Reserva de Sala', icone: ICN.salaReuniao, salaReuniao: true, webOculto: true },
   { id: 'ia',           nome: 'SMART IA',        icone: ICN.ia, ia: true, webOculto: true },
@@ -371,7 +394,7 @@ const CATEGORIAS = [
 const SIDEBAR_LAYOUT = [
   { item: 'home' },
   { item: 'locacoes' },
-  { grupo: 'g_captacao',     nome: 'Captação',    icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia'] },
+  { grupo: 'g_captacao',     nome: 'Captação',    icone: ICN.imoveis,     filhos: ['captacao', 'vistoria', 'fotografia', 'hrec'] },
   { grupo: 'g_agenda',       nome: 'Agenda',      icone: ICN.agenda,      filhos: ['agenda', 'reuniao', 'sala_reuniao'] },
   { grupo: 'g_equipe',       nome: 'Equipe',      icone: ICN.performance, filhos: ['treinamento', 'performance'] },
   { grupo: 'g_ferramentas',  nome: 'Ferramentas', icone: ICN.ferramentas, filhos: ['ia', 'whatsapp', 'calculadoras', 'linkimovel', 'notas', 'clicksign'] },
@@ -412,6 +435,7 @@ let brokerFalhou = false;       // lazy-load tentou e não definiu window.Broker
 let termoBusca = '';
 let isAdmin = false;
 let locRoleAtual = 'corretor'; // papel na Gestão de Locações (setado no onAuthStateChanged)
+let hrecRoleAtual = null;      // papel no módulo H-REC AGENDA (claim hrecRole; null = sem acesso)
 let betaLocacoes = false;       // acesso de teste ao módulo de Locações (feature flag) — gate das abas
 let locacoesPublicado = false;  // true quando a versão deste app foi publicada p/ todos (painel de Admin)
 let currentUid = null;
@@ -448,6 +472,7 @@ const secaoHome      = document.getElementById('secaoHome');
 const secaoMarketing      = document.getElementById('secaoMarketing');
 const secaoDocs           = document.getElementById('secaoDocumentos');
 const secaoFotografia     = document.getElementById('secaoFotografia');
+const secaoHrec           = document.getElementById('secaoHrec');
 const secaoReuniao        = document.getElementById('secaoReuniao');
 const secaoSalaReuniao    = document.getElementById('secaoSalaReuniao');
 const secaoIA             = document.getElementById('secaoIA');
@@ -529,6 +554,7 @@ function renderSidebar() {
   const podeVer = c => !!c && !c.oculto
     && (!c.webOculto || !ehPwaCelular())
     && (!c.soGestor || locRoleAtual === 'gestor')
+    && (!c.hrec || !!hrecRoleAtual)   // H-REC: dark launch por claim hrecRole. ⚠️ backend (functions/rules/seed/invoker) ainda NÃO deployado — quando ativar, deploy + reintroduzir "|| isAdmin" ou atribuir papéis.
     && (!c.restrito || isAdmin || (c.appDireto && appsPermitidos.includes(c.appDireto)))
     && (!c.soTI || temPermTI || isAdmin);
   const catDe = id => CATEGORIAS.find(c => c.id === id);
@@ -805,6 +831,7 @@ function renderCentro() {
   secaoAgenda.hidden = true;
   secaoMarketing.hidden = true;
   secaoFotografia.hidden = true;
+  secaoHrec.hidden = true;
   secaoReuniao.hidden = true;
   secaoSalaReuniao.hidden = true;
   secaoIA.hidden = true;
@@ -918,6 +945,18 @@ function renderCentro() {
     inputBusca.disabled = true;
     inputBusca.placeholder = '';
     carregarFotografia();
+    return;
+  }
+
+  // Aba H-REC Agenda (wizard nativo de agendamento de fotografia)
+  if (cat.hrec) {
+    appsGrid.hidden = true;
+    estadoVazio.hidden = true;
+    secaoDocs.hidden = true;
+    secaoHrec.hidden = false;
+    inputBusca.disabled = true;
+    inputBusca.placeholder = '';
+    carregarHrec();
     return;
   }
 
@@ -2325,6 +2364,7 @@ onAuthStateChanged(auth, async (user) => {
   // corretor (só dados próprios) até relogar. A claim já está no token, não falha.
   locRoleAtual = (tokenResult.claims.locRole === 'gestor' || BOOTSTRAP_ADMIN_UIDS.includes(user.uid)) ? 'gestor'
                : (tokenResult.claims.locRole === 'administrativo' ? 'administrativo' : 'corretor');
+  hrecRoleAtual = tokenResult.claims.hrecRole || null; // papel no módulo H-REC (dark launch)
 
   // CACHE OTIMISTA das permissões (por uid): aplica o resultado da ÚLTIMA sessão já
   // e pinta a tela na hora; a rede revalida logo abaixo e re-renderiza se algo mudou.
@@ -3977,6 +4017,40 @@ async function carregarFotografia() {
   } catch (e) {
     secaoFotografia.innerHTML = `<p style="padding:20px;color:var(--danger)">Erro: ${escapeHtml(e.message)}</p>`;
   }
+}
+
+// Lazy-load do módulo H-REC AGENDA: hrec.css + motores UMD (enums/datas/precificacao) +
+// hrec-app.js só entram quando a aba abre pela 1ª vez. Idempotente. Os motores definem
+// window.Hrec.*; o wizard define window.HrecAgenda. render() recebe as callables por ctx.
+let hrecCarregando = null;
+function carregarHrec() {
+  secaoHrec.innerHTML = '<p class="muted" style="padding:20px">Carregando…</p>';
+  if (!hrecCarregando) {
+    hrecCarregando = (async () => {
+      if (!document.getElementById('hrec-css')) {
+        await new Promise((res) => { const l = document.createElement('link'); l.id = 'hrec-css'; l.rel = 'stylesheet'; l.href = 'hrec.css'; l.onload = res; l.onerror = res; document.head.appendChild(l); });
+      }
+      // Ordem importa: precificacao.js (UMD) lê window.Hrec.Enums/Datas já carregados.
+      const scripts = ['hrec/dominio/enums.js', 'hrec/dominio/datas.js', 'hrec/dominio/precificacao.js', 'hrec-app.js'];
+      for (const src of scripts) {
+        if ([...document.scripts].some(s => s.src && s.src.endsWith(src))) continue;
+        await new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.body.appendChild(s); });
+      }
+    })().catch((e) => { console.error('Falha ao carregar o H-REC:', e); });
+  }
+  hrecCarregando.then(() => {
+    if (categoriaAtiva !== 'hrec') return; // saiu da aba durante o load
+    if (!window.HrecAgenda || !(window.Hrec && window.Hrec.Precificacao)) {
+      secaoHrec.innerHTML = '<p style="padding:20px;color:var(--danger)">Não foi possível carregar o módulo H-REC.</p>'; return;
+    }
+    window.HrecAgenda.render(secaoHrec, {
+      api: { catalogo: hrecCatalogo, disponibilidade: hrecDisponibilidadeMes, criar: hrecCriarBooking, listar: hrecListarBookings, obter: hrecBookingObter, cancelar: hrecCancelarBooking,
+        agendaDia: hrecAgendaDia, iniciar: hrecIniciarServico, concluir: hrecConcluirServico, entregar: hrecEntregarMaterial, aprovarDrone: hrecAprovarDrone, reprovarDrone: hrecReprovarDrone, definirIA: hrecDefinirValorIA,
+        pagamentosPendentes: hrecPagamentosPendentes, confirmarPagamento: hrecConfirmarPagamento, reverterPagamento: hrecReverterPagamento, comprarCreditos: hrecComprarCreditos, confirmarCompraCredito: hrecConfirmarCompraCredito, listarMovimentos: hrecListarMovimentos, relatorio: hrecRelatorio,
+        minhasNotifs: hrecMinhasNotifs, marcarNotifsLidas: hrecMarcarNotifsLidas },
+      Preco: window.Hrec.Precificacao, Datas: window.Hrec.Datas
+    });
+  });
 }
 
 // Decide o que mostrar pra quem gerencia: tabela de gestão ou visão de usuário comum

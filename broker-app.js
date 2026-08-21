@@ -89,6 +89,7 @@ const state = {
   role:'broker',        // 'broker' (gestor) | 'corretor' | 'administrativo'
   filaBusca:'', perfilCache:null,
   leadsBusca:'', leadsFiltro:'Todos', leadsOrigem:'Todos', leadsCorretor:'Todos', leadsVeTudo:false,   // Leads do C2S
+  leadsFinalidade:'Todos', leadsTime:'Todos', leadsTemp:'Todos', leadsCidade:'Todas', leadsBairro:'Todos',   // filtros avançados de Leads
   leadVincLeadId:null, leadVincBusca:'',   // picker "vincular a um imóvel"
 };
 
@@ -1648,6 +1649,8 @@ function smartLeadsHtml(imovelId, arr, semBairro){
     }
     const tel=String(s.telefone||'').replace(/[^\d+]/g,''); const wa=leadWa(s.telefone||'');
     return '<div style="border:1px solid var(--ink200);border-radius:10px;margin-bottom:8px;padding:11px 12px"><div class="fx ac g3">'+avatar(s.nome,34,'var(--ink800)')+'<div class="grow mw0"><div class="fz13 fw6 t900 trunc">'+esc(s.nome||'—')+'</div>'+((s.telefone||s.email)?'<div class="fz11 t500 trunc">'+esc([s.telefone,s.email].filter(Boolean).join(' · '))+'</div>':'')+'</div>'+pill('SmartLead','ai')+'</div>'
+      // Dono do lead (gestor/adm veem desmascarado — mas precisam saber DE QUEM é o cliente).
+      +(s.corretorNome?'<div class="fz11 t500" style="margin-top:6px">'+icon('user',11)+' Cliente de <b>'+esc(s.corretorNome)+'</b>'+(s.corretorAtivo?'':' <span class="tmut">(saiu da equipe)</span>')+'</div>':'')
       +(s.deImovel?'<div class="fz11 t400" style="margin-top:6px">via '+esc(s.deImovel)+'</div>':'')
       +'<div class="fx g2 wrap" style="margin-top:10px">'+(wa?'<a class="btn btn-success sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none">'+icon('message-circle',14)+'WhatsApp</a>':'')+(tel?'<a class="btn btn-outline sm" href="tel:'+esc(tel)+'" style="text-decoration:none">'+icon('phone',14)+'Ligar</a>':'')+(ehG&&s.aprovavel&&s.origemLead?'<button class="btn btn-primary sm" data-action="sl-aprovar" data-imovel="'+esc(imovelId)+'" data-lead="'+esc(s.origemLead)+'">'+icon('check',14)+'Aprovar</button>':'')+'</div></div>';
   }).join('');
@@ -1799,7 +1802,7 @@ function wireEvents(root){
     // "Possui parceria? = Sim" → preenche a Taxa de comissão da Proposta com 3%
     // (comissão de parceria). A pessoa ainda clica Salvar na Proposta pra gravar.
     if(e.target && e.target.id==='cpParceria' && e.target.value==='sim'){ const c=$('#ppComPct'); if(c) c.value='3'; return; }
-    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } });
+    const t=e.target.closest('select[data-action]'); if(!t)return; const a=t.dataset.action; if(a==='negstatus'){ state.negFiltroStatus=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='relcorr'){ state.relCorretor=t.value; RENDERERS.relatorios($('#root')); refreshIcons(); } else if(a==='mesfiltro'){ state.mesFiltro=t.value; rerenderMes(); } else if(a==='imocorr'){ state.imoveisCorretor=t.value; RENDERERS.imoveis($('#root')); refreshIcons(); } else if(a==='negcorr'){ state.negCorretor=t.value; RENDERERS.negocios($('#root')); refreshIcons(); } else if(a==='pesscorr'){ state.pessoasCorretor=t.value; RENDERERS.pessoas($('#root')); refreshIcons(); } else if(a==='leadorigem'){ state.leadsOrigem=t.value; updateLeads(); } else if(a==='leadcorr'){ state.leadsCorretor=t.value; updateLeads(); } else if(a==='leadfin'){ state.leadsFinalidade=t.value; updateLeads(); } else if(a==='leadtimef'){ state.leadsTime=t.value; updateLeads(); } else if(a==='leadtempf'){ state.leadsTemp=t.value; updateLeads(); } else if(a==='leadcidade'){ state.leadsCidade=t.value; state.leadsBairro='Todos'; updateLeads(); } else if(a==='leadbairro'){ state.leadsBairro=t.value; updateLeads(); } });
   document.addEventListener('keydown', e=>{ if(!ROOT()||ROOT().hidden) return; if(e.key==='Escape'){ closeDrawer(); closeModal(); closeMobileNav(); } else if(e.key==='Enter' && e.target && e.target.id==='bkTagInput'){ e.preventDefault(); _addTag(e.target.value); } });
 }
 function handleAction(a,el){
@@ -1816,6 +1819,9 @@ function handleAction(a,el){
   else if(a==='lead-desvincular'){ leadsDesvincular(el.dataset.id); }
   else if(a==='lead-status-edit'){ openLeadStatus(el.dataset.id); }
   else if(a==='lead-status-set'){ leadSetStatus(el.dataset.id, el.dataset.status); }
+  else if(a==='lead-time-edit'){ openLeadTime(el.dataset.id); }
+  else if(a==='lead-time-set'){ leadSetTime(el.dataset.id, el.dataset.v||''); }
+  else if(a==='lead-temp-set'){ leadSetTemp(el.dataset.id, el.dataset.v); }
   else if(a==='lead-comentar'){ leadComentar(el.dataset.id); }
   else if(a==='lead-vincular-do'){ leadsVincularDo(el.dataset.lead, el.dataset.imovel, el.dataset.codigo, el.dataset.end); }
   else if(a==='novo-imovel-manual'){ openNovoImovelManual(); }
@@ -2133,14 +2139,23 @@ RENDERERS.clientes = function(host){
 // Leads que chegam dos portais (ZAP/VivaReal/site) via webhook do C2S (leadsC2SWebhook).
 // Corretor vê os seus; gestor/administrativo veem todos (o backend já filtra por posse).
 let LEADS = [];
-const LEAD_FILTROS = ['Todos','Não lidos','Novo','Em negociação','Fechado','Arquivado'];
+// Etapas do lead no Hub (fonte única — modal, filtros e cor). Bate com LEAD_STATUS_HUB no backend.
+const LEAD_ETAPAS = ['Novo','Em atendimento','Visita','Proposta','Negócio fechado','Cliente desistiu'];
+const LEAD_VIBE = { 'novo':'info', 'em atendimento':'warning', 'visita':'warning', 'proposta':'warning', 'negocio fechado':'success', 'cliente desistiu':'neutral' };
+const LEAD_FILTROS = ['Todos','Não lidos'].concat(LEAD_ETAPAS);
+// "Time do cliente" (classificação de momento) — bate com LEAD_TIMES_HUB no backend.
+const LEAD_TIMES = ['Precisa vender imóvel','Pesquisando','Curioso','Pronto para fechar','Encantado','Finalista','Aguardando Crédito','Quer Ver Mais','Sem Pressa','Sem Retorno'];
+// Temperatura — bate com LEAD_TEMPERATURAS_HUB no backend. [rótulo, emoji, cor]
+const LEAD_TEMPS = [['Quente','🔥','#e5484d'],['Morno','🌤','#f5a524'],['Frio','❄','#3b82f6']];
+function leadTempCor(t){ const x=LEAD_TEMPS.find(v=>v[0]===t); return x?x[2]:''; }
 function leadStatusTxt(l){ return l.statusHub || l.status || 'Novo'; }   // etapa do Hub vence a do portal
-function leadArquivado(l){ return l.statusHub ? (semAcento(l.statusHub).toLowerCase().indexOf('arquiv')>=0) : !!l.arquivado; }
+function leadArquivado(l){ const n=semAcento(l.statusHub||'').toLowerCase(); return l.statusHub ? (n.indexOf('arquiv')>=0 || n.indexOf('desist')>=0) : !!l.arquivado; }
 function leadStatusVar(l){
   const n=semAcento(leadStatusTxt(l)).toLowerCase(), a=(l.statusAlias||'').toLowerCase();
-  if(leadArquivado(l) || n.indexOf('recus')>=0) return 'neutral';
+  if(l.statusHub && LEAD_VIBE[n]) return LEAD_VIBE[n];   // etapa do Hub (taxonomia nova)
+  if(leadArquivado(l) || n.indexOf('recus')>=0 || n.indexOf('desist')>=0) return 'neutral';
   if((!l.statusHub && a.indexOf('done')>=0) || n.indexOf('fechado')>=0 || n.indexOf('convert')>=0 || n.indexOf('finaliz')>=0) return 'success';
-  if((!l.statusHub && a.indexOf('negoti')>=0) || n.indexOf('negocia')>=0) return 'warning';
+  if((!l.statusHub && a.indexOf('negoti')>=0) || n.indexOf('negocia')>=0 || n.indexOf('atend')>=0 || n.indexOf('visita')>=0 || n.indexOf('proposta')>=0) return 'warning';
   return 'info';
 }
 function leadData(iso){ if(!iso) return '—'; try{ return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }catch(_e){ return '—'; } }
@@ -2157,6 +2172,19 @@ function leadsOrigensOpts(){
 function leadsCorretoresOpts(){
   const set=[...new Set(LEADS.map(l=>(l.corretor&&l.corretor.nome)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   return ['Todos'].concat(set).map(o=>'<option value="'+esc(o)+'"'+((state.leadsCorretor||'Todos')===o?' selected':'')+'>'+esc(o==='Todos'?'Todos os corretores':o)+'</option>').join('');
+}
+// Opções genéricas dos filtros avançados: lista + valor atual + rótulo do "todos".
+function _leadOpts(lista, atual, todosVal, todosRotulo){
+  return [todosVal].concat(lista).map(o=>'<option value="'+esc(o)+'"'+(atual===o?' selected':'')+'>'+esc(o===todosVal?todosRotulo:o)+'</option>').join('');
+}
+function leadsCidadesOpts(){
+  const set=[...new Set(LEADS.map(l=>(l.imovel&&l.imovel.cidade)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return _leadOpts(set, state.leadsCidade||'Todas', 'Todas', 'Todas as cidades');
+}
+function leadsBairrosOpts(){
+  const cid=state.leadsCidade||'Todas';
+  const set=[...new Set(LEADS.filter(l=>cid==='Todas'||((l.imovel&&l.imovel.cidade)||'')===cid).map(l=>(l.imovel&&l.imovel.bairro)||'').filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  return _leadOpts(set, state.leadsBairro||'Todos', 'Todos', 'Todos os bairros');
 }
 function leadWa(tel){ const d=String(tel||'').replace(/\D/g,''); if(!d) return ''; return 'https://wa.me/'+(d.length<=11?'55'+d:d); }
 // "Ficha da pessoa" de um interessado que veio de LEAD (sem ficha cadastral): mostra
@@ -2189,26 +2217,31 @@ async function carregarLeads(){
 }
 function leadsFiltradas(){
   const q=semAcento(state.leadsBusca||'').trim(); const f=state.leadsFiltro||'Todos'; const og=state.leadsOrigem||'Todos'; const co=state.leadsCorretor||'Todos';
+  const fin=state.leadsFinalidade||'Todos', tm=state.leadsTime||'Todos', tp=state.leadsTemp||'Todos', cid=state.leadsCidade||'Todas', bai=state.leadsBairro||'Todos';
   return LEADS.filter(l=>{
-    const vv=leadStatusVar(l);
+    const im=l.imovel||{};
     if(og!=='Todos' && (l.origem||'')!==og) return false;
     if(co!=='Todos' && ((l.corretor&&l.corretor.nome)||'')!==co) return false;
     if(f==='Não lidos' && l.lido) return false;
-    if(f==='Novo' && vv!=='info') return false;
-    if(f==='Em negociação' && vv!=='warning') return false;
-    if(f==='Fechado' && vv!=='success') return false;
-    if(f==='Arquivado' && !leadArquivado(l)) return false;
+    if(LEAD_ETAPAS.indexOf(f)>=0 && leadStatusTxt(l)!==f) return false;   // filtro por etapa exata do Hub
+    if(fin!=='Todos'){ const n=semAcento(im.negociacao||'').toLowerCase(); if(fin==='Venda' && !/vend|compra/.test(n)) return false; if(fin==='Locação' && !/alug|loca/.test(n)) return false; }
+    if(tm!=='Todos' && (l.timeHub||'')!==tm) return false;
+    if(tp!=='Todos' && (l.temperaturaHub||'')!==tp) return false;
+    if(cid!=='Todas' && (im.cidade||'')!==cid) return false;
+    if(bai!=='Todos' && (im.bairro||'')!==bai) return false;
     if(q){ const c=l.cliente||{}; if(semAcento([c.nome,c.email,c.telefone,leadEnderecoTxt(l),leadCodigo(l),l.origem].join(' ')).indexOf(q)<0) return false; }
     return true;
   });
 }
+// Estilo comum dos selects da barra de Leads (o mesmo do corretor/origem originais).
+const LEAD_SEL_ST='height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 10px;font-family:var(--sans);max-width:200px';
 function leadsRows(){
   const list=leadsFiltradas(); const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
   if(state._leadsErro) return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:36px 0">'+icon('alert-triangle',22,'tmut')+'<p style="margin-top:8px" class="fz13">Não consegui carregar os leads.</p></div></td></tr>';
   if(!list.length) return '<tr><td colspan="'+cols+'"><div class="tcenter t500" style="padding:40px 0">'+icon('inbox',24)+'<p style="margin-top:8px" class="fz14 fw5">Nenhum lead por aqui ainda.</p><p class="fz12 tmut" style="margin-top:4px">Quando chega um contato dos portais, ele aparece aqui na hora.</p></div></td></tr>';
   return list.map(l=>{ const c=l.cliente||{};
     return '<tr data-action="openlead" data-id="'+esc(l.id)+'" style="cursor:pointer">'
-    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span></div></td>'
+    + '<td><div class="fx ac g2">'+(l.lido?'':'<span style="width:8px;height:8px;border-radius:50%;background:var(--ai);flex:none"></span>')+avatar(c.nome||'?',30,'var(--ink800)')+'<span class="fw6 t900">'+esc(c.nome||'—')+'</span>'+(l.temperaturaHub?'<span title="'+esc(l.temperaturaHub)+'" style="width:9px;height:9px;border-radius:50%;background:'+leadTempCor(l.temperaturaHub)+';flex:none"></span>':'')+'</div></td>'
     + '<td class="t700 trunc" style="max-width:220px">'+esc(leadEnderecoTxt(l))+'</td>'
     + '<td class="mono fz12 t700 nowrap">'+(leadCodigo(l)?esc(leadCodigo(l)):'<span class="tmut">—</span>')+'</td>'
     + '<td>'+(l.origem?pill(l.origem,'ai'):'<span class="tmut">—</span>')+'</td>'
@@ -2222,16 +2255,26 @@ function updateLeads(){
   const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); }
   const sel=$('#leadsOrigemSel'); if(sel){ sel.innerHTML=leadsOrigensOpts(); sel.value=state.leadsOrigem||'Todos'; }   // origens só existem depois do load
   const selC=$('#leadsCorretorSel'); if(selC){ selC.innerHTML=leadsCorretoresOpts(); selC.value=state.leadsCorretor||'Todos'; }
+  const selCi=$('#leadsCidadeSel'); if(selCi){ selCi.innerHTML=leadsCidadesOpts(); selCi.value=state.leadsCidade||'Todas'; }   // cidades/bairros também vêm dos dados
+  const selBa=$('#leadsBairroSel'); if(selBa){ selBa.innerHTML=leadsBairrosOpts(); selBa.value=state.leadsBairro||'Todos'; }
 }
 function renderLeadsInner(host){
   const veTudo=state.leadsVeTudo; const cols=veTudo?7:6;
   const corpo = LEADS.length ? leadsRows() : '<tr><td colspan="'+cols+'"><div class="tcenter tmut" style="padding:30px 0">Carregando…</div></td></tr>';
   host.innerHTML=pageHead(hTitulo('Leads'),'Contatos que chegam dos portais (ZAP, VivaReal, site) em tempo real.','')
-  + '<div class="fx ac jb wrap g3" style="margin-bottom:14px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
+  + '<div class="fx ac jb wrap g3" style="margin-bottom:10px"><div class="fx ac g2 wrap">'+LEAD_FILTROS.map(t=>'<button class="chip'+((state.leadsFiltro||'Todos')===t?' active':'')+'" data-action="leadfiltro" data-v="'+t+'">'+t+'</button>').join('')+'</div>'
   + '<div class="fx ac g2 wrap">'
-  + (veTudo?'<select id="leadsCorretorSel" data-action="leadcorr" style="height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 10px;font-family:var(--sans);max-width:200px">'+leadsCorretoresOpts()+'</select>':'')
-  + '<select id="leadsOrigemSel" data-action="leadorigem" style="height:40px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:0 10px;font-family:var(--sans);max-width:200px">'+leadsOrigensOpts()+'</select>'
+  + (veTudo?'<select id="leadsCorretorSel" data-action="leadcorr" class="lead-sel" style="'+LEAD_SEL_ST+'">'+leadsCorretoresOpts()+'</select>':'')
+  + '<select id="leadsOrigemSel" data-action="leadorigem" class="lead-sel" style="'+LEAD_SEL_ST+'">'+leadsOrigensOpts()+'</select>'
   + '<div class="fx ac g2" style="height:40px;padding:0 12px;background:var(--raised);border:1px solid var(--bd);border-radius:8px;width:min(240px,60vw)">'+icon('search',16,'tmut')+'<input data-input="leadsBusca" value="'+esc(state.leadsBusca||'')+'" placeholder="Buscar lead…" style="flex:1;background:none;border:none;outline:none;color:#fff;font-size:13px;font-family:var(--sans)"></div></div></div>'
+  // Filtros avançados (2ª linha): finalidade · time do cliente · temperatura · cidade · bairro.
+  + '<div class="fx ac g2 wrap" style="margin-bottom:14px">'
+  + '<select data-action="leadfin" class="lead-sel" style="'+LEAD_SEL_ST+'">'+_leadOpts(['Venda','Locação'], state.leadsFinalidade||'Todos', 'Todos', 'Venda e locação')+'</select>'
+  + '<select id="leadsTimeSel" data-action="leadtimef" class="lead-sel" style="'+LEAD_SEL_ST+'">'+_leadOpts(LEAD_TIMES, state.leadsTime||'Todos', 'Todos', 'Time do cliente: todos')+'</select>'
+  + '<select data-action="leadtempf" class="lead-sel" style="'+LEAD_SEL_ST+'">'+_leadOpts(LEAD_TEMPS.map(t=>t[0]), state.leadsTemp||'Todos', 'Todos', 'Temperatura: todas')+'</select>'
+  + '<select id="leadsCidadeSel" data-action="leadcidade" class="lead-sel" style="'+LEAD_SEL_ST+'">'+leadsCidadesOpts()+'</select>'
+  + '<select id="leadsBairroSel" data-action="leadbairro" class="lead-sel" style="'+LEAD_SEL_ST+'">'+leadsBairrosOpts()+'</select>'
+  + '</div>'
   + '<div class="fz12 tmut" id="leadsCount" style="margin-bottom:8px"></div>'
   + '<div class="card" style="overflow:hidden"><div style="overflow-x:auto" class="scrolly"><table class="tbl" style="min-width:'+(veTudo?860:740)+'px"><thead><tr><th>Cliente</th><th>Imóvel</th><th>Código</th><th>Origem</th><th>Status</th>'+(veTudo?'<th>Corretor</th>':'')+'<th class="tright">Recebido</th></tr></thead><tbody id="leadsBody">'+corpo+'</tbody></table></div></div>';
   if(LEADS.length){ const cnt=$('#leadsCount'); if(cnt){ const n=leadsFiltradas().length; cnt.textContent=n+' lead'+(n===1?'':'s'); } }
@@ -2250,9 +2293,9 @@ function openLead(id){
   const meuUid=(auth.currentUser&&auth.currentUser.uid)||'';
   const podeEditar=state.leadsVeTudo || l.corretorUid===meuUid;
   const prop=(PROPERTIES.concat(PROPERTIES_ALL||[])).find(p=>im.propRef && (String(p.code||'')===String(im.propRef) || String(p.ref||'')===String(im.propRef)));
-  const linhas=[['Código do portal',leadCodigo(l)||'—'],['Origem',l.origem||'—'],['Canal',l.canal||'—'],['Status',leadStatusTxt(l),'status'],['Recebido',leadData(l.recebidoEm)]];
+  const linhas=[['Código do portal',leadCodigo(l)||'—'],['Origem',l.origem||'—'],['Canal',l.canal||'—'],['Status',leadStatusTxt(l),'lead-status-edit'],['Time do cliente',l.timeHub||'—','lead-time-edit'],['Recebido',leadData(l.recebidoEm)]];
   if(state.leadsVeTudo) linhas.push(['Corretor',(l.corretor&&l.corretor.nome)||'—']);
-  const info=linhas.map(kv=>'<div class="fx jb g2 ac" style="padding:8px 0;border-bottom:1px solid var(--ink100)"><span class="tmut fz13">'+esc(kv[0])+'</span><span class="fx ac g1"><span class="fw6 t900 fz13 tright">'+esc(kv[1])+'</span>'+(kv[2]==='status'&&podeEditar?'<button class="btn btn-ghost sm nsh" data-action="lead-status-edit" data-id="'+esc(l.id)+'" title="Editar status" style="padding:2px 6px">'+icon('pencil',13)+'</button>':'')+'</span></div>').join('');
+  const info=linhas.map(kv=>'<div class="fx jb g2 ac" style="padding:8px 0;border-bottom:1px solid var(--ink100)"><span class="tmut fz13">'+esc(kv[0])+'</span><span class="fx ac g1"><span class="fw6 t900 fz13 tright">'+esc(kv[1])+'</span>'+(kv[2]&&podeEditar?'<button class="btn btn-ghost sm nsh" data-action="'+kv[2]+'" data-id="'+esc(l.id)+'" title="Editar" style="padding:2px 6px">'+icon('pencil',13)+'</button>':'')+'</span></div>').join('');
   const coments=Array.isArray(l.comentarios)?l.comentarios:[];
   const comentLista=coments.length?coments.map(cm=>'<div style="padding:10px 0;border-bottom:1px solid var(--ink100)"><div class="fx jb g2 ac"><span class="fz12 fw6 t900">'+esc(cm.porNome||'—')+'</span><span class="fz11 tmut nsh">'+leadData(cm.em)+'</span></div><div class="fz13 t700" style="margin-top:3px;white-space:pre-wrap;word-break:break-word">'+esc(cm.texto||'')+'</div></div>').join(''):'<div class="fz12 tmut" style="padding:8px 0">Nenhum comentário ainda.</div>';
   const comentBox='<div style="margin-top:18px"><div class="fz11 tmut" style="margin-bottom:2px">COMENTÁRIOS</div>'+comentLista+(podeEditar?'<div class="fx g2" style="margin-top:10px"><input id="leadComentInput" placeholder="Escreva um comentário…" style="flex:1;min-width:0;background:var(--raised);border:1px solid var(--bd);border-radius:8px;color:#fff;font-size:13px;padding:8px 10px;font-family:var(--sans)"><button class="btn btn-primary sm nsh" data-action="lead-comentar" data-id="'+esc(l.id)+'" title="Enviar">'+icon('send',15)+'</button></div>':'')+'</div>';
@@ -2260,6 +2303,12 @@ function openLead(id){
     + (wa?'<a class="btn btn-primary sm" href="'+wa+'" target="_blank" rel="noopener" style="text-decoration:none"><i data-lucide="message-circle" style="width:16px;height:16px"></i>WhatsApp</a>':'')
     + (c.telefone?'<a class="btn btn-outline sm" href="tel:'+esc(String(c.telefone).replace(/[^\d+]/g,''))+'" style="text-decoration:none"><i data-lucide="phone" style="width:16px;height:16px"></i>Ligar</a>':'')
     + (c.email?'<a class="btn btn-outline sm" href="mailto:'+esc(c.email)+'" style="text-decoration:none"><i data-lucide="mail" style="width:16px;height:16px"></i>E-mail</a>':'')
+    + '</div>'
+    // Temperatura: clicáveis (clicar de novo desliga). Só quem pode editar clica; o resto vê o estado.
+    + '<div class="fx ac g2 wrap" style="padding:10px 20px 2px">'
+    + LEAD_TEMPS.map(([r,em,cor])=>{ const on=(l.temperaturaHub||'')===r;
+        return '<button class="btn sm nsh" data-action="lead-temp-set" data-id="'+esc(l.id)+'" data-v="'+r+'"'+(podeEditar?'':' disabled')
+        +' style="border:1px solid '+cor+';'+(on?('background:'+cor+';color:#fff;'):('background:transparent;color:'+cor+';'))+'font-weight:700">'+em+' '+r+'</button>'; }).join('')
     + '</div>';
   const imovelBox='<div class="card" style="padding:12px;margin:0 0 12px"><div class="fx jb ac g2"><div style="min-width:0"><div class="fz11 tmut">IMÓVEL</div><div class="fw6 t900 trunc">'+esc(leadEnderecoTxt(l))+'</div>'+(im.preco?'<div class="fz13 t700">R$ '+esc(im.preco)+(im.negociacao?' · '+esc(im.negociacao):'')+'</div>':'')+'</div>'+(prop?'<button class="btn btn-outline sm nsh" data-action="lead-verimovel" data-id="'+esc(prop.id)+'">Ver imóvel</button>':'')+'</div></div>';
   const msg=l.mensagem?'<div style="margin:0 0 12px"><div class="fz11 tmut">MENSAGEM</div><div class="card" style="padding:12px;font-size:13px;line-height:1.5">'+esc(l.mensagem)+'</div></div>':'';
@@ -2283,7 +2332,7 @@ function openLead(id){
 function openLeadStatus(id){
   const l=LEADS.find(x=>x.id===id); if(!l) return;
   const atual=leadStatusTxt(l);
-  const opts=['Novo','Em negociação','Fechado','Arquivado'];
+  const opts=LEAD_ETAPAS;
   openModal('<div style="padding:20px;max-width:360px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Status do lead</div><div class="fz12 t500" style="margin-bottom:14px">Escolha a etapa. Vale só aqui no Hub — o portal não sobrescreve.</div>'
     + opts.map(o=>'<button class="btn '+(o===atual?'btn-primary':'btn-outline')+' sm" data-action="lead-status-set" data-id="'+esc(id)+'" data-status="'+esc(o)+'" style="width:100%;margin-bottom:8px;justify-content:flex-start">'+icon(o===atual?'check-circle':'circle',15)+o+'</button>').join('')
     + '<div class="fx je" style="margin-top:6px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
@@ -2291,6 +2340,28 @@ function openLeadStatus(id){
 function leadSetStatus(id, status){
   const l=LEADS.find(x=>x.id===id); if(l) l.statusHub=status;   // otimista
   call('leadsAtualizar')({leadId:id, acao:'status', status}).then(()=>{ closeModal(); toast('Status atualizado','check'); updateLeads(); const dr=$('#drawer'); if(dr&&dr.classList.contains('show')) openLead(id); }).catch(e=>{ if(l) delete l.statusHub; toast(e.message||'Erro','alert-triangle','var(--danger)'); });
+}
+/* ---- Time do cliente (classificação de momento, override do Hub) ---- */
+function openLeadTime(id){
+  const l=LEADS.find(x=>x.id===id); if(!l) return;
+  const atual=l.timeHub||'';
+  openModal('<div style="padding:20px;max-width:360px"><div class="fz15 fw7 t900" style="margin-bottom:4px">Time do cliente</div><div class="fz12 t500" style="margin-bottom:14px">Em que momento esse cliente está? Vale só aqui no Hub.</div>'
+    + LEAD_TIMES.map(o=>'<button class="btn '+(o===atual?'btn-primary':'btn-outline')+' sm" data-action="lead-time-set" data-id="'+esc(id)+'" data-v="'+esc(o)+'" style="width:100%;margin-bottom:8px;justify-content:flex-start">'+icon(o===atual?'check-circle':'circle',15)+o+'</button>').join('')
+    + (atual?'<button class="btn btn-ghost sm" data-action="lead-time-set" data-id="'+esc(id)+'" data-v="" style="width:100%;margin-bottom:8px;justify-content:flex-start;color:var(--danger)">'+icon('x',15)+'Limpar classificação</button>':'')
+    + '<div class="fx je" style="margin-top:6px"><button class="btn btn-outline sm" data-action="close-modal">Fechar</button></div></div>');
+}
+function leadSetTime(id, time){
+  const l=LEADS.find(x=>x.id===id); const antes=l?l.timeHub:undefined; if(l) l.timeHub=time;   // otimista
+  call('leadsAtualizar')({leadId:id, acao:'time', time}).then(()=>{ closeModal(); toast(time?'Time do cliente atualizado':'Classificação limpa','check'); updateLeads(); const dr=$('#drawer'); if(dr&&dr.classList.contains('show')) openLead(id); }).catch(e=>{ if(l) l.timeHub=antes; toast(e.message||'Erro','alert-triangle','var(--danger)'); });
+}
+/* ---- Temperatura (Quente/Morno/Frio; clicar de novo desliga) ---- */
+function leadSetTemp(id, temp){
+  const l=LEADS.find(x=>x.id===id); if(!l) return;
+  const nova=(l.temperaturaHub||'')===temp?'':temp;   // toggle
+  const antes=l.temperaturaHub; l.temperaturaHub=nova;   // otimista
+  const dr=$('#drawer'); if(dr&&dr.classList.contains('show')) openLead(id);
+  updateLeads();
+  call('leadsAtualizar')({leadId:id, acao:'temperatura', temperatura:nova}).catch(e=>{ l.temperaturaHub=antes; updateLeads(); const d2=$('#drawer'); if(d2&&d2.classList.contains('show')) openLead(id); toast(e.message||'Erro','alert-triangle','var(--danger)'); });
 }
 function leadComentar(id){
   const inp=$('#leadComentInput'); const texto=((inp&&inp.value)||'').trim(); if(!texto){ if(inp) inp.focus(); return; }
